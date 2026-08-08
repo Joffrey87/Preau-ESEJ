@@ -53,6 +53,5 @@ _t.*
 _parse_*
 
 # Documents internes sensibles (jamais versionnés)
-Financement/
-Reçus fiscaux/
-Dons/
+/Financement/
+/Reçus fiscaux/

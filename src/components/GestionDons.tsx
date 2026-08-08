@@ -6,6 +6,8 @@ import { createClient } from "@/lib/supabase/client";
 import { formatEuros, formatDate, todayISO } from "@/lib/format";
 import { genererRecuDocx } from "@/lib/recu";
 import { Modal, Field, FormFooter, inputCls } from "./GestionComptes";
+import { useCoffre } from "@/components/CoffreProvider";
+import { useDonsDechiffres, piiDepuis } from "@/lib/donsChiffre";
 import {
   statutsDon,
   donateursRecurrents,
@@ -23,12 +25,13 @@ export type Don = {
   categorie_donateur: string | null;
   est_personne_morale: boolean;
   donateur_titre: string | null;
-  donateur_nom: string;
+  donateur_nom: string | null;
   donateur_prenom: string | null;
   raison_sociale: string | null;
   adresse: string | null;
   cp_ville: string | null;
   courriel: string | null;
+  pii_chiffre: string | null;
   montant: number;
   date_don: string;
   mode_paiement: string | null;
@@ -95,10 +98,15 @@ function vide(): FormState {
   };
 }
 
-export default function GestionDons({ dons }: { dons: Don[] }) {
+export default function GestionDons({ dons: donsInit }: { dons: Don[] }) {
   const router = useRouter();
+  const coffre = useCoffre();
+  // Dons hydratés : PII déchiffré si le coffre est ouvert, 🔒 sinon.
+  const { dons, verrou } = useDonsDechiffres(donsInit);
+  const nonChiffres = useMemo(() => donsInit.filter((d) => !d.pii_chiffre), [donsInit]);
   const [edit, setEdit] = useState<Don | "nouveau" | null>(null);
   const [saving, setSaving] = useState(false);
+  const [migration, setMigration] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [genErreur, setGenErreur] = useState<string | null>(null);
   const [f, setF] = useState<FormState>(vide());
@@ -203,7 +211,7 @@ export default function GestionDons({ dons }: { dons: Don[] }) {
         categorie_donateur: d.categorie_donateur ?? "Particulier",
         est_personne_morale: d.est_personne_morale,
         donateur_titre: d.donateur_titre ?? "",
-        donateur_nom: d.donateur_nom,
+        donateur_nom: d.donateur_nom ?? "",
         donateur_prenom: d.donateur_prenom ?? "",
         raison_sociale: d.raison_sociale ?? "",
         adresse: d.adresse ?? "",
@@ -233,19 +241,19 @@ export default function GestionDons({ dons }: { dons: Don[] }) {
       return;
     }
 
+    if (coffre.estConfigure && !coffre.estOuvert) {
+      setError("Coffre verrouillé : déverrouillez-le (Paramètres → Sécurité) pour enregistrer un donateur.");
+      return;
+    }
+
     setSaving(true);
     const supabase = createClient();
-    const payload = {
+
+    // Champs NON personnels (restent en clair).
+    const base = {
       origine: f.origine.trim() || null,
       categorie_donateur: f.categorie_donateur || null,
       est_personne_morale: f.est_personne_morale,
-      donateur_titre: f.donateur_titre.trim() || null,
-      donateur_nom: f.est_personne_morale ? f.raison_sociale.trim() : f.donateur_nom.trim(),
-      donateur_prenom: f.est_personne_morale ? null : f.donateur_prenom.trim() || null,
-      raison_sociale: f.est_personne_morale ? f.raison_sociale.trim() : null,
-      adresse: f.adresse.trim() || null,
-      cp_ville: f.cp_ville.trim() || null,
-      courriel: f.courriel.trim() || null,
       montant: montantNum,
       date_don: f.date_don,
       mode_paiement: f.mode_paiement || null,
@@ -253,6 +261,40 @@ export default function GestionDons({ dons }: { dons: Don[] }) {
       recu_etat: f.recu_etat.trim() || null,
       observations: f.observations.trim() || null,
     };
+    // Champs personnels (chiffrés si le coffre est ouvert).
+    const pii = {
+      titre: f.donateur_titre.trim() || null,
+      nom: f.est_personne_morale ? f.raison_sociale.trim() : f.donateur_nom.trim(),
+      prenom: f.est_personne_morale ? null : f.donateur_prenom.trim() || null,
+      raison: f.est_personne_morale ? f.raison_sociale.trim() : null,
+      adresse: f.adresse.trim() || null,
+      cp_ville: f.cp_ville.trim() || null,
+      courriel: f.courriel.trim() || null,
+    };
+
+    type DonPayload = typeof base & {
+      pii_chiffre: string | null;
+      donateur_titre: string | null;
+      donateur_nom: string | null;
+      donateur_prenom: string | null;
+      raison_sociale: string | null;
+      adresse: string | null;
+      cp_ville: string | null;
+      courriel: string | null;
+    };
+    const payload: DonPayload = coffre.estOuvert
+      ? {
+          ...base,
+          pii_chiffre: await coffre.chiffrer(JSON.stringify(pii)),
+          donateur_titre: null, donateur_nom: null, donateur_prenom: null,
+          raison_sociale: null, adresse: null, cp_ville: null, courriel: null,
+        }
+      : {
+          ...base,
+          pii_chiffre: null,
+          donateur_titre: pii.titre, donateur_nom: pii.nom, donateur_prenom: pii.prenom,
+          raison_sociale: pii.raison, adresse: pii.adresse, cp_ville: pii.cp_ville, courriel: pii.courriel,
+        };
 
     const { error: err } =
       edit === "nouveau"
@@ -265,39 +307,39 @@ export default function GestionDons({ dons }: { dons: Don[] }) {
       return;
     }
 
-    // Propagation : les coordonnées sont celles du DONATEUR, pas d'un don isolé.
-    // On répercute les infos saisies (non vides) sur tous les dons de la même
-    // personne, pour que compléter un don complète les autres.
-    const coord: Record<string, string> = {};
-    if (payload.courriel) coord.courriel = payload.courriel;
-    if (payload.adresse) coord.adresse = payload.adresse;
-    if (payload.cp_ville) coord.cp_ville = payload.cp_ville;
-    if (payload.donateur_titre) coord.donateur_titre = payload.donateur_titre;
-    if (Object.keys(coord).length > 0) {
-      let q = supabase
-        .from("dons")
-        .update(coord)
-        .eq("est_personne_morale", f.est_personne_morale);
-      if (f.est_personne_morale) {
-        q = q.eq("raison_sociale", payload.raison_sociale as string);
-      } else {
-        q = q.eq("donateur_nom", payload.donateur_nom);
-        q = payload.donateur_prenom
-          ? q.eq("donateur_prenom", payload.donateur_prenom)
-          : q.is("donateur_prenom", null);
-      }
-      await q;
-    }
-
     setSaving(false);
     setEdit(null);
     router.refresh();
   }
 
+  // Chiffre les dons encore en clair (migration ponctuelle, coffre ouvert).
+  async function chiffrerExistants() {
+    if (!coffre.estOuvert || nonChiffres.length === 0) return;
+    setMigration(true);
+    const supabase = createClient();
+    for (const d of nonChiffres) {
+      const pii_chiffre = await coffre.chiffrer(JSON.stringify(piiDepuis(d)));
+      await supabase
+        .from("dons")
+        .update({
+          pii_chiffre,
+          donateur_titre: null, donateur_nom: null, donateur_prenom: null,
+          raison_sociale: null, adresse: null, cp_ville: null, courriel: null,
+        })
+        .eq("id", d.id);
+    }
+    setMigration(false);
+    router.refresh();
+  }
+
   async function genererRecu(d: Don) {
     setGenErreur(null);
+    if (d.pii_chiffre && !coffre.estOuvert) {
+      setGenErreur("Déverrouillez le coffre (Paramètres → Sécurité) pour générer un reçu.");
+      return;
+    }
     try {
-      await genererRecuDocx(d);
+      await genererRecuDocx({ ...d, donateur_nom: d.donateur_nom ?? "" });
     } catch (e) {
       setGenErreur(e instanceof Error ? e.message : "Génération impossible.");
     }
@@ -312,6 +354,32 @@ export default function GestionDons({ dons }: { dons: Don[] }) {
 
   return (
     <>
+      {/* Coffre verrouillé : les noms sont masqués */}
+      {verrou && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-gold/40 bg-gold-soft/40 px-4 py-3 text-sm">
+          <span className="text-gold">🔒 Coffre verrouillé — les données des donateurs sont masquées.</span>
+          <a href="/parametres" className="rounded-lg border border-border px-3 py-1.5 hover:bg-surface-2">Déverrouiller</a>
+        </div>
+      )}
+
+      {/* Migration : dons pas encore chiffrés (coffre ouvert) */}
+      {coffre.estOuvert && nonChiffres.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-accent/40 bg-accent-soft px-4 py-3 text-sm">
+          <span>
+            <strong>{nonChiffres.length}</strong> don{nonChiffres.length > 1 ? "s" : ""} pas encore chiffré
+            {nonChiffres.length > 1 ? "s" : ""}. Chiffrez-les pour retirer les données en clair de la base.
+          </span>
+          <button
+            type="button"
+            onClick={chiffrerExistants}
+            disabled={migration}
+            className="rounded-lg bg-accent px-3 py-1.5 font-medium text-accent-fg hover:opacity-90 disabled:opacity-50"
+          >
+            {migration ? "Chiffrement…" : "Chiffrer maintenant"}
+          </button>
+        </div>
+      )}
+
       {/* Barre d'outils : recherche, filtres, export, ajout */}
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <input

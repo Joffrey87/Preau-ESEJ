@@ -5,7 +5,7 @@
 
 export type Don = {
   est_personne_morale: boolean;
-  donateur_nom: string;
+  donateur_nom: string | null;
   donateur_prenom: string | null;
   raison_sociale: string | null;
   adresse: string | null;
@@ -33,15 +33,15 @@ const vide = (s: string | null | undefined) => !s || !s.trim();
 /** Nom lisible du donateur (personne morale = raison sociale). */
 export function nomDonateur(d: Don): string {
   return d.est_personne_morale
-    ? d.raison_sociale ?? d.donateur_nom
+    ? d.raison_sociale ?? d.donateur_nom ?? ""
     : [d.donateur_nom, d.donateur_prenom].filter(Boolean).join(" ");
 }
 
 /** Clé d'identité pour repérer les donateurs récurrents. */
 export function cleDonateur(d: Don): string {
   const base = d.est_personne_morale
-    ? d.raison_sociale ?? d.donateur_nom
-    : `${d.donateur_nom}|${d.donateur_prenom ?? ""}`;
+    ? d.raison_sociale ?? d.donateur_nom ?? ""
+    : `${d.donateur_nom ?? ""}|${d.donateur_prenom ?? ""}`;
   return base.toLowerCase().replace(/\s+/g, " ").trim();
 }
 

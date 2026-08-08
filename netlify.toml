@@ -1,0 +1,8 @@
+[build]
+  command = "next build"
+  publish = ".next"
+
+# Le runtime Next.js officiel de Netlify gère le rendu serveur, le middleware
+# et les routes dynamiques. Il est installé automatiquement au build.
+[[plugins]]
+  package = "@netlify/plugin-nextjs"

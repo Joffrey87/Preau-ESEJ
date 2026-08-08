@@ -6,14 +6,55 @@ import * as XLSX from "xlsx";
 
 export type LigneBrute = Record<string, unknown>;
 
+/** Clé interne portant le n° de ligne Excel (1-based) sur chaque ligne brute.
+ *  Volontairement improbable pour ne jamais entrer en collision avec un entête. */
+export const CLE_LIGNE = "__ligne_excel__";
+
+/** N° de ligne dans le classeur Excel (1-based), tel que vu par l'utilisateur. */
+export function numLigneExcel(l: LigneBrute): number {
+  return Number(l[CLE_LIGNE] ?? 0);
+}
+
 /** Lit la 1re feuille : 1re ligne = entêtes. Valeurs BRUTES (dates = n° de série
- *  Excel, montants = nombres) pour éviter toute ambiguïté de format. */
+ *  Excel, montants = nombres) pour éviter toute ambiguïté de format. Chaque ligne
+ *  porte son n° de ligne Excel réel (CLE_LIGNE) : on parcourt les cellules à la
+ *  main pour ne perdre ni ce numéro, ni les lignes vides intercalées. */
 export function lireClasseurDons(buffer: ArrayBuffer): { headers: string[]; lignes: LigneBrute[] } {
   const wb = XLSX.read(buffer, { type: "array" });
   const ws = wb.Sheets[wb.SheetNames[0]];
-  if (!ws) return { headers: [], lignes: [] };
-  const lignes = XLSX.utils.sheet_to_json<LigneBrute>(ws, { defval: "", raw: true });
-  const headers = lignes.length ? Object.keys(lignes[0]) : [];
+  if (!ws || !ws["!ref"]) return { headers: [], lignes: [] };
+  const range = XLSX.utils.decode_range(ws["!ref"]);
+
+  // Entêtes = 1re ligne de la plage. On dédoublonne les noms et on comble les vides.
+  const headers: string[] = [];
+  const pris = new Set<string>();
+  for (let c = range.s.c; c <= range.e.c; c++) {
+    const cell = ws[XLSX.utils.encode_cell({ r: range.s.r, c })];
+    let nom = cell && cell.v != null ? String(cell.v).trim() : "";
+    if (!nom) nom = `Colonne ${XLSX.utils.encode_col(c)}`;
+    let uniq = nom;
+    let k = 2;
+    while (pris.has(uniq)) uniq = `${nom} (${k++})`;
+    pris.add(uniq);
+    headers.push(uniq);
+  }
+
+  // Lignes de données : on saute celles entièrement vides mais on garde le vrai n°.
+  const lignes: LigneBrute[] = [];
+  for (let r = range.s.r + 1; r <= range.e.r; r++) {
+    const obj: LigneBrute = {};
+    let vide = true;
+    for (let c = range.s.c; c <= range.e.c; c++) {
+      const cell = ws[XLSX.utils.encode_cell({ r, c })];
+      const v = cell ? cell.v : "";
+      obj[headers[c - range.s.c]] = v ?? "";
+      if (v !== "" && v != null) vide = false;
+    }
+    if (vide) continue;
+    obj[CLE_LIGNE] = r + 1; // Excel affiche les lignes en 1-based
+    lignes.push(obj);
+  }
+
   return { headers, lignes };
 }
 

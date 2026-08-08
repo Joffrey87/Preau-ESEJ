@@ -48,3 +48,5 @@ deploy*.log
 *.log
 deno.lock
 .netlify
+_test_*
+_t.*

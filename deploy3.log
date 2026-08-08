@@ -1,0 +1,137 @@
+ »   Warning: --build is now the default and can safely be omitted.
+​
+Netlify Build                                                 
+────────────────────────────────────────────────────────────────
+​
+❯ Version
+  @netlify/build 36.3.2
+​
+❯ Flags
+  accountId: 6a5f9de9de512e00bfd51250
+  deployId: 6a7716fedad05af14bc58de5
+​
+❯ Current directory
+  C:\2019\ARIL\tresorier-esej
+​
+❯ Config file
+  C:\2019\ARIL\tresorier-esej\netlify.toml
+​
+❯ Context
+  production
+​
+❯ Using Next.js Runtime - v5.15.13
+​
+build.command from netlify.toml                               
+────────────────────────────────────────────────────────────────
+​
+$ next build
+▲ Next.js 16.3.0 (Turbopack)
+- Environments: .env.local
+✓ Running next.config.ts took 96ms
+
+⚠ The "middleware" file convention is deprecated. Please use "proxy" instead.
+
+  To migrate automatically, run:
+  npx @next/codemod@canary middleware-to-proxy .
+
+  Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+  Creating an optimized production build ...
+✓ Compiled successfully in 9.9s
+  Running TypeScript ...
+  Finished TypeScript in 5.0s ...
+  Collecting page data using 11 workers ...
+  Generating static pages using 11 workers (0/11) ...
+  Generating static pages using 11 workers (2/11) 
+  Generating static pages using 11 workers (5/11) 
+  Generating static pages using 11 workers (8/11) 
+✓ Generating static pages using 11 workers (11/11) in 391ms
+  Finalizing page optimization ...
+
+Route (app)
+┌ ƒ /
+├ ○ /_not-found
+├ ƒ /budget
+├ ƒ /comptabilite
+├ ƒ /dons
+├ ○ /login
+├ ƒ /parametres
+├ ƒ /recus-fiscaux
+└ ƒ /scolarite
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
+​
+(build.command completed in 19.8s)
+​
+Functions bundling                                            
+────────────────────────────────────────────────────────────────
+​
+Packaging Functions from .netlify\functions-internal directory:
+ - ___netlify-server-handler\___netlify-server-handler.mjs
+​
+​
+(Functions bundling completed in 1.3s)
+​
+Edge Functions bundling                                       
+────────────────────────────────────────────────────────────────
+​
+Packaging Edge Functions from .netlify\edge-functions directory:
+ - ___netlify-edge-handler-middleware
+​
+(Edge Functions bundling completed in 3.5s)
+​
+Plugin "@netlify/plugin-nextjs" failed                        
+────────────────────────────────────────────────────────────────
+​
+  Error message
+  Error: Failed publishing static content
+​
+  Plugin details
+  Package:        @netlify/plugin-nextjs
+  Version:        5.15.13
+  Repository:     git+https://github.com/opennextjs/opennextjs-netlify.git
+  npm link:       https://www.npmjs.com/package/@netlify/plugin-nextjs
+  Report issues:  https://github.com/opennextjs/opennextjs-netlify/issues
+​
+  Error location
+  In "onPostBuild" event in "@netlify/plugin-nextjs" from netlify.toml
+​
+  Resolved config
+  build:
+    command: next build
+    commandOrigin: config
+    publish: C:\2019\ARIL\tresorier-esej\.next
+    publishOrigin: ui
+  headers:
+    - for: /_next/static/*
+      values:
+        Cache-Control: public, max-age=31536000, immutable
+  headersOrigin: inline
+  plugins:
+    - inputs: {}
+      origin: config
+      package: "@netlify/plugin-nextjs"
+  redirects:
+    - from: /_next/image
+      query:
+        q: :quality
+        url: :url
+        w: :width
+      status: 200
+      to: /.netlify/images?url=:url&w=:width&q=:quality
+    - from: /_ipx/*
+      query:
+        q: :quality
+        url: :url
+        w: :width
+      status: 200
+      to: /.netlify/images?url=:url&w=:width&q=:quality
+    - from: /_next/image
+      status: 200
+      to: /.netlify/images
+  redirectsOrigin: inline
+ »   Error: Error while running build

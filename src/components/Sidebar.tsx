@@ -21,11 +21,10 @@ export default function Sidebar({ userEmail }: { userEmail?: string }) {
   return (
     <aside className="flex flex-col border-b border-border bg-surface md:h-screen md:w-64 md:shrink-0 md:border-b-0 md:border-r md:sticky md:top-0 md:overflow-y-auto">
       <div className="flex items-center gap-3 px-5 py-4 border-b border-border">
-        <div className="grid h-9 w-9 place-items-center rounded-lg bg-accent text-accent-fg font-semibold">
-          ₸
-        </div>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/logo.png" alt="Préau" className="h-10 w-10 shrink-0 rounded-full object-contain" />
         <div className="leading-tight">
-          <div className="font-semibold">Trésorier ESEJ</div>
+          <div className="font-semibold">Préau</div>
           <div className="text-xs text-muted">ARIL · École Saint-Enfant-Jésus</div>
         </div>
       </div>

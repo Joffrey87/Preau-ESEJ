@@ -34,10 +34,13 @@ export default function LoginPage() {
     <div className="grid min-h-screen place-items-center px-5">
       <div className="w-full max-w-sm">
         <div className="mb-6 flex flex-col items-center text-center">
-          <div className="mb-3 grid h-12 w-12 place-items-center rounded-xl bg-accent text-accent-fg text-xl font-semibold">
-            ₸
-          </div>
-          <h1 className="text-xl font-semibold">Trésorier ESEJ</h1>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/logo.png"
+            alt="Préau"
+            className="mb-3 h-24 w-24 rounded-full object-contain"
+          />
+          <h1 className="text-xl font-semibold">Préau</h1>
           <p className="mt-1 text-sm text-muted">
             ARIL · École du Saint-Enfant-Jésus
           </p>

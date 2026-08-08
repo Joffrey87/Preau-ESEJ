@@ -40,6 +40,7 @@ export const NAV: NavSection[] = [
   {
     title: "Vie associative",
     items: [
+      { href: "/carnet", label: "Carnet d'adresses", icon: "contact", ready: true },
       { href: "/taches", label: "Tâches", icon: "check", ready: false },
       { href: "/ca", label: "Conseil d'administration", icon: "users", ready: false },
       { href: "/evenements", label: "Événements", icon: "calendar", ready: false },

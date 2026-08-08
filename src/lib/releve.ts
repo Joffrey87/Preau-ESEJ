@@ -151,3 +151,53 @@ export function suggereCategorie(libelle: string, type: "recette" | "depense", c
 export function cleDedup(date: string, montant: number, type: string, libelle: string): string {
   return `${date}|${montant.toFixed(2)}|${type}|${norm(libelle).slice(0, 18)}`;
 }
+
+/** Clé « marchand » d'un libellé bancaire : mots signifiants, sans chiffres ni réfs. */
+export function libelleKey(libelle: string): string {
+  return norm(libelle)
+    .replace(/\d+/g, " ")
+    .replace(/[^a-z ]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length > 2)
+    .slice(0, 4)
+    .join(" ")
+    .trim();
+}
+
+type OpHist = { libelle: string; categorie_id: string | null };
+
+/**
+ * Apprend la correspondance intitulé → catégorie depuis les opérations déjà
+ * classées : pour chaque clé-libellé, retient la catégorie la plus fréquente.
+ */
+export function construireHistorique(ops: OpHist[]): Map<string, string> {
+  const compte = new Map<string, Map<string, number>>();
+  for (const o of ops) {
+    if (!o.categorie_id) continue;
+    const k = libelleKey(o.libelle);
+    if (!k) continue;
+    const m = compte.get(k) ?? new Map<string, number>();
+    m.set(o.categorie_id, (m.get(o.categorie_id) ?? 0) + 1);
+    compte.set(k, m);
+  }
+  const res = new Map<string, string>();
+  for (const [k, m] of compte) {
+    let best = "";
+    let n = -1;
+    for (const [cat, c] of m) if (c > n) [best, n] = [cat, c];
+    if (best) res.set(k, best);
+  }
+  return res;
+}
+
+/** Catégorie suggérée : d'abord l'historique (intitulé déjà classé), sinon les mots-clés. */
+export function suggereCategorieAvecHistorique(
+  libelle: string,
+  type: "recette" | "depense",
+  cats: Cat[],
+  historique: Map<string, string>,
+): string {
+  const h = historique.get(libelleKey(libelle));
+  if (h && cats.some((c) => c.id === h && c.type === type)) return h;
+  return suggereCategorie(libelle, type, cats);
+}

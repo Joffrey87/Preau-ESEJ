@@ -235,7 +235,7 @@ export default function GestionScolarite({
               <th className="px-4 py-3 font-medium text-center">Enf.</th>
               <th className="px-4 py-3 font-medium text-right">Mensuel</th>
               <th className="px-4 py-3 font-medium text-right">Total dû</th>
-              <th className="px-4 py-3 font-medium text-center">Mois d'avance</th>
+              <th className="px-4 py-3 font-medium text-center">Mois d&apos;avance</th>
               <th className="px-4 py-3 font-medium text-right">Réglé</th>
               <th className="px-4 py-3 font-medium text-right">Reste</th>
               <th className="px-4 py-3 font-medium text-right">Action</th>

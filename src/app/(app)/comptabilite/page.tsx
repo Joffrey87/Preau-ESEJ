@@ -90,7 +90,7 @@ export default async function ComptabilitePage() {
             {operations.length === 0 ? (
               <tr>
                 <td colSpan={5} className="px-4 py-16 text-center text-muted">
-                  Aucune opération pour l'instant.
+                  Aucune opération pour l&apos;instant.
                   <br />
                   <span className="text-sm">
                     Cliquez sur « Nouvelle opération » pour commencer la saisie.

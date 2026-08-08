@@ -31,7 +31,7 @@ function centaineEnLettres(n: number, multiplicateur = false): string {
       if (d === 7 && u === 1) return "soixante et onze";
       return `${base}-${reste}`;
     }
-    let mot = DIZAINES[d];
+    const mot = DIZAINES[d];
     if (u === 0) {
       // quatre-vingts prend un s, sauf s'il multiplie mille/million
       return d === 8 && !multiplicateur ? "quatre-vingts" : mot;
@@ -43,7 +43,7 @@ function centaineEnLettres(n: number, multiplicateur = false): string {
   // 100..999
   const c = Math.floor(n / 100);
   const reste = n % 100;
-  let cent = c === 1 ? "cent" : `${UNITES[c]} cent`;
+  const cent = c === 1 ? "cent" : `${UNITES[c]} cent`;
   if (reste === 0) {
     // « deux cents » (pluriel) sauf « cent » seul, ou si multiplicateur
     return c > 1 && !multiplicateur ? `${UNITES[c]} cents` : cent;

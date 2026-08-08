@@ -10,7 +10,7 @@ export default async function ImportRelevePage() {
     supabase.from("categories").select("id, nom, type").eq("archive", false).order("type").order("ordre").order("nom"),
     supabase.from("comptes").select("id, nom").eq("archive", false).order("ordre"),
     supabase.from("exercices").select("id, libelle, date_debut, date_fin, actif").order("date_debut", { ascending: false }),
-    supabase.from("operations").select("date_operation, montant, type, libelle"),
+    supabase.from("operations").select("date_operation, montant, type, libelle, categorie_id"),
   ]);
 
   return (

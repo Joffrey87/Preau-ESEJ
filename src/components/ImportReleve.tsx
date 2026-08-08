@@ -5,7 +5,14 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { formatEuros, formatDate } from "@/lib/format";
-import { parseReleve, suggereCategorie, devineMode, cleDedup, type LigneReleve } from "@/lib/releve";
+import {
+  parseReleve,
+  suggereCategorieAvecHistorique,
+  construireHistorique,
+  devineMode,
+  cleDedup,
+  type LigneReleve,
+} from "@/lib/releve";
 
 type Cat = { id: string; nom: string; type: "recette" | "depense" };
 type Compte = { id: string; nom: string };
@@ -15,7 +22,6 @@ type Ligne = LigneReleve & {
   key: string;
   inclus: boolean;
   categorie_id: string;
-  doublon: boolean;
 };
 
 export default function ImportReleve({
@@ -27,7 +33,13 @@ export default function ImportReleve({
   categories: Cat[];
   comptes: Compte[];
   exercices: Exercice[];
-  existantes: { date_operation: string; montant: number; type: string; libelle: string }[];
+  existantes: {
+    date_operation: string;
+    montant: number;
+    type: string;
+    libelle: string;
+    categorie_id: string | null;
+  }[];
 }) {
   const router = useRouter();
   const [lignes, setLignes] = useState<Ligne[]>([]);
@@ -36,6 +48,7 @@ export default function ImportReleve({
   const [nomFichier, setNomFichier] = useState<string | null>(null);
   const [importing, setImporting] = useState(false);
   const [fait, setFait] = useState<number | null>(null);
+  const [ignores, setIgnores] = useState(0);
 
   const dedupSet = useMemo(
     () =>
@@ -44,6 +57,7 @@ export default function ImportReleve({
       ),
     [existantes],
   );
+  const historique = useMemo(() => construireHistorique(existantes), [existantes]);
 
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -58,21 +72,36 @@ export default function ImportReleve({
         setLignes([]);
         return;
       }
+      // On écarte d'emblée les opérations déjà en comptabilité (et les doublons
+      // internes au fichier) : elles ne sont ni affichées ni proposées.
       const vus = new Set<string>();
-      const l: Ligne[] = brut.map((op) => {
+      let ignoresN = 0;
+      const l: Ligne[] = [];
+      for (const op of brut) {
         const key = cleDedup(op.date, op.montant, op.type, op.libelle);
-        const doublon = dedupSet.has(key) || vus.has(key);
+        if (dedupSet.has(key) || vus.has(key)) {
+          ignoresN++;
+          vus.add(key);
+          continue;
+        }
         vus.add(key);
-        return {
+        l.push({
           ...op,
           key,
-          doublon,
-          inclus: !doublon,
-          categorie_id: suggereCategorie(op.libelle, op.type, categories),
-        };
-      });
+          inclus: true,
+          categorie_id: suggereCategorieAvecHistorique(op.libelle, op.type, categories, historique),
+        });
+      }
       setLignes(l);
+      setIgnores(ignoresN);
       setNomFichier(file.name);
+      if (l.length === 0) {
+        setErreur(
+          ignoresN > 0
+            ? `Toutes les opérations de ce relevé (${ignoresN}) sont déjà en comptabilité — rien de nouveau à importer.`
+            : "Aucune opération à importer.",
+        );
+      }
     } catch (err) {
       setErreur("Lecture impossible : " + (err instanceof Error ? err.message : "fichier invalide"));
     }
@@ -90,7 +119,7 @@ export default function ImportReleve({
   const retenues = lignes.filter((l) => l.inclus);
   const nbRec = retenues.filter((l) => l.type === "recette").length;
   const nbDep = retenues.filter((l) => l.type === "depense").length;
-  const nbDoublons = lignes.filter((l) => l.doublon).length;
+  const nbClasses = retenues.filter((l) => l.categorie_id).length;
 
   async function importer() {
     setErreur(null);
@@ -134,7 +163,7 @@ export default function ImportReleve({
             <h2 className="text-sm font-semibold">Déposer un relevé bancaire</h2>
             <p className="mt-1 text-xs text-muted">
               Export <strong>Excel</strong> du Crédit Mutuel (Situation de votre compte, .xlsx).
-              Les opérations sont extraites puis validées une par une avant d'entrer en comptabilité.
+              Les opérations sont extraites puis validées une par une avant d&apos;entrer en comptabilité.
             </p>
           </div>
           <label className="cursor-pointer rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-fg hover:opacity-90">
@@ -159,10 +188,11 @@ export default function ImportReleve({
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex flex-wrap items-center gap-4 text-sm">
               <span className="text-muted">
-                <strong className="text-foreground">{retenues.length}</strong> retenues
+                <strong className="text-foreground">{retenues.length}</strong> nouvelles
                 {" · "}<span className="text-positive">{nbRec} recettes</span>
                 {" · "}<span className="text-negative">{nbDep} dépenses</span>
-                {nbDoublons > 0 && <> · <span className="text-gold">{nbDoublons} doublon(s)</span></>}
+                {" · "}<span>{nbClasses} classée(s)</span>
+                {ignores > 0 && <> · <span className="text-gold">{ignores} déjà en compta ignorée(s)</span></>}
               </span>
               <label className="flex items-center gap-2">
                 <span className="text-muted">Compte :</span>
@@ -216,11 +246,6 @@ export default function ImportReleve({
                     <td className="px-3 py-2 whitespace-nowrap tabular-nums">{formatDate(l.date)}</td>
                     <td className="px-3 py-2">
                       <span className="line-clamp-2">{l.libelle}</span>
-                      {l.doublon && (
-                        <span className="ml-1 rounded bg-gold-soft px-1.5 py-0.5 text-[10px] font-medium text-gold">
-                          doublon
-                        </span>
-                      )}
                     </td>
                     <td className="px-3 py-2">
                       <select

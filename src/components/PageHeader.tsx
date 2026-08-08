@@ -1,3 +1,4 @@
+// Titre de page compact, en ligne : pas de bandeau ni de gros séparateur.
 export default function PageHeader({
   title,
   subtitle,
@@ -8,10 +9,10 @@ export default function PageHeader({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border pb-5 mb-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">{title}</h1>
-        {subtitle && <p className="mt-1 text-sm text-muted">{subtitle}</p>}
+    <div className="mb-5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+      <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+        <h1 className="text-lg font-semibold tracking-tight">{title}</h1>
+        {subtitle && <p className="text-xs text-muted">{subtitle}</p>}
       </div>
       {action}
     </div>

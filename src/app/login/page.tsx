@@ -38,7 +38,7 @@ export default function LoginPage() {
           <img
             src="/logo.png"
             alt="Préau"
-            className="mb-3 h-24 w-24 rounded-full object-contain"
+            className="mb-4 h-44 w-44 rounded-full object-contain"
           />
           <h1 className="text-xl font-semibold">Préau</h1>
           <p className="mt-1 text-sm text-muted">
@@ -95,7 +95,7 @@ export default function LoginPage() {
         </form>
 
         <p className="mt-4 text-center text-xs text-muted">
-          Accès réservé au bureau de l'ARIL.
+          Accès réservé au bureau de l&apos;ARIL.
         </p>
       </div>
     </div>

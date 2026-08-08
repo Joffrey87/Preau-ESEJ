@@ -3,10 +3,17 @@ import GestionComptes from "@/components/GestionComptes";
 import GestionCategories from "@/components/GestionCategories";
 import GestionExercices from "@/components/GestionExercices";
 import GestionOrganisation, { type Organisation } from "@/components/GestionOrganisation";
+import MonProfil from "@/components/MonProfil";
 import { createClient } from "@/lib/supabase/server";
+import { roleByEmail } from "@/lib/roles";
 
 export default async function ParametresPage() {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const role = roleByEmail(user?.email);
+  const meta = (user?.user_metadata ?? {}) as { prenom?: string; nom?: string };
 
   const [comptesRes, categoriesRes, exercicesRes, organisationRes] = await Promise.all([
     supabase.from("comptes").select("id, nom, type, solde_initial, ordre, archive").order("ordre"),
@@ -23,6 +30,7 @@ export default async function ParametresPage() {
       />
 
       <div className="space-y-10">
+        <MonProfil prenom={meta.prenom ?? ""} nom={meta.nom ?? ""} roleLabel={role?.label ?? "—"} />
         <GestionOrganisation organisation={(organisationRes.data ?? null) as Organisation | null} />
         <GestionExercices exercices={exercicesRes.data ?? []} />
         <GestionComptes comptes={comptesRes.data ?? []} />

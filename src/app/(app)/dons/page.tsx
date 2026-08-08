@@ -1,3 +1,4 @@
+import Link from "next/link";
 import PageHeader from "@/components/PageHeader";
 import GestionDons, { type Don } from "@/components/GestionDons";
 import { createClient } from "@/lib/supabase/server";
@@ -17,6 +18,14 @@ export default async function DonsPage() {
       <PageHeader
         title="Dons"
         subtitle="Suivi des dons reçus et génération des reçus fiscaux."
+        action={
+          <Link
+            href="/dons/import"
+            className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-surface-2"
+          >
+            Importer (.xlsx)
+          </Link>
+        }
       />
       <GestionDons dons={(dons ?? []) as Don[]} />
     </div>

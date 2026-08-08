@@ -1,16 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { formatEuros, formatDate } from "@/lib/format";
 import {
   parseReleve,
-  suggereCategorieAvecHistorique,
+  suggereCategorieIntelligente,
   construireHistorique,
+  construireIndexTokens,
   devineMode,
-  cleDedup,
   type LigneReleve,
 } from "@/lib/releve";
 
@@ -22,6 +22,10 @@ type Ligne = LigneReleve & {
   key: string;
   inclus: boolean;
   categorie_id: string;
+  doublon: boolean; // même montant + date ±1j → déjà en compta (décoché)
+  suspect: boolean; // même montant + date ±5j → doublon possible (coché, surligné)
+  // opération de la compta correspondante (pour comparaison sous la ligne)
+  existant: { date: string; libelle: string; montant: number; type: string; categorie: string | null } | null;
 };
 
 export default function ImportReleve({
@@ -49,62 +53,76 @@ export default function ImportReleve({
   const [importing, setImporting] = useState(false);
   const [fait, setFait] = useState<number | null>(null);
   const [ignores, setIgnores] = useState(0);
+  const [suspects, setSuspects] = useState(0);
 
-  const dedupSet = useMemo(
-    () =>
-      new Set(
-        existantes.map((o) => cleDedup(o.date_operation, Number(o.montant), o.type, o.libelle)),
-      ),
-    [existantes],
-  );
   const historique = useMemo(() => construireHistorique(existantes), [existantes]);
+  const indexTokens = useMemo(() => construireIndexTokens(existantes), [existantes]);
+  const catNom = useMemo(() => new Map(categories.map((c) => [c.id, c.nom])), [categories]);
 
-  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  function traiter(buf: ArrayBuffer, nom: string) {
     setErreur(null);
     setFait(null);
     try {
-      const buf = await file.arrayBuffer();
       const brut = parseReleve(buf);
       if (brut.length === 0) {
         setErreur("Aucune opération détectée. Vérifiez que c'est bien l'export Excel de la banque (colonnes Date / Libellé / Débit / Crédit).");
         setLignes([]);
         return;
       }
-      // On écarte d'emblée les opérations déjà en comptabilité (et les doublons
-      // internes au fichier) : elles ne sont ni affichées ni proposées.
-      const vus = new Set<string>();
-      let ignoresN = 0;
-      const l: Ligne[] = [];
-      for (const op of brut) {
-        const key = cleDedup(op.date, op.montant, op.type, op.libelle);
-        if (dedupSet.has(key) || vus.has(key)) {
-          ignoresN++;
-          vus.add(key);
-          continue;
-        }
-        vus.add(key);
-        l.push({
-          ...op,
-          key,
-          inclus: true,
-          categorie_id: suggereCategorieAvecHistorique(op.libelle, op.type, categories, historique),
-        });
+      // Détection sur DATE + MONTANT uniquement. Deux niveaux, en deux passes
+      // (le match exact ±1j est prioritaire, il « consomme » l'opération) :
+      //   • ±1 jour  → déjà en compta      → grisée + DÉCOCHÉE
+      //   • ±5 jours → doublon possible     → surlignée + COCHÉE (à vérifier)
+      const jour = (iso: string) => Math.round(Date.parse(iso) / 86400000);
+      const existing = existantes.map((o) => ({
+        m: Number(o.montant).toFixed(2), j: jour(o.date_operation),
+        date: o.date_operation, lib: o.libelle, montant: Number(o.montant), type: o.type, cat: o.categorie_id, used: false,
+      }));
+      type Existant = { date: string; libelle: string; montant: number; type: string; categorie: string | null };
+      const mkExistant = (e: (typeof existing)[number]): Existant => ({
+        date: e.date, libelle: e.lib, montant: e.montant, type: e.type,
+        categorie: e.cat ? catNom.get(e.cat) ?? null : null,
+      });
+      type P = { op: (typeof brut)[number]; i: number; m: string; j: number; doublon: boolean; suspect: boolean; existant: Existant | null };
+      const p: P[] = brut.map((op, i) => ({ op, i, m: op.montant.toFixed(2), j: jour(op.date), doublon: false, suspect: false, existant: null }));
+      const chercher = (m: string, j: number, tol: number) =>
+        existing.findIndex((e) => !e.used && e.m === m && Math.abs(e.j - j) <= tol);
+      for (const x of p) {
+        const idx = chercher(x.m, x.j, 1);
+        if (idx >= 0) { existing[idx].used = true; x.doublon = true; x.existant = mkExistant(existing[idx]); }
       }
+      for (const x of p) {
+        if (x.doublon) continue;
+        const idx = chercher(x.m, x.j, 5);
+        if (idx >= 0) { existing[idx].used = true; x.suspect = true; x.existant = mkExistant(existing[idx]); }
+      }
+      let ignoresN = 0, suspectsN = 0;
+      const l: Ligne[] = p.map((x) => {
+        if (x.doublon) ignoresN++;
+        if (x.suspect) suspectsN++;
+        return {
+          ...x.op,
+          key: `${x.op.date}-${x.op.montant}-${x.i}`,
+          doublon: x.doublon,
+          suspect: x.suspect,
+          existant: x.existant,
+          inclus: !x.doublon, // doublon possible reste coché
+          categorie_id: suggereCategorieIntelligente(x.op.libelle, x.op.type, categories, historique, indexTokens),
+        };
+      });
       setLignes(l);
       setIgnores(ignoresN);
-      setNomFichier(file.name);
-      if (l.length === 0) {
-        setErreur(
-          ignoresN > 0
-            ? `Toutes les opérations de ce relevé (${ignoresN}) sont déjà en comptabilité — rien de nouveau à importer.`
-            : "Aucune opération à importer.",
-        );
-      }
+      setSuspects(suspectsN);
+      setNomFichier(nom);
     } catch (err) {
       setErreur("Lecture impossible : " + (err instanceof Error ? err.message : "fichier invalide"));
     }
+  }
+
+  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    traiter(await file.arrayBuffer(), file.name);
     e.target.value = "";
   }
 
@@ -167,7 +185,7 @@ export default function ImportReleve({
             </p>
           </div>
           <label className="cursor-pointer rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-fg hover:opacity-90">
-            Choisir un fichier .xlsx
+            Choisir le relevé (.xlsx)
             <input type="file" accept=".xlsx,.xls" onChange={onFile} className="hidden" />
           </label>
         </div>
@@ -192,7 +210,8 @@ export default function ImportReleve({
                 {" · "}<span className="text-positive">{nbRec} recettes</span>
                 {" · "}<span className="text-negative">{nbDep} dépenses</span>
                 {" · "}<span>{nbClasses} classée(s)</span>
-                {ignores > 0 && <> · <span className="text-gold">{ignores} déjà en compta ignorée(s)</span></>}
+                {ignores > 0 && <> · <span className="text-gold">{ignores} déjà en compta (décochée·s)</span></>}
+                {suspects > 0 && <> · <span className="text-gold">{suspects} doublon·s possible·s (surlignés)</span></>}
               </span>
               <label className="flex items-center gap-2">
                 <span className="text-muted">Compte :</span>
@@ -207,14 +226,6 @@ export default function ImportReleve({
                 </select>
               </label>
             </div>
-            <button
-              type="button"
-              onClick={importer}
-              disabled={importing || retenues.length === 0}
-              className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-fg hover:opacity-90 disabled:opacity-50"
-            >
-              {importing ? "Import…" : `Importer ${retenues.length} opération(s)`}
-            </button>
           </div>
 
           <div className="overflow-x-auto rounded-xl border border-border bg-surface">
@@ -231,9 +242,9 @@ export default function ImportReleve({
               </thead>
               <tbody>
                 {lignes.map((l, i) => (
+                  <Fragment key={i}>
                   <tr
-                    key={i}
-                    className={`border-b border-border last:border-0 ${l.inclus ? "" : "opacity-45"}`}
+                    className={`border-b border-border ${l.suspect ? "" : "last:border-0"} ${l.inclus ? "" : "opacity-45"} ${l.suspect ? "bg-gold-soft" : ""}`}
                   >
                     <td className="px-3 py-2">
                       <input
@@ -245,7 +256,19 @@ export default function ImportReleve({
                     </td>
                     <td className="px-3 py-2 whitespace-nowrap tabular-nums">{formatDate(l.date)}</td>
                     <td className="px-3 py-2">
-                      <span className="line-clamp-2">{l.libelle}</span>
+                      <div className="flex flex-wrap items-center gap-1">
+                        <span className="line-clamp-2">{l.libelle}</span>
+                        {l.doublon && (
+                          <span className="whitespace-nowrap rounded bg-gold-soft px-1.5 py-0.5 text-[10px] font-medium text-gold">
+                            déjà en compta
+                          </span>
+                        )}
+                        {l.suspect && (
+                          <span className="whitespace-nowrap rounded border border-gold px-1.5 py-0.5 text-[10px] font-medium text-gold">
+                            doublon possible ±5 j
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-3 py-2">
                       <select
@@ -282,10 +305,43 @@ export default function ImportReleve({
                       {formatEuros(l.montant)}
                     </td>
                   </tr>
+                  {l.suspect && l.existant && (
+                    <tr className="border-b border-border last:border-0">
+                      <td className="px-3 pb-2 pt-0" colSpan={6}>
+                        <div className="ml-6 rounded-md border border-dashed border-gold/70 bg-gold-soft/40 px-3 py-2">
+                          <div className="mb-1 text-[10px] font-medium uppercase tracking-wide text-gold">
+                            Déjà en comptabilité · même montant à ±5 j — à vérifier
+                          </div>
+                          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+                            <span className="tabular-nums text-muted">{formatDate(l.existant.date)}</span>
+                            <span className="min-w-[8rem] flex-1">{l.existant.libelle}</span>
+                            <span className="capitalize text-muted">{l.existant.type}</span>
+                            <span className="text-muted">{l.existant.categorie ?? "— non classé —"}</span>
+                            <span className={`tabular-nums font-medium ${l.existant.type === "recette" ? "text-positive" : "text-negative"}`}>
+                              {l.existant.type === "recette" ? "+" : "−"}
+                              {formatEuros(l.existant.montant)}
+                            </span>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
           </div>
+          <div className="h-20" aria-hidden />
+
+          {/* Bouton d'import volant : reste accessible en faisant défiler la liste. */}
+          <button
+            type="button"
+            onClick={importer}
+            disabled={importing || retenues.length === 0}
+            className="fixed bottom-6 right-6 z-40 rounded-full bg-accent px-5 py-3 text-sm font-semibold text-accent-fg shadow-lg shadow-black/20 hover:opacity-90 disabled:opacity-50"
+          >
+            {importing ? "Import…" : `Importer ${retenues.length} opération(s)`}
+          </button>
         </>
       )}
     </div>

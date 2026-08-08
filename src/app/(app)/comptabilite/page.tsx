@@ -60,10 +60,16 @@ export default async function ComptabilitePage() {
           exercice ? (
             <div className="flex flex-wrap items-center gap-2">
               <Link
-                href="/comptabilite/import"
-                className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-fg transition-opacity hover:opacity-90"
+                href="/comptabilite/bilan?periode=mois"
+                className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-surface-2"
               >
-                Importer un relevé
+                Bilan mensuel
+              </Link>
+              <Link
+                href="/comptabilite/import"
+                className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-surface-2"
+              >
+                Importer relevé
               </Link>
               <NouvelleOperation
                 categories={catsRes.data ?? []}

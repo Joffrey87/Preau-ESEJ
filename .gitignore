@@ -50,3 +50,4 @@ deno.lock
 .netlify
 _test_*
 _t.*
+_parse_*

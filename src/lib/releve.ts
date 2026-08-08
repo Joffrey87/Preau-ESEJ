@@ -147,9 +147,14 @@ export function suggereCategorie(libelle: string, type: "recette" | "depense", c
   return "";
 }
 
-/** Clé de dédoublonnage : date + montant + type (+ début du libellé). */
-export function cleDedup(date: string, montant: number, type: string, libelle: string): string {
-  return `${date}|${montant.toFixed(2)}|${type}|${norm(libelle).slice(0, 18)}`;
+/**
+ * Clé de dédoublonnage : date + montant + sens. On n'inclut PAS le libellé, car
+ * une même opération peut avoir été saisie avec un intitulé différent (import
+ * comptable vs relevé bancaire). Le comptage (multiset) évite de masquer à tort
+ * une vraie opération distincte de même date/montant.
+ */
+export function cleDedup(date: string, montant: number, type: string): string {
+  return `${date}|${montant.toFixed(2)}|${type}`;
 }
 
 /** Clé « marchand » d'un libellé bancaire : mots signifiants, sans chiffres ni réfs. */
@@ -199,5 +204,62 @@ export function suggereCategorieAvecHistorique(
 ): string {
   const h = historique.get(libelleKey(libelle));
   if (h && cats.some((c) => c.id === h && c.type === type)) return h;
+  return suggereCategorie(libelle, type, cats);
+}
+
+/** Tokens signifiants d'un libellé (mots ≥3 lettres, sans chiffres ni ponctuation). */
+function tokensLibelle(libelle: string): string[] {
+  return norm(libelle).replace(/\d+/g, " ").replace(/[^a-z ]/g, " ").split(/\s+/).filter((w) => w.length >= 3);
+}
+
+/** Index appris : token → (categorie_id → nb d'occurrences), depuis les opérations déjà classées. */
+export function construireIndexTokens(
+  ops: { libelle: string; categorie_id: string | null }[],
+): Map<string, Map<string, number>> {
+  const idx = new Map<string, Map<string, number>>();
+  for (const o of ops) {
+    if (!o.categorie_id) continue;
+    for (const t of new Set(tokensLibelle(o.libelle))) {
+      const m = idx.get(t) ?? new Map<string, number>();
+      m.set(o.categorie_id, (m.get(o.categorie_id) ?? 0) + 1);
+      idx.set(t, m);
+    }
+  }
+  return idx;
+}
+
+/**
+ * Suggestion de catégorie SANS IA, qui s'améliore avec l'historique :
+ *  1) intitulé quasi identique déjà classé (clé-libellé) ;
+ *  2) sinon le plus proche par recoupement de mots (score pondéré par token) ;
+ *  3) sinon les règles par mots-clés.
+ */
+export function suggereCategorieIntelligente(
+  libelle: string,
+  type: "recette" | "depense",
+  cats: Cat[],
+  historique: Map<string, string>,
+  index: Map<string, Map<string, number>>,
+): string {
+  const dispo = new Set(cats.filter((c) => c.type === type).map((c) => c.id));
+  // 1) intitulé quasi identique
+  const h = historique.get(libelleKey(libelle));
+  if (h && dispo.has(h)) return h;
+  // 2) recoupement de mots : chaque token « vote » pour ses catégories (pondéré par sa pureté)
+  const score = new Map<string, number>();
+  for (const t of new Set(tokensLibelle(libelle))) {
+    const m = index.get(t);
+    if (!m) continue;
+    const total = [...m.values()].reduce((s, v) => s + v, 0);
+    for (const [cat, c] of m) {
+      if (!dispo.has(cat)) continue;
+      score.set(cat, (score.get(cat) ?? 0) + c / total);
+    }
+  }
+  let best = "";
+  let n = 0;
+  for (const [cat, s] of score) if (s > n) { best = cat; n = s; }
+  if (best && n >= 0.5) return best;
+  // 3) mots-clés
   return suggereCategorie(libelle, type, cats);
 }

@@ -47,6 +47,14 @@ const CATEGORIES = [
 ];
 const MODES = ["Virement", "Chèque", "Carte bancaire", "Espèces", "Nature", "Autre"];
 
+// Année SCOLAIRE (1er sept → 31 août) d'une date ISO → « 2025-2026 ».
+const anneeScolaireISO = (iso: string) => {
+  const y = Number(iso.slice(0, 4));
+  const m = Number(iso.slice(5, 7));
+  return m >= 9 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
+};
+const anneeScolaireCourante = () => anneeScolaireISO(new Date().toISOString().slice(0, 10));
+
 type FormState = {
   origine: string;
   categorie_donateur: string;
@@ -97,7 +105,7 @@ export default function GestionDons({ dons }: { dons: Don[] }) {
   const [filtre, setFiltre] = useState<StatutKey | null>(null);
   const [signaler, setSignaler] = useState(false);
   const [recherche, setRecherche] = useState("");
-  const [anneeFiltre, setAnneeFiltre] = useState("toutes");
+  const [anneeFiltre, setAnneeFiltre] = useState(anneeScolaireCourante());
   const [catFiltre, setCatFiltre] = useState("toutes");
 
   const recurrents = useMemo(() => donateursRecurrents(dons), [dons]);
@@ -113,9 +121,9 @@ export default function GestionDons({ dons }: { dons: Don[] }) {
     return c;
   }, [chipsParDon]);
   const annees = useMemo(() => {
-    const s = new Set<string>();
-    for (const d of dons) s.add((d.date_don ?? "").slice(0, 4));
-    return [...s].filter(Boolean).sort().reverse();
+    const s = new Set<string>([anneeScolaireCourante()]);
+    for (const d of dons) if (d.date_don) s.add(anneeScolaireISO(d.date_don));
+    return [...s].sort().reverse();
   }, [dons]);
   const categoriesPresentes = useMemo(() => {
     const s = new Set<string>();
@@ -127,7 +135,7 @@ export default function GestionDons({ dons }: { dons: Don[] }) {
     const q = recherche.trim().toLowerCase();
     return dons.filter((d) => {
       if (filtre && !(chipsParDon.get(d.id) ?? []).some((c) => c.key === filtre)) return false;
-      if (anneeFiltre !== "toutes" && (d.date_don ?? "").slice(0, 4) !== anneeFiltre) return false;
+      if (anneeFiltre !== "toutes" && (!d.date_don || anneeScolaireISO(d.date_don) !== anneeFiltre)) return false;
       if (catFiltre !== "toutes" && (d.categorie_donateur ?? "") !== catFiltre) return false;
       if (q) {
         const nom = d.est_personne_morale
@@ -150,10 +158,11 @@ export default function GestionDons({ dons }: { dons: Don[] }) {
     };
   }, [donsAffiches]);
 
-  const filtresActifs = filtre || anneeFiltre !== "toutes" || catFiltre !== "toutes" || recherche.trim() !== "";
+  const filtresActifs =
+    filtre || anneeFiltre !== anneeScolaireCourante() || catFiltre !== "toutes" || recherche.trim() !== "";
   function reinitialiser() {
     setFiltre(null);
-    setAnneeFiltre("toutes");
+    setAnneeFiltre(anneeScolaireCourante());
     setCatFiltre("toutes");
     setRecherche("");
   }

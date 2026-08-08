@@ -1,3 +1,4 @@
+import Link from "next/link";
 import PageHeader from "@/components/PageHeader";
 import NouvelleOperation from "@/components/NouvelleOperation";
 import { createClient } from "@/lib/supabase/server";
@@ -57,11 +58,19 @@ export default async function ComptabilitePage() {
         }
         action={
           exercice ? (
-            <NouvelleOperation
-              categories={catsRes.data ?? []}
-              comptes={comptesRes.data ?? []}
-              exerciceId={exercice.id}
-            />
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                href="/comptabilite/import"
+                className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-fg transition-opacity hover:opacity-90"
+              >
+                Importer un relevé
+              </Link>
+              <NouvelleOperation
+                categories={catsRes.data ?? []}
+                comptes={comptesRes.data ?? []}
+                exerciceId={exercice.id}
+              />
+            </div>
           ) : null
         }
       />

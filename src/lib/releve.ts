@@ -105,6 +105,58 @@ export function parseReleve(buffer: ArrayBuffer): LigneReleve[] {
   return lignes;
 }
 
+/**
+ * Transforme un libellé bancaire brut (souvent illisible) en libellé propre.
+ * Règles déterministes validées avec le trésorier. Le brut reste conservé
+ * dans `operations.libelle_origine` (accessible via l'icône « détails »).
+ * Pour les salaires DUFOUR : on exige le montant dans la fourchette de paie
+ * (1500-2000 €) pour ne pas confondre avec un autre paiement au même nom.
+ */
+export function embellirLibelle(
+  brut: string,
+  montant?: number,
+  type?: "recette" | "depense",
+): string {
+  const s = norm(brut);
+  const estDepense = type === undefined || type === "depense";
+
+  // Loyer
+  if (/\bm\.?\s*et\s*l\.?\s*immobilier\b|inst.*m et l immobilier/.test(s)) return "Loyer";
+
+  // Salaires (3 salariés ; onglet RH à venir). La banque TRONQUE les noms
+  // (« DUFOU » pour Dufour, prénom seul…) → on matche prénom OU nom, et on
+  // exige une dépense dans la fourchette de paie pour ne pas confondre.
+  const salaire = estDepense && (montant === undefined || (montant >= 1400 && montant <= 2100));
+  if (salaire && /charlotte|dufou/.test(s)) return "Salaire de Charlotte Dufour";
+  if (salaire && /clemence|vergnaut/.test(s)) return "Salaire de Clémence Vergnaut";
+  if (salaire && /eulalie|fonclare/.test(s)) return "Salaire de Eulalie de Fonclare";
+
+  // Assurances (nom du contrat selon l'intitulé)
+  if (/fides/.test(s)) return "Frais d'assurance FIDES";
+  if (/generali/.test(s)) return "Frais d'assurance GENERALI";
+
+  // Charges récurrentes reconnaissables
+  if (/free/.test(s)) return "Abonnement Internet (Free)";
+  if (/urssaf/.test(s)) return "URSSAF — cotisations";
+  if (/fidem/.test(s)) return "Frais de gestion FIDEM";
+  if (/\bb2v\b/.test(s)) return "Prévoyance B2V";
+  if (/helium/.test(s)) return "Mutuelle Helium";
+  if (/humanis/.test(s)) return "Prévoyance Humanis";
+  if (/alpro/.test(s)) return "Cotisation retraite Alpro";
+  if (/dgfip|prelevement a la source|impot.*revenu|prlv.*\bpas\b/.test(s)) return "Prélèvement à la source";
+  if (/akto/.test(s)) return "Cotisation formation AKTO";
+  if (/stripe/.test(s)) return "Encaissement en ligne (Stripe)";
+  if (/sumup/.test(s)) return "Encaissement TPE (SumUp)";
+  if (/helloasso/.test(s)) return "Encaissement en ligne (HelloAsso)";
+
+  // Défaut : nettoyage léger (retire le bruit bancaire de tête + réfs chiffrées).
+  let out = brut.trim();
+  out = out.replace(/^(VIR(EMENT)?( SEPA| INST| INSTANTANE| RECU)?|PRLV( SEPA)?|CB|PAIEMENT( CB)?|RETRAIT|REM(ISE)? CHQ|VRST)\s+/i, "");
+  out = out.replace(/\s+\d[\d\s./-]{6,}\S*/g, " ");
+  out = out.replace(/\s{2,}/g, " ").trim();
+  return out || brut.trim();
+}
+
 /** Devine le mode de paiement d'après le libellé bancaire. */
 export function devineMode(libelle: string): string | null {
   const s = norm(libelle);

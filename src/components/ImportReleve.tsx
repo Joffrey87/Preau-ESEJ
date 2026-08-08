@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { formatEuros, formatDate } from "@/lib/format";
 import {
   parseReleve,
+  embellirLibelle,
   suggereCategorieIntelligente,
   construireHistorique,
   construireIndexTokens,
@@ -20,6 +21,7 @@ type Exercice = { id: string; libelle: string; date_debut: string; date_fin: str
 
 type Ligne = LigneReleve & {
   key: string;
+  libelle_origine: string; // libellé bancaire brut conservé
   inclus: boolean;
   categorie_id: string;
   doublon: boolean; // même montant + date ±1j → déjà en compta (décoché)
@@ -102,6 +104,8 @@ export default function ImportReleve({
         if (x.suspect) suspectsN++;
         return {
           ...x.op,
+          libelle: embellirLibelle(x.op.libelle, x.op.montant, x.op.type), // affiché : propre
+          libelle_origine: x.op.libelle, // conservé : brut bancaire
           key: `${x.op.date}-${x.op.montant}-${x.i}`,
           doublon: x.doublon,
           suspect: x.suspect,
@@ -154,6 +158,7 @@ export default function ImportReleve({
     const payload = retenues.map((l) => ({
       date_operation: l.date,
       libelle: l.libelle,
+      libelle_origine: l.libelle_origine,
       montant: l.montant,
       type: l.type,
       categorie_id: l.categorie_id || null,

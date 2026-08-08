@@ -51,3 +51,8 @@ deno.lock
 _test_*
 _t.*
 _parse_*
+
+# Documents internes sensibles (jamais versionnés)
+Financement/
+Reçus fiscaux/
+Dons/

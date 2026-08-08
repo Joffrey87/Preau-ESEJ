@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
@@ -13,6 +13,7 @@ import {
   toISODate,
   toMontant,
   toTexte,
+  cleDon,
   CHAMPS_DON,
   type LigneBrute,
 } from "@/lib/importDons";
@@ -27,30 +28,93 @@ export default function ImportDons() {
   const [importing, setImporting] = useState(false);
   const [fait, setFait] = useState<number | null>(null);
   const [erreur, setErreur] = useState<string | null>(null);
+  const [clesExistantes, setClesExistantes] = useState<Set<string>>(new Set());
+  const [voirRejetees, setVoirRejetees] = useState(false);
 
   const val = (l: LigneBrute, key: string) => {
     const col = mapping[key];
     return col ? l[col] ?? "" : "";
   };
 
-  // Aperçu : lignes retenues (montant + date valides).
-  const apercu = useMemo(() => {
-    return lignes
-      .map((l) => {
-        const montant = toMontant(val(l, "montant"));
-        const date = toISODate(val(l, "date_don"));
-        const raison = toTexte(val(l, "raison_sociale"));
-        const nom =
-          raison ||
-          [toTexte(val(l, "donateur_titre")), toTexte(val(l, "donateur_nom")), toTexte(val(l, "donateur_prenom"))]
-            .filter(Boolean)
-            .join(" ");
-        return { montant, date, nom: nom || "—", ok: montant != null && !!date };
-      });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lignes, mapping]);
+  // Clés des dons DÉJÀ en base (déchiffrées avec le coffre) pour repérer les doublons.
+  useEffect(() => {
+    let annule = false;
+    (async () => {
+      if (!coffre.estOuvert) {
+        if (!annule) setClesExistantes(new Set());
+        return;
+      }
+      const { data } = await createClient()
+        .from("dons")
+        .select("montant, date_don, recu_numero, donateur_nom, donateur_prenom, raison_sociale, courriel, pii_chiffre");
+      const cles = new Set<string>();
+      for (const d of data ?? []) {
+        let nom = d.donateur_nom, prenom = d.donateur_prenom, raison = d.raison_sociale, courriel = d.courriel;
+        if (d.pii_chiffre) {
+          try {
+            const p = JSON.parse(await coffre.dechiffrer(d.pii_chiffre));
+            nom = p.nom; prenom = p.prenom; raison = p.raison; courriel = p.courriel;
+          } catch {
+            continue;
+          }
+        }
+        const ident = raison || [nom, prenom].filter(Boolean).join(" ");
+        cles.add(cleDon(String(d.date_don).slice(0, 10), Number(d.montant), ident ?? "", courriel ?? "", d.recu_numero ?? ""));
+      }
+      if (!annule) setClesExistantes(cles);
+    })();
+    return () => {
+      annule = true;
+    };
+  }, [coffre.estOuvert, coffre]);
 
-  const retenues = apercu.filter((a) => a.ok).length;
+  // Aperçu ligne par ligne + statut (ok / raison de rejet).
+  const anneeMax = new Date().getFullYear() + 1;
+  const apercu = useMemo(() => {
+    const vus = new Set<string>();
+    return lignes.map((l) => {
+      const montant = toMontant(val(l, "montant"));
+      const date = toISODate(val(l, "date_don"));
+      const raison = toTexte(val(l, "raison_sociale"));
+      const ident =
+        raison || [toTexte(val(l, "donateur_nom")), toTexte(val(l, "donateur_prenom"))].filter(Boolean).join(" ");
+      const nom =
+        raison ||
+        [toTexte(val(l, "donateur_titre")), toTexte(val(l, "donateur_nom")), toTexte(val(l, "donateur_prenom"))]
+          .filter(Boolean)
+          .join(" ");
+
+      let statut: "ok" | "montant" | "date" | "doublon-base" | "doublon-fichier" = "ok";
+      let raisonRejet = "";
+      const annee = date ? Number(date.slice(0, 4)) : 0;
+      if (montant == null) {
+        statut = "montant";
+        raisonRejet = "Montant manquant ou illisible";
+      } else if (!date) {
+        statut = "date";
+        raisonRejet = "Date manquante ou illisible";
+      } else if (annee < 2010 || annee > anneeMax) {
+        statut = "date";
+        raisonRejet = `Date invalide (année ${annee || "?"})`;
+      } else {
+        const cle = cleDon(date, montant, ident, toTexte(val(l, "courriel")), toTexte(val(l, "recu_numero")));
+        if (clesExistantes.has(cle)) {
+          statut = "doublon-base";
+          raisonRejet = "Déjà présent en base";
+        } else if (vus.has(cle)) {
+          statut = "doublon-fichier";
+          raisonRejet = "Doublon dans le fichier";
+        } else {
+          vus.add(cle);
+        }
+      }
+      return { montant, date, nom: nom || "—", statut, raisonRejet };
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lignes, mapping, clesExistantes]);
+
+  const retenues = apercu.filter((a) => a.statut === "ok").length;
+  const rejetees = apercu.filter((a) => a.statut !== "ok");
 
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -85,7 +149,9 @@ export default function ImportDons() {
     setImporting(true);
     try {
       const payloads = [];
-      for (const l of lignes) {
+      for (let i = 0; i < lignes.length; i++) {
+        if (apercu[i].statut !== "ok") continue; // n'importe QUE les lignes acceptées
+        const l = lignes[i];
         const montant = toMontant(val(l, "montant"));
         const date_don = toISODate(val(l, "date_don"));
         if (montant == null || !date_don) continue;
@@ -187,10 +253,25 @@ export default function ImportDons() {
             </div>
           </div>
 
-          {/* Aperçu */}
-          <div className="flex items-center justify-between">
+          {/* Compteurs + import */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <span className="text-sm text-muted">
-              <strong className="text-foreground">{retenues}</strong> ligne(s) valide(s) sur {lignes.length}
+              <strong className="text-positive">{retenues}</strong> à importer
+              {rejetees.length > 0 && (
+                <>
+                  {" · "}
+                  <button
+                    type="button"
+                    onClick={() => setVoirRejetees((v) => !v)}
+                    className="text-gold underline decoration-dotted underline-offset-2"
+                  >
+                    {rejetees.length} rejetée{rejetees.length > 1 ? "s" : ""}
+                  </button>
+                  {voirRejetees ? " (affichées)" : " (cliquer pour voir)"}
+                </>
+              )}
+              {" · "}
+              {lignes.length} ligne{lignes.length > 1 ? "s" : ""} au total
             </span>
             <button
               type="button"
@@ -209,20 +290,36 @@ export default function ImportDons() {
                   <th className="px-4 py-2 font-medium">Date</th>
                   <th className="px-4 py-2 font-medium">Donateur</th>
                   <th className="px-4 py-2 text-right font-medium">Montant</th>
+                  <th className="px-4 py-2 font-medium">État</th>
                 </tr>
               </thead>
               <tbody>
-                {apercu.slice(0, 30).map((a, i) => (
-                  <tr key={i} className={`border-b border-border last:border-0 ${a.ok ? "" : "opacity-40"}`}>
-                    <td className="px-4 py-2 tabular-nums">{a.date ? formatDate(a.date) : "— date ?"}</td>
+                {(voirRejetees ? apercu.filter((a) => a.statut !== "ok") : apercu).slice(0, 50).map((a, i) => (
+                  <tr key={i} className={`border-b border-border last:border-0 ${a.statut === "ok" ? "" : "bg-negative/5"}`}>
+                    <td className="px-4 py-2 tabular-nums">{a.date ? formatDate(a.date) : "—"}</td>
                     <td className="px-4 py-2">{a.nom}</td>
-                    <td className="px-4 py-2 text-right tabular-nums">{a.montant != null ? formatEuros(a.montant) : "— montant ?"}</td>
+                    <td className="px-4 py-2 text-right tabular-nums">{a.montant != null ? formatEuros(a.montant) : "—"}</td>
+                    <td className="px-4 py-2">
+                      {a.statut === "ok" ? (
+                        <span className="text-positive">✓ à importer</span>
+                      ) : (
+                        <span className="text-negative">✕ {a.raisonRejet}</span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-            {apercu.length > 30 && <p className="px-4 py-2 text-xs text-muted">… et {apercu.length - 30} autres lignes.</p>}
+            {(voirRejetees ? rejetees.length : apercu.length) > 50 && (
+              <p className="px-4 py-2 text-xs text-muted">… et d&apos;autres lignes non affichées.</p>
+            )}
           </div>
+
+          {rejetees.length > 0 && (
+            <p className="text-xs text-muted">
+              Les lignes rejetées (montant/date manquant ou invalide, doublons) ne seront <strong>pas</strong> importées.
+            </p>
+          )}
         </>
       )}
     </div>

@@ -100,6 +100,16 @@ export function toISODate(v: unknown): string {
   return "";
 }
 
+/**
+ * Clé de dédoublonnage d'un don : date + montant + identité du donateur.
+ * L'identité = nom (sinon courriel, sinon n° de reçu). Un même (date, montant,
+ * donateur) est considéré comme le même don.
+ */
+export function cleDon(date: string, montant: number, nom: string, courriel: string, recu: string): string {
+  const id = norm(nom) || norm(courriel) || norm(recu) || "?";
+  return `${date}|${montant.toFixed(2)}|${id}`;
+}
+
 /** Valeur → montant positif (nombre Excel ou texte « 1 234,56 »), ou null. */
 export function toMontant(v: unknown): number | null {
   if (typeof v === "number") return v !== 0 ? Math.abs(v) : null;

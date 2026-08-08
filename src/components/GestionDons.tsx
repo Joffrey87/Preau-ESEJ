@@ -380,8 +380,8 @@ export default function GestionDons({ dons: donsInit }: { dons: Don[] }) {
         </div>
       )}
 
-      {/* Barre d'outils : recherche, filtres, export, ajout */}
-      <div className="mb-4 flex flex-wrap items-center gap-2">
+      {/* Recherche + actions */}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
         <input
           type="search"
           value={recherche}
@@ -389,21 +389,9 @@ export default function GestionDons({ dons: donsInit }: { dons: Don[] }) {
           placeholder="Rechercher un donateur…"
           className={`${inputCls} max-w-[16rem] flex-1`}
         />
-        <select value={anneeFiltre} onChange={(e) => setAnneeFiltre(e.target.value)} className={`${inputCls} w-auto`}>
-          <option value="toutes">Toutes les années</option>
-          {annees.map((a) => (
-            <option key={a} value={a}>{a}</option>
-          ))}
-        </select>
-        <select value={catFiltre} onChange={(e) => setCatFiltre(e.target.value)} className={`${inputCls} w-auto`}>
-          <option value="toutes">Toutes catégories</option>
-          {categoriesPresentes.map((c) => (
-            <option key={c} value={c}>{c}</option>
-          ))}
-        </select>
         {filtresActifs && (
           <button type="button" onClick={reinitialiser} className="text-xs text-muted underline hover:text-foreground">
-            Réinitialiser
+            Réinitialiser les filtres
           </button>
         )}
         <div className="ml-auto flex items-center gap-2">
@@ -422,6 +410,22 @@ export default function GestionDons({ dons: donsInit }: { dons: Don[] }) {
             + Nouveau don
           </button>
         </div>
+      </div>
+
+      {/* Filtres en boutons, groupés par type */}
+      <div className="mb-2 flex flex-wrap items-center gap-1.5">
+        <span className="mr-1 text-xs font-medium uppercase tracking-wide text-muted">Année</span>
+        <FiltreBtn actif={anneeFiltre === "toutes"} onClick={() => setAnneeFiltre("toutes")}>Toutes</FiltreBtn>
+        {annees.map((a) => (
+          <FiltreBtn key={a} actif={anneeFiltre === a} onClick={() => setAnneeFiltre(a)}>{a}</FiltreBtn>
+        ))}
+      </div>
+      <div className="mb-4 flex flex-wrap items-center gap-1.5">
+        <span className="mr-1 text-xs font-medium uppercase tracking-wide text-muted">Catégorie</span>
+        <FiltreBtn actif={catFiltre === "toutes"} onClick={() => setCatFiltre("toutes")}>Toutes</FiltreBtn>
+        {categoriesPresentes.map((c) => (
+          <FiltreBtn key={c} actif={catFiltre === c} onClick={() => setCatFiltre(c)}>{c}</FiltreBtn>
+        ))}
       </div>
 
       {/* Analyse : synthèse de la sélection courante */}
@@ -670,5 +674,29 @@ export default function GestionDons({ dons: donsInit }: { dons: Don[] }) {
         </Modal>
       )}
     </>
+  );
+}
+
+function FiltreBtn({
+  actif,
+  onClick,
+  children,
+}: {
+  actif: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-full border px-3 py-1 text-sm transition ${
+        actif
+          ? "border-accent bg-accent-soft font-medium text-accent"
+          : "border-border text-muted hover:bg-surface-2"
+      }`}
+    >
+      {children}
+    </button>
   );
 }

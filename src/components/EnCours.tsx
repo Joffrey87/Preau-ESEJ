@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { formatEuros, formatDate, todayISO } from "@/lib/format";
 import { Modal, Field, FormFooter, inputCls } from "@/components/GestionComptes";
@@ -11,7 +10,6 @@ import {
   joursRestants,
   RECURRENCE_LABEL,
   type Echeance,
-  type ImpayeScolarite,
   type Sens,
   type Recurrence,
 } from "@/lib/echeances";
@@ -43,13 +41,9 @@ const vide: Form = {
 export default function EnCours({
   echeances,
   categories,
-  impayes,
-  anneeScolaire,
 }: {
   echeances: Echeance[];
   categories: Cat[];
-  impayes: ImpayeScolarite[];
-  anneeScolaire: string;
 }) {
   const router = useRouter();
   const today = todayISO();
@@ -71,10 +65,9 @@ export default function EnCours({
     .sort((a, b) => a.prochaine.localeCompare(b.prochaine));
 
   // Totaux (analyse).
-  const totalScolarite = impayes.reduce((s, i) => s + i.reste, 0);
   const totalCreances = aEncaisser.reduce((s, e) => s + Number(e.montant), 0);
   const totalDettes = aRegler.reduce((s, e) => s + Number(e.montant), 0);
-  const totalEncaisser = totalScolarite + totalCreances;
+  const totalEncaisser = totalCreances;
   const enRetard = aRegler.filter((e) => e.date_echeance && e.date_echeance < today).length;
 
   function ouvrir(e: Echeance | "nouveau") {
@@ -174,34 +167,6 @@ export default function EnCours({
 
       {/* À ENCAISSER */}
       <Bloc titre="À encaisser" total={formatEuros(totalEncaisser)} accent="positive">
-        {/* Scolarité impayée (auto) */}
-        {impayes.length > 0 && (
-          <div className="border-b border-border">
-            <div className="flex items-center justify-between px-4 py-2 text-xs font-medium uppercase tracking-wide text-muted">
-              <span>Scolarité impayée · {anneeScolaire}</span>
-              <Link href="/scolarite" className="text-accent hover:underline">Voir la scolarité →</Link>
-            </div>
-            <table className="w-full text-sm">
-              <tbody>
-                {impayes.map((i) => (
-                  <tr key={i.famille_nom} className="border-t border-border">
-                    <td className="px-4 py-2.5">
-                      <div className="font-medium">Famille {i.famille_nom}</div>
-                      {i.emails && <div className="text-xs text-muted">{i.emails}</div>}
-                    </td>
-                    <td className="px-4 py-2.5 text-right text-xs text-muted">
-                      réglé {formatEuros(i.regle)} / {formatEuros(i.du)}
-                    </td>
-                    <td className="px-4 py-2.5 text-right font-medium tabular-nums text-positive whitespace-nowrap">
-                      {formatEuros(i.reste)}
-                    </td>
-                    <td className="w-28 px-4 py-2.5" />
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
         <LignesEcheances
           lignes={aEncaisser}
           vide="Aucune créance ponctuelle en attente."

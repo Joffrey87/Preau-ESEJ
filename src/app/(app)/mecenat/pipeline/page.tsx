@@ -1,3 +1,4 @@
+import Link from "next/link";
 import PageHeader from "@/components/PageHeader";
 import GestionPipeline from "@/components/GestionPipeline";
 import { createClient } from "@/lib/supabase/server";
@@ -16,6 +17,11 @@ export default async function PipelinePage() {
       <PageHeader
         title="Pipeline grands donateurs & prospects"
         subtitle="Du contact à la fidélisation : suivre chaque prospect, son étape et la prochaine action."
+        action={
+          <Link href="/mecenat/strategie" className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-surface-2">
+            Stratégie & règles
+          </Link>
+        }
       />
       <GestionPipeline prospects={(data ?? []) as Prospect[]} />
     </div>

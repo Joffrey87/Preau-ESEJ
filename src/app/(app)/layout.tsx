@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
+import CoffreProvider from "@/components/CoffreProvider";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function AppLayout({
@@ -19,9 +20,11 @@ export default async function AppLayout({
   const userName = [meta.prenom, meta.nom].filter(Boolean).join(" ") || undefined;
 
   return (
-    <div className="flex min-h-full flex-col md:flex-row">
-      <Sidebar userEmail={user.email ?? ""} userName={userName} />
-      <main className="flex-1 min-w-0">{children}</main>
-    </div>
+    <CoffreProvider>
+      <div className="flex min-h-full flex-col md:flex-row">
+        <Sidebar userEmail={user.email ?? ""} userName={userName} />
+        <main className="flex-1 min-w-0">{children}</main>
+      </div>
+    </CoffreProvider>
   );
 }

@@ -18,9 +18,9 @@ export const NAV: NavSection[] = [
     items: [
       { href: "/", label: "Tableau de bord", icon: "dashboard", ready: true },
       { href: "/comptabilite", label: "Comptabilité", icon: "ledger", ready: true },
+      { href: "/en-cours", label: "En cours", icon: "clock", ready: true },
       { href: "/budget", label: "Budget", icon: "chart", ready: true },
       { href: "/scolarite", label: "Frais de scolarité", icon: "graduation", ready: true },
-      { href: "/factures", label: "Factures & dettes", icon: "invoice", ready: false },
     ],
   },
   {

@@ -4,20 +4,16 @@
 
 import * as XLSX from "xlsx";
 
-export type LigneBrute = Record<string, string>;
+export type LigneBrute = Record<string, unknown>;
 
-/** Lit la 1re feuille : 1re ligne = entêtes, puis les lignes en objets. */
+/** Lit la 1re feuille : 1re ligne = entêtes. Valeurs BRUTES (dates = n° de série
+ *  Excel, montants = nombres) pour éviter toute ambiguïté de format. */
 export function lireClasseurDons(buffer: ArrayBuffer): { headers: string[]; lignes: LigneBrute[] } {
   const wb = XLSX.read(buffer, { type: "array" });
   const ws = wb.Sheets[wb.SheetNames[0]];
   if (!ws) return { headers: [], lignes: [] };
-  const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(ws, { defval: "", raw: false });
-  const headers = rows.length ? Object.keys(rows[0]) : [];
-  const lignes = rows.map((r) => {
-    const o: LigneBrute = {};
-    for (const h of headers) o[h] = String(r[h] ?? "").trim();
-    return o;
-  });
+  const lignes = XLSX.utils.sheet_to_json<LigneBrute>(ws, { defval: "", raw: true });
+  const headers = lignes.length ? Object.keys(lignes[0]) : [];
   return { headers, lignes };
 }
 
@@ -48,6 +44,7 @@ export const CHAMPS_DON: ChampDon[] = [
 ];
 
 const norm = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").trim();
+const pad = (n: number) => String(n).padStart(2, "0");
 
 /** Devine, pour chaque champ, la colonne source la plus probable (ou ""). */
 export function devineMapping(headers: string[]): Record<string, string> {
@@ -59,33 +56,57 @@ export function devineMapping(headers: string[]): Record<string, string> {
       const nh = norm(h);
       return champ.kw.some((k) => nh.includes(norm(k)));
     });
-    if (trouve) {
-      map[champ.key] = trouve;
-      pris.add(trouve);
-    } else {
-      map[champ.key] = "";
-    }
+    map[champ.key] = trouve ?? "";
+    if (trouve) pris.add(trouve);
   }
   return map;
 }
 
-/** Date FR (jj/mm/aaaa, jj-mm-aaaa) ou ISO → ISO YYYY-MM-DD. "" si vide/illisible. */
-export function toISODate(v: string): string {
-  const s = v.trim();
+/** Valeur → texte affichable (pour les champs personnels). */
+export function toTexte(v: unknown): string {
+  return String(v ?? "").trim();
+}
+
+/**
+ * Valeur → ISO YYYY-MM-DD. Gère le n° de série Excel (via SSF, sans décalage de
+ * fuseau), un objet Date, et le texte (jj/mm/aaaa FR, mm/jj/aaaa si le mois > 12,
+ * ou ISO). "" si vide/illisible.
+ */
+export function toISODate(v: unknown): string {
+  if (typeof v === "number") {
+    const d = XLSX.SSF.parse_date_code(v);
+    return d && d.y ? `${d.y}-${pad(d.m)}-${pad(d.d)}` : "";
+  }
+  if (v instanceof Date && !isNaN(v.getTime())) {
+    return `${v.getFullYear()}-${pad(v.getMonth() + 1)}-${pad(v.getDate())}`;
+  }
+  const s = String(v ?? "").trim();
   if (!s) return "";
   const m = s.match(/^(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})$/);
   if (m) {
-    const [, d, mo, y] = m;
-    const an = y.length === 2 ? "20" + y : y;
-    return `${an}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}`;
+    const a = Number(m[1]);
+    const b = Number(m[2]);
+    const y = m[3].length === 2 ? "20" + m[3] : m[3];
+    // Si l'un des deux > 12, il ne peut être que le jour → on lève l'ambiguïté.
+    let jour = a;
+    let mois = b;
+    if (b > 12 && a <= 12) {
+      jour = b;
+      mois = a;
+    }
+    return `${y}-${pad(mois)}-${pad(jour)}`;
   }
   if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
   return "";
 }
 
-/** Montant « 1 234,56 » / « 1234.56 » → nombre, ou null. */
-export function toMontant(v: string): number | null {
-  const s = v.replace(/\s/g, "").replace(/[^\d,.-]/g, "").replace(",", ".");
+/** Valeur → montant positif (nombre Excel ou texte « 1 234,56 »), ou null. */
+export function toMontant(v: unknown): number | null {
+  if (typeof v === "number") return v !== 0 ? Math.abs(v) : null;
+  const s = String(v ?? "")
+    .replace(/\s/g, "")
+    .replace(/[^\d,.-]/g, "")
+    .replace(",", ".");
   const n = Number(s);
   return Number.isFinite(n) && n !== 0 ? Math.abs(n) : null;
 }

@@ -12,6 +12,7 @@ import {
   devineMapping,
   toISODate,
   toMontant,
+  toTexte,
   CHAMPS_DON,
   type LigneBrute,
 } from "@/lib/importDons";
@@ -38,8 +39,12 @@ export default function ImportDons() {
       .map((l) => {
         const montant = toMontant(val(l, "montant"));
         const date = toISODate(val(l, "date_don"));
-        const raison = val(l, "raison_sociale");
-        const nom = raison || [val(l, "donateur_titre"), val(l, "donateur_nom"), val(l, "donateur_prenom")].filter(Boolean).join(" ");
+        const raison = toTexte(val(l, "raison_sociale"));
+        const nom =
+          raison ||
+          [toTexte(val(l, "donateur_titre")), toTexte(val(l, "donateur_nom")), toTexte(val(l, "donateur_prenom"))]
+            .filter(Boolean)
+            .join(" ");
         return { montant, date, nom: nom || "—", ok: montant != null && !!date };
       });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -84,26 +89,26 @@ export default function ImportDons() {
         const montant = toMontant(val(l, "montant"));
         const date_don = toISODate(val(l, "date_don"));
         if (montant == null || !date_don) continue;
-        const raison = val(l, "raison_sociale").trim();
+        const raison = toTexte(val(l, "raison_sociale"));
         const pii = {
-          titre: val(l, "donateur_titre").trim() || null,
-          nom: (raison || val(l, "donateur_nom").trim()) || null,
-          prenom: raison ? null : val(l, "donateur_prenom").trim() || null,
+          titre: toTexte(val(l, "donateur_titre")) || null,
+          nom: (raison || toTexte(val(l, "donateur_nom"))) || null,
+          prenom: raison ? null : toTexte(val(l, "donateur_prenom")) || null,
           raison: raison || null,
-          adresse: val(l, "adresse").trim() || null,
-          cp_ville: val(l, "cp_ville").trim() || null,
-          courriel: val(l, "courriel").trim() || null,
+          adresse: toTexte(val(l, "adresse")) || null,
+          cp_ville: toTexte(val(l, "cp_ville")) || null,
+          courriel: toTexte(val(l, "courriel")) || null,
         };
         payloads.push({
           est_personne_morale: !!raison,
-          categorie_donateur: val(l, "categorie_donateur").trim() || null,
+          categorie_donateur: toTexte(val(l, "categorie_donateur")) || null,
           montant,
           date_don,
-          mode_paiement: val(l, "mode_paiement").trim() || null,
-          recu_numero: val(l, "recu_numero").trim() || null,
-          recu_etat: val(l, "recu_etat").trim() || null,
-          origine: val(l, "origine").trim() || null,
-          observations: val(l, "observations").trim() || null,
+          mode_paiement: toTexte(val(l, "mode_paiement")) || null,
+          recu_numero: toTexte(val(l, "recu_numero")) || null,
+          recu_etat: toTexte(val(l, "recu_etat")) || null,
+          origine: toTexte(val(l, "origine")) || null,
+          observations: toTexte(val(l, "observations")) || null,
           pii_chiffre: await coffre.chiffrer(JSON.stringify(pii)),
           donateur_titre: null, donateur_nom: null, donateur_prenom: null,
           raison_sociale: null, adresse: null, cp_ville: null, courriel: null,

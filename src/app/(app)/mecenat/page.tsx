@@ -153,8 +153,8 @@ export default async function MecenatPage() {
             <p className="font-medium">Indicateurs par donateur (concentration, rétention, donateurs actifs)</p>
             <p className="mt-1 text-muted">
               Ces indicateurs — part des 5 premiers donateurs (cible &lt; {CIBLES.partTop5Max} %), taux de rétention,
-              nombre de donateurs actifs — nécessitent la base de dons détaillée. Ils s&apos;activeront avec le
-              pipeline grands donateurs et l&apos;import complet des dons.
+              nombre de donateurs actifs — nécessitent la base de dons détaillée. En attendant, suivez vos prospects
+              dans le <a href="/mecenat/pipeline" className="text-accent hover:underline">pipeline grands donateurs</a>.
             </p>
           </section>
         </div>

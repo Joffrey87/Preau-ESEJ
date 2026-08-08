@@ -28,6 +28,7 @@ export const NAV: NavSection[] = [
     items: [
       { href: "/dons", label: "Dons", icon: "gift", ready: true },
       { href: "/mecenat", label: "Mécénat", icon: "target", ready: true },
+      { href: "/mecenat/pipeline", label: "Pipeline donateurs", icon: "funnel", ready: true },
       { href: "/recus-fiscaux", label: "Reçus fiscaux", icon: "receipt", ready: true },
     ],
   },

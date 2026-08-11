@@ -90,6 +90,7 @@ export default function CampagneCollecte({
   const listePDF = (atteignable ? plan.cibles.filter((c) => c.dansObjectif) : plan.cibles).slice(0, 15);
   const totalDemandePDF = listePDF.reduce((s, c) => s + c.demande, 0);
   const totalEsperePDF = listePDF.reduce((s, c) => s + c.espere, 0);
+  const restePDF = Math.max(0, objectif - totalEsperePDF);
 
   return (
     <section className="rounded-xl border border-accent/40 bg-accent-soft/30 p-4">
@@ -403,16 +404,19 @@ export default function CampagneCollecte({
 
         {/* Synthèse */}
         <p style={{ margin: "0 0 11px", fontSize: "12px", color: "#3a4256", textAlign: "center" }}>
-          {atteignable ? (
+          {restePDF <= 0 ? (
             <>
               En sollicitant ces <strong style={{ color: "#021d51" }}>{listePDF.length}</strong> donateurs, la collecte
-              espérée atteint <strong style={{ color: "#021d51" }}>{formatEuros(cumulObjectif)}</strong> d&apos;ici le{" "}
+              espérée est de <strong style={{ color: "#021d51" }}>{formatEuros(totalEsperePDF)}</strong> — objectif de{" "}
+              <strong style={{ color: "#021d51" }}>{formatEuros(objectif)}</strong> couvert d&apos;ici le{" "}
               <strong>{formatDate(echeance)}</strong>.
             </>
           ) : (
             <>
-              Espérance totale de <strong style={{ color: "#021d51" }}>{formatEuros(plan.totalEspere)}</strong>, en-dessous
-              de l&apos;objectif de {formatEuros(objectif)} — élargir la cible ou relever les montants.
+              En sollicitant ces <strong style={{ color: "#021d51" }}>{listePDF.length}</strong> donateurs, on espère{" "}
+              <strong style={{ color: "#021d51" }}>{formatEuros(totalEsperePDF)}</strong> d&apos;ici le {formatDate(echeance)}.
+              Pour l&apos;objectif de <strong style={{ color: "#021d51" }}>{formatEuros(objectif)}</strong>, il reste{" "}
+              <strong style={{ color: "#c8952f" }}>{formatEuros(restePDF)}</strong> à trouver.
             </>
           )}
         </p>
@@ -489,14 +493,14 @@ export default function CampagneCollecte({
         .print-only { display: none; }
         @media print {
           @page { size: A4; margin: 14mm; }
-          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; background: #ffffff; }
-          /* Base compatible : tout invisible sauf le document PDF. */
-          body * { visibility: hidden; }
-          #campagne-pdf, #campagne-pdf * { visibility: visible; }
-          #campagne-pdf { display: block !important; position: absolute; left: 0; top: 0; width: 100%; }
-          /* Mieux (navigateurs récents) : effondrer le hors-document pour éviter les
-             pages blanches ; repli auto sur la règle ci-dessus si non supporté. */
+          html, body { background: #ffffff !important; }
+          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          /* Ne garder que le document PDF : masquer tout ce qui ne le contient pas
+             (display:none, pas visibility → aucune page blanche résiduelle). */
           body *:not(:has(#campagne-pdf)):not(#campagne-pdf):not(#campagne-pdf *) { display: none !important; }
+          /* Neutraliser la boîte des conteneurs autour du document (padding/bordure/fond). */
+          body :has(#campagne-pdf) { margin: 0 !important; padding: 0 !important; border: 0 !important; background: transparent !important; box-shadow: none !important; max-width: none !important; }
+          #campagne-pdf { display: block !important; }
         }
       `}</style>
     </section>

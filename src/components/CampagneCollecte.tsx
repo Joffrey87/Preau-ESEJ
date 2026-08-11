@@ -430,6 +430,9 @@ export default function CampagneCollecte({
             </span>
           ))}
         </div>
+        <p style={{ margin: "-3px 0 11px", fontSize: "8.5px", fontStyle: "italic", color: "#7683a0", textAlign: "center" }}>
+          « % de oui » = probabilité estimée de redon, d&apos;après la récence du dernier don et la fidélité — repère indicatif.
+        </p>
 
         {/* Lignes individualisées (une par donateur) */}
         <div>

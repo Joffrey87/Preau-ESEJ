@@ -18,6 +18,7 @@ import CampagneCollecte from "@/components/CampagneCollecte";
 import FicheDonateur from "@/components/FicheDonateur";
 import DeverrouillerCoffre from "@/components/DeverrouillerCoffre";
 import { PARAMS } from "@/lib/segments";
+import { nomCliquableCls } from "@/lib/ui";
 import type { Don } from "@/components/GestionDons";
 
 type SegFiltre = "tous" | "grand" | "actif" | "sommeil" | "perdu" | "nouveau" | "fidele";
@@ -182,11 +183,7 @@ export default function DonateursPipeline({ donsInit }: { donsInit: Don[] }) {
               affiches.map((p) => (
                 <tr key={p.cle} className="border-b border-border last:border-0">
                   <td className="px-4 py-3">
-                    <button
-                      type="button"
-                      onClick={() => setFicheCle(p.cle)}
-                      className="text-left font-medium text-accent hover:underline"
-                    >
+                    <button type="button" onClick={() => setFicheCle(p.cle)} className={nomCliquableCls}>
                       {p.nom}
                     </button>
                     {p.courriel && <div className="text-xs text-muted">{p.courriel}</div>}

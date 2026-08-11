@@ -13,6 +13,7 @@ export type DonAgg = {
   courriel: string | null;
   montant: number;
   date_don: string;
+  origine: string | null;
 };
 
 export type EtatDonateur = "actif" | "sommeil" | "perdu";
@@ -36,6 +37,7 @@ export type ProfilDonateur = {
   estFidele: boolean;
   estNouveau: boolean;
   estPonctuel: boolean;
+  origine: string | null; // « qui a amené ce don » = relation (dernier don renseigné)
 };
 
 /** Nombre de mois entiers écoulés entre deux dates ISO (b ≥ a). */
@@ -69,6 +71,8 @@ export function agregerDonateurs(dons: DonAgg[], todayISO: string): ProfilDonate
     }
     const premier = liste[0].date_don;
     const dernier = liste[liste.length - 1].date_don;
+    // Relation = origine du don le plus récent qui en porte une.
+    const origine = [...liste].reverse().map((d) => d.origine).find((o) => o && o.trim()) ?? null;
     const moisDepuisDernier = moisEntre(dernier, todayISO);
     const meilleureAnnee = Math.max(0, ...parAnnee.values());
     const cumulAnnee = parAnnee.get(anneeCourante) ?? 0;
@@ -95,6 +99,7 @@ export function agregerDonateurs(dons: DonAgg[], todayISO: string): ProfilDonate
       estFidele: parAnnee.size >= PARAMS.fideleAnnees,
       estNouveau: moisEntre(premier, todayISO) < PARAMS.nouveauMois,
       estPonctuel: liste.length === 1 && cumul >= PARAMS.seuilGrandDonateur,
+      origine,
     });
   }
 
@@ -312,6 +317,7 @@ export type CibleCampagne = {
   nbDons: number;
   nbAnnees: number; // années civiles distinctes
   meilleureAnnee: number;
+  origine: string | null; // relation (« qui a amené le don »)
 };
 
 export type PlanCampagne = {
@@ -362,6 +368,7 @@ export function planCampagne(
         nbDons: p.nbDons,
         nbAnnees: p.nbAnnees,
         meilleureAnnee: p.meilleureAnnee,
+        origine: p.origine,
       };
     })
     .sort((a, b) => b.espere - a.espere);

@@ -66,7 +66,7 @@ export default function FicheDonateur({
 
   return (
     <Modal title="Fiche donateur" onClose={onClose}>
-      <div className="max-h-[74vh] space-y-4 overflow-y-auto pr-1">
+      <div className="space-y-4">
         {/* Identité + badges */}
         <div>
           <div className="text-lg font-semibold">{profil.nom}</div>
@@ -97,18 +97,6 @@ export default function FicheDonateur({
           ))}
         </div>
 
-        {/* Lecture / interprétation */}
-        <div className="rounded-lg border border-accent/40 bg-accent-soft/30 p-3 text-sm">
-          <div className="mb-1 font-medium">Lecture</div>
-          <p className="text-muted">
-            Premier don le {formatDate(profil.premier)}, dernier le {formatDate(profil.dernier)}
-            {profil.moisDepuisDernier > 0 ? ` (il y a ${profil.moisDepuisDernier} mois)` : " (ce mois-ci)"}.
-            {tendance && ` Générosité ${tendance} sur la dernière année.`} Don moyen de {formatEuros(profil.moyenne)}
-            {profil.nbAnnees > 1 ? `, régulier sur ${profil.nbAnnees} années` : ""}.
-          </p>
-          <p className="mt-1.5 font-medium text-foreground">→ {recommandation(profil)}</p>
-        </div>
-
         {/* Répartition par année */}
         {annees.length > 0 && (
           <div>
@@ -130,9 +118,11 @@ export default function FicheDonateur({
           </div>
         )}
 
-        {/* Historique détaillé */}
+        {/* Derniers dons (les plus anciens sont résumés par année ci-dessus). */}
         <div>
-          <h3 className="mb-2 text-sm font-semibold">Historique des dons</h3>
+          <h3 className="mb-2 text-sm font-semibold">
+            {historique.length > 5 ? "5 derniers dons" : "Détail des dons"}
+          </h3>
           <div className="overflow-hidden rounded-lg border border-border">
             <table className="w-full text-sm">
               <thead>
@@ -144,7 +134,7 @@ export default function FicheDonateur({
                 </tr>
               </thead>
               <tbody>
-                {historique.map((d) => (
+                {historique.slice(0, 5).map((d) => (
                   <tr key={d.id} className="border-b border-border last:border-0">
                     <td className="px-3 py-2 tabular-nums whitespace-nowrap">{formatDate(d.date_don)}</td>
                     <td className="px-3 py-2 text-right font-medium tabular-nums">{formatEuros(Number(d.montant))}</td>
@@ -155,6 +145,24 @@ export default function FicheDonateur({
               </tbody>
             </table>
           </div>
+          {historique.length > 5 && (
+            <p className="mt-1 text-xs text-muted">
+              + {historique.length - 5} don{historique.length - 5 > 1 ? "s" : ""} antérieur
+              {historique.length - 5 > 1 ? "s" : ""} — total repris dans « Par année » ci-dessus.
+            </p>
+          )}
+        </div>
+
+        {/* Lecture / interprétation (en bas) */}
+        <div className="rounded-lg border border-accent/40 bg-accent-soft/30 p-3 text-sm">
+          <div className="mb-1 font-medium">Lecture</div>
+          <p className="text-muted">
+            Premier don le {formatDate(profil.premier)}, dernier le {formatDate(profil.dernier)}
+            {profil.moisDepuisDernier > 0 ? ` (il y a ${profil.moisDepuisDernier} mois)` : " (ce mois-ci)"}.
+            {tendance && ` Générosité ${tendance} sur la dernière année.`} Don moyen de {formatEuros(profil.moyenne)}
+            {profil.nbAnnees > 1 ? `, régulier sur ${profil.nbAnnees} années` : ""}.
+          </p>
+          <p className="mt-1.5 font-medium text-foreground">→ {recommandation(profil)}</p>
         </div>
       </div>
     </Modal>

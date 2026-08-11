@@ -493,13 +493,18 @@ export default function CampagneCollecte({
         .print-only { display: none; }
         @media print {
           @page { size: A4; margin: 14mm; }
-          html, body { background: #ffffff !important; }
+          html, body { background: #ffffff !important; height: auto !important; min-height: 0 !important; }
           body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
           /* Ne garder que le document PDF : masquer tout ce qui ne le contient pas
              (display:none, pas visibility → aucune page blanche résiduelle). */
           body *:not(:has(#campagne-pdf)):not(#campagne-pdf):not(#campagne-pdf *) { display: none !important; }
-          /* Neutraliser la boîte des conteneurs autour du document (padding/bordure/fond). */
-          body :has(#campagne-pdf) { margin: 0 !important; padding: 0 !important; border: 0 !important; background: transparent !important; box-shadow: none !important; max-width: none !important; }
+          /* Neutraliser la boîte ET les hauteurs des conteneurs autour du document. */
+          body :has(#campagne-pdf) {
+            margin: 0 !important; padding: 0 !important; border: 0 !important;
+            background: transparent !important; box-shadow: none !important;
+            max-width: none !important; height: auto !important; min-height: 0 !important;
+            display: block !important;
+          }
           #campagne-pdf { display: block !important; }
         }
       `}</style>

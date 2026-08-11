@@ -494,7 +494,7 @@ export default function CampagneCollecte({
             <div style={{ fontSize: "9px", color: "#8a8377", borderBottom: "2px solid #c8952f", paddingBottom: "6px", marginBottom: "10px" }}>
               Profil synthétique de chaque donateur retenu dans la campagne.
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+            <div>
               {listePDF.map((c) => {
                 const p = profilParCle.get(c.cle);
                 if (!p) return null;
@@ -517,41 +517,51 @@ export default function CampagneCollecte({
                   ["Cette année", p.cumulAnnee ? formatEuros(p.cumulAnnee) : "—"],
                 ];
                 return (
-                  <div key={c.cle} style={{ breakInside: "avoid", border: "1px solid #cdd8ec", borderRadius: "12px", padding: "9px 11px", background: "#ffffff" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "7px" }}>
-                      <span style={{ flex: "none", width: "9px", height: "9px", borderRadius: "50%", background: tc }} />
-                      <span style={{ fontSize: "12px", fontWeight: 700, color: "#0f1b33" }}>{p.nom}</span>
+                  <div key={c.cle} style={{ breakInside: "avoid", border: "1px solid #cdd8ec", borderRadius: "12px", padding: "10px 14px", background: "#ffffff", marginBottom: "10px" }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", marginBottom: "7px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0 }}>
+                        <span style={{ flex: "none", width: "10px", height: "10px", borderRadius: "50%", background: tc }} />
+                        <span style={{ fontSize: "14px", fontWeight: 700, color: "#0f1b33" }}>{p.nom}</span>
+                        <span style={{ fontSize: "8px", color: "#7683a0", textTransform: "uppercase", letterSpacing: "0.3px" }}>
+                          {badgeTemperature(c.temperature).label}
+                          {p.estGrand ? " · grand donateur" : ""}
+                          {p.estFidele ? " · fidèle" : ""}
+                          {c.origine ? ` · ${c.origine}` : ""}
+                        </span>
+                      </div>
+                      <div style={{ flex: "none", fontSize: "9px", color: "#4a5568", whiteSpace: "nowrap" }}>
+                        À demander <strong style={{ color: "#021d51", fontSize: "13px" }}>{formatEuros(c.demande)}</strong> · espérance {formatEuros(c.espere)}
+                      </div>
                     </div>
-                    <div style={{ fontSize: "8px", color: "#7683a0", margin: "1px 0 7px", textTransform: "uppercase", letterSpacing: "0.3px" }}>
-                      {badgeTemperature(c.temperature).label}
-                      {p.estGrand ? " · grand donateur" : ""}
-                      {p.estFidele ? " · fidèle" : ""}
-                      {c.origine ? ` · ${c.origine}` : ""}
-                    </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "4px", marginBottom: "7px" }}>
-                      {figures.map(([l, v]) => (
-                        <div key={l} style={{ background: "#f4f7fc", borderRadius: "7px", padding: "4px 5px" }}>
-                          <div style={{ fontSize: "7.5px", textTransform: "uppercase", color: "#7683a0" }}>{l}</div>
-                          <div style={{ fontSize: "10px", fontWeight: 700, color: "#021d51" }}>{v}</div>
-                        </div>
-                      ))}
-                    </div>
-                    {annees.length > 0 && (
-                      <div style={{ marginBottom: "6px" }}>
-                        {annees.map(([an, montant]) => (
-                          <div key={an} style={{ display: "flex", alignItems: "center", gap: "5px", fontSize: "8px", marginBottom: "2px" }}>
-                            <span style={{ width: "26px", color: "#7683a0" }}>{an}</span>
-                            <span style={{ flex: 1, height: "5px", background: "#eef2f8", borderRadius: "3px", overflow: "hidden" }}>
-                              <span style={{ display: "block", height: "100%", width: `${Math.round((montant / maxA) * 100)}%`, background: "#3f79b8" }} />
-                            </span>
-                            <span style={{ width: "56px", textAlign: "right", color: "#1e2a3d" }}>{formatEuros(montant)}</span>
+                    <div style={{ display: "flex", gap: "16px", alignItems: "flex-start" }}>
+                      <div style={{ flex: 1, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "5px" }}>
+                        {figures.map(([l, v]) => (
+                          <div key={l} style={{ background: "#f4f7fc", borderRadius: "7px", padding: "4px 6px" }}>
+                            <div style={{ fontSize: "7.5px", textTransform: "uppercase", color: "#7683a0" }}>{l}</div>
+                            <div style={{ fontSize: "11px", fontWeight: 700, color: "#021d51" }}>{v}</div>
                           </div>
                         ))}
                       </div>
-                    )}
-                    <div style={{ fontSize: "8px", color: "#4a5568", lineHeight: 1.4 }}>
-                      Dernier don {moisAnnee(p.dernier)} (il y a {p.moisDepuisDernier}m.).
-                      {" "}À demander <strong style={{ color: "#021d51" }}>{formatEuros(c.demande)}</strong> · espérance {formatEuros(c.espere)}.
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: "8px", textTransform: "uppercase", color: "#7683a0", marginBottom: "3px" }}>Par année</div>
+                        {annees.length > 0 ? (
+                          annees.map(([an, montant]) => (
+                            <div key={an} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "8.5px", marginBottom: "3px" }}>
+                              <span style={{ width: "28px", color: "#7683a0" }}>{an}</span>
+                              <span style={{ flex: 1, height: "6px", background: "#eef2f8", borderRadius: "3px", overflow: "hidden" }}>
+                                <span style={{ display: "block", height: "100%", width: `${Math.round((montant / maxA) * 100)}%`, background: "#3f79b8" }} />
+                              </span>
+                              <span style={{ width: "60px", textAlign: "right", color: "#1e2a3d" }}>{formatEuros(montant)}</span>
+                            </div>
+                          ))
+                        ) : (
+                          <div style={{ fontSize: "8px", color: "#8a8377" }}>—</div>
+                        )}
+                      </div>
+                    </div>
+                    <div style={{ fontSize: "8.5px", color: "#4a5568", marginTop: "6px" }}>
+                      Premier don {moisAnnee(p.premier)}, dernier {moisAnnee(p.dernier)} (il y a {p.moisDepuisDernier}m.).
+                      {p.courriel ? ` ${p.courriel}.` : ""}
                     </div>
                   </div>
                 );

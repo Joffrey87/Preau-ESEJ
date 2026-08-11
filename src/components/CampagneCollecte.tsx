@@ -48,15 +48,23 @@ export default function CampagneCollecte({
   const [delaiMin, setDelaiMin] = useState(6);
   const [toutVoir, setToutVoir] = useState(false);
   const [exclus, setExclus] = useState<Set<string>>(new Set());
+  const [demandes, setDemandes] = useState<Record<string, number>>({});
 
   const exclure = (cle: string) => setExclus((s) => new Set(s).add(cle));
   const reinclure = () => setExclus(new Set());
+  const ajusterDemande = (cle: string, valeur: string) =>
+    setDemandes((d) => {
+      const next = { ...d };
+      if (valeur.trim() === "") delete next[cle];
+      else next[cle] = Math.max(0, Number(valeur.replace(",", ".")));
+      return next;
+    });
 
   const profilsRetenus = useMemo(() => profils.filter((p) => !exclus.has(p.cle)), [profils, exclus]);
 
   const plan = useMemo(
-    () => planCampagne(profilsRetenus, objectif, { delaiMinMois: delaiMin }),
-    [profilsRetenus, objectif, delaiMin],
+    () => planCampagne(profilsRetenus, objectif, { delaiMinMois: delaiMin, demandes }),
+    [profilsRetenus, objectif, delaiMin, demandes],
   );
   const relances = useMemo(
     () => relancesComplementaires(profilsRetenus, { delaiMinMois: delaiMin }),
@@ -168,6 +176,14 @@ export default function CampagneCollecte({
           </button>
         </div>
       )}
+      {Object.keys(demandes).length > 0 && (
+        <div className="no-print mt-2 flex items-center gap-2 text-xs text-muted">
+          <span>{Object.keys(demandes).length} montant{Object.keys(demandes).length > 1 ? "s" : ""} ajusté{Object.keys(demandes).length > 1 ? "s" : ""} manuellement.</span>
+          <button type="button" onClick={() => setDemandes({})} className="text-accent hover:underline">
+            Réinitialiser les montants
+          </button>
+        </div>
+      )}
 
       {/* Table des cibles */}
       {plan.cibles.length === 0 ? (
@@ -243,7 +259,19 @@ export default function CampagneCollecte({
                           {c.moisDepuisDernier === 0 ? "ce mois-ci" : `il y a ${c.moisDepuisDernier} mois`}
                         </div>
                       </td>
-                      <td className="px-3 py-2 text-right font-semibold tabular-nums">{formatEuros(c.demande)}</td>
+                      <td className="px-3 py-2 text-right">
+                        <input
+                          type="number"
+                          min={0}
+                          step={50}
+                          value={c.demande}
+                          onChange={(e) => ajusterDemande(c.cle, e.target.value)}
+                          aria-label={`Montant à demander à ${c.nom}`}
+                          className={`w-20 rounded-md border px-1.5 py-0.5 text-right text-sm font-semibold tabular-nums outline-none focus:border-accent ${
+                            demandes[c.cle] != null ? "border-accent bg-accent-soft/50 text-accent" : "border-border bg-surface"
+                          }`}
+                        />
+                      </td>
                       <td className="px-3 py-2 text-right tabular-nums text-muted">{Math.round(c.proba * 100)} %</td>
                       <td className="px-3 py-2 text-right tabular-nums">{formatEuros(c.espere)}</td>
                       <td className="px-3 py-2 text-right tabular-nums text-muted">{formatEuros(c.cumulEspere)}</td>
@@ -341,7 +369,7 @@ export default function CampagneCollecte({
       )}
 
       {/* ————— Document imprimable (PDF 1 page) ————— */}
-      <div id="campagne-pdf" className="print-only" style={{ color: "#14213d", fontFamily: "inherit" }}>
+      <div id="campagne-pdf" className="print-only" style={{ color: "#14213d", fontFamily: "inherit", width: "85%", margin: "0 auto" }}>
         {/* En-tête généreux, centré */}
         <div style={{ textAlign: "center", paddingBottom: "11px", borderBottom: "2px solid #c8952f" }}>
           <div style={{ fontSize: "10px", letterSpacing: "2.5px", textTransform: "uppercase", color: "#c8952f", fontWeight: 600 }}>
@@ -361,7 +389,7 @@ export default function CampagneCollecte({
             { l: "Sans don depuis", v: `≥ ${delaiMin} mois` },
             { l: "À solliciter", v: String(listePDF.length) },
           ].map((c) => (
-            <div key={c.l} style={{ flex: 1, textAlign: "center", border: "1px solid #ece5d4", borderRadius: "12px", padding: "8px 6px", background: "#faf7f0" }}>
+            <div key={c.l} style={{ flex: 1, textAlign: "center", border: "1px solid #cdd8ec", borderRadius: "12px", padding: "8px 6px", background: "#f4f7fc" }}>
               <div style={{ fontSize: "9px", textTransform: "uppercase", letterSpacing: "0.4px", color: "#8a8377" }}>{c.l}</div>
               <div style={{ fontSize: "15px", fontWeight: 800, color: "#021d51", marginTop: "2px" }}>{c.v}</div>
             </div>
@@ -369,7 +397,7 @@ export default function CampagneCollecte({
         </div>
 
         {/* Synthèse */}
-        <p style={{ margin: "0 0 12px", fontSize: "12px", color: "#3a4256", textAlign: "center" }}>
+        <p style={{ margin: "0 0 11px", fontSize: "12px", color: "#3a4256", textAlign: "center" }}>
           {atteignable ? (
             <>
               En sollicitant ces <strong style={{ color: "#021d51" }}>{listePDF.length}</strong> donateurs, la collecte
@@ -384,32 +412,47 @@ export default function CampagneCollecte({
           )}
         </p>
 
+        {/* Légende des pastilles (température de la relation) */}
+        <div style={{ display: "flex", justifyContent: "center", gap: "18px", marginBottom: "11px", fontSize: "9.5px", color: "#5b6472" }}>
+          {[
+            { c: "#15803d", l: "Chaud · ≤ 6 mois" },
+            { c: "#e08a2b", l: "Tiède · 6-18 mois" },
+            { c: "#34618e", l: "Froid · > 18 mois" },
+          ].map((t) => (
+            <span key={t.l} style={{ display: "inline-flex", alignItems: "center", gap: "5px" }}>
+              <span style={{ width: "9px", height: "9px", borderRadius: "50%", background: t.c }} />
+              {t.l}
+            </span>
+          ))}
+        </div>
+
         {/* Lignes individualisées (une par donateur) */}
         <div>
           {listePDF.map((c) => {
-            const tc = c.temperature === "chaud" ? "#15803d" : c.temperature === "tiede" ? "#c8952f" : "#3f79b8";
+            const tc = c.temperature === "chaud" ? "#15803d" : c.temperature === "tiede" ? "#e08a2b" : "#34618e";
             return (
               <div
                 key={c.cle}
-                style={{ display: "flex", alignItems: "center", gap: "11px", padding: "6px 13px", border: "1px solid #ece5d4", borderRadius: "12px", marginBottom: "5px" }}
+                style={{ display: "flex", alignItems: "center", gap: "12px", padding: "5px 18px", background: "#f4f7fc", border: "1px solid #cdd8ec", borderRadius: "20px", marginBottom: "7px" }}
               >
-                <span title={badgeTemperature(c.temperature).label} style={{ flex: "none", width: "11px", height: "11px", borderRadius: "50%", background: tc }} />
+                <span title={badgeTemperature(c.temperature).label} style={{ flex: "none", width: "10px", height: "10px", borderRadius: "50%", background: tc }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 600, color: "#14213d" }}>
-                    {c.nom}
-                    {c.origine ? <span style={{ color: "#a29a89", fontWeight: 400 }}> ·&nbsp; {c.origine}</span> : null}
-                  </div>
-                  <div style={{ fontSize: "10px", color: "#8a8377", marginTop: "1px" }}>
+                  <div style={{ fontWeight: 600, color: "#14213d" }}>{c.nom}</div>
+                  <div style={{ fontSize: "9px", color: "#8a8377", marginTop: "1px" }}>
                     {formatEuros(c.cumul)} donnés · {c.nbDons} don{c.nbDons > 1 ? "s" : ""} / {c.nbAnnees} an
                     {c.nbAnnees > 1 ? "s" : ""} · dernier {formatDate(c.dernier)} ({c.moisDepuisDernier}m.)
                   </div>
                 </div>
-                <div style={{ flex: "none", textAlign: "right", width: "96px" }}>
-                  <div style={{ fontSize: "8.5px", textTransform: "uppercase", letterSpacing: "0.3px", color: "#8a8377" }}>À demander</div>
-                  <div style={{ fontSize: "15px", fontWeight: 800, color: "#021d51", lineHeight: 1.1 }}>{formatEuros(c.demande)}</div>
+                <div style={{ flex: "none", width: "104px" }}>
+                  <div style={{ fontSize: "8.5px", textTransform: "uppercase", letterSpacing: "0.3px", color: "#9aa7c0" }}>Relation</div>
+                  <div style={{ fontSize: "11px", color: "#3a4256" }}>{c.origine ?? "—"}</div>
                 </div>
-                <div style={{ flex: "none", textAlign: "right", width: "78px" }}>
-                  <div style={{ fontSize: "10px", color: "#8a8377" }}>{Math.round(c.proba * 100)}% de oui</div>
+                <div style={{ flex: "none", textAlign: "right", width: "88px" }}>
+                  <div style={{ fontSize: "8.5px", textTransform: "uppercase", letterSpacing: "0.3px", color: "#8a8377" }}>À demander</div>
+                  <div style={{ fontSize: "15px", fontWeight: 800, color: "#021d51", lineHeight: 1.05 }}>{formatEuros(c.demande)}</div>
+                </div>
+                <div style={{ flex: "none", textAlign: "right", width: "68px" }}>
+                  <div style={{ fontSize: "9px", color: "#8a8377" }}>{Math.round(c.proba * 100)}% de oui</div>
                   <div style={{ fontSize: "12px", fontWeight: 700, color: "#15803d" }}>{formatEuros(c.espere)}</div>
                 </div>
               </div>
@@ -418,7 +461,7 @@ export default function CampagneCollecte({
         </div>
 
         {/* Bandeau total */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "10px", padding: "9px 14px", borderRadius: "12px", background: "#021d51", color: "#ffffff" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "18px", padding: "10px 18px", borderRadius: "16px", background: "#021d51", color: "#ffffff" }}>
           <div style={{ fontSize: "12px", fontWeight: 600 }}>Total · {listePDF.length} donateurs à solliciter</div>
           <div style={{ fontSize: "12px" }}>
             <span style={{ opacity: 0.8 }}>À demander</span> <strong>{formatEuros(totalDemandePDF)}</strong>

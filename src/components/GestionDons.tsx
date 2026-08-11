@@ -196,7 +196,7 @@ export default function GestionDons({ dons: donsInit, roleSlug = null }: { dons:
         if (!q) return true;
         const nom = d.est_personne_morale
           ? d.raison_sociale ?? d.donateur_nom
-          : [d.donateur_titre, d.donateur_nom, d.donateur_prenom].filter(Boolean).join(" ");
+          : [d.donateur_titre, d.donateur_prenom, d.donateur_nom].filter(Boolean).join(" ");
         return `${nom} ${d.courriel ?? ""} ${d.cp_ville ?? ""}`.toLowerCase().includes(q);
       });
     }
@@ -207,7 +207,7 @@ export default function GestionDons({ dons: donsInit, roleSlug = null }: { dons:
       if (q) {
         const nom = d.est_personne_morale
           ? d.raison_sociale ?? d.donateur_nom
-          : [d.donateur_titre, d.donateur_nom, d.donateur_prenom].filter(Boolean).join(" ");
+          : [d.donateur_titre, d.donateur_prenom, d.donateur_nom].filter(Boolean).join(" ");
         if (!`${nom} ${d.courriel ?? ""} ${d.cp_ville ?? ""}`.toLowerCase().includes(q)) return false;
       }
       return true;
@@ -263,7 +263,7 @@ export default function GestionDons({ dons: donsInit, roleSlug = null }: { dons:
     const lignes = donsAffiches.map((d) => {
       const nom = d.est_personne_morale
         ? d.raison_sociale ?? d.donateur_nom
-        : [d.donateur_titre, d.donateur_nom, d.donateur_prenom].filter(Boolean).join(" ");
+        : [d.donateur_titre, d.donateur_prenom, d.donateur_nom].filter(Boolean).join(" ");
       return [d.date_don, nom, d.categorie_donateur ?? "", String(d.montant).replace(".", ","), d.mode_paiement ?? "", d.recu_numero ?? "", d.recu_etat ?? "", d.courriel ?? "", d.cp_ville ?? ""];
     });
     const csv = [entete, ...lignes]
@@ -459,7 +459,7 @@ export default function GestionDons({ dons: donsInit, roleSlug = null }: { dons:
   const nomAffiche = (d: Don) =>
     d.est_personne_morale
       ? d.raison_sociale ?? d.donateur_nom
-      : [d.donateur_titre, d.donateur_nom, d.donateur_prenom].filter(Boolean).join(" ");
+      : [d.donateur_titre, d.donateur_prenom, d.donateur_nom].filter(Boolean).join(" ");
 
   return (
     <>

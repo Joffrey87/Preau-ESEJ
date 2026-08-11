@@ -36,11 +36,11 @@ export type IdentiteDon = Pick<
   "est_personne_morale" | "donateur_nom" | "donateur_prenom" | "raison_sociale"
 >;
 
-/** Nom lisible du donateur (personne morale = raison sociale). */
+/** Nom lisible du donateur (personne morale = raison sociale ; sinon Prénom Nom). */
 export function nomDonateur(d: IdentiteDon): string {
   return d.est_personne_morale
     ? d.raison_sociale ?? d.donateur_nom ?? ""
-    : [d.donateur_nom, d.donateur_prenom].filter(Boolean).join(" ");
+    : [d.donateur_prenom, d.donateur_nom].filter(Boolean).join(" ");
 }
 
 /** Clé d'identité pour repérer les donateurs récurrents. */

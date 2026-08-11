@@ -52,7 +52,7 @@ export default function FicheDonateur({
 
   const contactMorale =
     profil.estMorale && recent
-      ? [recent.donateur_titre, recent.donateur_nom, recent.donateur_prenom].filter(Boolean).join(" ").trim()
+      ? [recent.donateur_titre, recent.donateur_prenom, recent.donateur_nom].filter(Boolean).join(" ").trim()
       : "";
 
   const tuiles: { label: string; valeur: string }[] = [

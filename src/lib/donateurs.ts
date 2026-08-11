@@ -335,17 +335,19 @@ export type PlanCampagne = {
 export function planCampagne(
   profils: ProfilDonateur[],
   objectif: number,
-  options?: { seuilMin?: number; delaiMinMois?: number },
+  options?: { seuilMin?: number; delaiMinMois?: number; demandes?: Record<string, number> },
 ): PlanCampagne {
   const seuil = options?.seuilMin ?? 200;
   const delaiMin = options?.delaiMinMois ?? 6;
+  const manuels = options?.demandes ?? {};
 
   const cibles: CibleCampagne[] = profils
-    // On sollicite ceux qui en valent la peine (seuil) ET qui n'ont pas donné
-    // récemment : redemander à un donateur frais est contre-productif.
+    // On sollicite ceux qui en valent la peine (seuil, selon le don habituel) ET
+    // qui n'ont pas donné récemment : redemander à un donateur frais est contre-productif.
     .filter((p) => montantDemande(p) >= seuil && p.moisDepuisDernier >= delaiMin)
     .map((p) => {
-      const demande = montantDemande(p);
+      // Montant à demander : ajustement manuel s'il existe, sinon le don habituel.
+      const demande = manuels[p.cle] ?? montantDemande(p);
       const proba = probaRedon(p);
       return {
         cle: p.cle,

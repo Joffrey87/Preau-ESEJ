@@ -442,22 +442,22 @@ export default function CampagneCollecte({
               >
                 <span title={badgeTemperature(c.temperature).label} style={{ flex: "none", width: "10px", height: "10px", borderRadius: "50%", background: tc }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: "11px", fontWeight: 600, color: "#14213d" }}>{c.nom}</div>
-                  <div style={{ fontSize: "8.5px", color: "#8a8377", marginTop: "1px" }}>
+                  <div style={{ fontSize: "11px", fontWeight: 700, color: "#0f1b33" }}>{c.nom}</div>
+                  <div style={{ fontSize: "8.5px", color: "#4a5568", marginTop: "1px" }}>
                     {formatEuros(c.cumul)} donnés · {c.nbDons} don{c.nbDons > 1 ? "s" : ""} / {c.nbAnnees} an
                     {c.nbAnnees > 1 ? "s" : ""} · dernier {moisAnnee(c.dernier)} ({c.moisDepuisDernier}m.)
                   </div>
                 </div>
                 <div style={{ flex: "none", width: "104px" }}>
-                  <div style={{ fontSize: "8px", textTransform: "uppercase", letterSpacing: "0.3px", color: "#9aa7c0" }}>Relation</div>
-                  <div style={{ fontSize: "10.5px", color: "#3a4256" }}>{c.origine ?? "—"}</div>
+                  <div style={{ fontSize: "8px", textTransform: "uppercase", letterSpacing: "0.3px", color: "#7683a0" }}>Relation</div>
+                  <div style={{ fontSize: "10.5px", fontWeight: 500, color: "#1e2a3d" }}>{c.origine ?? "—"}</div>
                 </div>
                 <div style={{ flex: "none", textAlign: "right", width: "88px" }}>
-                  <div style={{ fontSize: "8px", textTransform: "uppercase", letterSpacing: "0.3px", color: "#8a8377" }}>À demander</div>
+                  <div style={{ fontSize: "8px", textTransform: "uppercase", letterSpacing: "0.3px", color: "#7683a0" }}>À demander</div>
                   <div style={{ fontSize: "14px", fontWeight: 800, color: "#021d51", lineHeight: 1 }}>{formatEuros(c.demande)}</div>
                 </div>
                 <div style={{ flex: "none", textAlign: "right", width: "68px" }}>
-                  <div style={{ fontSize: "8.5px", color: "#8a8377" }}>{Math.round(c.proba * 100)}% de oui</div>
+                  <div style={{ fontSize: "8.5px", color: "#4a5568" }}>{Math.round(c.proba * 100)}% de oui</div>
                   <div style={{ fontSize: "11px", fontWeight: 700, color: "#15803d" }}>{formatEuros(c.espere)}</div>
                 </div>
               </div>

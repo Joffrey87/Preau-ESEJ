@@ -120,7 +120,7 @@ export default function DonateursPipeline({ donsInit }: { donsInit: Don[] }) {
       </div>
 
       {/* Campagne « objectif » — trouver X € avant une échéance */}
-      <CampagneCollecte profils={profils} today={today} onOuvrirFiche={setFicheCle} />
+      <CampagneCollecte profils={profils} today={today} onOuvrirFiche={setFicheCle} donsParCle={donsParCle} />
 
       {/* Prochaines actions suggérées */}
       <section className="rounded-xl border border-border bg-surface p-4">

@@ -11,6 +11,7 @@ import {
   type ProfilDonateur,
 } from "@/lib/donateurs";
 import { nomCliquableCls } from "@/lib/ui";
+import type { Don } from "@/components/GestionDons";
 
 /** Mois/année d'une date ISO (AAAA-MM-JJ → MM/AAAA). */
 function moisAnnee(iso: string): string {
@@ -43,11 +44,14 @@ export default function CampagneCollecte({
   profils,
   today,
   onOuvrirFiche,
+  donsParCle,
 }: {
   profils: ProfilDonateur[];
   today: string;
   onOuvrirFiche?: (cle: string) => void;
+  donsParCle?: Map<string, Don[]>;
 }) {
+  const profilParCle = useMemo(() => new Map(profils.map((p) => [p.cle, p])), [profils]);
   const [objectif, setObjectif] = useState(10000);
   const [echeance, setEcheance] = useState(finDuMois(today));
   const [delaiMin, setDelaiMin] = useState(6);
@@ -89,7 +93,10 @@ export default function CampagneCollecte({
   // Liste du PDF : 15 donateurs max, pour tenir sur une seule page.
   const listePDF = (atteignable ? plan.cibles.filter((c) => c.dansObjectif) : plan.cibles).slice(0, 15);
   const totalDemandePDF = listePDF.reduce((s, c) => s + c.demande, 0);
+  // Scénario prudent = proba actuelle ; optimiste = proba +50 % (plafonnée à 100 %).
+  const espereOptDe = (c: CibleCampagne) => Math.round(c.demande * Math.min(1, c.proba * 1.5));
   const totalEsperePDF = listePDF.reduce((s, c) => s + c.espere, 0);
+  const totalEspereOptPDF = listePDF.reduce((s, c) => s + espereOptDe(c), 0);
   const restePDF = Math.max(0, objectif - totalEsperePDF);
 
   return (
@@ -377,25 +384,25 @@ export default function CampagneCollecte({
       {/* ————— Document imprimable (PDF 1 page) ————— */}
       <div id="campagne-pdf" className="print-only" style={{ color: "#14213d", fontFamily: "inherit", width: "94%", margin: "0 auto" }}>
         {/* En-tête généreux, centré */}
-        <div style={{ textAlign: "center", paddingBottom: "11px", borderBottom: "2px solid #c8952f" }}>
+        <div style={{ textAlign: "center", paddingBottom: "9px", borderBottom: "2px solid #c8952f" }}>
           <div style={{ fontSize: "10px", letterSpacing: "2.5px", textTransform: "uppercase", color: "#c8952f", fontWeight: 600 }}>
             École du Saint-Enfant-Jésus · Reims
           </div>
-          <h1 style={{ fontSize: "26px", fontWeight: 800, color: "#021d51", margin: "7px 0 0", letterSpacing: "0.3px" }}>
+          <h1 style={{ fontSize: "24px", fontWeight: 800, color: "#021d51", margin: "6px 0 0", letterSpacing: "0.3px" }}>
             Campagne de collecte
           </h1>
-          <div style={{ fontSize: "10px", color: "#8a8377", marginTop: "4px" }}>Document interne · édité le {formatDate(today)}</div>
+          <div style={{ fontSize: "10px", color: "#8a8377", marginTop: "3px" }}>Document interne · édité le {formatDate(today)}</div>
         </div>
 
         {/* Paramètres */}
-        <div style={{ display: "flex", gap: "10px", margin: "11px 0 10px" }}>
+        <div style={{ display: "flex", gap: "10px", margin: "9px 0 8px" }}>
           {[
             { l: "Objectif", v: formatEuros(objectif) },
             { l: "Échéance", v: formatDate(echeance) },
             { l: "Sans don depuis", v: `≥ ${delaiMin} mois` },
             { l: "À solliciter", v: String(listePDF.length) },
           ].map((c) => (
-            <div key={c.l} style={{ flex: 1, textAlign: "center", border: "1px solid #cdd8ec", borderRadius: "12px", padding: "8px 6px", background: "#f4f7fc" }}>
+            <div key={c.l} style={{ flex: 1, textAlign: "center", border: "1px solid #cdd8ec", borderRadius: "12px", padding: "6px", background: "#f4f7fc" }}>
               <div style={{ fontSize: "9px", textTransform: "uppercase", letterSpacing: "0.4px", color: "#8a8377" }}>{c.l}</div>
               <div style={{ fontSize: "15px", fontWeight: 800, color: "#021d51", marginTop: "2px" }}>{c.v}</div>
             </div>
@@ -403,26 +410,17 @@ export default function CampagneCollecte({
         </div>
 
         {/* Synthèse */}
-        <p style={{ margin: "0 0 11px", fontSize: "12px", color: "#3a4256", textAlign: "center" }}>
-          {restePDF <= 0 ? (
-            <>
-              En sollicitant ces <strong style={{ color: "#021d51" }}>{listePDF.length}</strong> donateurs, la collecte
-              espérée est de <strong style={{ color: "#021d51" }}>{formatEuros(totalEsperePDF)}</strong> — objectif de{" "}
-              <strong style={{ color: "#021d51" }}>{formatEuros(objectif)}</strong> couvert d&apos;ici le{" "}
-              <strong>{formatDate(echeance)}</strong>.
-            </>
+        <p style={{ margin: "0 0 9px", fontSize: "12px", color: "#3a4256", textAlign: "center" }}>
+          {listePDF.length} donateurs sollicités · objectif <strong style={{ color: "#021d51" }}>{formatEuros(objectif)}</strong>
+          {restePDF > 0 ? (
+            <> — il reste <strong style={{ color: "#c8952f" }}>{formatEuros(restePDF)}</strong> à trouver (scénario prudent).</>
           ) : (
-            <>
-              En sollicitant ces <strong style={{ color: "#021d51" }}>{listePDF.length}</strong> donateurs, on espère{" "}
-              <strong style={{ color: "#021d51" }}>{formatEuros(totalEsperePDF)}</strong> d&apos;ici le {formatDate(echeance)}.
-              Pour l&apos;objectif de <strong style={{ color: "#021d51" }}>{formatEuros(objectif)}</strong>, il reste{" "}
-              <strong style={{ color: "#c8952f" }}>{formatEuros(restePDF)}</strong> à trouver.
-            </>
+            <> — objectif atteint (scénario prudent).</>
           )}
         </p>
 
         {/* Légende des pastilles (température de la relation) */}
-        <div style={{ display: "flex", justifyContent: "center", gap: "18px", marginBottom: "11px", fontSize: "9.5px", color: "#5b6472" }}>
+        <div style={{ display: "flex", justifyContent: "center", gap: "18px", marginBottom: "8px", fontSize: "9.5px", color: "#5b6472" }}>
           {[
             { c: "#15803d", l: "Chaud · ≤ 6 mois" },
             { c: "#e08a2b", l: "Tiède · 6-18 mois" },
@@ -434,8 +432,8 @@ export default function CampagneCollecte({
             </span>
           ))}
         </div>
-        <p style={{ margin: "-3px 0 11px", fontSize: "8.5px", fontStyle: "italic", color: "#7683a0", textAlign: "center" }}>
-          « % de oui » = probabilité estimée de redon, d&apos;après la récence du dernier don et la fidélité — repère indicatif.
+        <p style={{ margin: "-2px 0 9px", fontSize: "8.5px", fontStyle: "italic", color: "#7683a0", textAlign: "center" }}>
+          « % de oui » = probabilité estimée de redon (récence &amp; fidélité) — repère indicatif.
         </p>
 
         {/* Lignes individualisées (une par donateur) */}
@@ -445,7 +443,7 @@ export default function CampagneCollecte({
             return (
               <div
                 key={c.cle}
-                style={{ display: "flex", alignItems: "center", gap: "12px", padding: "4px 18px", background: "#f4f7fc", border: "1px solid #cdd8ec", borderRadius: "20px", marginBottom: "9px" }}
+                style={{ display: "flex", alignItems: "center", gap: "12px", padding: "4px 18px", background: "#f4f7fc", border: "1px solid #cdd8ec", borderRadius: "20px", marginBottom: "7px" }}
               >
                 <span title={badgeTemperature(c.temperature).label} style={{ flex: "none", width: "10px", height: "10px", borderRadius: "50%", background: tc }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
@@ -463,7 +461,7 @@ export default function CampagneCollecte({
                   <div style={{ fontSize: "8px", textTransform: "uppercase", letterSpacing: "0.3px", color: "#7683a0" }}>À demander</div>
                   <div style={{ fontSize: "14px", fontWeight: 800, color: "#021d51", lineHeight: 1 }}>{formatEuros(c.demande)}</div>
                 </div>
-                <div style={{ flex: "none", textAlign: "right", width: "68px" }}>
+                <div style={{ flex: "none", textAlign: "right", width: "78px" }}>
                   <div style={{ fontSize: "8.5px", color: "#4a5568" }}>{Math.round(c.proba * 100)}% de oui</div>
                   <div style={{ fontSize: "11px", fontWeight: 700, color: "#15803d" }}>{formatEuros(c.espere)}</div>
                 </div>
@@ -473,20 +471,94 @@ export default function CampagneCollecte({
         </div>
 
         {/* Bandeau total */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "18px", padding: "10px 18px", borderRadius: "16px", background: "#021d51", color: "#ffffff" }}>
-          <div style={{ fontSize: "12px", fontWeight: 600 }}>Total · {listePDF.length} donateurs à solliciter</div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "6px", marginTop: "13px", padding: "9px 18px", borderRadius: "16px", background: "#021d51", color: "#ffffff" }}>
+          <div style={{ fontSize: "12px", fontWeight: 600 }}>À demander {formatEuros(totalDemandePDF)}</div>
           <div style={{ fontSize: "12px" }}>
-            <span style={{ opacity: 0.8 }}>À demander</span> <strong>{formatEuros(totalDemandePDF)}</strong>
-            &nbsp;·&nbsp; <span style={{ opacity: 0.8 }}>espérance</span>{" "}
-            <strong style={{ color: "#a9e4bf" }}>{formatEuros(totalEsperePDF)}</strong>
+            <span style={{ opacity: 0.8 }}>Espérance</span> <strong>{formatEuros(totalEsperePDF)}</strong>{" "}
+            <span style={{ opacity: 0.8 }}>(prudent)</span> &nbsp;→&nbsp;{" "}
+            <strong style={{ color: "#a9e4bf" }}>{formatEuros(totalEspereOptPDF)}</strong>{" "}
+            <span style={{ opacity: 0.8 }}>(optimiste)</span>
           </div>
         </div>
 
         {/* Note */}
-        <p style={{ marginTop: "10px", fontSize: "9px", color: "#8a8377", lineHeight: 1.5, textAlign: "center" }}>
-          « À demander » = don habituel du donateur, arrondi. La probabilité et l&apos;espérance sont des repères
-          indicatifs (récence &amp; fidélité), pas un engagement. Données confidentielles.
+        <p style={{ marginTop: "8px", fontSize: "9px", color: "#8a8377", lineHeight: 1.5, textAlign: "center" }}>
+          « À demander » = don habituel arrondi. Scénario optimiste = +50 % de probabilité. Repères indicatifs (récence
+          &amp; fidélité), non contractuels. Données confidentielles.
         </p>
+
+        {/* ————— Annexe : fiche synthétique par donateur (pages suivantes) ————— */}
+        {donsParCle && (
+          <div style={{ breakBefore: "page" }}>
+            <div style={{ fontSize: "15px", fontWeight: 800, color: "#021d51", margin: "0 0 2px" }}>Fiches des donateurs</div>
+            <div style={{ fontSize: "9px", color: "#8a8377", borderBottom: "2px solid #c8952f", paddingBottom: "6px", marginBottom: "10px" }}>
+              Profil synthétique de chaque donateur retenu dans la campagne.
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+              {listePDF.map((c) => {
+                const p = profilParCle.get(c.cle);
+                if (!p) return null;
+                const ds = donsParCle.get(c.cle) ?? [];
+                const parAnnee = new Map<number, number>();
+                for (const d of ds) {
+                  if (!d.date_don) continue;
+                  const y = Number(d.date_don.slice(0, 4));
+                  parAnnee.set(y, (parAnnee.get(y) ?? 0) + Number(d.montant || 0));
+                }
+                const annees = [...parAnnee.entries()].sort((a, b) => b[0] - a[0]);
+                const maxA = Math.max(1, ...annees.map(([, v]) => v));
+                const tc = c.temperature === "chaud" ? "#15803d" : c.temperature === "tiede" ? "#e08a2b" : "#34618e";
+                const figures: [string, string][] = [
+                  ["Total donné", formatEuros(p.cumul)],
+                  ["Dons", String(p.nbDons)],
+                  ["Années", String(p.nbAnnees)],
+                  ["Don moyen", formatEuros(p.moyenne)],
+                  ["Meilleure année", formatEuros(p.meilleureAnnee)],
+                  ["Cette année", p.cumulAnnee ? formatEuros(p.cumulAnnee) : "—"],
+                ];
+                return (
+                  <div key={c.cle} style={{ breakInside: "avoid", border: "1px solid #cdd8ec", borderRadius: "12px", padding: "9px 11px", background: "#ffffff" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "7px" }}>
+                      <span style={{ flex: "none", width: "9px", height: "9px", borderRadius: "50%", background: tc }} />
+                      <span style={{ fontSize: "12px", fontWeight: 700, color: "#0f1b33" }}>{p.nom}</span>
+                    </div>
+                    <div style={{ fontSize: "8px", color: "#7683a0", margin: "1px 0 7px", textTransform: "uppercase", letterSpacing: "0.3px" }}>
+                      {badgeTemperature(c.temperature).label}
+                      {p.estGrand ? " · grand donateur" : ""}
+                      {p.estFidele ? " · fidèle" : ""}
+                      {c.origine ? ` · ${c.origine}` : ""}
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "4px", marginBottom: "7px" }}>
+                      {figures.map(([l, v]) => (
+                        <div key={l} style={{ background: "#f4f7fc", borderRadius: "7px", padding: "4px 5px" }}>
+                          <div style={{ fontSize: "7.5px", textTransform: "uppercase", color: "#7683a0" }}>{l}</div>
+                          <div style={{ fontSize: "10px", fontWeight: 700, color: "#021d51" }}>{v}</div>
+                        </div>
+                      ))}
+                    </div>
+                    {annees.length > 0 && (
+                      <div style={{ marginBottom: "6px" }}>
+                        {annees.map(([an, montant]) => (
+                          <div key={an} style={{ display: "flex", alignItems: "center", gap: "5px", fontSize: "8px", marginBottom: "2px" }}>
+                            <span style={{ width: "26px", color: "#7683a0" }}>{an}</span>
+                            <span style={{ flex: 1, height: "5px", background: "#eef2f8", borderRadius: "3px", overflow: "hidden" }}>
+                              <span style={{ display: "block", height: "100%", width: `${Math.round((montant / maxA) * 100)}%`, background: "#3f79b8" }} />
+                            </span>
+                            <span style={{ width: "56px", textAlign: "right", color: "#1e2a3d" }}>{formatEuros(montant)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <div style={{ fontSize: "8px", color: "#4a5568", lineHeight: 1.4 }}>
+                      Dernier don {moisAnnee(p.dernier)} (il y a {p.moisDepuisDernier}m.).
+                      {" "}À demander <strong style={{ color: "#021d51" }}>{formatEuros(c.demande)}</strong> · espérance {formatEuros(c.espere)}.
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
       <style>{`

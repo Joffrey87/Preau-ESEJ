@@ -30,15 +30,21 @@ export type Chip = { key: StatutKey; label: string; tone: Tone; detail?: string 
 
 const vide = (s: string | null | undefined) => !s || !s.trim();
 
+// Champs suffisant pour identifier/nommer un donateur (sous-ensemble de Don).
+export type IdentiteDon = Pick<
+  Don,
+  "est_personne_morale" | "donateur_nom" | "donateur_prenom" | "raison_sociale"
+>;
+
 /** Nom lisible du donateur (personne morale = raison sociale). */
-export function nomDonateur(d: Don): string {
+export function nomDonateur(d: IdentiteDon): string {
   return d.est_personne_morale
     ? d.raison_sociale ?? d.donateur_nom ?? ""
     : [d.donateur_nom, d.donateur_prenom].filter(Boolean).join(" ");
 }
 
 /** Clé d'identité pour repérer les donateurs récurrents. */
-export function cleDonateur(d: Don): string {
+export function cleDonateur(d: IdentiteDon): string {
   const base = d.est_personne_morale
     ? d.raison_sociale ?? d.donateur_nom ?? ""
     : `${d.donateur_nom ?? ""}|${d.donateur_prenom ?? ""}`;

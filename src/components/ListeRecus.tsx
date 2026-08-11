@@ -1,6 +1,7 @@
 "use client";
 
 import GenererRecuBouton from "@/components/GenererRecuBouton";
+import DeverrouillerCoffre from "@/components/DeverrouillerCoffre";
 import { formatEuros, formatDate } from "@/lib/format";
 import { useDonsDechiffres } from "@/lib/donsChiffre";
 import type { DonPourRecu } from "@/lib/recu";
@@ -94,7 +95,7 @@ export default function ListeRecus({ dons }: { dons: DonRow[] }) {
       {verrou && (
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-gold/40 bg-gold-soft/40 px-4 py-3 text-sm">
           <span className="text-gold">🔒 Coffre verrouillé — noms masqués et génération de reçus indisponible.</span>
-          <a href="/parametres" className="rounded-lg border border-border px-3 py-1.5 hover:bg-surface-2">Déverrouiller</a>
+          <DeverrouillerCoffre />
         </div>
       )}
       <div className="overflow-x-auto rounded-xl border border-border bg-surface">

@@ -2,14 +2,21 @@ import Link from "next/link";
 import PageHeader from "@/components/PageHeader";
 import GestionDons, { type Don } from "@/components/GestionDons";
 import { createClient } from "@/lib/supabase/server";
+import { roleByEmail } from "@/lib/roles";
 
 export default async function DonsPage() {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const roleSlug = roleByEmail(user?.email)?.slug ?? null;
 
+  // On charge aussi les dons supprimés (corbeille) : le composant sépare actifs
+  // et supprimés via `supprime_le`.
   const { data: dons } = await supabase
     .from("dons")
     .select(
-      "id, exercice_id, origine, categorie_donateur, est_personne_morale, donateur_titre, donateur_nom, donateur_prenom, raison_sociale, adresse, cp_ville, courriel, pii_chiffre, montant, date_don, mode_paiement, recu_numero, recu_etat, recu_emis_le, observations",
+      "id, exercice_id, origine, categorie_donateur, est_personne_morale, donateur_titre, donateur_nom, donateur_prenom, raison_sociale, adresse, cp_ville, courriel, pii_chiffre, montant, date_don, mode_paiement, recu_numero, recu_etat, recu_emis_le, observations, supprime_le, supprime_par",
     )
     .order("date_don", { ascending: false });
 
@@ -27,7 +34,7 @@ export default async function DonsPage() {
           </Link>
         }
       />
-      <GestionDons dons={(dons ?? []) as Don[]} />
+      <GestionDons dons={(dons ?? []) as Don[]} roleSlug={roleSlug} />
     </div>
   );
 }

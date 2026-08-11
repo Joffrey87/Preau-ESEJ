@@ -82,7 +82,10 @@ export async function genererRecuDocx(don: DonPourRecu): Promise<void> {
     mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   });
 
-  const nomFichier = `Recu_${don.recu_numero ?? "sans-numero"}_${don.donateur_nom}.docx`;
+  const destinataire = don.est_personne_morale
+    ? don.raison_sociale ?? don.donateur_nom
+    : don.donateur_nom;
+  const nomFichier = `Recu_${don.recu_numero ?? "sans-numero"}_${destinataire}.docx`;
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;

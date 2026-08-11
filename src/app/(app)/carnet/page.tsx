@@ -20,7 +20,7 @@ export default async function CarnetPage() {
   const { data } = await supabase
     .from("contacts")
     .select(
-      "id, civilite, est_personne_morale, nom, prenom, raison_sociale, categories, courriel, telephone, adresse, cp_ville, iban, notes",
+      "id, civilite, est_personne_morale, nom, prenom, raison_sociale, categories, courriel, telephone, adresse, cp_ville, iban, notes, supprime_le, supprime_par",
     )
     .order("nom", { ascending: true });
 
@@ -43,6 +43,7 @@ export default async function CarnetPage() {
         canVoirIban={canIban}
         categoriesGerables={categoriesAutorisees(slug)}
         roleLabel={role?.label ?? "—"}
+        roleSlug={slug ?? null}
       />
     </div>
   );

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { useCoffre } from "@/components/CoffreProvider";
+import DeverrouillerCoffre from "@/components/DeverrouillerCoffre";
 import { formatEuros, formatDate } from "@/lib/format";
 import { Field, inputCls } from "@/components/GestionComptes";
 import {
@@ -234,6 +235,24 @@ export default function ImportDons() {
     }
   }
 
+  // Abandonne l'import en cours : on repart de l'écran de dépôt.
+  function annuler() {
+    setLignes([]);
+    setHeaders([]);
+    setMapping({});
+    setEdits({});
+    setDecision({});
+    setNomFichier(null);
+    setVoirRejetees(false);
+    setErreur(null);
+    setEditIdx(null);
+  }
+
+  // Ventilation des lignes mises de côté par motif (pour le bandeau de tête).
+  const motifs = new Map<string, number>();
+  for (const d of rejetees) motifs.set(d.raisonRejet, (motifs.get(d.raisonRejet) ?? 0) + 1);
+  const motifsTri = [...motifs.entries()].sort((a, b) => b[1] - a[1]);
+
   const visibles = (voirRejetees ? decisions.filter((d) => d.statut !== "ok") : decisions).slice(0, CAP);
   const totalVisible = voirRejetees ? rejetees.length : decisions.length;
 
@@ -255,9 +274,10 @@ export default function ImportDons() {
         </div>
         {nomFichier && <p className="mt-3 text-xs text-muted">Fichier : {nomFichier}</p>}
         {!coffre.estOuvert && (
-          <p className="mt-3 rounded-lg bg-gold-soft/50 px-3 py-2 text-sm text-gold">
-            🔒 Coffre verrouillé — <Link href="/parametres" className="underline">déverrouillez-le</Link> pour importer (les dons seront chiffrés).
-          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg bg-gold-soft/50 px-3 py-2 text-sm text-gold">
+            <span>🔒 Coffre verrouillé — déverrouillez-le pour importer (les dons seront chiffrés).</span>
+            <DeverrouillerCoffre />
+          </div>
         )}
         {fait !== null && (
           <p className="mt-3 rounded-lg bg-positive/10 px-3 py-2 text-sm text-positive">
@@ -270,6 +290,108 @@ export default function ImportDons() {
 
       {headers.length > 0 && (
         <>
+          {/* À VÉRIFIER EN PRIORITÉ — lignes mises de côté, tout en haut */}
+          {rejetees.length > 0 ? (
+            <div className="rounded-xl border border-gold/50 bg-gold-soft/40 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl leading-none" aria-hidden>⚠️</span>
+                  <div>
+                    <div className="text-base font-semibold text-gold">
+                      {rejetees.length} ligne{rejetees.length > 1 ? "s" : ""} mise{rejetees.length > 1 ? "s" : ""} de côté sur {lignes.length}
+                    </div>
+                    <div className="text-xs text-muted">
+                      <strong className="text-positive">{retenues}</strong> prête{retenues > 1 ? "s" : ""} à importer · vérifiez ou corrigez celles-ci avant de continuer.
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={annuler}
+                  className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium hover:bg-surface-2"
+                >
+                  Annuler l&apos;import
+                </button>
+              </div>
+
+              {/* Ventilation par motif */}
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {motifsTri.map(([motif, n]) => (
+                  <span key={motif} className="rounded-full border border-border bg-surface px-2.5 py-0.5 text-xs">
+                    {motif} · <strong className="tabular-nums">{n}</strong>
+                  </span>
+                ))}
+              </div>
+
+              {/* Liste des lignes mises de côté (les rejetées d'abord) */}
+              <div className="mt-3 overflow-x-auto rounded-lg border border-border bg-surface">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border text-left text-muted">
+                      <th className="px-3 py-2 font-medium" title="Importer cette ligne ?">✓</th>
+                      <th className="px-3 py-2 text-right font-medium" title="N° de ligne Excel">Ligne</th>
+                      <th className="px-4 py-2 font-medium">Donateur</th>
+                      <th className="px-4 py-2 text-right font-medium">Montant</th>
+                      <th className="px-4 py-2 font-medium">Motif</th>
+                      <th className="px-4 py-2 text-right font-medium"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rejetees.slice(0, CAP).map((a) => {
+                      const modifiee = !!edits[a.i];
+                      const forcee = a.inclus && a.valide;
+                      return (
+                        <tr key={a.i} className="border-b border-border last:border-0 bg-negative/5">
+                          <td className="px-3 py-2">
+                            <input
+                              type="checkbox"
+                              checked={a.inclus}
+                              onChange={() => toggleInclus(a.i, a.inclus)}
+                              className="h-4 w-4"
+                              title={a.valide ? (a.inclus ? "Cochée : sera importée" : "Décochée : mise de côté") : "Corrigez montant/date avant d'importer"}
+                            />
+                          </td>
+                          <td className="px-3 py-2 text-right tabular-nums text-muted">{a.row}</td>
+                          <td className="px-4 py-2">
+                            {a.nom}
+                            {modifiee && <span className="ml-1.5 rounded bg-accent-soft px-1.5 py-0.5 text-[10px] font-medium text-accent">modifiée</span>}
+                          </td>
+                          <td className="px-4 py-2 text-right tabular-nums">{a.montant != null ? formatEuros(a.montant) : "—"}</td>
+                          <td className="px-4 py-2">
+                            <span className={forcee ? "text-gold" : "text-negative"}>
+                              {forcee ? "↻ forcée : " : "✕ "}{a.raisonRejet}
+                            </span>
+                          </td>
+                          <td className="px-4 py-2 text-right whitespace-nowrap">
+                            <button type="button" onClick={() => setEditIdx(a.i)} className="font-medium text-accent hover:underline">
+                              Éditer
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                {rejetees.length > CAP && (
+                  <p className="px-4 py-2 text-xs text-muted">… et {rejetees.length - CAP} autre{rejetees.length - CAP > 1 ? "s" : ""} non affichée{rejetees.length - CAP > 1 ? "s" : ""}.</p>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-positive/40 bg-positive/10 px-4 py-3">
+              <span className="text-sm text-positive">
+                ✓ Aucune ligne mise de côté — les {lignes.length} ligne{lignes.length > 1 ? "s" : ""} sont valides.
+              </span>
+              <button
+                type="button"
+                onClick={annuler}
+                className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm font-medium hover:bg-surface-2"
+              >
+                Annuler l&apos;import
+              </button>
+            </div>
+          )}
+
           {/* Mappage des colonnes */}
           <div className="rounded-xl border border-border bg-surface p-5">
             <h2 className="text-sm font-semibold">Associer les colonnes</h2>
@@ -316,14 +438,23 @@ export default function ImportDons() {
               {" · "}
               {lignes.length} ligne{lignes.length > 1 ? "s" : ""} au total
             </span>
-            <button
-              type="button"
-              onClick={importer}
-              disabled={importing || retenues === 0 || !coffre.estOuvert}
-              className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-fg hover:opacity-90 disabled:opacity-50"
-            >
-              {importing ? "Import…" : `Importer ${retenues} don(s)`}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={annuler}
+                className="rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-surface-2"
+              >
+                Annuler l&apos;import
+              </button>
+              <button
+                type="button"
+                onClick={importer}
+                disabled={importing || retenues === 0 || !coffre.estOuvert}
+                className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-fg hover:opacity-90 disabled:opacity-50"
+              >
+                {importing ? "Import…" : `Importer ${retenues} don(s)`}
+              </button>
+            </div>
           </div>
 
           {aCorriger > 0 && (

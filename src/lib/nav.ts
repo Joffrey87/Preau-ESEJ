@@ -14,7 +14,7 @@ export type NavSection = {
 // (affiché grisé avec un badge « Bientôt »). V1 = Tableau de bord, Comptabilité, Budget.
 export const NAV: NavSection[] = [
   {
-    title: "Finances",
+    title: "Comptabilité",
     items: [
       { href: "/", label: "Tableau de bord", icon: "dashboard", ready: true },
       { href: "/comptabilite", label: "Comptabilité", icon: "ledger", ready: true },
@@ -24,12 +24,12 @@ export const NAV: NavSection[] = [
     ],
   },
   {
-    title: "Dons & fiscalité",
+    title: "Financement",
     items: [
+      { href: "/financement", label: "Financement", icon: "chart", ready: true },
       { href: "/dons", label: "Dons", icon: "gift", ready: true },
       { href: "/mecenat", label: "Mécénat", icon: "target", ready: true },
       { href: "/mecenat/pipeline", label: "Pipeline donateurs", icon: "funnel", ready: true },
-      { href: "/mecenat/strategie", label: "Stratégie mécénat", icon: "book", ready: true },
       { href: "/recus-fiscaux", label: "Reçus fiscaux", icon: "receipt", ready: true },
     ],
   },

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import PageHeader from "@/components/PageHeader";
 import { createClient } from "@/lib/supabase/server";
 import { formatEuros } from "@/lib/format";
@@ -36,6 +37,11 @@ export default async function MecenatPage() {
       <PageHeader
         title="Mécénat — pilotage de la collecte"
         subtitle="Cibles du plan de financement confrontées au réalisé (données réelles de la comptabilité)."
+        action={
+          <Link href="/mecenat/strategie" className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-surface-2">
+            Stratégie &amp; règles
+          </Link>
+        }
       />
 
       {!courant ? (

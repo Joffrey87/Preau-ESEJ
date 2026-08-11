@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { formatEuros, formatDate, todayISO } from "@/lib/format";
 import { genererRecuDocx } from "@/lib/recu";
 import { Modal, Field, FormFooter, inputCls } from "./GestionComptes";
 import { useCoffre } from "@/components/CoffreProvider";
+import DeverrouillerCoffre from "@/components/DeverrouillerCoffre";
 import { useDonsDechiffres, piiDepuis } from "@/lib/donsChiffre";
 import {
   statutsDon,
@@ -39,6 +40,8 @@ export type Don = {
   recu_etat: string | null;
   recu_emis_le: string | null;
   observations: string | null;
+  supprime_le: string | null;
+  supprime_par: string | null;
 };
 
 const CATEGORIES = [
@@ -49,6 +52,19 @@ const CATEGORIES = [
   "Communauté religieuse",
 ];
 const MODES = ["Virement", "Chèque", "Carte bancaire", "Espèces", "Nature", "Autre"];
+
+// Colonnes affichables du tableau (le n° de reçu est masqué par défaut).
+type ColKey = "date" | "donateur" | "categorie" | "montant" | "mode" | "recu" | "statut";
+const COLONNES: { key: ColKey; label: string; sortable: boolean; defaut: boolean }[] = [
+  { key: "date", label: "Date", sortable: true, defaut: true },
+  { key: "donateur", label: "Donateur", sortable: true, defaut: true },
+  { key: "categorie", label: "Catégorie", sortable: true, defaut: false },
+  { key: "montant", label: "Montant", sortable: true, defaut: true },
+  { key: "mode", label: "Mode", sortable: true, defaut: false },
+  { key: "recu", label: "N° reçu", sortable: false, defaut: false },
+  { key: "statut", label: "Statut", sortable: false, defaut: true },
+];
+const COLS_DEFAUT = Object.fromEntries(COLONNES.map((c) => [c.key, c.defaut])) as Record<ColKey, boolean>;
 
 // Année SCOLAIRE (1er sept → 31 août) d'une date ISO → « 2025-2026 ».
 const anneeScolaireISO = (iso: string) => {
@@ -98,12 +114,17 @@ function vide(): FormState {
   };
 }
 
-export default function GestionDons({ dons: donsInit }: { dons: Don[] }) {
+export default function GestionDons({ dons: donsInit, roleSlug = null }: { dons: Don[]; roleSlug?: string | null }) {
   const router = useRouter();
   const coffre = useCoffre();
   // Dons hydratés : PII déchiffré si le coffre est ouvert, 🔒 sinon.
-  const { dons, verrou } = useDonsDechiffres(donsInit);
-  const nonChiffres = useMemo(() => donsInit.filter((d) => !d.pii_chiffre), [donsInit]);
+  const { dons: donsHydrates, verrou } = useDonsDechiffres(donsInit);
+  // Actifs vs corbeille (suppression réversible via `supprime_le`).
+  const dons = useMemo(() => donsHydrates.filter((d) => !d.supprime_le), [donsHydrates]);
+  const donsSupprimes = useMemo(() => donsHydrates.filter((d) => d.supprime_le), [donsHydrates]);
+  const nonChiffres = useMemo(() => donsInit.filter((d) => !d.pii_chiffre && !d.supprime_le), [donsInit]);
+  const [vueCorbeille, setVueCorbeille] = useState(false);
+  const [toast, setToast] = useState<{ id: string; nom: string } | null>(null);
   const [edit, setEdit] = useState<Don | "nouveau" | null>(null);
   const [saving, setSaving] = useState(false);
   const [migration, setMigration] = useState(false);
@@ -115,6 +136,34 @@ export default function GestionDons({ dons: donsInit }: { dons: Don[] }) {
   const [recherche, setRecherche] = useState("");
   const [anneeFiltre, setAnneeFiltre] = useState(anneeScolaireCourante());
   const [catFiltre, setCatFiltre] = useState("toutes");
+  const [compact, setCompact] = useState(true);
+  const [cols, setCols] = useState<Record<ColKey, boolean>>(COLS_DEFAUT);
+  const [tri, setTri] = useState<{ key: ColKey; dir: "asc" | "desc" }>({ key: "date", dir: "desc" });
+  const [menuCols, setMenuCols] = useState(false);
+
+  // Préférences d'affichage (colonnes, tri, densité) restaurées au montage.
+  // setState au montage depuis localStorage : cas légitime, non SSR-able autrement.
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    try {
+      const c = localStorage.getItem("dons.cols");
+      if (c) setCols({ ...COLS_DEFAUT, ...JSON.parse(c) });
+      const t = localStorage.getItem("dons.tri");
+      if (t) setTri(JSON.parse(t));
+      const k = localStorage.getItem("dons.compact");
+      if (k != null) setCompact(k === "1");
+    } catch {}
+  }, []);
+  /* eslint-enable react-hooks/set-state-in-effect */
+  useEffect(() => { try { localStorage.setItem("dons.cols", JSON.stringify(cols)); } catch {} }, [cols]);
+  useEffect(() => { try { localStorage.setItem("dons.tri", JSON.stringify(tri)); } catch {} }, [tri]);
+  useEffect(() => { try { localStorage.setItem("dons.compact", compact ? "1" : "0"); } catch {} }, [compact]);
+  // Le toast « Annuler » s'efface seul au bout de quelques secondes.
+  useEffect(() => {
+    if (!toast) return;
+    const h = setTimeout(() => setToast(null), 8000);
+    return () => clearTimeout(h);
+  }, [toast]);
 
   const recurrents = useMemo(() => donateursRecurrents(dons), [dons]);
   const chipsParDon = useMemo(() => {
@@ -141,6 +190,16 @@ export default function GestionDons({ dons: donsInit }: { dons: Don[] }) {
 
   const donsAffiches = useMemo(() => {
     const q = recherche.trim().toLowerCase();
+    // Corbeille : on montre tous les dons supprimés (seule la recherche s'applique).
+    if (vueCorbeille) {
+      return donsSupprimes.filter((d) => {
+        if (!q) return true;
+        const nom = d.est_personne_morale
+          ? d.raison_sociale ?? d.donateur_nom
+          : [d.donateur_titre, d.donateur_nom, d.donateur_prenom].filter(Boolean).join(" ");
+        return `${nom} ${d.courriel ?? ""} ${d.cp_ville ?? ""}`.toLowerCase().includes(q);
+      });
+    }
     return dons.filter((d) => {
       if (filtre && !(chipsParDon.get(d.id) ?? []).some((c) => c.key === filtre)) return false;
       if (anneeFiltre !== "toutes" && (!d.date_don || anneeScolaireISO(d.date_don) !== anneeFiltre)) return false;
@@ -153,7 +212,7 @@ export default function GestionDons({ dons: donsInit }: { dons: Don[] }) {
       }
       return true;
     });
-  }, [dons, filtre, anneeFiltre, catFiltre, recherche, chipsParDon]);
+  }, [dons, donsSupprimes, vueCorbeille, filtre, anneeFiltre, catFiltre, recherche, chipsParDon]);
 
   const statsAffiches = useMemo(() => {
     const totalM = donsAffiches.reduce((s, d) => s + Number(d.montant), 0);
@@ -165,6 +224,30 @@ export default function GestionDons({ dons: donsInit }: { dons: Don[] }) {
       moyenne: donsAffiches.length ? totalM / donsAffiches.length : 0,
     };
   }, [donsAffiches]);
+
+  const nomTri = (d: Don) =>
+    (d.est_personne_morale ? d.raison_sociale ?? d.donateur_nom ?? "" : [d.donateur_nom, d.donateur_prenom].filter(Boolean).join(" ")).toLowerCase();
+
+  const donsTries = useMemo(() => {
+    const arr = [...donsAffiches];
+    const dir = tri.dir === "asc" ? 1 : -1;
+    arr.sort((a, b) => {
+      let r = 0;
+      if (tri.key === "montant") r = Number(a.montant) - Number(b.montant);
+      else if (tri.key === "categorie") r = (a.categorie_donateur ?? "").localeCompare(b.categorie_donateur ?? "");
+      else if (tri.key === "mode") r = (a.mode_paiement ?? "").localeCompare(b.mode_paiement ?? "");
+      else if (tri.key === "donateur") r = nomTri(a).localeCompare(nomTri(b));
+      else r = (a.date_don ?? "").localeCompare(b.date_don ?? ""); // date par défaut
+      return r * dir;
+    });
+    return arr;
+  }, [donsAffiches, tri]);
+
+  function trierPar(key: ColKey) {
+    setTri((t) =>
+      t.key === key ? { key, dir: t.dir === "asc" ? "desc" : "asc" } : { key, dir: key === "date" || key === "montant" ? "desc" : "asc" },
+    );
+  }
 
   const filtresActifs =
     filtre || anneeFiltre !== anneeScolaireCourante() || catFiltre !== "toutes" || recherche.trim() !== "";
@@ -264,8 +347,10 @@ export default function GestionDons({ dons: donsInit }: { dons: Don[] }) {
     // Champs personnels (chiffrés si le coffre est ouvert).
     const pii = {
       titre: f.donateur_titre.trim() || null,
-      nom: f.est_personne_morale ? f.raison_sociale.trim() : f.donateur_nom.trim(),
-      prenom: f.est_personne_morale ? null : f.donateur_prenom.trim() || null,
+      // Personne morale : nom/prénom = le CONTACT (destinataire du courriel).
+      // Le reçu fiscal reste établi à la raison sociale (voir champsRecu).
+      nom: f.donateur_nom.trim() || null,
+      prenom: f.donateur_prenom.trim() || null,
       raison: f.est_personne_morale ? f.raison_sociale.trim() : null,
       adresse: f.adresse.trim() || null,
       cp_ville: f.cp_ville.trim() || null,
@@ -332,6 +417,29 @@ export default function GestionDons({ dons: donsInit }: { dons: Don[] }) {
     router.refresh();
   }
 
+  // Suppression réversible : on horodate `supprime_le` (rien n'est détruit).
+  async function supprimer(d: Don) {
+    setGenErreur(null);
+    const supabase = createClient();
+    const { error: err } = await supabase
+      .from("dons")
+      .update({ supprime_le: new Date().toISOString(), supprime_par: roleSlug })
+      .eq("id", d.id);
+    if (err) {
+      setGenErreur("Suppression impossible : " + err.message);
+      return;
+    }
+    setToast({ id: d.id, nom: nomAffiche(d) || "Don" });
+    router.refresh();
+  }
+
+  async function restaurer(id: string) {
+    const supabase = createClient();
+    await supabase.from("dons").update({ supprime_le: null, supprime_par: null }).eq("id", id);
+    setToast((t) => (t?.id === id ? null : t));
+    router.refresh();
+  }
+
   async function genererRecu(d: Don) {
     setGenErreur(null);
     if (d.pii_chiffre && !coffre.estOuvert) {
@@ -345,6 +453,7 @@ export default function GestionDons({ dons: donsInit }: { dons: Don[] }) {
     }
   }
 
+  const cellPad = compact ? "px-3 py-1.5" : "px-4 py-3";
   const ringManque = (estVide: boolean) =>
     signaler && estVide ? " ring-2 ring-negative/60 !border-negative" : "";
   const nomAffiche = (d: Don) =>
@@ -358,7 +467,7 @@ export default function GestionDons({ dons: donsInit }: { dons: Don[] }) {
       {verrou && (
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-gold/40 bg-gold-soft/40 px-4 py-3 text-sm">
           <span className="text-gold">🔒 Coffre verrouillé — les données des donateurs sont masquées.</span>
-          <a href="/parametres" className="rounded-lg border border-border px-3 py-1.5 hover:bg-surface-2">Déverrouiller</a>
+          <DeverrouillerCoffre />
         </div>
       )}
 
@@ -395,6 +504,58 @@ export default function GestionDons({ dons: donsInit }: { dons: Don[] }) {
           </button>
         )}
         <div className="ml-auto flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setVueCorbeille((v) => !v)}
+            className={`rounded-lg border px-3 py-2 text-sm font-medium ${
+              vueCorbeille ? "border-accent bg-accent-soft text-accent" : "border-border hover:bg-surface-2"
+            }`}
+          >
+            🗑 Corbeille{donsSupprimes.length > 0 ? ` (${donsSupprimes.length})` : ""}
+          </button>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setMenuCols((v) => !v)}
+              className="rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-surface-2"
+            >
+              Colonnes ▾
+            </button>
+            {menuCols && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setMenuCols(false)} />
+                <div className="absolute right-0 z-20 mt-1 w-52 rounded-lg border border-border bg-surface p-2 shadow-lg">
+                  <p className="px-2 py-1 text-xs font-medium text-muted">Colonnes affichées</p>
+                  {COLONNES.map((c) => (
+                    <label key={c.key} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-surface-2">
+                      <input
+                        type="checkbox"
+                        checked={cols[c.key]}
+                        onChange={() => setCols((m) => ({ ...m, [c.key]: !m[c.key] }))}
+                        className="h-4 w-4"
+                      />
+                      {c.label}
+                    </label>
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setCols(COLS_DEFAUT)}
+                    className="mt-1 w-full rounded-md px-2 py-1.5 text-left text-xs text-muted hover:bg-surface-2"
+                  >
+                    Réinitialiser les colonnes
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => setCompact((c) => !c)}
+            title={compact ? "Passer en vue détaillée" : "Passer en vue compacte"}
+            className="rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-surface-2"
+          >
+            {compact ? "Vue détaillée" : "Vue compacte"}
+          </button>
           <button
             type="button"
             onClick={exporterCSV}
@@ -477,85 +638,145 @@ export default function GestionDons({ dons: donsInit }: { dons: Don[] }) {
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-border bg-surface">
-        <table className="w-full text-sm">
+        <table className={`w-full ${compact ? "text-[13px]" : "text-sm"}`}>
           <thead>
             <tr className="border-b border-border text-left text-muted">
-              <th className="px-4 py-3 font-medium">Date</th>
-              <th className="px-4 py-3 font-medium">Donateur</th>
-              <th className="px-4 py-3 font-medium text-right">Montant</th>
-              <th className="px-4 py-3 font-medium">N° reçu</th>
-              <th className="px-4 py-3 font-medium">Statut</th>
-              <th className="px-4 py-3 font-medium text-right">Actions</th>
+              {COLONNES.filter((c) => cols[c.key]).map((c) => {
+                const aligneD = c.key === "montant";
+                const actif = tri.key === c.key;
+                return (
+                  <th key={c.key} className={`${cellPad} font-medium ${aligneD ? "text-right" : ""}`}>
+                    {c.sortable ? (
+                      <button
+                        type="button"
+                        onClick={() => trierPar(c.key)}
+                        className={`inline-flex items-center gap-1 hover:text-foreground ${aligneD ? "flex-row-reverse" : ""} ${actif ? "text-foreground" : ""}`}
+                      >
+                        {c.label}
+                        <span className="text-[10px]">{actif ? (tri.dir === "asc" ? "▲" : "▼") : "↕"}</span>
+                      </button>
+                    ) : (
+                      c.label
+                    )}
+                  </th>
+                );
+              })}
+              <th className={`${cellPad} font-medium text-right`}>Actions</th>
             </tr>
           </thead>
           <tbody>
-            {donsAffiches.length === 0 ? (
+            {donsTries.length === 0 ? (
               <tr>
-                <td colSpan={6} className="px-4 py-12 text-center text-muted">
-                  {dons.length === 0 ? "Aucun don enregistré." : "Aucun don pour ce filtre."}
+                <td colSpan={COLONNES.filter((c) => cols[c.key]).length + 1} className="px-4 py-12 text-center text-muted">
+                  {vueCorbeille
+                    ? "Corbeille vide."
+                    : dons.length === 0
+                      ? "Aucun don enregistré."
+                      : "Aucun don pour ce filtre."}
                 </td>
               </tr>
             ) : (
-              donsAffiches.map((d) => (
-                <tr key={d.id} className="border-b border-border last:border-0">
-                  <td className="px-4 py-3 tabular-nums">{formatDate(d.date_don)}</td>
-                  <td className="px-4 py-3">
-                    {nomAffiche(d)}
-                    {recurrents.has(cleDonateur(d)) && (
-                      <span
-                        title="Donateur récurrent (plusieurs dons)"
-                        className="ml-1.5 align-middle text-xs text-violet-600 dark:text-violet-400"
-                      >
-                        ↻
-                      </span>
-                    )}
-                    {d.cp_ville && <span className="text-muted"> · {d.cp_ville}</span>}
-                  </td>
-                  <td className="px-4 py-3 text-right tabular-nums">{formatEuros(Number(d.montant))}</td>
-                  <td className="px-4 py-3 tabular-nums text-xs">{d.recu_numero ?? "—"}</td>
-                  <td className="px-4 py-3">
-                    <div className="flex flex-wrap gap-1">
-                      {(chipsParDon.get(d.id) ?? []).map((c) => {
-                        const cls = `inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${TONE_CLASSES[c.tone]}`;
-                        return c.key === "important" || c.key === "mineur" ? (
-                          <button
-                            key={c.key}
-                            type="button"
-                            onClick={() => ouvrir(d, true)}
-                            title={`${c.detail ?? ""} — cliquer pour compléter`}
-                            className={`${cls} cursor-pointer underline-offset-2 hover:underline`}
+              donsTries.map((d) => {
+                const chips = chipsParDon.get(d.id) ?? [];
+                return (
+                <tr key={d.id} className="border-b border-border last:border-0 align-middle">
+                  {cols.date && <td className={`${cellPad} tabular-nums whitespace-nowrap`}>{formatDate(d.date_don)}</td>}
+                  {cols.donateur && (
+                    <td className={`${cellPad} max-w-[18rem] truncate`}>
+                      {nomAffiche(d)}
+                      {recurrents.has(cleDonateur(d)) && (
+                        <span
+                          title="Donateur récurrent (plusieurs dons)"
+                          className="ml-1.5 align-middle text-xs text-violet-600 dark:text-violet-400"
+                        >
+                          ↻
+                        </span>
+                      )}
+                      {d.cp_ville && <span className="text-muted"> · {d.cp_ville}</span>}
+                    </td>
+                  )}
+                  {cols.categorie && <td className={`${cellPad} text-muted`}>{d.categorie_donateur ?? "—"}</td>}
+                  {cols.montant && <td className={`${cellPad} text-right tabular-nums whitespace-nowrap`}>{formatEuros(Number(d.montant))}</td>}
+                  {cols.mode && <td className={`${cellPad} text-muted`}>{d.mode_paiement ?? "—"}</td>}
+                  {cols.recu && <td className={`${cellPad} tabular-nums text-xs`}>{d.recu_numero ?? "—"}</td>}
+                  {cols.statut && (
+                    <td className={cellPad}>
+                      <div className={`flex gap-1 ${compact ? "flex-nowrap" : "flex-wrap"}`}>
+                        {(compact ? chips.slice(0, 1) : chips).map((c) => {
+                          const cls = `inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${TONE_CLASSES[c.tone]}`;
+                          return c.key === "important" || c.key === "mineur" ? (
+                            <button
+                              key={c.key}
+                              type="button"
+                              onClick={() => ouvrir(d, true)}
+                              title={`${c.detail ?? ""} — cliquer pour compléter`}
+                              className={`${cls} cursor-pointer underline-offset-2 hover:underline`}
+                            >
+                              {c.label}
+                            </button>
+                          ) : (
+                            <span key={c.key} title={c.detail} className={cls}>
+                              {c.label}
+                            </span>
+                          );
+                        })}
+                        {compact && chips.length > 1 && (
+                          <span
+                            title={chips.map((c) => c.label).join(" · ")}
+                            className="inline-flex items-center rounded-full bg-surface-2 px-1.5 py-0.5 text-xs text-muted"
                           >
-                            {c.label}
-                          </button>
-                        ) : (
-                          <span key={c.key} title={c.detail} className={cls}>
-                            {c.label}
+                            +{chips.length - 1}
                           </span>
-                        );
-                      })}
-                    </div>
-                    {d.recu_etat && d.recu_etat.trim() && (
-                      <p className="mt-1 text-xs text-muted">{d.recu_etat}</p>
+                        )}
+                      </div>
+                      {!compact && d.recu_etat && d.recu_etat.trim() && (
+                        <p className="mt-1 text-xs text-muted">{d.recu_etat}</p>
+                      )}
+                    </td>
+                  )}
+                  <td className={`${cellPad} text-right whitespace-nowrap`}>
+                    {vueCorbeille ? (
+                      <>
+                        {d.supprime_le && (
+                          <span className="mr-3 text-xs text-muted">Supprimé le {formatDate(d.supprime_le)}</span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => restaurer(d.id)}
+                          className="text-accent hover:underline"
+                        >
+                          Restaurer
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => genererRecu(d)}
+                          className="text-accent hover:underline"
+                        >
+                          Reçu
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => ouvrir(d)}
+                          className="ml-4 text-muted hover:underline"
+                        >
+                          Modifier
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => supprimer(d)}
+                          className="ml-4 text-muted hover:text-negative hover:underline"
+                        >
+                          Supprimer
+                        </button>
+                      </>
                     )}
-                  </td>
-                  <td className="px-4 py-3 text-right whitespace-nowrap">
-                    <button
-                      type="button"
-                      onClick={() => genererRecu(d)}
-                      className="text-accent hover:underline"
-                    >
-                      Reçu
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => ouvrir(d)}
-                      className="ml-4 text-muted hover:underline"
-                    >
-                      Modifier
-                    </button>
                   </td>
                 </tr>
-              ))
+                );
+              })
             )}
           </tbody>
         </table>
@@ -603,9 +824,25 @@ export default function GestionDons({ dons: donsInit }: { dons: Don[] }) {
             </div>
 
             {f.est_personne_morale ? (
-              <Field label="Raison sociale">
-                <input type="text" required value={f.raison_sociale} onChange={(e) => set("raison_sociale", e.target.value)} className={inputCls + ringManque(!f.raison_sociale.trim())} placeholder="Ex. Oeuvre Salésienne" />
-              </Field>
+              <>
+                <Field label="Raison sociale">
+                  <input type="text" required value={f.raison_sociale} onChange={(e) => set("raison_sociale", e.target.value)} className={inputCls + ringManque(!f.raison_sociale.trim())} placeholder="Ex. Oeuvre Salésienne" />
+                </Field>
+                <div className="grid grid-cols-3 gap-3">
+                  <Field label="Contact — Titre">
+                    <input type="text" value={f.donateur_titre} onChange={(e) => set("donateur_titre", e.target.value)} className={inputCls} placeholder="Monsieur…" />
+                  </Field>
+                  <Field label="Contact — Nom">
+                    <input type="text" value={f.donateur_nom} onChange={(e) => set("donateur_nom", e.target.value)} className={inputCls} placeholder="Personne à contacter" />
+                  </Field>
+                  <Field label="Contact — Prénom">
+                    <input type="text" value={f.donateur_prenom} onChange={(e) => set("donateur_prenom", e.target.value)} className={inputCls} />
+                  </Field>
+                </div>
+                <p className="-mt-1 text-xs text-muted">
+                  Le courriel sera adressé à ce contact ; le reçu fiscal reste établi au nom de la raison sociale.
+                </p>
+              </>
             ) : (
               <>
                 <div className="grid grid-cols-3 gap-3">
@@ -672,6 +909,30 @@ export default function GestionDons({ dons: donsInit }: { dons: Don[] }) {
             <FormFooter saving={saving} error={error} onCancel={() => setEdit(null)} />
           </form>
         </Modal>
+      )}
+
+      {/* Toast : suppression réversible */}
+      {toast && (
+        <div className="fixed bottom-5 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3 text-sm shadow-lg">
+          <span>
+            Don supprimé{toast.nom && toast.nom !== "Don" ? ` — ${toast.nom}` : ""}.
+          </span>
+          <button
+            type="button"
+            onClick={() => restaurer(toast.id)}
+            className="rounded-lg bg-accent px-3 py-1.5 font-medium text-accent-fg hover:opacity-90"
+          >
+            Annuler
+          </button>
+          <button
+            type="button"
+            onClick={() => setToast(null)}
+            className="text-muted hover:text-foreground"
+            aria-label="Fermer"
+          >
+            ✕
+          </button>
+        </div>
       )}
     </>
   );

@@ -1,9 +1,10 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Modal, Field, FormFooter, inputCls } from "./GestionComptes";
+import { formatDate } from "@/lib/format";
 import {
   CATEGORIES,
   CATEGORIE_LABEL,
@@ -53,11 +54,13 @@ export default function GestionCarnet({
   canVoirIban,
   categoriesGerables,
   roleLabel,
+  roleSlug = null,
 }: {
   contacts: Contact[];
   canVoirIban: boolean;
   categoriesGerables: CategorieSlug[];
   roleLabel: string;
+  roleSlug?: string | null;
 }) {
   const router = useRouter();
   const [edit, setEdit] = useState<Contact | "nouveau" | null>(null);
@@ -66,6 +69,18 @@ export default function GestionCarnet({
   const [recherche, setRecherche] = useState("");
   const [filtreCat, setFiltreCat] = useState<string | null>(null);
   const [f, setF] = useState<FormState>(vide());
+  const [vueCorbeille, setVueCorbeille] = useState(false);
+  const [toast, setToast] = useState<{ id: string; nom: string } | null>(null);
+
+  // Actifs vs corbeille (suppression réversible via `supprime_le`).
+  const contactsActifs = useMemo(() => contacts.filter((c) => !c.supprime_le), [contacts]);
+  const contactsSupprimes = useMemo(() => contacts.filter((c) => c.supprime_le), [contacts]);
+
+  useEffect(() => {
+    if (!toast) return;
+    const h = setTimeout(() => setToast(null), 8000);
+    return () => clearTimeout(h);
+  }, [toast]);
 
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) =>
     setF((p) => ({ ...p, [k]: v }));
@@ -80,19 +95,20 @@ export default function GestionCarnet({
 
   // Catégories réellement présentes (pour les filtres), limitées à celles gérables.
   const catsFiltrables = CATEGORIES.filter(
-    (c) => categoriesGerables.includes(c.slug) && contacts.some((k) => k.categories?.includes(c.slug)),
+    (c) => categoriesGerables.includes(c.slug) && contactsActifs.some((k) => k.categories?.includes(c.slug)),
   );
 
   const liste = useMemo(() => {
+    const base = vueCorbeille ? contactsSupprimes : contactsActifs;
     const q = recherche.trim().toLowerCase();
-    return contacts.filter((c) => {
-      if (filtreCat && !c.categories?.includes(filtreCat)) return false;
+    return base.filter((c) => {
+      if (!vueCorbeille && filtreCat && !c.categories?.includes(filtreCat)) return false;
       if (!q) return true;
       return [c.nom, c.prenom, c.raison_sociale, c.courriel, c.cp_ville]
         .filter(Boolean)
         .some((v) => (v as string).toLowerCase().includes(q));
     });
-  }, [contacts, recherche, filtreCat]);
+  }, [contactsActifs, contactsSupprimes, vueCorbeille, recherche, filtreCat]);
 
   function ouvrir(c: Contact | "nouveau") {
     setError(null);
@@ -157,15 +173,26 @@ export default function GestionCarnet({
     router.refresh();
   }
 
+  // Suppression réversible : on horodate `supprime_le` (rien n'est détruit).
   async function supprimer(c: Contact) {
-    if (!confirm(`Supprimer « ${nomAffiche(c)} » du carnet ?`)) return;
     const supabase = createClient();
-    const { error: err } = await supabase.from("contacts").delete().eq("id", c.id);
+    const { error: err } = await supabase
+      .from("contacts")
+      .update({ supprime_le: new Date().toISOString(), supprime_par: roleSlug })
+      .eq("id", c.id);
     if (err) {
       setError("Suppression impossible : " + err.message);
       return;
     }
     setEdit(null);
+    setToast({ id: c.id, nom: nomAffiche(c) });
+    router.refresh();
+  }
+
+  async function restaurer(id: string) {
+    const supabase = createClient();
+    await supabase.from("contacts").update({ supprime_le: null, supprime_par: null }).eq("id", id);
+    setToast((t) => (t?.id === id ? null : t));
     router.refresh();
   }
 
@@ -179,13 +206,24 @@ export default function GestionCarnet({
           placeholder="Rechercher un contact…"
           className={`${inputCls} max-w-xs`}
         />
-        <button
-          type="button"
-          onClick={() => ouvrir("nouveau")}
-          className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-fg transition-opacity hover:opacity-90"
-        >
-          + Nouveau contact
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setVueCorbeille((v) => !v)}
+            className={`rounded-lg border px-3 py-2 text-sm font-medium ${
+              vueCorbeille ? "border-accent bg-accent-soft text-accent" : "border-border hover:bg-surface-2"
+            }`}
+          >
+            🗑 Corbeille{contactsSupprimes.length > 0 ? ` (${contactsSupprimes.length})` : ""}
+          </button>
+          <button
+            type="button"
+            onClick={() => ouvrir("nouveau")}
+            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-fg transition-opacity hover:opacity-90"
+          >
+            + Nouveau contact
+          </button>
+        </div>
       </div>
 
       {catsFiltrables.length > 0 && (
@@ -235,7 +273,11 @@ export default function GestionCarnet({
             {liste.length === 0 ? (
               <tr>
                 <td colSpan={canVoirIban ? 6 : 5} className="px-4 py-12 text-center text-muted">
-                  {contacts.length === 0 ? "Aucun contact accessible avec votre profil." : "Aucun contact pour cette recherche."}
+                  {vueCorbeille
+                    ? "Corbeille vide."
+                    : contactsActifs.length === 0
+                      ? "Aucun contact accessible avec votre profil."
+                      : "Aucun contact pour cette recherche."}
                 </td>
               </tr>
             ) : (
@@ -262,9 +304,25 @@ export default function GestionCarnet({
                   <td className="px-4 py-3 text-muted">{c.cp_ville ?? "—"}</td>
                   {canVoirIban && <td className="px-4 py-3 tabular-nums text-xs text-muted">{c.iban ?? "—"}</td>}
                   <td className="px-4 py-3 text-right whitespace-nowrap">
-                    <button type="button" onClick={() => ouvrir(c)} className="text-accent hover:underline">
-                      Modifier
-                    </button>
+                    {vueCorbeille ? (
+                      <>
+                        {c.supprime_le && (
+                          <span className="mr-3 text-xs text-muted">Supprimé le {formatDate(c.supprime_le)}</span>
+                        )}
+                        <button type="button" onClick={() => restaurer(c.id)} className="text-accent hover:underline">
+                          Restaurer
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button type="button" onClick={() => ouvrir(c)} className="text-accent hover:underline">
+                          Modifier
+                        </button>
+                        <button type="button" onClick={() => supprimer(c)} className="ml-4 text-muted hover:text-negative hover:underline">
+                          Supprimer
+                        </button>
+                      </>
+                    )}
                   </td>
                 </tr>
               ))
@@ -368,6 +426,23 @@ export default function GestionCarnet({
             <FormFooter saving={saving} error={error} onCancel={() => setEdit(null)} />
           </form>
         </Modal>
+      )}
+
+      {/* Toast : suppression réversible */}
+      {toast && (
+        <div className="fixed bottom-5 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3 text-sm shadow-lg">
+          <span>Contact supprimé{toast.nom ? ` — ${toast.nom}` : ""}.</span>
+          <button
+            type="button"
+            onClick={() => restaurer(toast.id)}
+            className="rounded-lg bg-accent px-3 py-1.5 font-medium text-accent-fg hover:opacity-90"
+          >
+            Annuler
+          </button>
+          <button type="button" onClick={() => setToast(null)} className="text-muted hover:text-foreground" aria-label="Fermer">
+            ✕
+          </button>
+        </div>
       )}
     </>
   );

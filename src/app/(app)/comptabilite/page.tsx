@@ -56,6 +56,24 @@ export default async function ComptabilitePage({
     supabase.from("comptes").select("id, nom").eq("archive", false).order("ordre"),
   ]);
 
+  // Dons (montant/date/lien) pour marquer les opérations « Don » déjà répertoriées.
+  const { data: donsData } = await supabase
+    .from("dons")
+    .select("montant, date_don, operation_id")
+    .is("supprime_le", null);
+  const dons = donsData ?? [];
+  const opsLiees = new Set(dons.map((d) => d.operation_id).filter(Boolean) as string[]);
+  const ecartJours = (a: string, b: string) => {
+    const [ay, am, ad] = a.split("-").map(Number);
+    const [by, bm, bd] = b.split("-").map(Number);
+    return Math.abs(Math.round((Date.UTC(by, bm - 1, bd) - Date.UTC(ay, am - 1, ad)) / 86400000));
+  };
+  const donRepertorie = (op: OperationRow) =>
+    opsLiees.has(op.id) ||
+    dons.some(
+      (d) => Number(d.montant) === Number(op.montant) && d.date_don && ecartJours(d.date_don, op.date_operation) <= 3,
+    );
+
   const operations = (opsRes.data ?? []) as unknown as OperationRow[];
   const recettes = operations.filter((o) => o.type === "recette").reduce((s, o) => s + Number(o.montant), 0);
   const depenses = operations.filter((o) => o.type === "depense").reduce((s, o) => s + Number(o.montant), 0);
@@ -176,6 +194,18 @@ export default async function ComptabilitePage({
                           compte: op.comptes?.nom ?? null,
                         }}
                       />
+                      {op.categories?.nom === "Don" &&
+                        (donRepertorie(op) ? (
+                          <span className="ml-2 text-positive" title="Enregistré dans les dons">✓</span>
+                        ) : (
+                          <Link
+                            href="/dons/depuis-compta"
+                            className="ml-2 rounded-full bg-gold-soft px-2 py-0.5 text-xs font-medium text-gold hover:opacity-90"
+                            title="Ce don n'est pas encore dans l'onglet Dons"
+                          >
+                            + Ajouter aux dons
+                          </Link>
+                        ))}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-muted">{op.categories?.nom ?? "—"}</td>

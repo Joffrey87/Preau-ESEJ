@@ -26,12 +26,20 @@ export default async function DonsPage() {
         title="Dons"
         subtitle="Suivi des dons reçus et génération des reçus fiscaux."
         action={
-          <Link
-            href="/dons/import"
-            className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-surface-2"
-          >
-            Importer (.xlsx)
-          </Link>
+          <div className="flex flex-wrap items-center gap-2">
+            <Link
+              href="/dons/depuis-compta"
+              className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-surface-2"
+            >
+              Importer depuis Comptabilité
+            </Link>
+            <Link
+              href="/dons/import"
+              className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-surface-2"
+            >
+              Importer (.xlsx)
+            </Link>
+          </div>
         }
       />
       <GestionDons dons={(dons ?? []) as Don[]} roleSlug={roleSlug} />

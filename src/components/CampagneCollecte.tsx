@@ -12,6 +12,11 @@ import {
 } from "@/lib/donateurs";
 import { nomCliquableCls } from "@/lib/ui";
 
+/** Mois/année d'une date ISO (AAAA-MM-JJ → MM/AAAA). */
+function moisAnnee(iso: string): string {
+  return iso ? `${iso.slice(5, 7)}/${iso.slice(0, 4)}` : "";
+}
+
 /** Dernier jour du mois de `iso` (défaut d'échéance : « fin de ce mois »). */
 function finDuMois(iso: string): string {
   const [y, m] = iso.split("-").map(Number);
@@ -81,8 +86,8 @@ export default function CampagneCollecte({
   const limite = toutVoir ? plan.cibles.length : Math.max(plan.nbPourObjectif + 5, 8);
   const affichees = plan.cibles.slice(0, limite);
 
-  // Liste du PDF (1 page) : les donateurs qui couvrent l'objectif ; sinon le haut du panier.
-  const listePDF = atteignable ? plan.cibles.filter((c) => c.dansObjectif) : plan.cibles.slice(0, 12);
+  // Liste du PDF : 15 donateurs max, pour tenir sur une seule page.
+  const listePDF = (atteignable ? plan.cibles.filter((c) => c.dansObjectif) : plan.cibles).slice(0, 15);
   const totalDemandePDF = listePDF.reduce((s, c) => s + c.demande, 0);
   const totalEsperePDF = listePDF.reduce((s, c) => s + c.espere, 0);
 
@@ -369,7 +374,7 @@ export default function CampagneCollecte({
       )}
 
       {/* ————— Document imprimable (PDF 1 page) ————— */}
-      <div id="campagne-pdf" className="print-only" style={{ color: "#14213d", fontFamily: "inherit", width: "85%", margin: "0 auto" }}>
+      <div id="campagne-pdf" className="print-only" style={{ color: "#14213d", fontFamily: "inherit", width: "94%", margin: "0 auto" }}>
         {/* En-tête généreux, centré */}
         <div style={{ textAlign: "center", paddingBottom: "11px", borderBottom: "2px solid #c8952f" }}>
           <div style={{ fontSize: "10px", letterSpacing: "2.5px", textTransform: "uppercase", color: "#c8952f", fontWeight: 600 }}>
@@ -433,27 +438,27 @@ export default function CampagneCollecte({
             return (
               <div
                 key={c.cle}
-                style={{ display: "flex", alignItems: "center", gap: "12px", padding: "5px 18px", background: "#f4f7fc", border: "1px solid #cdd8ec", borderRadius: "20px", marginBottom: "7px" }}
+                style={{ display: "flex", alignItems: "center", gap: "12px", padding: "4px 18px", background: "#f4f7fc", border: "1px solid #cdd8ec", borderRadius: "20px", marginBottom: "9px" }}
               >
                 <span title={badgeTemperature(c.temperature).label} style={{ flex: "none", width: "10px", height: "10px", borderRadius: "50%", background: tc }} />
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 600, color: "#14213d" }}>{c.nom}</div>
-                  <div style={{ fontSize: "9px", color: "#8a8377", marginTop: "1px" }}>
+                  <div style={{ fontSize: "11px", fontWeight: 600, color: "#14213d" }}>{c.nom}</div>
+                  <div style={{ fontSize: "8.5px", color: "#8a8377", marginTop: "1px" }}>
                     {formatEuros(c.cumul)} donnés · {c.nbDons} don{c.nbDons > 1 ? "s" : ""} / {c.nbAnnees} an
-                    {c.nbAnnees > 1 ? "s" : ""} · dernier {formatDate(c.dernier)} ({c.moisDepuisDernier}m.)
+                    {c.nbAnnees > 1 ? "s" : ""} · dernier {moisAnnee(c.dernier)} ({c.moisDepuisDernier}m.)
                   </div>
                 </div>
                 <div style={{ flex: "none", width: "104px" }}>
-                  <div style={{ fontSize: "8.5px", textTransform: "uppercase", letterSpacing: "0.3px", color: "#9aa7c0" }}>Relation</div>
-                  <div style={{ fontSize: "11px", color: "#3a4256" }}>{c.origine ?? "—"}</div>
+                  <div style={{ fontSize: "8px", textTransform: "uppercase", letterSpacing: "0.3px", color: "#9aa7c0" }}>Relation</div>
+                  <div style={{ fontSize: "10.5px", color: "#3a4256" }}>{c.origine ?? "—"}</div>
                 </div>
                 <div style={{ flex: "none", textAlign: "right", width: "88px" }}>
-                  <div style={{ fontSize: "8.5px", textTransform: "uppercase", letterSpacing: "0.3px", color: "#8a8377" }}>À demander</div>
-                  <div style={{ fontSize: "15px", fontWeight: 800, color: "#021d51", lineHeight: 1.05 }}>{formatEuros(c.demande)}</div>
+                  <div style={{ fontSize: "8px", textTransform: "uppercase", letterSpacing: "0.3px", color: "#8a8377" }}>À demander</div>
+                  <div style={{ fontSize: "14px", fontWeight: 800, color: "#021d51", lineHeight: 1 }}>{formatEuros(c.demande)}</div>
                 </div>
                 <div style={{ flex: "none", textAlign: "right", width: "68px" }}>
-                  <div style={{ fontSize: "9px", color: "#8a8377" }}>{Math.round(c.proba * 100)}% de oui</div>
-                  <div style={{ fontSize: "12px", fontWeight: 700, color: "#15803d" }}>{formatEuros(c.espere)}</div>
+                  <div style={{ fontSize: "8.5px", color: "#8a8377" }}>{Math.round(c.proba * 100)}% de oui</div>
+                  <div style={{ fontSize: "11px", fontWeight: 700, color: "#15803d" }}>{formatEuros(c.espere)}</div>
                 </div>
               </div>
             );

@@ -41,6 +41,8 @@ export type OperationRow = {
   exercice_id: string | null;
   parent_id: string | null;
   est_ventilee: boolean;
+  /** Question ouverte sur la ligne (affichée en ambre). Null = rien à vérifier. */
+  a_verifier: string | null;
   categories: { nom: string } | null;
   comptes: { nom: string } | null;
 };
@@ -63,6 +65,7 @@ type FormState = {
   mode_paiement: string;
   montant: string;
   exercice_id: string;
+  a_verifier: string;
 };
 
 function formDepuis(op: OperationRow): FormState {
@@ -75,6 +78,7 @@ function formDepuis(op: OperationRow): FormState {
     mode_paiement: op.mode_paiement ?? "",
     montant: String(op.montant),
     exercice_id: op.exercice_id ?? "",
+    a_verifier: op.a_verifier ?? "",
   };
 }
 
@@ -107,6 +111,8 @@ export default function ListeOperations({
   const [modeEdition, setModeEdition] = useState(false);
   // Filtre par catégories : vide = toutes. « __sans__ » vise les non catégorisées.
   const [filtreCats, setFiltreCats] = useState<string[]>([]);
+  // Filtre « à vérifier » : ne garde que les lignes portant une question ouverte.
+  const [filtreAVerifier, setFiltreAVerifier] = useState(false);
   // Ouverture des volets : `ouverture` ne retient que les choix explicites de
   // l'utilisateur ; par défaut, une ligne dont des dons restent à rattacher
   // s'ouvre d'elle-même.
@@ -146,7 +152,14 @@ export default function ListeOperations({
   }
   const racines = operations.filter((op) => !op.parent_id);
 
-  const operationsAffichees =
+  /** Question ouverte sur la ligne ou sur l'une de ses sous-écritures. */
+  const questionDe = (op: OperationRow): string | null =>
+    op.a_verifier ||
+    (fillesDe.get(op.id) ?? []).map((fi) => fi.a_verifier).find((q): q is string => !!q) ||
+    null;
+  const nbAVerifier = racines.filter((op) => questionDe(op)).length;
+
+  const parCategorie =
     filtreCats.length === 0
       ? racines
       : racines.filter((op) => {
@@ -158,6 +171,7 @@ export default function ListeOperations({
           }
           return filtreCats.includes(op.categorie_id ?? "__sans__");
         });
+  const operationsAffichees = filtreAVerifier ? parCategorie.filter((op) => questionDe(op)) : parCategorie;
   const totalAffiche = operationsAffichees.reduce(
     (s, op) => s + (op.type === "recette" ? 1 : -1) * Number(op.montant),
     0,
@@ -213,6 +227,7 @@ export default function ListeOperations({
       exercice_id: f.exercice_id || null,
       montant: montantTotal,
       categorie_id: f.categorie_id || null,
+      a_verifier: f.a_verifier.trim() || null,
     };
 
     const { error: err } = await supabase.from("operations").update(champs).eq("id", edit.id);
@@ -276,6 +291,28 @@ export default function ListeOperations({
           {modeEdition ? "✓ Mode modification actif" : "✏️ Mode modification"}
         </button>
       </div>
+
+      {nbAVerifier > 0 && (
+        <div className="mb-3 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setFiltreAVerifier((v) => !v)}
+            title="Lignes portant une question ouverte (en ambre dans le tableau)"
+            className={`rounded-full border px-3 py-1 text-xs font-medium ${
+              filtreAVerifier
+                ? "border-gold bg-gold text-white"
+                : "border-gold/60 bg-gold-soft text-gold hover:opacity-90"
+            }`}
+          >
+            ⚠ À vérifier <span className="opacity-70">{nbAVerifier}</span>
+          </button>
+          {filtreAVerifier && (
+            <span className="text-xs text-muted">
+              Seules les lignes à vérifier sont affichées.
+            </span>
+          )}
+        </div>
+      )}
 
       <details className="mb-3 rounded-xl border border-border bg-surface px-4 py-3">
         <summary className="cursor-pointer text-sm font-medium">
@@ -386,7 +423,11 @@ export default function ListeOperations({
                         )
                   }
                   className={`cursor-pointer border-b border-border last:border-0 transition-colors hover:bg-surface-2 ${
-                    restaurees.includes(op.id) ? "bg-positive/10 ring-1 ring-inset ring-positive/40" : ""
+                    restaurees.includes(op.id)
+                      ? "bg-positive/10 ring-1 ring-inset ring-positive/40"
+                      : questionDe(op)
+                        ? "bg-gold-soft/60"
+                        : ""
                   }`}
                 >
                   <td className="relative w-[132px] px-4 py-3 whitespace-nowrap tabular-nums">
@@ -433,6 +474,14 @@ export default function ListeOperations({
                       >
                         <Icon name="info" className="h-4 w-4" />
                       </button>
+                      {questionDe(op) && (
+                        <span
+                          className="ml-2 max-w-[260px] truncate rounded-full bg-gold-soft px-2 py-0.5 text-[11px] font-medium text-gold"
+                          title={questionDe(op) ?? undefined}
+                        >
+                          ⚠ {questionDe(op)}
+                        </span>
+                      )}
                       {!modeEdition && !op.est_ventilee && (fillesDe.get(op.id) ?? []).length === 0 &&
                         op.categories?.nom === "Don" &&
                         (donsRepertoriesSet.has(op.id) ? (
@@ -607,6 +656,16 @@ export default function ListeOperations({
                 volontaire : l&apos;exercice choisi ici fait foi pour le bilan, pas la date.
               </p>
             )}
+
+            <Field label="À vérifier (question ouverte — vider pour lever l'alerte)">
+              <input
+                type="text"
+                value={f.a_verifier}
+                onChange={(e) => set("a_verifier", e.target.value)}
+                placeholder="ex. frais de dossier ou vente ?"
+                className={inputCls}
+              />
+            </Field>
 
             {estDonAssociation && (
               <AffectationScolarite

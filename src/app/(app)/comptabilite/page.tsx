@@ -20,9 +20,13 @@ type OperationRow = {
   exercice_id: string | null;
   parent_id: string | null;
   est_ventilee: boolean;
+  a_verifier: string | null;
   categories: { nom: string } | null;
   comptes: { nom: string } | null;
 };
+
+const COLONNES =
+  "id, date_operation, libelle, libelle_origine, montant, type, mode_paiement, categorie_id, compte_id, exercice_id, parent_id, est_ventilee, a_verifier, categories(nom), comptes(nom)";
 
 export default async function ComptabilitePage({
   searchParams,
@@ -48,9 +52,7 @@ export default async function ComptabilitePage({
     exercice
       ? supabase
           .from("operations")
-          .select(
-            "id, date_operation, libelle, libelle_origine, montant, type, mode_paiement, categorie_id, compte_id, exercice_id, parent_id, est_ventilee, categories(nom), comptes(nom)",
-          )
+          .select(COLONNES)
           .eq("exercice_id", exercice.id)
           .order("date_operation", { ascending: false })
           .order("created_at", { ascending: false })
@@ -76,8 +78,6 @@ export default async function ComptabilitePage({
     .select("id, montant, date_don, operation_id")
     .is("supprime_le", null);
   const dons = donsData ?? [];
-  const COLONNES =
-    "id, date_operation, libelle, libelle_origine, montant, type, mode_paiement, categorie_id, compte_id, exercice_id, parent_id, est_ventilee, categories(nom), comptes(nom)";
 
   const operationsExercice = (opsRes.data ?? []) as unknown as OperationRow[];
 

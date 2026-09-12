@@ -24,7 +24,7 @@ export type EntreeJournal = {
 const CHAMPS = [
   "id", "date_operation", "libelle", "libelle_origine", "montant", "type",
   "categorie_id", "compte_id", "exercice_id", "mode_paiement", "reference",
-  "notes", "parent_id", "est_ventilee",
+  "notes", "parent_id", "est_ventilee", "a_verifier",
 ] as const;
 
 export type OperationJournalisable = Record<string, unknown> & { id: string };

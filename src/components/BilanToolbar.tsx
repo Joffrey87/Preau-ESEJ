@@ -4,24 +4,29 @@ import { useRouter } from "next/navigation";
 import type { Periode } from "@/lib/bilan";
 
 const ONGLETS: { key: Periode; label: string }[] = [
-  { key: "mois", label: "Mois" },
-  { key: "trimestre", label: "Trimestre" },
-  { key: "annee", label: "Année (exercice)" },
+  { key: "mois", label: "Mensuel" },
+  { key: "trimestre", label: "Trimestriel" },
+  { key: "annee", label: "Exercice" },
 ];
 
 export default function BilanToolbar({
   periode,
   refMois,
+  exercices,
+  exerciceId,
 }: {
   periode: Periode;
   refMois: string; // YYYY-MM
+  exercices: { id: string; libelle: string }[];
+  exerciceId: string | null;
 }) {
   const router = useRouter();
 
-  function maj(patch: { periode?: Periode; ref?: string }) {
+  function maj(patch: { periode?: Periode; ref?: string; exercice?: string }) {
     const sp = new URLSearchParams(window.location.search);
     if (patch.periode) sp.set("periode", patch.periode);
     if (patch.ref) sp.set("ref", patch.ref);
+    if (patch.exercice) sp.set("exercice", patch.exercice);
     router.push(`?${sp.toString()}`);
   }
 
@@ -42,15 +47,34 @@ export default function BilanToolbar({
         ))}
       </div>
 
-      <label className="flex items-center gap-2 text-sm text-muted">
-        Référence :
-        <input
-          type="month"
-          value={refMois}
-          onChange={(e) => e.target.value && maj({ ref: `${e.target.value}-01` })}
-          className="rounded-lg border border-border bg-background px-2 py-1.5 text-sm outline-none focus:border-accent"
-        />
-      </label>
+      {/* Le bilan d'exercice se choisit par exercice ; les autres par date de référence. */}
+      {periode === "annee" ? (
+        <label className="flex items-center gap-2 text-sm text-muted">
+          Exercice :
+          <select
+            value={exerciceId ?? ""}
+            onChange={(e) => e.target.value && maj({ exercice: e.target.value })}
+            className="rounded-lg border border-border bg-background px-2 py-1.5 text-sm outline-none focus:border-accent"
+          >
+            {exercices.length === 0 && <option value="">Aucun exercice</option>}
+            {exercices.map((e) => (
+              <option key={e.id} value={e.id}>
+                {e.libelle}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : (
+        <label className="flex items-center gap-2 text-sm text-muted">
+          {periode === "mois" ? "Mois" : "Trimestre de"} :
+          <input
+            type="month"
+            value={refMois}
+            onChange={(e) => e.target.value && maj({ ref: `${e.target.value}-01` })}
+            className="rounded-lg border border-border bg-background px-2 py-1.5 text-sm outline-none focus:border-accent"
+          />
+        </label>
+      )}
 
       <button
         type="button"

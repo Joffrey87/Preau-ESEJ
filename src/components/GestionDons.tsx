@@ -1,11 +1,14 @@
 "use client";
 
+import { CATEGORIES_DONATEUR } from "@/lib/categoriesDonateur";
+
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { formatEuros, formatDate, todayISO } from "@/lib/format";
-import { genererRecuDocx } from "@/lib/recu";
+import { genererRecuPdf } from "@/lib/recu";
 import { Modal, Field, FormFooter, inputCls } from "./GestionComptes";
+import ChoixDonateur, { type IdentiteSaisie } from "@/components/ChoixDonateur";
 import { useCoffre } from "@/components/CoffreProvider";
 import DeverrouillerCoffre from "@/components/DeverrouillerCoffre";
 import { useDonsDechiffres, piiDepuis } from "@/lib/donsChiffre";
@@ -44,13 +47,7 @@ export type Don = {
   supprime_par: string | null;
 };
 
-const CATEGORIES = [
-  "Particulier",
-  "Association",
-  "Entreprise",
-  "Professionnel",
-  "Communauté religieuse",
-];
+const CATEGORIES = CATEGORIES_DONATEUR;
 const MODES = ["Virement", "Chèque", "Carte bancaire", "Espèces", "Nature", "Autre"];
 
 // Colonnes affichables du tableau (le n° de reçu est masqué par défaut).
@@ -73,6 +70,17 @@ const anneeScolaireISO = (iso: string) => {
   return m >= 9 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
 };
 const anneeScolaireCourante = () => anneeScolaireISO(new Date().toISOString().slice(0, 10));
+const anneeCivileCourante = () => String(new Date().getFullYear());
+
+// Filtre de période : « toutes », un exercice (« exo:2026-2027 ») ou une année
+// civile (« civ:2026 » — celle des reçus fiscaux).
+type FiltreAnnee = "toutes" | `exo:${string}` | `civ:${string}`;
+const periodeDuDon = (d: Don, f: FiltreAnnee): boolean => {
+  if (f === "toutes") return true;
+  if (!d.date_don) return false;
+  return f.startsWith("civ:") ? d.date_don.slice(0, 4) === f.slice(4) : anneeScolaireISO(d.date_don) === f.slice(4);
+};
+const FILTRE_ANNEE_DEFAUT: FiltreAnnee = `exo:${anneeScolaireCourante()}`;
 
 type FormState = {
   origine: string;
@@ -114,7 +122,16 @@ function vide(): FormState {
   };
 }
 
-export default function GestionDons({ dons: donsInit, roleSlug = null }: { dons: Don[]; roleSlug?: string | null }) {
+export default function GestionDons({
+  dons: donsInit,
+  roleSlug = null,
+  relations = [],
+}: {
+  dons: Don[];
+  roleSlug?: string | null;
+  /** Relations déjà employées, proposées en suggestion pour éviter les doublons. */
+  relations?: string[];
+}) {
   const router = useRouter();
   const coffre = useCoffre();
   // Dons hydratés : PII déchiffré si le coffre est ouvert, 🔒 sinon.
@@ -134,7 +151,7 @@ export default function GestionDons({ dons: donsInit, roleSlug = null }: { dons:
   const [filtre, setFiltre] = useState<StatutKey | null>(null);
   const [signaler, setSignaler] = useState(false);
   const [recherche, setRecherche] = useState("");
-  const [anneeFiltre, setAnneeFiltre] = useState(anneeScolaireCourante());
+  const [anneeFiltre, setAnneeFiltre] = useState<FiltreAnnee>(FILTRE_ANNEE_DEFAUT);
   const [catFiltre, setCatFiltre] = useState("toutes");
   const [compact, setCompact] = useState(true);
   const [cols, setCols] = useState<Record<ColKey, boolean>>(COLS_DEFAUT);
@@ -177,9 +194,11 @@ export default function GestionDons({ dons: donsInit, roleSlug = null }: { dons:
       for (const ch of chips) c.set(ch.key, (c.get(ch.key) ?? 0) + 1);
     return c;
   }, [chipsParDon]);
-  const annees = useMemo(() => {
-    const s = new Set<string>([anneeScolaireCourante()]);
+  // Exercices antérieurs à l'exercice en cours, proposés dans « Autres ».
+  const exercicesAnterieurs = useMemo(() => {
+    const s = new Set<string>();
     for (const d of dons) if (d.date_don) s.add(anneeScolaireISO(d.date_don));
+    s.delete(anneeScolaireCourante());
     return [...s].sort().reverse();
   }, [dons]);
   const categoriesPresentes = useMemo(() => {
@@ -202,7 +221,7 @@ export default function GestionDons({ dons: donsInit, roleSlug = null }: { dons:
     }
     return dons.filter((d) => {
       if (filtre && !(chipsParDon.get(d.id) ?? []).some((c) => c.key === filtre)) return false;
-      if (anneeFiltre !== "toutes" && (!d.date_don || anneeScolaireISO(d.date_don) !== anneeFiltre)) return false;
+      if (!periodeDuDon(d, anneeFiltre)) return false;
       if (catFiltre !== "toutes" && (d.categorie_donateur ?? "") !== catFiltre) return false;
       if (q) {
         const nom = d.est_personne_morale
@@ -250,10 +269,10 @@ export default function GestionDons({ dons: donsInit, roleSlug = null }: { dons:
   }
 
   const filtresActifs =
-    filtre || anneeFiltre !== anneeScolaireCourante() || catFiltre !== "toutes" || recherche.trim() !== "";
+    filtre || anneeFiltre !== FILTRE_ANNEE_DEFAUT || catFiltre !== "toutes" || recherche.trim() !== "";
   function reinitialiser() {
     setFiltre(null);
-    setAnneeFiltre(anneeScolaireCourante());
+    setAnneeFiltre(FILTRE_ANNEE_DEFAUT);
     setCatFiltre("toutes");
     setRecherche("");
   }
@@ -273,7 +292,7 @@ export default function GestionDons({ dons: donsInit, roleSlug = null }: { dons:
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `dons${anneeFiltre !== "toutes" ? "-" + anneeFiltre : ""}.csv`;
+    a.download = `dons${anneeFiltre !== "toutes" ? "-" + anneeFiltre.slice(4) : ""}.csv`;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -447,7 +466,7 @@ export default function GestionDons({ dons: donsInit, roleSlug = null }: { dons:
       return;
     }
     try {
-      await genererRecuDocx({ ...d, donateur_nom: d.donateur_nom ?? "" });
+      await genererRecuPdf({ ...d, donateur_nom: d.donateur_nom ?? "" });
     } catch (e) {
       setGenErreur(e instanceof Error ? e.message : "Génération impossible.");
     }
@@ -577,9 +596,33 @@ export default function GestionDons({ dons: donsInit, roleSlug = null }: { dons:
       <div className="mb-2 flex flex-wrap items-center gap-1.5">
         <span className="mr-1 text-xs font-medium uppercase tracking-wide text-muted">Année</span>
         <FiltreBtn actif={anneeFiltre === "toutes"} onClick={() => setAnneeFiltre("toutes")}>Toutes</FiltreBtn>
-        {annees.map((a) => (
-          <FiltreBtn key={a} actif={anneeFiltre === a} onClick={() => setAnneeFiltre(a)}>{a}</FiltreBtn>
-        ))}
+        <FiltreBtn actif={anneeFiltre === FILTRE_ANNEE_DEFAUT} onClick={() => setAnneeFiltre(FILTRE_ANNEE_DEFAUT)}>
+          Exercice {anneeScolaireCourante()}
+        </FiltreBtn>
+        <FiltreBtn
+          actif={anneeFiltre === `civ:${anneeCivileCourante()}`}
+          onClick={() => setAnneeFiltre(`civ:${anneeCivileCourante()}`)}
+        >
+          Année {anneeCivileCourante()}
+        </FiltreBtn>
+        {exercicesAnterieurs.length > 0 && (
+          <select
+            value={anneeFiltre.startsWith("exo:") && anneeFiltre !== FILTRE_ANNEE_DEFAUT ? anneeFiltre : ""}
+            onChange={(e) => e.target.value && setAnneeFiltre(e.target.value as FiltreAnnee)}
+            className={`rounded-full border px-3 py-1 text-xs font-medium ${
+              anneeFiltre.startsWith("exo:") && anneeFiltre !== FILTRE_ANNEE_DEFAUT
+                ? "border-accent bg-accent-soft text-accent"
+                : "border-border bg-surface text-muted hover:bg-surface-2"
+            }`}
+          >
+            <option value="">Autres…</option>
+            {exercicesAnterieurs.map((a) => (
+              <option key={a} value={`exo:${a}`}>
+                Exercice {a}
+              </option>
+            ))}
+          </select>
+        )}
       </div>
       <div className="mb-4 flex flex-wrap items-center gap-1.5">
         <span className="mr-1 text-xs font-medium uppercase tracking-wide text-muted">Catégorie</span>
@@ -793,6 +836,24 @@ export default function GestionDons({ dons: donsInit, roleSlug = null }: { dons:
                 Complétez les informations importantes surlignées. Elles seront aussi reportées sur les autres dons de ce donateur.
               </div>
             )}
+            <ChoixDonateur
+              dons={dons}
+              valeurCourante={{
+                est_personne_morale: f.est_personne_morale,
+                donateur_titre: f.donateur_titre,
+                donateur_nom: f.donateur_nom,
+                donateur_prenom: f.donateur_prenom,
+                raison_sociale: f.raison_sociale,
+                adresse: f.adresse,
+                cp_ville: f.cp_ville,
+                courriel: f.courriel,
+                categorie_donateur: f.categorie_donateur,
+              }}
+              onChoisir={(i: IdentiteSaisie) => setF((p) => ({ ...p, ...i }))}
+              chiffrer={coffre.chiffrer}
+              coffreOuvert={coffre.estOuvert}
+            />
+
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
@@ -889,9 +950,25 @@ export default function GestionDons({ dons: donsInit, roleSlug = null }: { dons:
               </Field>
             </div>
 
-            <Field label="Origine (qui a amené le don)">
-              <input type="text" value={f.origine} onChange={(e) => set("origine", e.target.value)} className={inputCls} />
+            <Field label="Relation (qui a amené ce don)">
+              <input
+                type="text"
+                list="relations-connues"
+                value={f.origine}
+                onChange={(e) => set("origine", e.target.value)}
+                className={inputCls}
+                placeholder="Chanoine Journé, Paroisse, CA…"
+              />
+              <datalist id="relations-connues">
+                {relations.map((r) => (
+                  <option key={r} value={r} />
+                ))}
+              </datalist>
             </Field>
+            <p className="-mt-2 text-xs text-muted">
+              Choisissez une relation existante plutôt que d&apos;en ressaisir une : cela évite les
+              doublons d&apos;orthographe.
+            </p>
 
             <div className="grid grid-cols-2 gap-3">
               <Field label="N° de reçu">

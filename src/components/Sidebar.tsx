@@ -27,7 +27,7 @@ export default function Sidebar({ userEmail, userName }: { userEmail?: string; u
         className="flex items-center gap-2.5 border-b border-border px-4 py-3 transition-colors hover:bg-surface-2"
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/logo.png" alt="Préau" className="h-9 w-9 shrink-0 rounded-full object-contain" />
+        <img src="/logo.webp" alt="Préau" className="h-9 w-9 shrink-0 rounded-full object-contain" />
         <div className="leading-tight">
           <div className="text-sm font-semibold">Préau</div>
           <div className="text-[10px] text-muted">ARIL · Saint-Enfant-Jésus</div>

@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { CATEGORIES_DONATEUR } from "@/lib/categoriesDonateur";
 import { Modal, Field, FormFooter, inputCls } from "./GestionComptes";
 import { useCoffre } from "@/components/CoffreProvider";
 import { useDonsDechiffres } from "@/lib/donsChiffre";
@@ -17,8 +18,16 @@ import {
   type OpDon,
 } from "@/lib/reconciliation";
 import type { Don } from "@/components/GestionDons";
+import ChoixDonateur, { type IdentiteSaisie } from "@/components/ChoixDonateur";
 
-const CATEGORIES = ["Particulier", "Association", "Entreprise", "Professionnel", "Communauté religieuse"];
+
+export type Exercice = {
+  id: string;
+  libelle: string;
+  date_debut: string;
+  date_fin: string;
+  actif: boolean;
+};
 
 type FormState = {
   est_personne_morale: boolean;
@@ -30,6 +39,7 @@ type FormState = {
   cp_ville: string;
   courriel: string;
   categorie_donateur: string;
+  origine: string;
 };
 
 function formDepuis(nomExtrait: string): FormState {
@@ -43,6 +53,7 @@ function formDepuis(nomExtrait: string): FormState {
     cp_ville: "",
     courriel: "",
     categorie_donateur: "Particulier",
+    origine: "",
   };
 }
 
@@ -57,42 +68,89 @@ function formDepuisDon(d: Don): FormState {
     cp_ville: d.cp_ville ?? "",
     courriel: d.courriel ?? "",
     categorie_donateur: d.categorie_donateur ?? "Particulier",
+    origine: d.origine ?? "",
   };
+}
+
+/** Libellé court d'une fiche, pour la colonne « Donateur ». */
+function resume(f: FormState): string {
+  if (f.est_personne_morale) return f.raison_sociale.trim();
+  return [f.donateur_prenom.trim(), f.donateur_nom.trim()].filter(Boolean).join(" ");
+}
+
+/** Une fiche est-elle exploitable pour un import ? */
+function ficheValide(f: FormState): boolean {
+  return (f.est_personne_morale ? f.raison_sociale : f.donateur_nom).trim().length > 0;
 }
 
 export default function ReconciliationCompta({
   operations,
   dons: donsInit,
+  exercices,
   roleSlug = null,
 }: {
   operations: OpDon[];
   dons: Don[];
+  exercices: Exercice[];
   roleSlug?: string | null;
 }) {
   const router = useRouter();
   const coffre = useCoffre();
   const { dons, verrou } = useDonsDechiffres(donsInit);
 
+  const [fiches, setFiches] = useState<Record<string, FormState>>({});
+  const [choisies, setChoisies] = useState<Record<string, boolean>>({});
+  const [exerciceCible, setExerciceCible] = useState<string>("auto");
+  const [filtreExercice, setFiltreExercice] = useState<string>("tous");
   const [edit, setEdit] = useState<OpDon | null>(null);
   const [f, setF] = useState<FormState>(formDepuis(""));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [bilan, setBilan] = useState<string | null>(null);
 
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) => setF((p) => ({ ...p, [k]: v }));
 
   const identites = useMemo(() => identitesDonateurs(dons), [dons]);
 
+  // Relations déjà employées, proposées en suggestion.
+  const relations = useMemo(
+    () =>
+      Array.from(new Set(dons.map((d) => (d.origine ?? "").trim()).filter(Boolean))).sort((a, b) =>
+        a.localeCompare(b, "fr"),
+      ),
+    [dons],
+  );
+
   // Analyse de chaque opération : dons déjà enregistrés (montant+date) + nom deviné.
   const analyse = useMemo(
     () =>
-      operations.map((op) => {
-        const probables = donsProbables(op, dons);
-        const nomExtrait = extraireNom(op.libelle_origine);
-        const ressemblants = donateursRessemblants(nomExtrait, identites).slice(0, 4);
-        return { op, probables, nomExtrait, ressemblants };
-      }),
-    [operations, dons, identites],
+      operations
+        .filter((op) => filtreExercice === "tous" || op.exercice_id === filtreExercice)
+        .map((op) => {
+          const probables = donsProbables(op, dons);
+          const nomExtrait = extraireNom(op.libelle_origine);
+          const ressemblants = donateursRessemblants(nomExtrait, identites).slice(0, 4);
+          return { op, probables, nomExtrait, ressemblants };
+        }),
+    [operations, dons, identites, filtreExercice],
   );
+
+  // Les deux états ne contiennent que les MODIFICATIONS de l'utilisateur ; la
+  // valeur par défaut est dérivée de l'analyse à chaque rendu.
+  const ficheDe = (opId: string, nomExtrait: string): FormState =>
+    fiches[opId] ?? formDepuis(nomExtrait);
+  const estChoisie = (opId: string, nouvelle: boolean): boolean => choisies[opId] ?? nouvelle;
+
+  /** Exercice couvrant une date, ou null. */
+  const exercicePourDate = useMemo(() => {
+    const tries = [...exercices].sort((a, b) => a.date_debut.localeCompare(b.date_debut));
+    return (d: string) => tries.find((e) => d >= e.date_debut && d <= e.date_fin) ?? null;
+  }, [exercices]);
+
+  const exerciceDe = (op: OpDon): Exercice | null =>
+    exerciceCible === "auto"
+      ? exercicePourDate(op.date_operation)
+      : (exercices.find((e) => e.id === exerciceCible) ?? null);
 
   // Coffre requis ouvert (on crée des dons chiffrés — décision « on fait propre »).
   if (coffre.estConfigure && !coffre.estOuvert) {
@@ -108,12 +166,16 @@ export default function ReconciliationCompta({
 
   function ouvrir(op: OpDon, nomExtrait: string, base?: Don) {
     setError(null);
-    setF(base ? formDepuisDon(base) : formDepuis(nomExtrait));
+    setF(base ? formDepuisDon(base) : ficheDe(op.id, nomExtrait));
     setEdit(op);
   }
 
   async function lier(op: OpDon, don: Don) {
-    const { error: err } = await createClient().from("dons").update({ operation_id: op.id }).eq("id", don.id);
+    const maj: { operation_id: string; exercice_id?: string } = { operation_id: op.id };
+    const ex = exerciceDe(op);
+    if (ex && !don.exercice_id) maj.exercice_id = ex.id;
+
+    const { error: err } = await createClient().from("dons").update(maj).eq("id", don.id);
     if (err) {
       setError("Liaison impossible : " + err.message);
       return;
@@ -121,62 +183,85 @@ export default function ReconciliationCompta({
     router.refresh();
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  /** Enregistre la fiche éditée (sans importer : l'import se fait par lot). */
+  function validerFiche(e: React.FormEvent) {
     e.preventDefault();
     if (!edit) return;
     setError(null);
-    if (f.est_personne_morale ? !f.raison_sociale.trim() : !f.donateur_nom.trim()) {
+    if (!ficheValide(f)) {
       setError(f.est_personne_morale ? "La raison sociale est obligatoire." : "Le nom est obligatoire.");
       return;
     }
-    if (!coffre.estOuvert) {
-      setError("Coffre verrouillé.");
-      return;
+    setFiches((p) => ({ ...p, [edit.id]: f }));
+    setChoisies((p) => ({ ...p, [edit.id]: true }));
+    setEdit(null);
+  }
+
+  const selection = analyse.filter((a) => estChoisie(a.op.id, a.probables.length === 0));
+  const montantSelection = selection.reduce((s, a) => s + Number(a.op.montant), 0);
+  const incompletes = selection.filter((a) => !ficheValide(ficheDe(a.op.id, a.nomExtrait)));
+  const sansExercice = selection.filter((a) => !exerciceDe(a.op));
+
+  async function importerLot() {
+    if (!coffre.estOuvert) return setError("Coffre verrouillé.");
+    if (selection.length === 0) return;
+    if (incompletes.length > 0) {
+      return setError(
+        `${incompletes.length} ligne(s) sélectionnée(s) sans nom de donateur. Complétez-les ou décochez-les.`,
+      );
     }
+    if (sansExercice.length > 0) {
+      return setError(
+        `${sansExercice.length} ligne(s) ne tombent dans aucun exercice enregistré. Choisissez un exercice cible explicite.`,
+      );
+    }
+
+    setError(null);
+    setBilan(null);
     setSaving(true);
-    const supabase = createClient();
 
-    const base = {
-      origine: null as string | null,
-      categorie_donateur: f.categorie_donateur || null,
-      est_personne_morale: f.est_personne_morale,
-      montant: Number(edit.montant),
-      date_don: edit.date_operation,
-      mode_paiement: edit.mode_paiement,
-      recu_numero: null,
-      recu_etat: null,
-      observations: "Importé depuis la comptabilité",
-      operation_id: edit.id,
-    };
-    const pii = {
-      titre: f.donateur_titre.trim() || null,
-      nom: f.est_personne_morale ? f.raison_sociale.trim() : f.donateur_nom.trim(),
-      prenom: f.donateur_prenom.trim() || null,
-      raison: f.est_personne_morale ? f.raison_sociale.trim() : null,
-      adresse: f.adresse.trim() || null,
-      cp_ville: f.cp_ville.trim() || null,
-      courriel: f.courriel.trim() || null,
-    };
-    const payload = {
-      ...base,
-      pii_chiffre: await coffre.chiffrer(JSON.stringify(pii)),
-      donateur_titre: null,
-      donateur_nom: null,
-      donateur_prenom: null,
-      raison_sociale: null,
-      adresse: null,
-      cp_ville: null,
-      courriel: null,
-    };
+    const payloads = [];
+    for (const { op, nomExtrait } of selection) {
+      const fi = ficheDe(op.id, nomExtrait);
+      const pii = {
+        titre: fi.donateur_titre.trim() || null,
+        nom: fi.est_personne_morale ? fi.raison_sociale.trim() : fi.donateur_nom.trim(),
+        prenom: fi.donateur_prenom.trim() || null,
+        raison: fi.est_personne_morale ? fi.raison_sociale.trim() : null,
+        adresse: fi.adresse.trim() || null,
+        cp_ville: fi.cp_ville.trim() || null,
+        courriel: fi.courriel.trim() || null,
+      };
+      payloads.push({
+        exercice_id: exerciceDe(op)!.id,
+        origine: fi.origine.trim() || null,
+        categorie_donateur: fi.categorie_donateur || null,
+        est_personne_morale: fi.est_personne_morale,
+        montant: Number(op.montant),
+        date_don: op.date_operation,
+        mode_paiement: op.mode_paiement,
+        recu_numero: null,
+        recu_etat: null,
+        observations: "Importé depuis la comptabilité",
+        operation_id: op.id,
+        pii_chiffre: await coffre.chiffrer(JSON.stringify(pii)),
+        donateur_titre: null,
+        donateur_nom: null,
+        donateur_prenom: null,
+        raison_sociale: null,
+        adresse: null,
+        cp_ville: null,
+        courriel: null,
+      });
+    }
 
-    const { error: err } = await supabase.from("dons").insert(payload);
+    const { error: err } = await createClient().from("dons").insert(payloads);
+    setSaving(false);
     if (err) {
       setError("Import impossible : " + err.message);
-      setSaving(false);
       return;
     }
-    setSaving(false);
-    setEdit(null);
+    setBilan(`${payloads.length} don(s) importé(s) pour ${formatEuros(montantSelection)}.`);
     router.refresh();
   }
 
@@ -188,7 +273,9 @@ export default function ReconciliationCompta({
     );
   }
 
-  const aImporter = analyse.filter((a) => a.probables.length === 0).length;
+  const avecDoublonPossible = analyse.filter((a) => a.probables.length > 0);
+  const toutesCochees =
+    analyse.length > 0 && analyse.every((a) => estChoisie(a.op.id, a.probables.length === 0));
 
   return (
     <>
@@ -198,99 +285,194 @@ export default function ReconciliationCompta({
         </div>
       )}
 
-      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3">
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Tuile label="Opérations à traiter" valeur={String(operations.length)} />
-        <Tuile label="À importer (nouvelles)" valeur={String(aImporter)} accent="gold" />
-        <Tuile label="Déjà enregistrées (à lier)" valeur={String(operations.length - aImporter)} accent="positive" />
+        <Tuile label="À saisir" valeur={String(analyse.length)} accent="gold" />
+        <Tuile label="Doublon possible" valeur={String(avecDoublonPossible.length)} accent="positive" />
+        <Tuile label="Sélection" valeur={`${selection.length} · ${formatEuros(montantSelection)}`} accent="gold" />
+      </div>
+
+      {/* Barre d'import : exercice cible + action de lot */}
+      <div className="mb-4 flex flex-wrap items-end gap-3 rounded-xl border border-border bg-surface p-4">
+        <div className="min-w-[15rem]">
+          <label className="mb-1 block text-xs font-medium text-muted">Exercice d&apos;affectation</label>
+          <select value={exerciceCible} onChange={(e) => setExerciceCible(e.target.value)} className={inputCls}>
+            <option value="auto">Automatique (d&apos;après la date du don)</option>
+            {[...exercices]
+              .sort((a, b) => b.date_debut.localeCompare(a.date_debut))
+              .map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.libelle}
+                  {e.actif ? " — en cours" : ""}
+                </option>
+              ))}
+          </select>
+        </div>
+        <div className="min-w-[12rem]">
+          <label className="mb-1 block text-xs font-medium text-muted">Filtrer par exercice</label>
+          <select value={filtreExercice} onChange={(e) => setFiltreExercice(e.target.value)} className={inputCls}>
+            <option value="tous">Tous les exercices</option>
+            {[...exercices]
+              .sort((a, b) => b.date_debut.localeCompare(a.date_debut))
+              .map((e) => (
+                <option key={e.id} value={e.id}>{e.libelle}</option>
+              ))}
+          </select>
+        </div>
+        <button
+          type="button"
+          onClick={importerLot}
+          disabled={saving || selection.length === 0}
+          className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-fg hover:opacity-90 disabled:opacity-50"
+        >
+          {saving ? "Import en cours…" : `Importer ${selection.length} don${selection.length > 1 ? "s" : ""}`}
+        </button>
+        {bilan && <p className="text-sm text-positive">{bilan}</p>}
+        {error && <p className="text-sm text-negative">{error}</p>}
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-border bg-surface">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border text-left text-muted">
+              <th className="px-3 py-3">
+                <input
+                  type="checkbox"
+                  checked={toutesCochees}
+                  onChange={(e) => {
+                    const v = e.target.checked;
+                    setChoisies((p) => {
+                      const n = { ...p };
+                      for (const a of analyse) n[a.op.id] = v;
+                      return n;
+                    });
+                  }}
+                  title="Tout cocher / décocher"
+                />
+              </th>
               <th className="px-4 py-3 font-medium">Date</th>
               <th className="px-4 py-3 text-right font-medium">Montant</th>
               <th className="px-4 py-3 font-medium">Libellé bancaire</th>
-              <th className="px-4 py-3 font-medium">Donateur deviné</th>
+              <th className="px-4 py-3 font-medium">Donateur</th>
+              <th className="px-4 py-3 font-medium">Exercice</th>
               <th className="px-4 py-3 font-medium">Statut</th>
               <th className="px-4 py-3 text-right font-medium">Action</th>
             </tr>
           </thead>
           <tbody>
-            {analyse.map(({ op, probables, nomExtrait, ressemblants }) => (
-              <tr key={op.id} className="border-b border-border align-top last:border-0">
-                <td className="px-4 py-3 whitespace-nowrap tabular-nums">{formatDate(op.date_operation)}</td>
-                <td className="px-4 py-3 text-right tabular-nums font-medium">{formatEuros(Number(op.montant))}</td>
-                <td className="px-4 py-3 max-w-[16rem] text-xs text-muted">{op.libelle_origine ?? op.libelle}</td>
-                <td className="px-4 py-3">
-                  {nomExtrait ? <span className="font-medium">{nomExtrait}</span> : <span className="text-muted">—</span>}
-                  {ressemblants.length > 0 && (
-                    <div className="mt-0.5 text-xs text-muted">
-                      Ressemble à : {ressemblants.map((r) => r.nom).join(", ")}
-                    </div>
-                  )}
-                </td>
-                <td className="px-4 py-3">
-                  {probables.length > 0 ? (
-                    <span className="inline-flex items-center rounded-full bg-positive/15 px-2 py-0.5 text-xs font-medium text-positive">
-                      Déjà enregistré{probables.length > 1 ? ` (${probables.length})` : ""}
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center rounded-full bg-gold-soft px-2 py-0.5 text-xs font-medium text-gold">
-                      Nouveau don
-                    </span>
-                  )}
-                </td>
-                <td className="px-4 py-3 text-right whitespace-nowrap">
-                  {probables.length === 1 ? (
-                    <button type="button" onClick={() => lier(op, probables[0])} className="text-accent hover:underline" title={`Lier à « ${nomDonateur(probables[0])} »`}>
-                      Lier
-                    </button>
-                  ) : probables.length > 1 ? (
-                    <select
-                      defaultValue=""
-                      onChange={(e) => {
-                        const d = probables.find((x) => x.id === e.target.value);
-                        if (d) lier(op, d);
-                      }}
-                      className="rounded-lg border border-border bg-surface px-2 py-1 text-xs outline-none"
+            {analyse.map(({ op, probables, nomExtrait, ressemblants }) => {
+              const fi = ficheDe(op.id, nomExtrait);
+              const nouvelle = probables.length === 0;
+              const ex = exerciceDe(op);
+              const nom = resume(fi);
+              return (
+                <tr key={op.id} className="border-b border-border align-top last:border-0">
+                  <td className="px-3 py-3">
+                    <input
+                      type="checkbox"
+                      checked={estChoisie(op.id, nouvelle)}
+                      onChange={(e) => setChoisies((p) => ({ ...p, [op.id]: e.target.checked }))}
+                      title={nouvelle ? undefined : "Un doublon est possible : vérifiez avant d'importer."}
+                    />
+                  </td>
+                  <td className="px-4 py-3 whitespace-nowrap tabular-nums">{formatDate(op.date_operation)}</td>
+                  <td className="px-4 py-3 text-right tabular-nums font-medium">{formatEuros(Number(op.montant))}</td>
+                  <td className="px-4 py-3 max-w-[14rem] text-xs text-muted">{op.libelle_origine ?? op.libelle}</td>
+                  <td className="px-4 py-3">
+                    {nom ? (
+                      <span className="font-medium">{nom}</span>
+                    ) : (
+                      <span className="text-negative">à renseigner</span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => ouvrir(op, nomExtrait)}
+                      className="ml-2 text-xs text-accent hover:underline"
                     >
-                      <option value="" disabled>
-                        Lier à…
-                      </option>
-                      {probables.map((d) => (
-                        <option key={d.id} value={d.id}>
-                          {nomDonateur(d)} — {formatDate(d.date_don)}
-                        </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <div className="flex flex-col items-end gap-1">
-                      <button type="button" onClick={() => ouvrir(op, nomExtrait)} className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-accent-fg hover:opacity-90">
-                        Ajouter aux dons
+                      modifier
+                    </button>
+                    {ressemblants.length > 0 && (
+                      <div className="mt-0.5 text-xs text-muted">
+                        Ressemble à : {ressemblants.map((r) => r.nom).join(", ")}
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-xs whitespace-nowrap">
+                    {ex ? ex.libelle.replace("Exercice ", "") : <span className="text-negative">aucun</span>}
+                  </td>
+                  <td className="px-4 py-3">
+                    {nouvelle ? (
+                      <span className="inline-flex items-center rounded-full bg-gold-soft px-2 py-0.5 text-xs font-medium text-gold">
+                        À saisir
+                      </span>
+                    ) : (
+                      <span
+                        className="inline-flex items-center rounded-full bg-positive/15 px-2 py-0.5 text-xs font-medium text-positive"
+                        title="Un don de même montant et de date voisine existe déjà : reliez-le plutôt que de le ressaisir."
+                      >
+                        Doublon possible{probables.length > 1 ? ` (${probables.length})` : ""}
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-right whitespace-nowrap">
+                    {probables.length === 1 ? (
+                      <button type="button" onClick={() => lier(op, probables[0])} className="text-accent hover:underline" title={`Lier à « ${nomDonateur(probables[0])} »`}>
+                        Lier
                       </button>
-                      {ressemblants.length > 0 && (
-                        <button type="button" onClick={() => ouvrir(op, nomExtrait, ressemblants[0].exemple)} className="text-xs text-accent hover:underline">
-                          … avec « {ressemblants[0].nom} »
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </td>
-              </tr>
-            ))}
+                    ) : probables.length > 1 ? (
+                      <select
+                        defaultValue=""
+                        onChange={(e) => {
+                          const d = probables.find((x) => x.id === e.target.value);
+                          if (d) lier(op, d);
+                        }}
+                        className="rounded-lg border border-border bg-surface px-2 py-1 text-xs outline-none"
+                      >
+                        <option value="" disabled>
+                          Lier à…
+                        </option>
+                        {probables.map((d) => (
+                          <option key={d.id} value={d.id}>
+                            {nomDonateur(d)} — {formatDate(d.date_don)}
+                          </option>
+                        ))}
+                      </select>
+                    ) : ressemblants.length > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => ouvrir(op, nomExtrait, ressemblants[0].exemple)}
+                        className="text-xs text-accent hover:underline"
+                        title="Pré-remplir avec la fiche de ce donateur connu"
+                      >
+                        reprendre « {ressemblants[0].nom} »
+                      </button>
+                    ) : (
+                      <span className="text-xs text-muted">—</span>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
 
       {edit && (
-        <Modal title="Ajouter ce don" onClose={() => setEdit(null)}>
-          <form onSubmit={handleSubmit} className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
+        <Modal title="Fiche du donateur" onClose={() => setEdit(null)}>
+          <form onSubmit={validerFiche} className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
             <div className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm">
               <span className="text-muted">Opération : </span>
               <strong>{formatEuros(Number(edit.montant))}</strong> le {formatDate(edit.date_operation)}
               {edit.mode_paiement ? ` · ${edit.mode_paiement}` : ""} — <span className="text-xs text-muted">{edit.libelle_origine ?? edit.libelle}</span>
             </div>
+
+            <ChoixDonateur
+              dons={dons}
+              valeurCourante={f}
+              onChoisir={(i: IdentiteSaisie) => setF((p) => ({ ...p, ...i }))}
+              chiffrer={coffre.chiffrer}
+              coffreOuvert={coffre.estOuvert}
+            />
 
             <div className="grid grid-cols-2 gap-2">
               <button type="button" onClick={() => set("est_personne_morale", false)} className={`rounded-lg border px-3 py-2 text-sm font-medium ${!f.est_personne_morale ? "border-accent bg-accent-soft text-accent" : "border-border text-muted"}`}>
@@ -345,13 +527,29 @@ export default function ReconciliationCompta({
             </div>
             <Field label="Catégorie donateur">
               <select value={f.categorie_donateur} onChange={(e) => set("categorie_donateur", e.target.value)} className={inputCls}>
-                {CATEGORIES.map((c) => (
+                {CATEGORIES_DONATEUR.map((c) => (
                   <option key={c} value={c}>{c}</option>
                 ))}
               </select>
             </Field>
 
-            <FormFooter saving={saving} error={error} onCancel={() => setEdit(null)} />
+            <Field label="Relation (qui a amené ce don)">
+              <input
+                type="text"
+                list="relations-import"
+                value={f.origine}
+                onChange={(e) => set("origine", e.target.value)}
+                className={inputCls}
+                placeholder="Chanoine Journé, Paroisse, CA…"
+              />
+              <datalist id="relations-import">
+                {relations.map((r) => (
+                  <option key={r} value={r} />
+                ))}
+              </datalist>
+            </Field>
+
+            <FormFooter saving={false} error={error} onCancel={() => setEdit(null)} />
           </form>
         </Modal>
       )}

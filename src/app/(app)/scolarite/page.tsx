@@ -1,5 +1,8 @@
 import PageHeader from "@/components/PageHeader";
-import GestionScolarite, { type Inscription } from "@/components/GestionScolarite";
+import GestionScolarite, {
+  type Inscription,
+  type AffectationRecue,
+} from "@/components/GestionScolarite";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function ScolaritePage({
@@ -36,6 +39,48 @@ export default async function ScolaritePage({
       .eq("annee_scolaire", annee),
   ]);
 
+  // Dons d'association fléchés vers les familles de cette année scolaire.
+  // Deux requêtes plutôt qu'une jointure : PostgREST ne connaît une relation
+  // qu'après rechargement de son cache de schéma, ce qui rend l'imbrication
+  // fragile juste après une migration.
+  const idsInscriptions = (inscriptionsRes.data ?? []).map((i) => (i as Inscription).id);
+  let affectations: AffectationRecue[] = [];
+  if (idsInscriptions.length > 0) {
+    const { data: affData, error: affErr } = await supabase
+      .from("affectations_scolarite")
+      .select("inscription_id, operation_id, montant")
+      .in("inscription_id", idsInscriptions);
+
+    if (affErr) {
+      console.error("Lecture des affectations impossible :", affErr.message);
+    }
+
+    const brutes = (affData ?? []) as {
+      inscription_id: string;
+      operation_id: string;
+      montant: number;
+    }[];
+
+    // Libellé et date de l'opération d'origine, pour l'infobulle.
+    const parOperation = new Map<string, { libelle: string; date_operation: string }>();
+    if (brutes.length > 0) {
+      const { data: opsData } = await supabase
+        .from("operations")
+        .select("id, libelle, date_operation")
+        .in("id", [...new Set(brutes.map((a) => a.operation_id))]);
+      for (const o of (opsData ?? []) as { id: string; libelle: string; date_operation: string }[]) {
+        parOperation.set(o.id, { libelle: o.libelle, date_operation: o.date_operation });
+      }
+    }
+
+    affectations = brutes.map((a) => ({
+      inscription_id: a.inscription_id,
+      montant: Number(a.montant),
+      libelle: parOperation.get(a.operation_id)?.libelle ?? "Don d'association",
+      date_operation: parOperation.get(a.operation_id)?.date_operation ?? "",
+    }));
+  }
+
   const bareme: Record<number, number> = {};
   for (const b of baremeRes.data ?? []) bareme[b.nb_enfants] = Number(b.montant_mensuel);
 
@@ -55,6 +100,7 @@ export default async function ScolaritePage({
           annees={annees}
           inscriptions={(inscriptionsRes.data ?? []) as Inscription[]}
           bareme={bareme}
+          affectations={affectations}
         />
       )}
     </div>

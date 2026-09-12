@@ -11,7 +11,12 @@ import {
 } from "@/lib/bilan";
 import { toutesLesOperations } from "@/lib/operations";
 
-type Op = { date_operation: string; montant: number; type: "recette" | "depense"; categorie_id: string | null };
+type Op = {
+  date_operation: string; montant: number; type: "recette" | "depense";
+  id: string; categorie_id: string | null; exercice_id: string | null;
+  parent_id: string | null; est_ventilee: boolean;
+};
+type Exo = { id: string; libelle: string; date_debut: string; date_fin: string; actif: boolean };
 type Cat = { id: string; nom: string; type: "recette" | "depense" };
 type Bl = { categorie_id: string; montant_prevu: number };
 type Sco = {
@@ -37,32 +42,57 @@ const groupeNom = (nom: string) => {
 export default async function BilanPage({
   searchParams,
 }: {
-  searchParams: Promise<{ periode?: string; ref?: string }>;
+  searchParams: Promise<{ periode?: string; ref?: string; exercice?: string }>;
 }) {
   const sp = await searchParams;
   const periode: Periode = sp.periode === "trimestre" || sp.periode === "annee" ? sp.periode : "mois";
   const ref = sp.ref && /^\d{4}-\d{2}-\d{2}$/.test(sp.ref) ? sp.ref : moisPrecedentISO();
-  const bornes = bornesPeriode(periode, ref);
 
   const supabase = await createClient();
-  const opsP = toutesLesOperations<Op>(supabase, "date_operation, montant, type, categorie_id");
+  const opsP = toutesLesOperations<Op>(supabase, "id, date_operation, montant, type, categorie_id, exercice_id, parent_id, est_ventilee");
   const [exercicesRes, catsRes, comptesRes, donsRes, scoAnneeRes, orgRes] = await Promise.all([
-    supabase.from("exercices").select("id, libelle, date_debut, date_fin"),
+    supabase
+      .from("exercices")
+      .select("id, libelle, date_debut, date_fin, actif")
+      .order("date_debut", { ascending: false }),
     supabase.from("categories").select("id, nom, type"),
     supabase.from("comptes").select("solde_initial").eq("archive", false),
     supabase.from("dons").select("montant, date_don"),
     supabase.from("scolarite_inscriptions").select("annee_scolaire").order("annee_scolaire", { ascending: false }).limit(1).maybeSingle(),
     supabase.from("organisation").select("denomination, adresse, code_postal, ville").limit(1).maybeSingle(),
   ]);
-  const ops = await opsP;
+  // Le bilan se construit sur les SOUS-ÉCRITURES lorsqu'il y en a : leurs
+  // catégories décrivent la réalité mieux que celle de la ligne bancaire.
+  // Une ligne détaillée est donc écartée, qu'elle porte l'indicateur ou non —
+  // la présence de filles fait foi.
+  const toutes = await opsP;
+  const meres = new Set(toutes.map((o) => o.parent_id).filter(Boolean) as string[]);
+  const ops = toutes.filter((o) => !meres.has(o.id) && !o.est_ventilee);
 
-  const exercices = (exercicesRes.data ?? []) as { id: string; libelle: string; date_debut: string; date_fin: string }[];
-  const exo = exercices.find((e) => e.date_debut <= bornes.fin && bornes.fin <= e.date_fin)
-    ?? exercices.find((e) => e.date_debut <= bornes.debut && bornes.debut <= e.date_fin);
-  const exoDebut = exo?.date_debut ?? bornes.debut;
+  const exercices = (exercicesRes.data ?? []) as Exo[];
 
-  const budgetRes = exo
-    ? await supabase.from("budget_lignes").select("categorie_id, montant_prevu").eq("exercice_id", exo.id)
+  // Onglet « Exercice » : on choisit un exercice, pas une date de référence.
+  // Onglets « Mois » / « Trimestre » : la date de référence délimite la période,
+  // et l'exercice qui la contient sert au cumul.
+  const exo: Exo | null =
+    periode === "annee"
+      ? (exercices.find((e) => e.id === sp.exercice) ??
+         exercices.find((e) => e.actif) ??
+         exercices[0] ??
+         null)
+      : null;
+  const bornes =
+    periode === "annee" && exo
+      ? { debut: exo.date_debut, fin: exo.date_fin, libelle: exo.libelle }
+      : bornesPeriode(periode, ref);
+  const exercice: Exo | null =
+    exo ??
+    exercices.find((e) => e.date_debut <= bornes.fin && bornes.fin <= e.date_fin) ??
+    exercices.find((e) => e.date_debut <= bornes.debut && bornes.debut <= e.date_fin) ??
+    null;
+
+  const budgetRes = exercice
+    ? await supabase.from("budget_lignes").select("categorie_id, montant_prevu").eq("exercice_id", exercice.id)
     : { data: [] as Bl[] };
 
   const cats = (catsRes.data ?? []) as Cat[];
@@ -86,22 +116,33 @@ export default async function BilanPage({
     // Classement par SENS RÉEL de l'opération (cohérent avec la trésorerie et l'accueil).
     const l = ligne(c ? groupeNom(c.nom) : "Non catégorisé", op.type);
     const d = op.date_operation;
-    if (d >= exoDebut && d <= bornes.fin) l.cumul += Number(op.montant);
-    if (d >= bornes.debut && d <= bornes.fin) l.periode += Number(op.montant);
+    // Appartenance à l'exercice : le champ `exercice_id` prime sur la date, car
+    // une opération peut être rattachée à un exercice qui ne couvre pas sa date.
+    const dansExercice = !!exercice && op.exercice_id === exercice.id;
+
+    if (periode === "annee") {
+      // Bilan d'exercice : uniquement l'appartenance, sans filtre de date.
+      if (dansExercice) l.periode += Number(op.montant);
+    } else {
+      if (d >= bornes.debut && d <= bornes.fin) l.periode += Number(op.montant);
+      if (dansExercice && d <= bornes.fin) l.cumul += Number(op.montant);
+    }
   }
   const lignes = [...agg.values()].filter((l) => l.periode || l.cumul || l.budget);
-  const recettes = lignes.filter((l) => l.type === "recette").sort((a, b) => b.cumul - a.cumul);
-  const depenses = lignes.filter((l) => l.type === "depense").sort((a, b) => b.cumul - a.cumul);
+  const cle = (l: Ligne) => (periode === "annee" ? l.periode : l.cumul);
+  const recettes = lignes.filter((l) => l.type === "recette").sort((a, b) => cle(b) - cle(a));
+  const depenses = lignes.filter((l) => l.type === "depense").sort((a, b) => cle(b) - cle(a));
 
   const somme = (arr: Ligne[], k: "periode" | "cumul" | "budget") => arr.reduce((s, l) => s + l[k], 0);
   const recP = somme(recettes, "periode"), depP = somme(depenses, "periode");
   const recC = somme(recettes, "cumul"), depC = somme(depenses, "cumul");
   const budDep = somme(depenses, "budget"), budRec = somme(recettes, "budget");
+  const modeExercice = periode === "annee";
   const resultatPeriode = recP - depP;
-  const resultatExo = recC - depC;
+  const resultatExo = modeExercice ? resultatPeriode : recC - depC;
   const tresorerie = soldeInitial + ops.filter((o) => o.date_operation <= bornes.fin)
     .reduce((s, o) => s + (o.type === "recette" ? 1 : -1) * Number(o.montant), 0);
-  const budgetConsomme = budDep > 0 ? (depC / budDep) * 100 : null;
+  const budgetConsomme = budDep > 0 ? ((modeExercice ? depP : depC) / budDep) * 100 : null;
 
   // Scolarité
   const anneeSco = (scoAnneeRes.data as { annee_scolaire: string } | null)?.annee_scolaire ?? null;
@@ -130,7 +171,7 @@ export default async function BilanPage({
 
   const org = orgRes.data as { denomination: string | null; adresse: string | null; code_postal: string | null; ville: string | null } | null;
   const editionLe = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "long", year: "numeric" }).format(new Date());
-  const colReal = periode === "annee" ? "Réalisé exercice" : "Réalisé période";
+  const colReal = modeExercice ? "Réalisé exercice" : "Réalisé période";
 
   const carte = (label: string, valeur: string, couleur: string, bg: string) => (
     <div key={label} style={{ background: bg, border: `1px solid ${C.border}`, borderRadius: 12, padding: "10px 12px" }}>
@@ -149,22 +190,23 @@ export default async function BilanPage({
           <tr style={{ background: C.marine }}>
             <th style={{ ...th, textAlign: "left" }}>{titre}</th>
             <th style={th}>{colReal}</th>
-            <th style={th}>Cumul exercice</th>
+            {!modeExercice && <th style={th}>Cumul exercice</th>}
             <th style={th}>Budget</th>
             <th style={{ ...th, width: 56 }}>%</th>
           </tr>
         </thead>
         <tbody>
           {rows.length === 0 ? (
-            <tr><td colSpan={5} style={{ ...td, textAlign: "center", color: C.muted }}>Aucun mouvement.</td></tr>
+            <tr><td colSpan={modeExercice ? 4 : 5} style={{ ...td, textAlign: "center", color: C.muted }}>Aucun mouvement.</td></tr>
           ) : rows.map((l, i) => {
-            const pct = l.budget ? (l.cumul / l.budget) * 100 : null;
+            const reel = modeExercice ? l.periode : l.cumul;
+            const pct = l.budget ? (reel / l.budget) * 100 : null;
             const pctColor = l.type === "depense" && pct !== null ? (pct > 100 ? C.red : pct > 90 ? C.gold : C.green) : C.muted;
             return (
               <tr key={l.nom} style={{ background: i % 2 ? C.cream : C.white }}>
                 <td style={{ ...td, textAlign: "left", fontWeight: 500 }}>{l.nom}</td>
                 <td style={td}>{formatEuros(l.periode)}</td>
-                <td style={td}>{formatEuros(l.cumul)}</td>
+                {!modeExercice && <td style={td}>{formatEuros(l.cumul)}</td>}
                 <td style={{ ...td, color: C.muted }}>{l.budget ? formatEuros(l.budget) : "—"}</td>
                 <td style={{ ...td, fontWeight: 600, color: pctColor }}>{pct !== null ? formatPct(pct) : "—"}</td>
               </tr>
@@ -175,9 +217,11 @@ export default async function BilanPage({
           <tr style={{ background: accent, fontWeight: 700 }}>
             <td style={{ ...td, textAlign: "left", fontWeight: 700 }}>Total</td>
             <td style={{ ...td, fontWeight: 700 }}>{formatEuros(tp)}</td>
-            <td style={{ ...td, fontWeight: 700 }}>{formatEuros(tc)}</td>
+            {!modeExercice && <td style={{ ...td, fontWeight: 700 }}>{formatEuros(tc)}</td>}
             <td style={{ ...td, fontWeight: 700 }}>{tb ? formatEuros(tb) : "—"}</td>
-            <td style={{ ...td, fontWeight: 700 }}>{tb ? formatPct((tc / tb) * 100) : "—"}</td>
+            <td style={{ ...td, fontWeight: 700 }}>
+              {tb ? formatPct(((modeExercice ? tp : tc) / tb) * 100) : "—"}
+            </td>
           </tr>
         </tfoot>
       </table>
@@ -199,7 +243,12 @@ export default async function BilanPage({
       <div className="no-print mb-4">
         <Link href="/comptabilite" className="text-sm text-accent hover:underline">← Retour à la comptabilité</Link>
       </div>
-      <BilanToolbar periode={periode} refMois={ref.slice(0, 7)} />
+      <BilanToolbar
+        periode={periode}
+        refMois={ref.slice(0, 7)}
+        exercices={exercices.map((e) => ({ id: e.id, libelle: e.libelle }))}
+        exerciceId={exercice?.id ?? null}
+      />
 
       <div id="bilan-doc" style={{ background: C.cream, color: C.ink, border: `1px solid ${C.border}`, borderRadius: 16, padding: 20 }}>
         {/* En-tête marine */}
@@ -218,15 +267,16 @@ export default async function BilanPage({
         </div>
 
         {/* Synthèse */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4,1fr)", gap: 8, margin: "14px 0 16px" }}>
-          {carte("Résultat de la période", `${resultatPeriode >= 0 ? "+" : ""}${formatEuros(resultatPeriode)}`, resultatPeriode < 0 ? C.red : C.green, resultatPeriode < 0 ? C.redBg : C.greenBg)}
+        <div style={{ display: "grid", gridTemplateColumns: `repeat(${modeExercice ? 3 : 4},1fr)`, gap: 8, margin: "14px 0 16px" }}>
+          {!modeExercice &&
+            carte("Résultat de la période", `${resultatPeriode >= 0 ? "+" : ""}${formatEuros(resultatPeriode)}`, resultatPeriode < 0 ? C.red : C.green, resultatPeriode < 0 ? C.redBg : C.greenBg)}
           {carte("Trésorerie à date", formatEuros(tresorerie), tresorerie < 0 ? C.red : C.green, tresorerie < 0 ? C.redBg : C.greenBg)}
           {carte("Résultat de l'exercice", `${resultatExo >= 0 ? "+" : ""}${formatEuros(resultatExo)}`, resultatExo < 0 ? C.red : C.green, C.marineBg)}
           {carte("Budget dépenses consommé", formatPct(budgetConsomme), (budgetConsomme ?? 0) > 100 ? C.red : C.ink, C.goldBg)}
         </div>
 
         {/* Compte de résultat */}
-        <h2 style={h2}>Compte de résultat · {exo?.libelle ?? ""}</h2>
+        <h2 style={h2}>Compte de résultat · {exercice?.libelle ?? ""}</h2>
         {tableResultat("Recettes", recettes, recP, recC, budRec, C.greenBg)}
         {tableResultat("Dépenses", depenses, depP, depC, budDep, C.redBg)}
 
@@ -260,7 +310,11 @@ export default async function BilanPage({
         </div>
 
         <p style={{ marginTop: 16, paddingTop: 10, borderTop: `1px solid ${C.border}`, fontSize: 10.5, color: C.muted }}>
-          Document de gestion interne établi par le trésorier de l&apos;ARIL. « Cumul exercice » = du 1ᵉʳ septembre à la fin de la période. Postes regroupés par grande rubrique budgétaire.
+          Document de gestion interne établi par le trésorier de l&apos;ARIL.{" "}
+          {modeExercice
+            ? "Les montants retenus sont ceux des opérations rattachées à cet exercice, indépendamment de leur date."
+            : "« Cumul exercice » = opérations rattachées à l'exercice, jusqu'à la fin de la période."}{" "}
+          Postes regroupés par grande rubrique budgétaire.
         </p>
       </div>
     </div>

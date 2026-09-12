@@ -14,6 +14,7 @@ import {
   devineMode,
   type LigneReleve,
 } from "@/lib/releve";
+import { appliquerCorrespondances, type Correspondance, type NiveauAlerte } from "@/lib/correspondances";
 
 type Cat = { id: string; nom: string; type: "recette" | "depense" };
 type Compte = { id: string; nom: string };
@@ -28,6 +29,9 @@ type Ligne = LigneReleve & {
   suspect: boolean; // même montant + date ±5j → doublon possible (coché, surligné)
   // opération de la compta correspondante (pour comparaison sous la ligne)
   existant: { date: string; libelle: string; montant: number; type: string; categorie: string | null } | null;
+  // Alerte issue d'une règle de correspondance (à vérifier avant validation).
+  alerte: NiveauAlerte | null;
+  alerte_message: string | null;
 };
 
 export default function ImportReleve({
@@ -35,6 +39,7 @@ export default function ImportReleve({
   comptes,
   exercices,
   existantes,
+  correspondances = [],
 }: {
   categories: Cat[];
   comptes: Compte[];
@@ -46,6 +51,7 @@ export default function ImportReleve({
     libelle: string;
     categorie_id: string | null;
   }[];
+  correspondances?: Correspondance[];
 }) {
   const router = useRouter();
   const [lignes, setLignes] = useState<Ligne[]>([]);
@@ -102,16 +108,25 @@ export default function ImportReleve({
       const l: Ligne[] = p.map((x) => {
         if (x.doublon) ignoresN++;
         if (x.suspect) suspectsN++;
+        // Règles de Correspondances d'abord ; à défaut, l'embellissement intégré.
+        const res = appliquerCorrespondances(
+          { libelle_origine: x.op.libelle, montant: x.op.montant, type: x.op.type, date_operation: x.op.date },
+          correspondances,
+        );
         return {
           ...x.op,
-          libelle: embellirLibelle(x.op.libelle, x.op.montant, x.op.type), // affiché : propre
+          libelle: res.regle ? res.libelle : embellirLibelle(x.op.libelle, x.op.montant, x.op.type),
           libelle_origine: x.op.libelle, // conservé : brut bancaire
           key: `${x.op.date}-${x.op.montant}-${x.i}`,
           doublon: x.doublon,
           suspect: x.suspect,
           existant: x.existant,
+          alerte: res.alerte,
+          alerte_message: res.alerte_message,
           inclus: !x.doublon, // doublon possible reste coché
-          categorie_id: suggereCategorieIntelligente(x.op.libelle, x.op.type, categories, historique, indexTokens),
+          categorie_id:
+            res.categorie_id ??
+            suggereCategorieIntelligente(x.op.libelle, x.op.type, categories, historique, indexTokens),
         };
       });
       setLignes(l);
@@ -262,7 +277,13 @@ export default function ImportReleve({
                     <td className="px-3 py-2 whitespace-nowrap tabular-nums">{formatDate(l.date)}</td>
                     <td className="px-3 py-2">
                       <div className="flex flex-wrap items-center gap-1">
-                        <span className="line-clamp-2">{l.libelle}</span>
+                        <input
+                          type="text"
+                          value={l.libelle}
+                          onChange={(e) => maj(i, { libelle: e.target.value })}
+                          title={`Libellé bancaire d'origine : ${l.libelle_origine}`}
+                          className="w-64 rounded-lg border border-border bg-background px-2 py-1 text-xs outline-none focus:border-accent"
+                        />
                         {l.doublon && (
                           <span className="whitespace-nowrap rounded bg-gold-soft px-1.5 py-0.5 text-[10px] font-medium text-gold">
                             déjà en compta
@@ -273,7 +294,22 @@ export default function ImportReleve({
                             doublon possible ±5 j
                           </span>
                         )}
+                        {l.alerte && (
+                          <span
+                            title={l.alerte_message ?? undefined}
+                            className={`whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                              l.alerte === "rouge" ? "bg-negative/10 text-negative" : "bg-gold-soft text-gold"
+                            }`}
+                          >
+                            à vérifier
+                          </span>
+                        )}
                       </div>
+                      {l.libelle !== l.libelle_origine && (
+                        <div className="mt-0.5 line-clamp-1 text-[10px] text-muted" title={l.libelle_origine}>
+                          banque : {l.libelle_origine}
+                        </div>
+                      )}
                     </td>
                     <td className="px-3 py-2">
                       <select

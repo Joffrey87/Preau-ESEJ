@@ -16,6 +16,7 @@
   --gold-soft: #f3e6c9;
   --positive: #15803d;
   --negative: #c0392b;
+  --jauge: #126d34;        /* vert forêt : barres de progression (15 % plus sombre) */
 }
 
 @media (prefers-color-scheme: dark) {
@@ -33,6 +34,7 @@
     --gold-soft: #2a2415;
     --positive: #4ade80;
     --negative: #f87171;
+    --jauge: #3ebd6d;
   }
 }
 
@@ -50,6 +52,7 @@
   --color-gold-soft: var(--gold-soft);
   --color-positive: var(--positive);
   --color-negative: var(--negative);
+  --color-jauge: var(--jauge);
   --font-sans: var(--font-sans), "Montserrat", system-ui, sans-serif;
 }
 

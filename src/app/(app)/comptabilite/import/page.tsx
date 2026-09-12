@@ -3,6 +3,7 @@ import PageHeader from "@/components/PageHeader";
 import ImportReleve from "@/components/ImportReleve";
 import { createClient } from "@/lib/supabase/server";
 import { toutesLesOperations } from "@/lib/operations";
+import type { Correspondance } from "@/lib/correspondances";
 
 type OpExistante = { date_operation: string; montant: number; type: string; libelle: string; categorie_id: string | null };
 
@@ -10,10 +11,11 @@ export default async function ImportRelevePage() {
   const supabase = await createClient();
 
   const opsP = toutesLesOperations<OpExistante>(supabase, "date_operation, montant, type, libelle, categorie_id");
-  const [catsRes, comptesRes, exercicesRes] = await Promise.all([
+  const [catsRes, comptesRes, exercicesRes, corrRes] = await Promise.all([
     supabase.from("categories").select("id, nom, type").eq("archive", false).order("type").order("ordre").order("nom"),
     supabase.from("comptes").select("id, nom").eq("archive", false).order("ordre"),
     supabase.from("exercices").select("id, libelle, date_debut, date_fin, actif").order("date_debut", { ascending: false }),
+    supabase.from("correspondances").select("*").eq("actif", true).order("ordre"),
   ]);
   const existantes = await opsP;
 
@@ -33,6 +35,7 @@ export default async function ImportRelevePage() {
         comptes={comptesRes.data ?? []}
         exercices={exercicesRes.data ?? []}
         existantes={existantes}
+        correspondances={(corrRes.data ?? []) as Correspondance[]}
       />
     </div>
   );

@@ -1,9 +1,11 @@
 import Link from "next/link";
 import PageHeader from "@/components/PageHeader";
 import NouvelleOperation from "@/components/NouvelleOperation";
-import DetailsOperation from "@/components/DetailsOperation";
+import ListeOperations from "@/components/ListeOperations";
+import type { Affectation, Inscription } from "@/components/AffectationScolarite";
 import { createClient } from "@/lib/supabase/server";
-import { formatEuros, formatDate } from "@/lib/format";
+import { formatEuros } from "@/lib/format";
+import { operationsRepertoriees } from "@/lib/rapprochementDons";
 
 type OperationRow = {
   id: string;
@@ -13,6 +15,11 @@ type OperationRow = {
   montant: number;
   type: "recette" | "depense";
   mode_paiement: string | null;
+  categorie_id: string | null;
+  compte_id: string | null;
+  exercice_id: string | null;
+  parent_id: string | null;
+  est_ventilee: boolean;
   categories: { nom: string } | null;
   comptes: { nom: string } | null;
 };
@@ -28,7 +35,7 @@ export default async function ComptabilitePage({
   // Tous les exercices (pour le sélecteur d'année) ; défaut = actif, sinon le plus récent.
   const { data: exercices } = await supabase
     .from("exercices")
-    .select("id, libelle, actif")
+    .select("id, libelle, actif, date_debut, date_fin")
     .order("date_debut", { ascending: false });
   const liste = exercices ?? [];
   const exercice =
@@ -37,12 +44,12 @@ export default async function ComptabilitePage({
     liste[0] ||
     null;
 
-  const [opsRes, catsRes, comptesRes] = await Promise.all([
+  const [opsRes, catsRes, comptesRes, inscriptionsRes, affectationsRes] = await Promise.all([
     exercice
       ? supabase
           .from("operations")
           .select(
-            "id, date_operation, libelle, libelle_origine, montant, type, mode_paiement, categories(nom), comptes(nom)",
+            "id, date_operation, libelle, libelle_origine, montant, type, mode_paiement, categorie_id, compte_id, exercice_id, parent_id, est_ventilee, categories(nom), comptes(nom)",
           )
           .eq("exercice_id", exercice.id)
           .order("date_operation", { ascending: false })
@@ -54,29 +61,71 @@ export default async function ComptabilitePage({
       .eq("archive", false)
       .order("ordre"),
     supabase.from("comptes").select("id, nom").eq("archive", false).order("ordre"),
+    // Fléchage des dons d'association vers les frais de scolarité.
+    supabase
+      .from("scolarite_inscriptions")
+      .select("id, annee_scolaire, famille_nom, nb_enfants")
+      .order("annee_scolaire", { ascending: false })
+      .order("famille_nom"),
+    supabase.from("affectations_scolarite").select("id, operation_id, inscription_id, montant, notes"),
   ]);
 
   // Dons (montant/date/lien) pour marquer les opérations « Don » déjà répertoriées.
   const { data: donsData } = await supabase
     .from("dons")
-    .select("montant, date_don, operation_id")
+    .select("id, montant, date_don, operation_id")
     .is("supprime_le", null);
   const dons = donsData ?? [];
-  const opsLiees = new Set(dons.map((d) => d.operation_id).filter(Boolean) as string[]);
-  const ecartJours = (a: string, b: string) => {
-    const [ay, am, ad] = a.split("-").map(Number);
-    const [by, bm, bd] = b.split("-").map(Number);
-    return Math.abs(Math.round((Date.UTC(by, bm - 1, bd) - Date.UTC(ay, am - 1, ad)) / 86400000));
-  };
-  const donRepertorie = (op: OperationRow) =>
-    opsLiees.has(op.id) ||
-    dons.some(
-      (d) => Number(d.montant) === Number(op.montant) && d.date_don && ecartJours(d.date_don, op.date_operation) <= 3,
-    );
+  const COLONNES =
+    "id, date_operation, libelle, libelle_origine, montant, type, mode_paiement, categorie_id, compte_id, exercice_id, parent_id, est_ventilee, categories(nom), comptes(nom)";
 
-  const operations = (opsRes.data ?? []) as unknown as OperationRow[];
-  const recettes = operations.filter((o) => o.type === "recette").reduce((s, o) => s + Number(o.montant), 0);
-  const depenses = operations.filter((o) => o.type === "depense").reduce((s, o) => s + Number(o.montant), 0);
+  const operationsExercice = (opsRes.data ?? []) as unknown as OperationRow[];
+
+  // Une ventilation doit TOUJOURS être chargée en entier, même si ses membres
+  // relèvent d'exercices différents : un versement d'août peut couvrir la
+  // rentrée suivante. Sans la famille complète, le volet afficherait un faux
+  // déséquilibre, et une sous-écriture serait comptée sans être visible.
+  //
+  // On ferme donc la famille en deux temps : d'abord les mères, puis TOUTES
+  // leurs filles.
+  const chercher = async (
+    connues: OperationRow[],
+    ids: string[],
+    colonne: "id" | "parent_id",
+  ): Promise<OperationRow[]> => {
+    if (ids.length === 0) return connues;
+    const dejaLa = new Set(connues.map((o) => o.id));
+    const { data } = await supabase.from("operations").select(COLONNES).in(colonne, ids);
+    const nouvelles = ((data ?? []) as unknown as OperationRow[]).filter((o) => !dejaLa.has(o.id));
+    return nouvelles.length > 0 ? [...connues, ...nouvelles] : connues;
+  };
+
+  // 1. Les lignes bancaires dont une sous-écriture est présente ici.
+  const avecMeres = await chercher(
+    operationsExercice,
+    [...new Set(operationsExercice.map((o) => o.parent_id).filter((v): v is string => !!v))],
+    "id",
+  );
+
+  // 2. Toutes les sous-écritures de chaque ligne ventilée, quel que soit leur exercice.
+  const operations = await chercher(
+    avecMeres,
+    [...new Set(avecMeres.filter((o) => o.est_ventilee).map((o) => o.id))],
+    "parent_id",
+  );
+
+  // Le lien explicite `dons.operation_id` fait foi ; à défaut, rapprochement
+  // un-à-un par montant et date. Voir `lib/rapprochementDons`.
+  const donsRepertories = [...operationsRepertoriees(operations, dons)];
+
+  // Une ligne détaillée ne compte pas : ses sous-écritures portent les montants
+  // et les catégories. La présence de filles fait foi, pas l'indicateur seul.
+  const meres = new Set(operations.map((o) => o.parent_id).filter(Boolean) as string[]);
+  const comptabilisees = operations.filter(
+    (o) => !meres.has(o.id) && !o.est_ventilee && o.exercice_id === (exercice?.id ?? null),
+  );
+  const recettes = comptabilisees.filter((o) => o.type === "recette").reduce((s, o) => s + Number(o.montant), 0);
+  const depenses = comptabilisees.filter((o) => o.type === "depense").reduce((s, o) => s + Number(o.montant), 0);
 
   return (
     <div className="mx-auto max-w-6xl px-5 py-8 md:px-8">
@@ -94,7 +143,13 @@ export default async function ComptabilitePage({
                 href="/comptabilite/bilan?periode=mois"
                 className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-surface-2"
               >
-                Bilan mensuel
+                Bilan
+              </Link>
+              <Link
+                href="/comptabilite/correspondances"
+                className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-surface-2"
+              >
+                Correspondances
               </Link>
               <Link
                 href="/comptabilite/import"
@@ -135,7 +190,7 @@ export default async function ComptabilitePage({
       {exercice && operations.length > 0 && (
         <div className="mb-4 grid grid-cols-3 gap-3">
           <div className="rounded-xl border border-border bg-surface px-4 py-3">
-            <div className="text-xs text-muted">Recettes · {operations.length} opérations</div>
+            <div className="text-xs text-muted">Recettes · {comptabilisees.length} opérations</div>
             <div className="mt-1 text-lg font-semibold tabular-nums text-positive">{formatEuros(recettes)}</div>
           </div>
           <div className="rounded-xl border border-border bg-surface px-4 py-3">
@@ -151,81 +206,16 @@ export default async function ComptabilitePage({
         </div>
       )}
 
-      <div className="overflow-x-auto rounded-xl border border-border bg-surface">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-border text-left text-muted">
-              <th className="px-4 py-3 font-medium">Date</th>
-              <th className="px-4 py-3 font-medium">Libellé</th>
-              <th className="px-4 py-3 font-medium">Catégorie</th>
-              <th className="px-4 py-3 font-medium">Mode</th>
-              <th className="px-4 py-3 font-medium text-right">Montant</th>
-            </tr>
-          </thead>
-          <tbody>
-            {operations.length === 0 ? (
-              <tr>
-                <td colSpan={5} className="px-4 py-16 text-center text-muted">
-                  Aucune opération pour l&apos;instant.
-                  <br />
-                  <span className="text-sm">
-                    Cliquez sur « Nouvelle opération » pour commencer la saisie.
-                  </span>
-                </td>
-              </tr>
-            ) : (
-              operations.map((op) => (
-                <tr key={op.id} className="border-b border-border last:border-0">
-                  <td className="px-4 py-3 whitespace-nowrap tabular-nums">
-                    {formatDate(op.date_operation)}
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="inline-flex items-center">
-                      {op.libelle}
-                      <DetailsOperation
-                        op={{
-                          libelle: op.libelle,
-                          libelle_origine: op.libelle_origine,
-                          date_operation: op.date_operation,
-                          montant: Number(op.montant),
-                          type: op.type,
-                          categorie: op.categories?.nom ?? null,
-                          mode_paiement: op.mode_paiement,
-                          compte: op.comptes?.nom ?? null,
-                        }}
-                      />
-                      {op.categories?.nom === "Don" &&
-                        (donRepertorie(op) ? (
-                          <span className="ml-2 text-positive" title="Enregistré dans les dons">✓</span>
-                        ) : (
-                          <Link
-                            href="/dons/depuis-compta"
-                            className="ml-2 rounded-full bg-gold-soft px-2 py-0.5 text-xs font-medium text-gold hover:opacity-90"
-                            title="Ce don n'est pas encore dans l'onglet Dons"
-                          >
-                            + Ajouter aux dons
-                          </Link>
-                        ))}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3 text-muted">{op.categories?.nom ?? "—"}</td>
-                  <td className="px-4 py-3 text-muted capitalize">
-                    {op.mode_paiement ?? "—"}
-                  </td>
-                  <td
-                    className={`px-4 py-3 text-right whitespace-nowrap tabular-nums font-medium ${
-                      op.type === "recette" ? "text-positive" : "text-negative"
-                    }`}
-                  >
-                    {op.type === "recette" ? "+" : "−"}
-                    {formatEuros(Number(op.montant))}
-                  </td>
-                </tr>
-              ))
-            )}
-          </tbody>
-        </table>
-      </div>
+      <ListeOperations
+        operations={operations}
+        categories={catsRes.data ?? []}
+        comptes={comptesRes.data ?? []}
+        exerciceId={exercice?.id ?? null}
+        exercices={liste}
+        donsRepertories={donsRepertories}
+        inscriptions={(inscriptionsRes.data ?? []) as Inscription[]}
+        affectations={(affectationsRes.data ?? []) as Affectation[]}
+      />
     </div>
   );
 }

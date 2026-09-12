@@ -3,8 +3,10 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { formatEuros } from "@/lib/format";
+import { formatEurosCourt as formatEuros } from "@/lib/format";
 import { Modal, Field, FormFooter, inputCls } from "./GestionComptes";
+import JaugeScolarite, { etatJauge } from "@/components/JaugeScolarite";
+import Icon from "@/components/Icon";
 
 export type Inscription = {
   id: string;
@@ -42,6 +44,14 @@ const MOIS: { k: keyof Inscription; l: string }[] = [
 
 const MOIS_PAR_AN = 10;
 
+/** Don d'association fléché vers une famille, depuis la Comptabilité. */
+export type AffectationRecue = {
+  inscription_id: string;
+  montant: number;
+  libelle: string;
+  date_operation: string;
+};
+
 export function totalDu(i: Pick<Inscription, "montant_mensuel">): number {
   return Number(i.montant_mensuel) * MOIS_PAR_AN;
 }
@@ -70,12 +80,15 @@ export default function GestionScolarite({
   annees,
   inscriptions,
   bareme,
+  affectations = [],
 }: {
   annee: string;
   annees: string[];
   inscriptions: Inscription[];
   /** nb_enfants -> montant mensuel, pour l'année courante. */
   bareme: Record<number, number>;
+  /** Dons d'association fléchés vers ces familles (même exercice). */
+  affectations?: AffectationRecue[];
 }) {
   const router = useRouter();
   const [edit, setEdit] = useState<Inscription | "nouveau" | null>(null);
@@ -175,10 +188,25 @@ export default function GestionScolarite({
     router.refresh();
   }
 
+  // Dons d'association fléchés, par famille. Ils comptent comme réglé : la
+  // somme a bien été perçue par l'école, simplement via un tiers.
+  const donParFamille = new Map<string, { montant: number; details: AffectationRecue[] }>();
+  for (const a of affectations) {
+    const e = donParFamille.get(a.inscription_id) ?? { montant: 0, details: [] };
+    e.montant += Number(a.montant);
+    e.details.push(a);
+    donParFamille.set(a.inscription_id, e);
+  }
+  const donDe = (id: string) => donParFamille.get(id)?.montant ?? 0;
+
   // Totaux de l'année
   const sumDu = inscriptions.reduce((s, i) => s + totalDu(i), 0);
-  const sumRegle = inscriptions.reduce((s, i) => s + totalRegle(i), 0);
+  const sumDon = inscriptions.reduce((s, i) => s + donDe(i.id), 0);
+  const sumRegle = inscriptions.reduce((s, i) => s + totalRegle(i) + donDe(i.id), 0);
   const sumReste = sumDu - sumRegle;
+
+  const mensuelTotal = inscriptions.reduce((s, i) => s + Number(i.montant_mensuel), 0);
+  const etatGlobal = etatJauge(mensuelTotal, sumRegle, annee);
 
   const badgeAvance = (i: Inscription) => {
     const av = Number(i.avance) || 0;
@@ -188,6 +216,7 @@ export default function GestionScolarite({
       return <span className="rounded-full bg-surface-2 px-2 py-0.5 text-xs text-muted">Partiel</span>;
     return <span className="text-xs text-muted">—</span>;
   };
+
 
   return (
     <>
@@ -213,10 +242,25 @@ export default function GestionScolarite({
         </button>
       </div>
 
+      {/* Avancement des règlements */}
+      {inscriptions.length > 0 && (
+        <div className="mb-4 rounded-xl border border-border bg-surface px-4 py-4">
+          <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-sm font-semibold">Avancement des règlements · {annee}</h2>
+            <span className="text-xs text-muted">
+              Une graduation par mensualité, de septembre à juin. Le repère marque ce qui devrait être
+              perçu à ce jour.
+            </span>
+          </div>
+          <JaugeScolarite etat={etatGlobal} anneeScolaire={annee} />
+        </div>
+      )}
+
       {/* Synthèse */}
-      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
+      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {[
           { l: "Total attendu", v: sumDu, c: "" },
+          { l: "Dont dons d'association", v: sumDon, c: sumDon > 0 ? "text-gold" : "text-muted" },
           { l: "Total réglé", v: sumRegle, c: "text-positive" },
           { l: "Reste à percevoir", v: sumReste, c: sumReste > 0 ? "text-negative" : "" },
         ].map((s) => (
@@ -236,23 +280,26 @@ export default function GestionScolarite({
               <th className="px-4 py-3 font-medium text-right">Mensuel</th>
               <th className="px-4 py-3 font-medium text-right">Total dû</th>
               <th className="px-4 py-3 font-medium text-center">Mois d&apos;avance</th>
+              <th className="px-4 py-3 font-medium">Avancement</th>
               <th className="px-4 py-3 font-medium text-right">Réglé</th>
               <th className="px-4 py-3 font-medium text-right">Reste</th>
-              <th className="px-4 py-3 font-medium text-right">Action</th>
+              <th className="px-2 py-3 font-medium text-right"><span className="sr-only">Modifier</span></th>
             </tr>
           </thead>
           <tbody>
             {inscriptions.length === 0 ? (
               <tr>
-                <td colSpan={8} className="px-4 py-12 text-center text-muted">
+                <td colSpan={9} className="px-4 py-12 text-center text-muted">
                   Aucune famille pour {annee}.
                 </td>
               </tr>
             ) : (
               inscriptions.map((i) => {
                 const du = totalDu(i);
-                const regle = totalRegle(i);
+                const don = donDe(i.id);
+                const regle = totalRegle(i) + don;
                 const reste = du - regle;
+                const detailsDon = donParFamille.get(i.id)?.details ?? [];
                 return (
                   <tr key={i.id} className="border-b border-border last:border-0">
                     <td className="px-4 py-3">{i.famille_nom}</td>
@@ -260,13 +307,38 @@ export default function GestionScolarite({
                     <td className="px-4 py-3 text-right tabular-nums">{formatEuros(Number(i.montant_mensuel))}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{formatEuros(du)}</td>
                     <td className="px-4 py-3 text-center">{badgeAvance(i)}</td>
-                    <td className="px-4 py-3 text-right tabular-nums text-positive">{formatEuros(regle)}</td>
+                    <td className="px-4 py-3">
+                      <JaugeScolarite
+                        etat={etatJauge(Number(i.montant_mensuel), regle, annee)}
+                        anneeScolaire={annee}
+                        compacte
+                      />
+                    </td>
+                    <td
+                      className="px-4 py-3 text-right tabular-nums text-positive"
+                      title={
+                        detailsDon.length > 0
+                          ? "Dont don d'association : " +
+                            detailsDon
+                              .map((d) => `${d.libelle} — ${formatEuros(Number(d.montant))}`)
+                              .join(" · ")
+                          : undefined
+                      }
+                    >
+                      {formatEuros(regle)}
+                    </td>
                     <td className={`px-4 py-3 text-right tabular-nums ${reste > 0 ? "text-negative" : ""}`}>
                       {formatEuros(reste)}
                     </td>
-                    <td className="px-4 py-3 text-right">
-                      <button type="button" onClick={() => ouvrir(i)} className="text-accent hover:underline">
-                        Saisir / modifier
+                    <td className="px-2 py-3 text-right">
+                      <button
+                        type="button"
+                        onClick={() => ouvrir(i)}
+                        title={`Saisir ou modifier — ${i.famille_nom}`}
+                        aria-label={`Saisir ou modifier les règlements de ${i.famille_nom}`}
+                        className="rounded-lg p-1.5 text-muted hover:bg-surface-2 hover:text-accent"
+                      >
+                        <Icon name="crayon" className="h-4 w-4" />
                       </button>
                     </td>
                   </tr>

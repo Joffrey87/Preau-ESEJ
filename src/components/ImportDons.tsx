@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
+import { normaliserCategorieDonateur } from "@/lib/categoriesDonateur";
 import { useCoffre } from "@/components/CoffreProvider";
 import DeverrouillerCoffre from "@/components/DeverrouillerCoffre";
 import { formatEuros, formatDate } from "@/lib/format";
@@ -206,7 +207,7 @@ export default function ImportDons() {
         };
         payloads.push({
           est_personne_morale: !!raison,
-          categorie_donateur: toTexte(champEff(i, "categorie_donateur")) || null,
+          categorie_donateur: normaliserCategorieDonateur(toTexte(champEff(i, "categorie_donateur"))),
           montant,
           date_don,
           mode_paiement: toTexte(champEff(i, "mode_paiement")) || null,

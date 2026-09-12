@@ -55,3 +55,14 @@ _parse_*
 # Documents internes sensibles (jamais versionnés)
 /Financement/
 /Reçus fiscaux/
+
+# Espace de travail Claude (local)
+.claude/worktrees/
+.claude/settings.local.json
+
+# Données comptables et documents avec noms de personnes (jamais versionnés)
+/Extraits de comptes*/
+/évènements/
+/*.xlsx
+scripts/rapprochement_report.txt
+scripts/build_ag.py

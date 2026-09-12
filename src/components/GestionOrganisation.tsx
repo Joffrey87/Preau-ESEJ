@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { RECU_BUCKET, RECU_TEMPLATE_PATH } from "@/lib/recu";
 import { Field, inputCls } from "./GestionComptes";
 
 export type Organisation = {
@@ -24,36 +23,6 @@ export default function GestionOrganisation({ organisation }: { organisation: Or
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ok, setOk] = useState(false);
-
-  const [modeleMsg, setModeleMsg] = useState<string | null>(null);
-  const [modeleErr, setModeleErr] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
-
-  async function uploadModele(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setModeleErr(null);
-    setModeleMsg(null);
-    if (!file.name.toLowerCase().endsWith(".docx")) {
-      setModeleErr("Le modèle doit être un fichier .docx.");
-      return;
-    }
-    setUploading(true);
-    const supabase = createClient();
-    const { error: upErr } = await supabase.storage
-      .from(RECU_BUCKET)
-      .upload(RECU_TEMPLATE_PATH, file, {
-        upsert: true,
-        contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      });
-    setUploading(false);
-    if (upErr) {
-      setModeleErr("Import impossible : " + upErr.message);
-      return;
-    }
-    setModeleMsg(`Modèle « ${file.name} » importé ✓`);
-    e.target.value = "";
-  }
 
   const [f, setF] = useState({
     denomination: organisation?.denomination ?? "",
@@ -174,30 +143,6 @@ export default function GestionOrganisation({ organisation }: { organisation: Or
         </div>
       </form>
 
-      <div className="mt-4 rounded-xl border border-border bg-surface p-5">
-        <h3 className="text-sm font-medium">Modèle de reçu fiscal (.docx)</h3>
-        <p className="mt-1 text-xs text-muted">
-          Fichier Word avec les champs <code>&lt;&lt;NUM&gt;&gt;</code>, <code>&lt;&lt;TITRE&gt;&gt;</code>,{" "}
-          <code>&lt;&lt;NOM&gt;&gt;</code>, <code>&lt;&lt;PRENOM&gt;&gt;</code>, <code>&lt;&lt;ADRESSE&gt;&gt;</code>,{" "}
-          <code>&lt;&lt;CP&gt;&gt;</code>, <code>&lt;&lt;SOMME&gt;&gt;</code>, <code>&lt;&lt;SOMMELETTRES&gt;&gt;</code>,{" "}
-          <code>&lt;&lt;DATE&gt;&gt;</code>, <code>&lt;&lt;MODE&gt;&gt;</code>, <code>&lt;&lt;DATE_EDITION&gt;&gt;</code>,{" "}
-          <code>&lt;&lt;RAISON&gt;&gt;</code>. Il alimente chaque reçu généré.
-        </p>
-        <div className="mt-3 flex items-center gap-3">
-          <label className="cursor-pointer rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-surface-2">
-            {uploading ? "Import…" : "Importer le modèle"}
-            <input
-              type="file"
-              accept=".docx"
-              onChange={uploadModele}
-              disabled={uploading}
-              className="hidden"
-            />
-          </label>
-          {modeleMsg && <span className="text-sm text-positive">{modeleMsg}</span>}
-          {modeleErr && <span className="text-sm text-negative">{modeleErr}</span>}
-        </div>
-      </div>
     </section>
   );
 }

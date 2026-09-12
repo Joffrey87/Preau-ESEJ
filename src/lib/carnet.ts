@@ -18,6 +18,8 @@ export type Contact = {
   cp_ville: string | null;
   iban: string | null;
   notes: string | null;
+  relation: string | null;
+  pii_chiffre: string | null;
   supprime_le: string | null;
   supprime_par: string | null;
 };

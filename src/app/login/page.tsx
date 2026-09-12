@@ -36,7 +36,7 @@ export default function LoginPage() {
         <div className="mb-6 flex flex-col items-center text-center">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src="/logo.png"
+            src="/logo.webp"
             alt="Préau"
             className="mb-4 h-44 w-44 rounded-full object-contain"
           />

@@ -1,0 +1,633 @@
+"use client";
+
+import { useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { createClient } from "@/lib/supabase/client";
+import { Modal, Field, FormFooter, inputCls } from "./GestionComptes";
+import VoletDetail from "@/components/VoletDetail";
+import Icon from "@/components/Icon";
+import { formatEuros, formatDate } from "@/lib/format";
+import VentilationOperation, { type OperationVentilable } from "@/components/VentilationOperation";
+import {
+  annulerDernierLot,
+  journaliser,
+  nouveauLot,
+  extraire,
+  type OperationJournalisable,
+} from "@/lib/journalOperations";
+import AffectationScolarite, {
+  type Affectation,
+  type Inscription,
+} from "@/components/AffectationScolarite";
+
+/** Catégorie ouvrant le fléchage vers les frais de scolarité. */
+const CAT_DON_ASSOCIATION = "Don d'Association";
+
+type Categorie = { id: string; nom: string; type: "recette" | "depense" };
+type Compte = { id: string; nom: string };
+type Exercice = { id: string; libelle: string; date_debut: string; date_fin: string };
+
+export type OperationRow = {
+  id: string;
+  date_operation: string;
+  libelle: string;
+  libelle_origine: string | null;
+  montant: number;
+  type: "recette" | "depense";
+  mode_paiement: string | null;
+  categorie_id: string | null;
+  compte_id: string | null;
+  exercice_id: string | null;
+  parent_id: string | null;
+  est_ventilee: boolean;
+  categories: { nom: string } | null;
+  comptes: { nom: string } | null;
+};
+
+const MODES = [
+  { v: "virement", l: "Virement" },
+  { v: "cheque", l: "Chèque" },
+  { v: "carte", l: "Carte" },
+  { v: "especes", l: "Espèces" },
+  { v: "prelevement", l: "Prélèvement" },
+  { v: "autre", l: "Autre" },
+];
+
+type FormState = {
+  date_operation: string;
+  libelle: string;
+  type: "recette" | "depense";
+  categorie_id: string;
+  compte_id: string;
+  mode_paiement: string;
+  montant: string;
+  exercice_id: string;
+};
+
+function formDepuis(op: OperationRow): FormState {
+  return {
+    date_operation: op.date_operation,
+    libelle: op.libelle,
+    type: op.type,
+    categorie_id: op.categorie_id ?? "",
+    compte_id: op.compte_id ?? "",
+    mode_paiement: op.mode_paiement ?? "",
+    montant: String(op.montant),
+    exercice_id: op.exercice_id ?? "",
+  };
+}
+
+export default function ListeOperations({
+  operations,
+  categories,
+  comptes,
+  exerciceId,
+  exercices,
+  donsRepertories,
+  inscriptions,
+  affectations,
+}: {
+  operations: OperationRow[];
+  categories: Categorie[];
+  comptes: Compte[];
+  exerciceId: string | null;
+  exercices: Exercice[];
+  donsRepertories: string[];
+  inscriptions: Inscription[];
+  affectations: Affectation[];
+}) {
+  const router = useRouter();
+  const donsRepertoriesSet = new Set(donsRepertories);
+  // Montant flèché vers les frais de scolarité, par opération.
+  const affecteParOperation = new Map<string, number>();
+  for (const a of affectations) {
+    affecteParOperation.set(a.operation_id, (affecteParOperation.get(a.operation_id) ?? 0) + Number(a.montant));
+  }
+  const [modeEdition, setModeEdition] = useState(false);
+  // Filtre par catégories : vide = toutes. « __sans__ » vise les non catégorisées.
+  const [filtreCats, setFiltreCats] = useState<string[]>([]);
+  // Ouverture des volets : `ouverture` ne retient que les choix explicites de
+  // l'utilisateur ; par défaut, une ligne dont des dons restent à rattacher
+  // s'ouvre d'elle-même.
+  const [ouverture, setOuverture] = useState<Record<string, boolean>>({});
+  // Volet d'informations : `epingle` distingue l'ouverture au clic (fugace) de
+  // celle par le bouton ⓘ (persistante).
+  const [detail, setDetail] = useState<{ id: string; epingle: boolean } | null>(null);
+  const [restaurees, setRestaurees] = useState<string[]>([]);
+  const [annulation, setAnnulation] = useState<string | null>(null);
+  const [edit, setEdit] = useState<OperationRow | null>(null);
+  const [f, setF] = useState<FormState>(() => formDepuis(operations[0] ?? ({} as OperationRow)));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const set = <K extends keyof FormState>(k: K, v: FormState[K]) => setF((p) => ({ ...p, [k]: v }));
+
+  function ouvrir(op: OperationRow) {
+    setError(null);
+    const base = formDepuis(op);
+    setF({ ...base, exercice_id: base.exercice_id || exerciceId || "" });
+    setEdit(op);
+  }
+
+  // L'exercice d'affectation prime sur la date : on autorise l'écart, on le signale.
+  const exerciceChoisi = exercices.find((e) => e.id === f.exercice_id) ?? null;
+  const dateHorsExercice =
+    !!exerciceChoisi &&
+    !!f.date_operation &&
+    (f.date_operation < exerciceChoisi.date_debut || f.date_operation > exerciceChoisi.date_fin);
+
+  // Les sous-écritures ne figurent pas dans la liste : elles s'affichent sous
+  // leur ligne bancaire, une fois celle-ci dépliée.
+  const fillesDe = new Map<string, OperationRow[]>();
+  for (const op of operations) {
+    if (!op.parent_id) continue;
+    fillesDe.set(op.parent_id, [...(fillesDe.get(op.parent_id) ?? []), op]);
+  }
+  const racines = operations.filter((op) => !op.parent_id);
+
+  const operationsAffichees =
+    filtreCats.length === 0
+      ? racines
+      : racines.filter((op) => {
+          // Une ligne détaillée est retenue si l'une de ses filles l'est.
+          if ((fillesDe.get(op.id) ?? []).length > 0) {
+            return (fillesDe.get(op.id) ?? []).some((fi) =>
+              filtreCats.includes(fi.categorie_id ?? "__sans__"),
+            );
+          }
+          return filtreCats.includes(op.categorie_id ?? "__sans__");
+        });
+  const totalAffiche = operationsAffichees.reduce(
+    (s, op) => s + (op.type === "recette" ? 1 : -1) * Number(op.montant),
+    0,
+  );
+
+  const estVentilee = !!edit && ((fillesDe.get(edit.id) ?? []).length > 0 || edit.est_ventilee);
+  /**
+   * La date sort-elle des bornes de l'exercice CONSULTÉ ? On compare à
+   * l'exercice affiché et non à celui de l'opération : c'est bien « cette date
+   * ne tombe pas dans l'exercice que je regarde » que l'on veut signaler, y
+   * compris sur une ligne ventilée.
+   */
+  const exerciceCourant = exercices.find((e) => e.id === exerciceId) ?? null;
+  const dateHorsBornes = (op: OperationRow) =>
+    !!exerciceCourant &&
+    (op.date_operation < exerciceCourant.date_debut || op.date_operation > exerciceCourant.date_fin);
+
+  /** Sous-écritures retenues dans l'exercice affiché. */
+  const fillesRetenues = (opId: string) =>
+    (fillesDe.get(opId) ?? []).filter((fi) => fi.exercice_id === exerciceId);
+
+  /** Sous-écritures « Don » de cette ligne qui ne sont pas encore dans l'onglet Dons. */
+  const donsARattacher = (opId: string) =>
+    (fillesDe.get(opId) ?? []).filter(
+      (fi) => fi.categories?.nom === "Don" && !donsRepertoriesSet.has(fi.id),
+    ).length;
+
+  const estOuverte = (opId: string) => ouverture[opId] ?? donsARattacher(opId) > 0;
+  const basculer = (opId: string) =>
+    setOuverture((p) => ({ ...p, [opId]: !estOuverte(opId) }));
+
+  const categorieChoisie = categories.find((c) => c.id === f.categorie_id) ?? null;
+  const estDonAssociation = categorieChoisie?.nom === CAT_DON_ASSOCIATION;
+
+
+  async function enregistrer(e: React.FormEvent) {
+    e.preventDefault();
+    if (!edit) return;
+    setError(null);
+
+    const montantTotal = Number(f.montant);
+    if (!f.libelle.trim()) return setError("Le libellé est obligatoire.");
+    if (!Number.isFinite(montantTotal) || montantTotal <= 0) return setError("Montant invalide.");
+
+    setSaving(true);
+    const supabase = createClient();
+    const champs = {
+      date_operation: f.date_operation,
+      libelle: f.libelle.trim(),
+      type: f.type,
+      compte_id: f.compte_id || null,
+      mode_paiement: f.mode_paiement || null,
+      exercice_id: f.exercice_id || null,
+      montant: montantTotal,
+      categorie_id: f.categorie_id || null,
+    };
+
+    const { error: err } = await supabase.from("operations").update(champs).eq("id", edit.id);
+    if (err) {
+      setSaving(false);
+      return setError("Enregistrement impossible : " + err.message);
+    }
+
+    // Consigné pour pouvoir revenir en arrière.
+    await journaliser(supabase, nouveauLot(), `Modification de « ${edit.libelle} »`, [
+      {
+        operation_id: edit.id,
+        action: "modification",
+        avant: extraire(edit as unknown as OperationJournalisable),
+        apres: extraire({ ...edit, ...champs } as unknown as OperationJournalisable),
+      },
+    ]);
+
+    setSaving(false);
+    setEdit(null);
+    router.refresh();
+  }
+
+  async function annuler() {
+    setAnnulation(null);
+    setSaving(true);
+    const r = await annulerDernierLot(createClient());
+    setSaving(false);
+    setAnnulation(r.message);
+    if (r.ok) {
+      setRestaurees(r.restaurees);
+      router.refresh();
+      // La surbrillance s'estompe d'elle-même.
+      setTimeout(() => setRestaurees([]), 8000);
+    }
+  }
+
+
+  return (
+    <>
+      <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
+        {annulation && (
+          <span className="mr-auto text-sm text-muted">{annulation}</span>
+        )}
+        <button
+          type="button"
+          onClick={annuler}
+          disabled={saving}
+          title="Revenir sur le dernier geste enregistré"
+          className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-surface-2 disabled:opacity-50"
+        >
+          ↩ Annuler la dernière modification
+        </button>
+        <button
+          type="button"
+          onClick={() => setModeEdition((v) => !v)}
+          className={`rounded-lg border px-4 py-2 text-sm font-medium ${
+            modeEdition ? "border-accent bg-accent-soft text-accent" : "border-border hover:bg-surface-2"
+          }`}
+        >
+          {modeEdition ? "✓ Mode modification actif" : "✏️ Mode modification"}
+        </button>
+      </div>
+
+      <details className="mb-3 rounded-xl border border-border bg-surface px-4 py-3">
+        <summary className="cursor-pointer text-sm font-medium">
+          Filtrer par catégorie
+          {filtreCats.length > 0 && (
+            <span className="ml-2 rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent">
+              {filtreCats.length} sélectionnée{filtreCats.length > 1 ? "s" : ""} ·{" "}
+              {operationsAffichees.length} opération{operationsAffichees.length > 1 ? "s" : ""} ·{" "}
+              {formatEuros(totalAffiche)}
+            </span>
+          )}
+        </summary>
+
+        {(["recette", "depense"] as const).map((sens) => {
+          const lignes = [
+            ...(sens === "recette"
+              ? [{ id: "__sans__", nom: "non catégorisées", type: "recette" as const }]
+              : []),
+            ...categories.filter((c) => c.type === sens),
+          ].filter((c) => operations.some((op) => (op.categorie_id ?? "__sans__") === c.id));
+          if (lignes.length === 0) return null;
+
+          return (
+            <div key={sens} className="mt-2 flex flex-wrap items-center gap-1">
+              <span className="mr-1 w-16 shrink-0 text-xs font-medium text-muted">
+                {sens === "recette" ? "Recettes" : "Dépenses"}
+              </span>
+              {lignes.map((c) => {
+                const actif = filtreCats.includes(c.id);
+                const nb = operations.filter((op) => (op.categorie_id ?? "__sans__") === c.id).length;
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() =>
+                      setFiltreCats((p) => (actif ? p.filter((x) => x !== c.id) : [...p, c.id]))
+                    }
+                    className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
+                      actif ? "bg-accent text-accent-fg" : "border border-border text-muted hover:bg-surface-2"
+                    }`}
+                  >
+                    {c.nom} <span className="opacity-60">{nb}</span>
+                  </button>
+                );
+              })}
+            </div>
+          );
+        })}
+
+        {filtreCats.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setFiltreCats([])}
+            className="mt-3 text-xs text-accent hover:underline"
+          >
+            Tout afficher
+          </button>
+        )}
+      </details>
+
+      {modeEdition && (
+        <p className="mb-3 text-xs text-muted">
+          Cliquez sur une ligne pour l&apos;éditer. Depuis l&apos;édition, vous pouvez aussi la scinder en
+          deux catégories.
+        </p>
+      )}
+
+      <div className="relative pl-7">
+        <div className="rounded-xl border border-border bg-surface">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-border text-left text-muted">
+              <th className="px-4 py-3 font-medium">Date</th>
+              <th className="px-4 py-3 font-medium">Libellé</th>
+              <th className="px-4 py-3 font-medium">Catégorie</th>
+              <th className="px-4 py-3 font-medium">Mode</th>
+              <th className="px-4 py-3 text-right font-medium">Montant</th>
+            </tr>
+          </thead>
+          <tbody>
+            {operationsAffichees.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="px-4 py-16 text-center text-muted">
+                  {operations.length === 0 ? (
+                    <>
+                      Aucune opération pour l&apos;instant.
+                      <br />
+                      <span className="text-sm">Cliquez sur « Nouvelle opération » pour commencer la saisie.</span>
+                    </>
+                  ) : (
+                    <>
+                      Aucune opération dans les catégories sélectionnées.
+                      <br />
+                      <span className="text-sm">Élargissez le filtre ci-dessus.</span>
+                    </>
+                  )}
+                </td>
+              </tr>
+            ) : (
+              operationsAffichees.flatMap((op) => [
+                <tr
+                  key={op.id}
+                  onClick={() =>
+                    modeEdition
+                      ? ouvrir(op)
+                      : setDetail((d) =>
+                          d?.id === op.id && !d.epingle ? null : { id: op.id, epingle: false },
+                        )
+                  }
+                  className={`cursor-pointer border-b border-border last:border-0 transition-colors hover:bg-surface-2 ${
+                    restaurees.includes(op.id) ? "bg-positive/10 ring-1 ring-inset ring-positive/40" : ""
+                  }`}
+                >
+                  <td className="relative w-[132px] px-4 py-3 whitespace-nowrap tabular-nums">
+                    {(op.est_ventilee || (fillesDe.get(op.id) ?? []).length > 0 || modeEdition) && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          basculer(op.id);
+                        }}
+                        title={op.est_ventilee ? "Voir les sous-écritures" : "Ventiler cette ligne"}
+                        className={`absolute top-1/2 -left-7 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded text-base leading-none hover:bg-surface-2 ${
+                          op.est_ventilee ? "text-accent" : "text-muted/50"
+                        }`}
+                      >
+                        <span className={`transition-transform ${estOuverte(op.id) ? "rotate-90" : ""}`}>›</span>
+                      </button>
+                    )}
+                    {formatDate(op.date_operation)}
+                    {/* Créneau d'icône toujours présent : aucune colonne ne se décale. */}
+                    <span
+                      className="ml-1 inline-block w-4 align-[-2px]"
+                      title={dateHorsBornes(op) ? "Date hors des bornes de l'exercice" : undefined}
+                    >
+                      {dateHorsBornes(op) && <Icon name="calendrier-alerte" className="h-4 w-4 text-gold" />}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="inline-flex items-center">
+                      {op.libelle}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDetail((d) =>
+                            d?.id === op.id && d.epingle ? null : { id: op.id, epingle: true },
+                          );
+                        }}
+                        aria-label="Informations complémentaires"
+                        title="Épingler les informations complémentaires"
+                        className={`ml-1.5 inline-flex ${
+                          detail?.id === op.id && detail.epingle ? "text-accent" : "text-muted/70 hover:text-accent"
+                        }`}
+                      >
+                        <Icon name="info" className="h-4 w-4" />
+                      </button>
+                      {!modeEdition && !op.est_ventilee && (fillesDe.get(op.id) ?? []).length === 0 &&
+                        op.categories?.nom === "Don" &&
+                        (donsRepertoriesSet.has(op.id) ? (
+                          <span className="ml-2 text-positive" title="Enregistré dans les dons">✓</span>
+                        ) : (
+                          <Link
+                            href="/dons/depuis-compta"
+                            onClick={(e) => e.stopPropagation()}
+                            className="ml-2 rounded-full bg-gold-soft px-2 py-0.5 text-xs font-medium text-gold hover:opacity-90"
+                            title="Ce don n'est pas encore dans l'onglet Dons"
+                          >
+                            + Ajouter aux dons
+                          </Link>
+                        ))}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3 text-muted">
+                    {op.est_ventilee
+                      ? // Les catégories des seules sous-écritures retenues ici.
+                        [...new Set(fillesRetenues(op.id).map((fi) => fi.categories?.nom ?? "— à classer —"))]
+                          .join(", ") || "—"
+                      : (op.categories?.nom ?? "—")}
+                    {affecteParOperation.has(op.id) && (
+                      <span
+                        className="ml-2 whitespace-nowrap rounded-full bg-gold-soft px-2 py-0.5 text-[11px] font-medium text-gold"
+                        title={`${formatEuros(affecteParOperation.get(op.id) ?? 0)} fléchés vers des frais de scolarité`}
+                      >
+                        → scolarité
+                      </span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-muted capitalize">{op.mode_paiement ?? "—"}</td>
+                  <td
+                    className={`px-4 py-3 text-right whitespace-nowrap tabular-nums font-medium ${
+                      op.type === "recette" ? "text-positive" : "text-negative"
+                    }`}
+                  >
+                    {op.type === "recette" ? "+" : "−"}
+                    {/* Ligne ventilée : seule la part de l'exercice affiché est portée. */}
+                    {formatEuros(
+                      op.est_ventilee
+                        ? fillesRetenues(op.id).reduce((s, fi) => s + Number(fi.montant), 0)
+                        : Number(op.montant),
+                    )}
+                  </td>
+                </tr>,
+                detail?.id === op.id && (
+                  <VoletDetail
+                    key={`${op.id}-detail`}
+                    colSpan={5}
+                    epingle={detail.epingle}
+                    onFermer={() => setDetail(null)}
+                    op={{
+                      libelle: op.libelle,
+                      libelle_origine: op.libelle_origine,
+                      date_operation: op.date_operation,
+                      montant: Number(op.montant),
+                      type: op.type,
+                      categorie: op.categories?.nom ?? null,
+                      mode_paiement: op.mode_paiement,
+                      compte: op.comptes?.nom ?? null,
+                    }}
+                  />
+                ),
+                estOuverte(op.id) && (
+                  <VentilationOperation
+                    key={`${op.id}-ventilation`}
+                    mere={op as unknown as OperationVentilable}
+                    filles={(fillesDe.get(op.id) ?? []) as unknown as OperationVentilable[]}
+                    categories={categories}
+                    exercices={exercices}
+                    exerciceAffiche={exerciceId}
+                    modifiable={modeEdition}
+                    donsRepertories={donsRepertories}
+                  />
+                ),
+              ])
+            )}
+          </tbody>
+        </table>
+        </div>
+      </div>
+
+      {edit && (
+        <Modal title="Modifier l'opération" onClose={() => setEdit(null)}>
+          <form onSubmit={enregistrer} className="max-h-[75vh] space-y-4 overflow-y-auto pr-1">
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => set("type", "recette")}
+                className={`rounded-lg border px-3 py-2 text-sm font-medium ${f.type === "recette" ? "border-accent bg-accent-soft text-accent" : "border-border text-muted"}`}
+              >
+                Recette
+              </button>
+              <button
+                type="button"
+                onClick={() => set("type", "depense")}
+                className={`rounded-lg border px-3 py-2 text-sm font-medium ${f.type === "depense" ? "border-accent bg-accent-soft text-accent" : "border-border text-muted"}`}
+              >
+                Dépense
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Date">
+                <input type="date" value={f.date_operation} onChange={(e) => set("date_operation", e.target.value)} className={inputCls} />
+              </Field>
+              <Field label="Montant">
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={f.montant}
+                  onChange={(e) => set("montant", e.target.value)}
+                  className={inputCls}
+                />
+              </Field>
+            </div>
+
+            <Field label="Libellé">
+              <input
+                type="text"
+                value={f.libelle}
+                onChange={(e) => set("libelle", e.target.value)}
+                className={inputCls}
+                title={edit.libelle_origine ? `Libellé bancaire d'origine : ${edit.libelle_origine}` : undefined}
+              />
+            </Field>
+            {edit.libelle_origine && edit.libelle_origine !== f.libelle && (
+              <p className="-mt-2 text-xs text-muted">Banque : {edit.libelle_origine}</p>
+            )}
+
+            <Field label={estVentilee ? "Catégorie (facultative — la ligne est ventilée)" : "Catégorie"}>
+              <select value={f.categorie_id} onChange={(e) => set("categorie_id", e.target.value)} className={inputCls}>
+                <option value="">— à classer —</option>
+                {categories.filter((c) => c.type === f.type).map((c) => (
+                  <option key={c.id} value={c.id}>{c.nom}</option>
+                ))}
+              </select>
+            </Field>
+
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Compte">
+                <select value={f.compte_id} onChange={(e) => set("compte_id", e.target.value)} className={inputCls}>
+                  <option value="">—</option>
+                  {comptes.map((c) => (
+                    <option key={c.id} value={c.id}>{c.nom}</option>
+                  ))}
+                </select>
+              </Field>
+              <Field label="Mode de paiement">
+                <select value={f.mode_paiement} onChange={(e) => set("mode_paiement", e.target.value)} className={inputCls}>
+                  <option value="">—</option>
+                  {MODES.map((m) => (
+                    <option key={m.v} value={m.v}>{m.l}</option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+
+            <Field label="Exercice d'affectation">
+              <select value={f.exercice_id} onChange={(e) => set("exercice_id", e.target.value)} className={inputCls}>
+                <option value="">— aucun —</option>
+                {exercices.map((e) => (
+                  <option key={e.id} value={e.id}>{e.libelle}</option>
+                ))}
+              </select>
+            </Field>
+            {dateHorsExercice && exerciceChoisi && (
+              <p className="-mt-2 rounded-lg bg-gold-soft/50 px-3 py-2 text-xs text-gold">
+                ⚠️ La date du {formatDate(f.date_operation)} est en dehors de {exerciceChoisi.libelle}. C&apos;est
+                volontaire : l&apos;exercice choisi ici fait foi pour le bilan, pas la date.
+              </p>
+            )}
+
+            {estDonAssociation && (
+              <AffectationScolarite
+                operationId={edit.id}
+                montantOperation={Number(f.montant) || Number(edit.montant)}
+                inscriptions={inscriptions}
+                affectations={affectations}
+                libelleExercice={exerciceChoisi?.libelle ?? null}
+              />
+            )}
+
+            <p className="rounded-lg bg-surface-2 px-3 py-2 text-xs text-muted">
+              {estVentilee
+                ? "Cette ligne est détaillée en sous-écritures : ce sont leurs catégories qui alimentent les bilans. La catégorie ci-dessus peut rester vide."
+                : "Pour répartir cette ligne sur plusieurs catégories, fermez cette fenêtre et dépliez la ligne dans le tableau : la ventilation s'y fait en sous-écritures, sans dédoubler l'écriture bancaire."}
+            </p>
+
+            <FormFooter saving={saving} error={error} onCancel={() => setEdit(null)} />
+          </form>
+        </Modal>
+      )}
+    </>
+  );
+}

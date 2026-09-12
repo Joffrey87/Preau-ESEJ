@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { genererRecuDocx, type DonPourRecu } from "@/lib/recu";
+import { genererRecuPdf, type DonPourRecu } from "@/lib/recu";
 
 export default function GenererRecuBouton({ don }: { don: DonPourRecu }) {
   const [erreur, setErreur] = useState<string | null>(null);
@@ -11,7 +11,7 @@ export default function GenererRecuBouton({ don }: { don: DonPourRecu }) {
     setErreur(null);
     setBusy(true);
     try {
-      await genererRecuDocx(don);
+      await genererRecuPdf(don);
     } catch (e) {
       setErreur(e instanceof Error ? e.message : "Génération impossible.");
     }

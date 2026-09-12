@@ -3,6 +3,8 @@ import PageHeader from "@/components/PageHeader";
 import GestionDons, { type Don } from "@/components/GestionDons";
 import { createClient } from "@/lib/supabase/server";
 import { roleByEmail } from "@/lib/roles";
+import ModeleRecuBouton from "@/components/ModeleRecuBouton";
+import type { ModeleRecuRow } from "@/lib/modeleRecu";
 
 export default async function DonsPage() {
   const supabase = await createClient();
@@ -20,6 +22,14 @@ export default async function DonsPage() {
     )
     .order("date_don", { ascending: false });
 
+  // Signataires et adresse imprimés sur les reçus (modifiables depuis la page).
+  const { data: modeleRecu } = await supabase.from("modele_recu").select("*").eq("id", 1).maybeSingle();
+
+  // Relations déjà employées, proposées en suggestion à la saisie.
+  const relations = Array.from(
+    new Set((dons ?? []).map((d) => (d.origine ?? "").trim()).filter(Boolean)),
+  ).sort((a, b) => a.localeCompare(b, "fr"));
+
   return (
     <div className="mx-auto max-w-6xl px-5 py-8 md:px-8">
       <PageHeader
@@ -27,6 +37,7 @@ export default async function DonsPage() {
         subtitle="Suivi des dons reçus et génération des reçus fiscaux."
         action={
           <div className="flex flex-wrap items-center gap-2">
+            <ModeleRecuBouton initial={(modeleRecu ?? null) as ModeleRecuRow | null} />
             <Link
               href="/dons/depuis-compta"
               className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-surface-2"
@@ -42,7 +53,8 @@ export default async function DonsPage() {
           </div>
         }
       />
-      <GestionDons dons={(dons ?? []) as Don[]} roleSlug={roleSlug} />
+      <GestionDons dons={(dons ?? []) as Don[]} roleSlug={roleSlug}
+        relations={relations} />
     </div>
   );
 }

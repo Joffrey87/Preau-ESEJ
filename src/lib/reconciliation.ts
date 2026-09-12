@@ -12,6 +12,7 @@ export type OpDon = {
   libelle: string;
   libelle_origine: string | null;
   mode_paiement: string | null;
+  exercice_id: string | null;
 };
 
 // Mots « techniques » d'un libellé bancaire à retirer pour isoler un nom.

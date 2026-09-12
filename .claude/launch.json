@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "preau-dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--", "-p", "3100"],
+      "port": 3100
+    },
+    {
+      "name": "equipe5rh-demo",
+      "runtimeExecutable": "C:\\Users\\Joffrey\\AppData\\Local\\Temp\\claude\\C--2019-ARIL-tresorier-esej\\f02b5b28-95d0-4f21-bb3f-3f017ee77fb9\\scratchpad\\start-equipe5rh.cmd",
+      "runtimeArgs": [],
+      "port": 5173
+    }
+  ]
+}

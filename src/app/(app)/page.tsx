@@ -196,7 +196,7 @@ export default async function Home() {
       {/* Hero personnalisé */}
       <div className="mb-8 flex items-center gap-5">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/logo.png" alt="Préau" className="h-20 w-20 shrink-0 rounded-full object-contain sm:h-24 sm:w-24" />
+        <img src="/logo.webp" alt="Préau" className="h-20 w-20 shrink-0 rounded-full object-contain sm:h-24 sm:w-24" />
         <div className="min-w-0">
           <p className="text-xs font-medium uppercase tracking-wider text-gold">{dateStr}</p>
           <h1 className="mt-0.5 text-2xl font-semibold tracking-tight sm:text-3xl">

@@ -1,5 +1,6 @@
 import PageHeader from "@/components/PageHeader";
 import GestionCarnet from "@/components/GestionCarnet";
+import SaisieGroupeeCarnet from "@/components/SaisieGroupeeCarnet";
 import { createClient } from "@/lib/supabase/server";
 import { roleByEmail } from "@/lib/roles";
 import {
@@ -20,9 +21,18 @@ export default async function CarnetPage() {
   const { data } = await supabase
     .from("contacts")
     .select(
-      "id, civilite, est_personne_morale, nom, prenom, raison_sociale, categories, courriel, telephone, adresse, cp_ville, iban, notes, supprime_le, supprime_par",
+      "id, civilite, est_personne_morale, nom, prenom, raison_sociale, categories, courriel, telephone, adresse, cp_ville, iban, notes, relation, pii_chiffre, supprime_le, supprime_par",
     )
     .order("nom", { ascending: true });
+
+  // Relations déjà employées, partagées avec l'onglet Dons.
+  const { data: origines } = await supabase.from("dons").select("origine").not("origine", "is", null);
+  const relations = Array.from(
+    new Set([
+      ...(origines ?? []).map((d) => (d.origine ?? "").trim()),
+      ...((data ?? []) as Contact[]).map((c) => (c.relation ?? "").trim()),
+    ].filter(Boolean)),
+  ).sort((a, b) => a.localeCompare(b, "fr"));
 
   const canIban = peutVoirIban(slug);
 
@@ -38,7 +48,12 @@ export default async function CarnetPage() {
         title="Carnet d'adresses"
         subtitle="Contacts de l'association · l'accès dépend de votre profil."
       />
+      <div className="mb-6">
+        <SaisieGroupeeCarnet />
+      </div>
+
       <GestionCarnet
+        relations={relations}
         contacts={visibles}
         canVoirIban={canIban}
         categoriesGerables={categoriesAutorisees(slug)}

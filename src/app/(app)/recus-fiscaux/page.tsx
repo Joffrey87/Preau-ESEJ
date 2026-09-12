@@ -16,7 +16,7 @@ export default async function RecusFiscauxPage() {
     <div className="mx-auto max-w-6xl px-5 py-8 md:px-8">
       <PageHeader
         title="Reçus fiscaux"
-        subtitle="Un reçu annuel par n° et par année, cumulant les versements. Publipostage du modèle ESEJ (.docx)."
+        subtitle="Un reçu annuel par n° et par année, cumulant les versements. PDF sur une page, au modèle ESEJ."
       />
       <ListeRecus dons={(data ?? []) as DonRow[]} />
     </div>

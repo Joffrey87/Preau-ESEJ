@@ -1,6 +1,9 @@
 # -*- coding: utf-8 -*-
-"""Rapproche les opérations Préau (Supabase) avec les lignes des relevés PDF (releves_2025_2026.json)
+"""Rapproche les opérations Préau (Supabase) avec les lignes des relevés PDF (sortie de releves_pdf.py)
 et prépare les UPDATE de libelle_origine pour les opérations qui n'en ont pas.
+
+Usage : python scripts/rapprocher_libelles.py [releves.json] [date_debut] [date_fin]
+        (défaut : scripts/releves_2025_2026.json 2025-08-01 2026-08-31)
 
 Lecture seule ici : produit scripts/rapprochement.json + scripts/rapprochement_report.txt + scripts/update_libelles.sql
 """
@@ -19,9 +22,11 @@ def rest(path):
     req = urllib.request.Request(URL + '/rest/v1/' + path, headers={'apikey': KEY, 'Authorization': 'Bearer ' + KEY})
     return json.load(urllib.request.urlopen(req))
 
-D0, D1 = '2025-08-01', '2026-08-31'
+RELEVES = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, 'scripts', 'releves_2025_2026.json')
+D0 = sys.argv[2] if len(sys.argv) > 2 else '2025-08-01'
+D1 = sys.argv[3] if len(sys.argv) > 3 else '2026-08-31'
 ops = rest(f'operations?select=id,date_operation,type,montant,libelle,libelle_origine,parent_id,est_ventilee&date_operation=gte.{D0}&date_operation=lte.{D1}&order=date_operation&limit=5000')
-bank = [b for b in json.load(open(os.path.join(ROOT, 'scripts', 'releves_2025_2026.json'), encoding='utf-8')) if D0 <= b['iso'] <= D1]
+bank = [b for b in json.load(open(RELEVES, encoding='utf-8')) if D0 <= b['iso'] <= D1]
 for o in ops: o['montant'] = float(o['montant'])
 print(len(ops), 'opérations Préau,', len(bank), 'lignes bancaires')
 

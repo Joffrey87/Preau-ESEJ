@@ -17,12 +17,11 @@ import {
   type OperationJournalisable,
 } from "@/lib/journalOperations";
 import AffectationScolarite, {
+  CAT_DON_ASSOCIATION,
+  estCategorieScolarite,
   type Affectation,
   type Inscription,
 } from "@/components/AffectationScolarite";
-
-/** Catégorie ouvrant le fléchage vers les frais de scolarité. */
-const CAT_DON_ASSOCIATION = "Don d'Association";
 
 type Categorie = { id: string; nom: string; type: "recette" | "depense" };
 type Compte = { id: string; nom: string };
@@ -205,6 +204,9 @@ export default function ListeOperations({
 
   const categorieChoisie = categories.find((c) => c.id === f.categorie_id) ?? null;
   const estDonAssociation = categorieChoisie?.nom === CAT_DON_ASSOCIATION;
+  // Une écriture de scolarité non ventilée se rattache à une famille ici ; ses
+  // sous-écritures, elles, se rattachent depuis le volet de ventilation.
+  const estScolarite = estCategorieScolarite(categorieChoisie?.nom);
 
 
   async function enregistrer(e: React.FormEvent) {
@@ -556,6 +558,8 @@ export default function ListeOperations({
                     exerciceAffiche={exerciceId}
                     modifiable={modeEdition}
                     donsRepertories={donsRepertories}
+                    inscriptions={inscriptions}
+                    affectations={affectations}
                   />
                 ),
               ])
@@ -667,13 +671,15 @@ export default function ListeOperations({
               />
             </Field>
 
-            {estDonAssociation && (
+            {(estDonAssociation || (estScolarite && !estVentilee)) && (
               <AffectationScolarite
                 operationId={edit.id}
                 montantOperation={Number(f.montant) || Number(edit.montant)}
                 inscriptions={inscriptions}
                 affectations={affectations}
                 libelleExercice={exerciceChoisi?.libelle ?? null}
+                mode={estDonAssociation ? "don" : "scolarite"}
+                categorie={categorieChoisie?.nom ?? null}
               />
             )}
 

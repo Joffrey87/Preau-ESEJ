@@ -13,6 +13,12 @@ import {
   extraire,
   type OperationJournalisable,
 } from "@/lib/journalOperations";
+import AffectationScolarite, {
+  estCategorieScolarite,
+  type Affectation,
+  type Inscription,
+} from "@/components/AffectationScolarite";
+import { libelleNature } from "@/lib/scolariteDepots";
 
 type Categorie = { id: string; nom: string; type: "recette" | "depense" };
 type Exercice = { id: string; libelle: string; date_debut: string; date_fin: string };
@@ -50,6 +56,8 @@ export default function VentilationOperation({
   exerciceAffiche,
   modifiable,
   donsRepertories = [],
+  inscriptions = [],
+  affectations = [],
 }: {
   mere: OperationVentilable;
   filles: OperationVentilable[];
@@ -61,6 +69,9 @@ export default function VentilationOperation({
   modifiable: boolean;
   /** Sous-écritures déjà présentes dans l'onglet Dons. */
   donsRepertories?: string[];
+  /** Familles de l'onglet Frais de scolarité, pour rattacher une sous-écriture de scolarité. */
+  inscriptions?: Inscription[];
+  affectations?: Affectation[];
 }) {
   const router = useRouter();
   const [categorieId, setCategorieId] = useState("");
@@ -83,6 +94,16 @@ export default function VentilationOperation({
 
   /** Une sous-écriture d'un autre exercice n'est pas comptée ici. */
   const retenue = (f: OperationVentilable) => f.exercice_id === exerciceAffiche;
+
+  // Rattachement d'une sous-écriture de scolarité à une famille (mensualité,
+  // mois d'avance, frais de dossier) : résumé en lecture, formulaire en mode
+  // modification.
+  const estScolarite = (f: OperationVentilable) => estCategorieScolarite(nomCat(f.categorie_id));
+  const affectationsDe = (f: OperationVentilable) => affectations.filter((a) => a.operation_id === f.id);
+  const nomFamille = (id: string) => {
+    const i = inscriptions.find((x) => x.id === id);
+    return i ? `${i.famille_nom} · ${i.annee_scolaire}` : "famille inconnue";
+  };
 
   async function ajouterFille() {
     setError(null);
@@ -237,6 +258,25 @@ export default function VentilationOperation({
           </td>
           <td className="px-4 py-1.5">
             {nomCat(f.categorie_id)}
+            {estScolarite(f) &&
+              (affectationsDe(f).length > 0 ? (
+                affectationsDe(f).map((a) => (
+                  <span
+                    key={a.id}
+                    className="ml-2 rounded-full bg-surface-2 px-2 py-0.5 text-[11px] text-muted"
+                    title={`${formatEuros(Number(a.montant))} — ${libelleNature(a.nature ?? "mensualite")}`}
+                  >
+                    → {nomFamille(a.inscription_id)} · {libelleNature(a.nature ?? "mensualite")}
+                  </span>
+                ))
+              ) : (
+                <span
+                  className="ml-2 rounded-full bg-gold-soft px-2 py-0.5 text-[11px] font-medium text-gold"
+                  title="Sous-écriture de scolarité sans famille : passez en mode modification pour la rattacher"
+                >
+                  famille ?
+                </span>
+              ))}
             {nomCat(f.categorie_id) === "Don" &&
               (donsRepertories.includes(f.id) ? (
                 <span className="ml-2 text-positive" title="Enregistré dans les dons">✓</span>
@@ -284,6 +324,28 @@ export default function VentilationOperation({
           </td>
         </tr>
       ))}
+
+      {modifiable &&
+        filles.filter(estScolarite).map((f) => (
+          <tr key={`${f.id}-famille`} className="border-b border-border/50 bg-surface-2/30">
+            <td className="px-4 pb-2" />
+            <td colSpan={4} className="px-4 pb-2 pl-8">
+              <div className="mb-1 text-xs text-muted">
+                Famille pour « {f.libelle} » ({formatEuros(Number(f.montant))})
+              </div>
+              <AffectationScolarite
+                operationId={f.id}
+                montantOperation={Number(f.montant)}
+                inscriptions={inscriptions}
+                affectations={affectations}
+                libelleExercice={exercices.find((e) => e.id === f.exercice_id)?.libelle ?? null}
+                mode="scolarite"
+                categorie={nomCat(f.categorie_id)}
+                compact
+              />
+            </td>
+          </tr>
+        ))}
 
       {filles.some((f) => !retenue(f)) && (
         <tr className="border-b border-border/50 bg-surface-1/60 text-xs text-muted">

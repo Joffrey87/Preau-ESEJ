@@ -7,6 +7,15 @@ import { formatEurosCourt as formatEuros } from "@/lib/format";
 import { Modal, Field, FormFooter, inputCls } from "./GestionComptes";
 import JaugeScolarite, { etatJauge } from "@/components/JaugeScolarite";
 import Icon from "@/components/Icon";
+import {
+  etatDepot,
+  etatFraisDossier,
+  famillesParties,
+  FRAIS_DOSSIER_PAR_ENFANT,
+  type AffectationDetail,
+  type InscriptionDepot,
+  type NatureAffectation,
+} from "@/lib/scolariteDepots";
 
 export type Inscription = {
   id: string;
@@ -27,6 +36,10 @@ export type Inscription = {
   m_mai: number | null;
   m_juin: number | null;
   notes: string | null;
+  /** Part du mois d'avance utilisée cette année pour le dernier mois d'un enfant qui part. */
+  avance_consommee?: number | null;
+  /** Dépôt versé avant les données de la comptabilité (saisi à la main, une fois). */
+  depot_anterieur?: number | null;
 };
 
 const MOIS: { k: keyof Inscription; l: string }[] = [
@@ -44,20 +57,56 @@ const MOIS: { k: keyof Inscription; l: string }[] = [
 
 const MOIS_PAR_AN = 10;
 
-/** Don d'association fléché vers une famille, depuis la Comptabilité. */
+/** Montant fléché vers une famille depuis la Comptabilité et compté comme réglé. */
 export type AffectationRecue = {
   inscription_id: string;
   montant: number;
   libelle: string;
   date_operation: string;
+  nature?: NatureAffectation;
 };
 
 export function totalDu(i: Pick<Inscription, "montant_mensuel">): number {
   return Number(i.montant_mensuel) * MOIS_PAR_AN;
 }
+/**
+ * Réglé de l'année : le report (crédit venant de l'année précédente, colonne
+ * « Avance » du classeur) plus les dix mensualités saisies. Le mois d'avance au
+ * sens du DÉPÔT est une autre notion : il est suivi depuis la Comptabilité
+ * (colonne « Mois d'avance ») et n'entre pas dans le réglé.
+ */
 export function totalRegle(i: Inscription): number {
   const cols = ["avance", ...MOIS.map((m) => m.k)] as (keyof Inscription)[];
   return cols.reduce((s, c) => s + (Number(i[c]) || 0), 0);
+}
+
+const COULEURS: Record<string, string> = {
+  vert: "bg-positive/10 text-positive",
+  jaune: "bg-gold-soft text-gold",
+  violet: "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300",
+  bleu: "bg-accent-soft text-accent",
+  gris: "bg-surface-2 text-muted",
+};
+
+function Pastille({ couleur, children, title }: { couleur: string; children: React.ReactNode; title?: string }) {
+  return (
+    <span
+      title={title}
+      className={`inline-flex cursor-help items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium tabular-nums ${COULEURS[couleur] ?? COULEURS.gris}`}
+    >
+      {children}
+    </span>
+  );
+}
+
+function detailsTexte(details: AffectationDetail[]): string {
+  return details
+    .map((d) => `${d.date_operation ? formatDateCourte(d.date_operation) + " · " : ""}${d.libelle} — ${d.type === "depense" ? "−" : ""}${formatEuros(d.montant)}`)
+    .join("\n");
+}
+function formatDateCourte(iso: string): string {
+  const [y, m, d] = iso.split("-");
+  return d && m && y ? `${d}/${m}/${y}` : iso;
 }
 
 type FormState = Record<string, string> & {
@@ -81,14 +130,20 @@ export default function GestionScolarite({
   inscriptions,
   bareme,
   affectations = [],
+  toutesInscriptions = [],
+  affectationsDetail = [],
 }: {
   annee: string;
   annees: string[];
   inscriptions: Inscription[];
   /** nb_enfants -> montant mensuel, pour l'année courante. */
   bareme: Record<number, number>;
-  /** Dons d'association fléchés vers ces familles (même exercice). */
+  /** Dons d'association et mensualités fléchés vers ces familles (comptés comme réglé). */
   affectations?: AffectationRecue[];
+  /** Toutes les inscriptions, toutes années : le dépôt suit la famille. */
+  toutesInscriptions?: InscriptionDepot[];
+  /** Toutes les affectations, avec leur nature et l'opération d'origine. */
+  affectationsDetail?: AffectationDetail[];
 }) {
   const router = useRouter();
   const [edit, setEdit] = useState<Inscription | "nouveau" | null>(null);
@@ -102,6 +157,8 @@ export default function GestionScolarite({
       emails: "",
       montant_mensuel: "",
       avance: "",
+      avance_consommee: "",
+      depot_anterieur: "",
       notes: "",
     };
     for (const m of MOIS) base[m.k] = "";
@@ -131,6 +188,14 @@ export default function GestionScolarite({
         emails: i.emails ?? "",
         montant_mensuel: String(i.montant_mensuel).replace(".", ","),
         avance: i.avance != null ? String(i.avance).replace(".", ",") : "",
+        avance_consommee:
+          i.avance_consommee != null && Number(i.avance_consommee) !== 0
+            ? String(i.avance_consommee).replace(".", ",")
+            : "",
+        depot_anterieur:
+          i.depot_anterieur != null && Number(i.depot_anterieur) !== 0
+            ? String(i.depot_anterieur).replace(".", ",")
+            : "",
         notes: i.notes ?? "",
       };
       for (const m of MOIS) {
@@ -161,6 +226,8 @@ export default function GestionScolarite({
       emails: f.emails.trim() || null,
       montant_mensuel: montant,
       avance: numOrNull(f.avance),
+      avance_consommee: numOrNull(f.avance_consommee) ?? 0,
+      depot_anterieur: numOrNull(f.depot_anterieur) ?? 0,
       notes: f.notes.trim() || null,
     };
     for (const m of MOIS) {
@@ -208,13 +275,67 @@ export default function GestionScolarite({
   const mensuelTotal = inscriptions.reduce((s, i) => s + Number(i.montant_mensuel), 0);
   const etatGlobal = etatJauge(mensuelTotal, sumRegle, annee);
 
-  const badgeAvance = (i: Inscription) => {
-    const av = Number(i.avance) || 0;
-    if (av >= Number(i.montant_mensuel) && av > 0)
-      return <span className="rounded-full bg-positive/10 px-2 py-0.5 text-xs font-medium text-positive">Payé</span>;
-    if (av > 0)
-      return <span className="rounded-full bg-surface-2 px-2 py-0.5 text-xs text-muted">Partiel</span>;
-    return <span className="text-xs text-muted">—</span>;
+  // Mois d'avance (dépôt) et frais de dossier, calculés depuis la Comptabilité.
+  const depotDe = (i: Inscription) => {
+    const insc = toutesInscriptions.find((t) => t.id === i.id) ?? {
+      id: i.id,
+      annee_scolaire: i.annee_scolaire,
+      famille_nom: i.famille_nom,
+      nb_enfants: i.nb_enfants,
+      montant_mensuel: Number(i.montant_mensuel),
+      avance: i.avance,
+      avance_consommee: i.avance_consommee ?? 0,
+      depot_anterieur: i.depot_anterieur ?? 0,
+    };
+    return {
+      depot: etatDepot(insc, toutesInscriptions, affectationsDetail),
+      frais: etatFraisDossier(insc, toutesInscriptions, affectationsDetail),
+    };
+  };
+  const parties = famillesParties(annee, toutesInscriptions, affectationsDetail);
+
+  const badgeDepot = (i: Inscription) => {
+    const e = depotDe(i).depot;
+    const lignes: string[] = [];
+    lignes.push(`Dépôt attendu : ${formatEuros(e.du)} (un mois au tarif de la famille)`);
+    lignes.push(`Dépôt détenu : ${formatEuros(e.detenu)}`);
+    if (e.anterieur > 0) lignes.push(`Dont dépôt antérieur aux données de la comptabilité : ${formatEuros(e.anterieur)}`);
+    if (e.details.length > 0) lignes.push("", "Versements (Comptabilité) :", detailsTexte(e.details));
+    else lignes.push("", "Aucun versement fléché « mois d'avance » dans la Comptabilité.");
+    if (e.departs > 0) lignes.push("", `${e.departs} enfant(s) parti(s) depuis l'année précédente.`);
+    if (e.reportClasseur > 0) lignes.push("", `Report du classeur (colonne Avance) : ${formatEuros(e.reportClasseur)}`);
+    if (e.couleur === "violet") lignes.push("", "Dépôt non rendu après un départ : restitution ou don de la famille à décider.");
+    const texte =
+      e.couleur === "vert" ? "Payé" : e.couleur === "violet" ? "Non rendu" : e.couleur === "jaune" ? "Incomplet" : "—";
+    return (
+      <Pastille couleur={e.couleur} title={lignes.join("\n")}>
+        {texte}
+        {e.couleur !== "gris" && (
+          <span className="opacity-80">
+            {formatEuros(e.detenu)}/{formatEuros(e.du)}
+          </span>
+        )}
+      </Pastille>
+    );
+  };
+
+  const badgeFrais = (i: Inscription) => {
+    const e = depotDe(i).frais;
+    const lignes: string[] = [];
+    lignes.push(
+      e.nouveaux > 0
+        ? `${e.nouveaux} enfant(s) entrant(s) × ${FRAIS_DOSSIER_PAR_ENFANT} € = ${formatEuros(e.du)} attendus`
+        : "Aucun enfant entrant cette année : rien d'attendu",
+    );
+    lignes.push(`Réglé : ${formatEuros(e.paye)}`);
+    if (e.details.length > 0) lignes.push("", "Versements (Comptabilité) :", detailsTexte(e.details));
+    else lignes.push("", "Aucun versement fléché « frais de dossier » dans la Comptabilité.");
+    const texte = e.du === 0 && e.paye === 0 ? "—" : `${formatEuros(e.paye)}/${formatEuros(e.du)}`;
+    return (
+      <Pastille couleur={e.couleur} title={lignes.join("\n")}>
+        {texte}
+      </Pastille>
+    );
   };
 
 
@@ -260,7 +381,7 @@ export default function GestionScolarite({
       <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {[
           { l: "Total attendu", v: sumDu, c: "" },
-          { l: "Dont dons d'association", v: sumDon, c: sumDon > 0 ? "text-gold" : "text-muted" },
+          { l: "Dont rattachés depuis la compta", v: sumDon, c: sumDon > 0 ? "text-gold" : "text-muted" },
           { l: "Total réglé", v: sumRegle, c: "text-positive" },
           { l: "Reste à percevoir", v: sumReste, c: sumReste > 0 ? "text-negative" : "" },
         ].map((s) => (
@@ -279,7 +400,18 @@ export default function GestionScolarite({
               <th className="px-4 py-3 font-medium text-center">Enf.</th>
               <th className="px-4 py-3 font-medium text-right">Mensuel</th>
               <th className="px-4 py-3 font-medium text-right">Total dû</th>
-              <th className="px-4 py-3 font-medium text-center">Mois d&apos;avance</th>
+              <th
+                className="px-4 py-3 font-medium text-center"
+                title="Dépôt versé une fois par enfant, l'été précédant son entrée ; il éponge le dernier mois de sa scolarité à l'école. Alimenté par la Comptabilité (affectation « mois d'avance »)."
+              >
+                Mois d&apos;avance
+              </th>
+              <th
+                className="px-4 py-3 font-medium text-center"
+                title={`${FRAIS_DOSSIER_PAR_ENFANT} € par enfant entrant. Alimenté par la Comptabilité (affectation « frais de dossier »).`}
+              >
+                Frais de dossier
+              </th>
               <th className="px-4 py-3 font-medium">Avancement</th>
               <th className="px-4 py-3 font-medium text-right">Réglé</th>
               <th className="px-4 py-3 font-medium text-right">Reste</th>
@@ -289,7 +421,7 @@ export default function GestionScolarite({
           <tbody>
             {inscriptions.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-4 py-12 text-center text-muted">
+                <td colSpan={10} className="px-4 py-12 text-center text-muted">
                   Aucune famille pour {annee}.
                 </td>
               </tr>
@@ -306,7 +438,8 @@ export default function GestionScolarite({
                     <td className="px-4 py-3 text-center tabular-nums">{i.nb_enfants ?? "—"}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{formatEuros(Number(i.montant_mensuel))}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{formatEuros(du)}</td>
-                    <td className="px-4 py-3 text-center">{badgeAvance(i)}</td>
+                    <td className="px-4 py-3 text-center">{badgeDepot(i)}</td>
+                    <td className="px-4 py-3 text-center">{badgeFrais(i)}</td>
                     <td className="px-4 py-3">
                       <JaugeScolarite
                         etat={etatJauge(Number(i.montant_mensuel), regle, annee)}
@@ -318,7 +451,7 @@ export default function GestionScolarite({
                       className="px-4 py-3 text-right tabular-nums text-positive"
                       title={
                         detailsDon.length > 0
-                          ? "Dont don d'association : " +
+                          ? "Dont rattachés depuis la compta : " +
                             detailsDon
                               .map((d) => `${d.libelle} — ${formatEuros(Number(d.montant))}`)
                               .join(" · ")
@@ -349,6 +482,35 @@ export default function GestionScolarite({
         </table>
       </div>
 
+      {/* Légende des deux colonnes alimentées par la Comptabilité */}
+      <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
+        <span className="font-medium text-foreground">Mois d&apos;avance et frais de dossier :</span>
+        <span><Pastille couleur="vert">vert</Pastille> réglé pour chaque enfant</span>
+        <span><Pastille couleur="jaune">jaune</Pastille> versé partiellement ou pas encore</span>
+        <span><Pastille couleur="violet">violet</Pastille> enfant parti, dépôt non rendu (restitution ou don à décider)</span>
+        <span>· le détail des versements apparaît au survol ; ils se saisissent dans la Comptabilité, en affectant l&apos;écriture à la famille.</span>
+      </div>
+
+      {parties.length > 0 && (
+        <div className="mt-4 rounded-xl border border-violet-300/60 bg-violet-50/60 px-4 py-3 text-sm dark:border-violet-800/60 dark:bg-violet-900/20">
+          <div className="mb-1 font-medium text-violet-700 dark:text-violet-300">
+            Familles parties avec un dépôt encore détenu
+          </div>
+          <ul className="space-y-0.5">
+            {parties.map((p) => (
+              <li key={p.famille_nom} className="flex items-center justify-between gap-3" title={detailsTexte(p.details)}>
+                <span>{p.famille_nom}</span>
+                <span className="tabular-nums font-medium">{formatEuros(p.detenu)}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="mt-1 text-xs text-muted">
+            À solder : restitution (dépense fléchée « mois d&apos;avance » dans la Comptabilité), imputation sur le dernier
+            mois (champ « dépôt consommé » de la fiche famille) ou don de la famille.
+          </p>
+        </div>
+      )}
+
       {edit && (
         <Modal
           title={edit === "nouveau" ? `Nouvelle famille · ${annee}` : `${(edit as Inscription).famille_nom} · ${annee}`}
@@ -372,8 +534,40 @@ export default function GestionScolarite({
               <Field label="Montant mensuel (€)">
                 <input type="text" inputMode="decimal" required value={f.montant_mensuel} onChange={(e) => set("montant_mensuel", e.target.value)} className={inputCls} />
               </Field>
-              <Field label="Mois d'avance (€)">
-                <input type="text" inputMode="decimal" value={f.avance} onChange={(e) => set("avance", e.target.value)} className={inputCls} placeholder="0,00" />
+              <Field label="Report de l'année précédente (€)">
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={f.avance}
+                  onChange={(e) => set("avance", e.target.value)}
+                  className={inputCls}
+                  placeholder="0,00"
+                  title="Crédit reporté de l'année précédente (colonne « Avance » du classeur) : compte comme réglé. Le dépôt « mois d'avance » se suit, lui, depuis la Comptabilité."
+                />
+              </Field>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Dépôt antérieur à la compta (€)">
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={f.depot_anterieur}
+                  onChange={(e) => set("depot_anterieur", e.target.value)}
+                  className={inputCls}
+                  placeholder="0,00"
+                  title="Mois d'avance versé avant septembre 2023, donc absent de la Comptabilité : à saisir une seule fois, sur la première année connue de la famille."
+                />
+              </Field>
+              <Field label="Dépôt consommé cette année (€)">
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  value={f.avance_consommee}
+                  onChange={(e) => set("avance_consommee", e.target.value)}
+                  className={inputCls}
+                  placeholder="0,00"
+                  title="À renseigner quand un enfant quitte l'école : la part de son dépôt qui éponge son dernier mois."
+                />
               </Field>
             </div>
             <Field label="Emails">

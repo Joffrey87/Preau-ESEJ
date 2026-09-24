@@ -173,6 +173,8 @@ type Cat = { id: string; nom: string; type: "recette" | "depense" };
 // Mots-clés (libellé bancaire) → nom de catégorie. Déterministe, à titre de suggestion.
 const REGLES: { kw: RegExp; cat: string }[] = [
   { kw: /\bdon\b|barroux|abbaye/i, cat: "Don" },
+  { kw: /mois (d.?)?avance|mois suppl/i, cat: "Mois d'avance (dépôts)" },
+  { kw: /frais de dossier/i, cat: "Frais de dossier" },
   { kw: /scolarit/i, cat: "Paiement frais de scolarité" },
   { kw: /sumup|vrst|vente|marche de noel|sapin|porte-couteaux/i, cat: "Ventes diverses au profit de l'école" },
   { kw: /free|internet|hautdebit/i, cat: "Frais internet : Abonnement FREE" },

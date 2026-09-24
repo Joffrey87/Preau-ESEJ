@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { inputCls } from "./GestionComptes";
 import { formatEuros } from "@/lib/format";
+import { NATURES, libelleNature, type NatureAffectation } from "@/lib/scolariteDepots";
 
 export type Inscription = {
   id: string;
@@ -19,7 +20,32 @@ export type Affectation = {
   inscription_id: string;
   montant: number;
   notes: string | null;
+  nature?: NatureAffectation;
 };
+
+/** Catégories ouvrant le fléchage vers une famille. */
+export const CAT_DON_ASSOCIATION = "Don d'Association";
+export const CAT_SCOLARITE = "Paiement frais de scolarité";
+export const CAT_MOIS_AVANCE = "Mois d'avance (dépôts)";
+export const CAT_FRAIS_DOSSIER = "Frais de dossier";
+
+/**
+ * La catégorie fait la case du Bilan, la nature fait la colonne de l'onglet
+ * Frais de scolarité : les deux vont ensemble. Une écriture de scolarité est
+ * une mensualité, un dépôt ou des frais de dossier selon sa catégorie.
+ */
+const NATURE_PAR_CATEGORIE: Record<string, NatureAffectation> = {
+  [CAT_SCOLARITE]: "mensualite",
+  [CAT_MOIS_AVANCE]: "mois_avance",
+  [CAT_FRAIS_DOSSIER]: "frais_dossier",
+};
+export const CATS_SCOLARITE = Object.keys(NATURE_PAR_CATEGORIE);
+
+/** Nature imposée par la catégorie de l'écriture (null : catégorie hors scolarité). */
+export function natureParCategorie(nomCategorie: string | null | undefined): NatureAffectation | null {
+  return nomCategorie ? (NATURE_PAR_CATEGORIE[nomCategorie] ?? null) : null;
+}
+export const estCategorieScolarite = (nom: string | null | undefined) => natureParCategorie(nom) !== null;
 
 /**
  * « Exercice 2026-2027 » → « 2026-2027 ». L'onglet Frais de scolarité raisonne
@@ -31,12 +57,17 @@ export function anneeScolaireDe(libelleExercice: string | null): string | null {
 }
 
 /**
- * Fléchage d'un don d'association (Amitié Sainte Anne notamment) vers les frais
- * de scolarité d'une ou plusieurs familles.
+ * Fléchage d'une opération vers une ou plusieurs familles de l'onglet Frais de
+ * scolarité.
  *
- * L'opération reste comptabilisée en « Don d'Association » : l'affectation est
- * une information portée par l'opération, pas une écriture comptable. La part
- * non affectée demeure un don pur et simple.
+ * - Un don d'association (Amitié Sainte Anne notamment) reste comptabilisé en
+ *   « Don d'Association » : l'affectation dit quelle part bénéficie à quelle
+ *   famille, et compte comme réglé pour elle.
+ * - Une écriture de scolarité (mère ou sous-écriture) porte en plus une
+ *   NATURE : mensualité (réglé de l'année), mois d'avance (dépôt versé une fois
+ *   par enfant) ou frais de dossier (60 € par enfant entrant). Les deux
+ *   dernières alimentent les colonnes du même nom. La nature découle de la
+ *   catégorie de l'écriture (`categorie`) ; à défaut, elle se choisit.
  */
 export default function AffectationScolarite({
   operationId,
@@ -44,6 +75,9 @@ export default function AffectationScolarite({
   inscriptions,
   affectations,
   libelleExercice,
+  mode = "don",
+  compact = false,
+  categorie = null,
 }: {
   operationId: string;
   montantOperation: number;
@@ -51,11 +85,20 @@ export default function AffectationScolarite({
   affectations: Affectation[];
   /** Exercice d'affectation de l'opération : il détermine l'année scolaire visée. */
   libelleExercice: string | null;
+  /** « don » : don d'association fléché ; « scolarite » : nature à choisir. */
+  mode?: "don" | "scolarite";
+  /** Présentation resserrée, pour une sous-écriture dans le volet de ventilation. */
+  compact?: boolean;
+  /** Nom de la catégorie de l'écriture : impose la nature en mode « scolarite ». */
+  categorie?: string | null;
 }) {
   const router = useRouter();
   const [inscriptionId, setInscriptionId] = useState("");
   const [montant, setMontant] = useState("");
   const [notes, setNotes] = useState("");
+  const natureImposee = mode === "scolarite" ? natureParCategorie(categorie) : null;
+  const [natureChoisie, setNature] = useState<NatureAffectation>(mode === "don" ? "don_association" : "mensualite");
+  const nature = natureImposee ?? natureChoisie;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -73,14 +116,21 @@ export default function AffectationScolarite({
 
   // L'affectation suit l'exercice de l'opération : seules les familles inscrites
   // cette année-là sont proposées, sinon le report ne tomberait pas dans le bon
-  // onglet Frais de scolarité.
+  // onglet Frais de scolarité. Un dépôt versé l'été pour la rentrée suivante
+  // peut viser l'année d'après : on propose aussi celle-ci.
   const anneeCible = anneeScolaireDe(libelleExercice);
+  const anneeSuivante = anneeCible
+    ? `${Number(anneeCible.slice(0, 4)) + 1}-${Number(anneeCible.slice(5, 9)) + 1}`
+    : null;
   const inscriptionsAnnee = anneeCible
-    ? inscriptions.filter((i) => i.annee_scolaire === anneeCible)
+    ? inscriptions.filter(
+        (i) => i.annee_scolaire === anneeCible || (mode === "scolarite" && i.annee_scolaire === anneeSuivante),
+      )
     : inscriptions;
 
-  // Une famille déjà affectée sur cette opération ne peut pas l'être deux fois.
-  const disponibles = inscriptionsAnnee.filter((i) => !mines.some((a) => a.inscription_id === i.id));
+  const naturesProposees = NATURES.filter((n) =>
+    mode === "don" ? n.v === "don_association" : n.v !== "don_association",
+  );
 
   async function ajouter() {
     setError(null);
@@ -96,6 +146,7 @@ export default function AffectationScolarite({
       operation_id: operationId,
       inscription_id: inscriptionId,
       montant: m,
+      nature,
       notes: notes.trim() || null,
     });
     setBusy(false);
@@ -116,27 +167,44 @@ export default function AffectationScolarite({
     router.refresh();
   }
 
+  const cadre = compact
+    ? "space-y-2 rounded-lg border border-border bg-surface-1/60 p-2"
+    : "space-y-3 rounded-lg border border-gold/40 bg-gold-soft/25 p-3";
+
   return (
-    <div className="space-y-3 rounded-lg border border-gold/40 bg-gold-soft/25 p-3">
-      <div>
-        <p className="text-sm font-medium text-gold">Affectation aux frais de scolarité</p>
-        <p className="mt-1 text-xs text-muted">
-          L&apos;opération reste comptée en <strong>Don d&apos;Association</strong>. Ce fléchage indique
-          quelle part bénéficie à quelle famille, et alimente l&apos;onglet Frais de scolarité. La part
-          non affectée demeure un don libre.
-        </p>
-        {anneeCible ? (
-          <p className="mt-1 text-xs text-muted">
-            Reporté sur l&apos;année scolaire <strong>{anneeCible}</strong>, d&apos;après l&apos;exercice
-            d&apos;affectation de l&apos;opération.
+    <div className={cadre}>
+      {!compact && (
+        <div>
+          <p className="text-sm font-medium text-gold">
+            {mode === "don" ? "Affectation aux frais de scolarité" : "Famille concernée"}
           </p>
-        ) : (
-          <p className="mt-1 text-xs text-negative">
-            Aucun exercice n&apos;est affecté à cette opération : choisissez-en un ci-dessus pour savoir
-            sur quelle année scolaire reporter le fléchage.
-          </p>
-        )}
-      </div>
+          {mode === "don" ? (
+            <p className="mt-1 text-xs text-muted">
+              L&apos;opération reste comptée en <strong>Don d&apos;Association</strong>. Ce fléchage indique
+              quelle part bénéficie à quelle famille, et alimente l&apos;onglet Frais de scolarité. La part
+              non affectée demeure un don libre.
+            </p>
+          ) : (
+            <p className="mt-1 text-xs text-muted">
+              Rattachez le montant à une famille en précisant sa nature : <strong>mensualité</strong> (compte
+              comme réglé), <strong>mois d&apos;avance</strong> (dépôt versé une fois par enfant) ou{" "}
+              <strong>frais de dossier</strong> (60 € par enfant entrant). C&apos;est ce qui alimente les
+              colonnes de l&apos;onglet Frais de scolarité.
+            </p>
+          )}
+          {anneeCible ? (
+            <p className="mt-1 text-xs text-muted">
+              Année scolaire <strong>{anneeCible}</strong> d&apos;après l&apos;exercice de l&apos;opération
+              {mode === "scolarite" && anneeSuivante ? ` (ou ${anneeSuivante} pour un dépôt de rentrée)` : ""}.
+            </p>
+          ) : (
+            <p className="mt-1 text-xs text-negative">
+              Aucun exercice n&apos;est affecté à cette opération : choisissez-en un ci-dessus pour savoir
+              sur quelle année scolaire reporter le fléchage.
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
         <span className="text-muted">
@@ -146,7 +214,8 @@ export default function AffectationScolarite({
           Affecté : <strong className="text-foreground">{formatEuros(affecte)}</strong>
         </span>
         <span className={reste < 0 ? "text-negative" : "text-muted"}>
-          Reste en don libre : <strong className={reste < 0 ? "text-negative" : "text-foreground"}>{formatEuros(reste)}</strong>
+          {mode === "don" ? "Reste en don libre : " : "Non rattaché : "}
+          <strong className={reste < 0 ? "text-negative" : "text-foreground"}>{formatEuros(reste)}</strong>
         </span>
       </div>
 
@@ -159,6 +228,11 @@ export default function AffectationScolarite({
                 <span>
                   <strong>{i ? i.famille_nom : "Famille inconnue"}</strong>
                   {i && <span className="ml-2 text-xs text-muted">{i.annee_scolaire}</span>}
+                  {a.nature && a.nature !== "don_association" && (
+                    <span className="ml-2 rounded-full bg-surface-2 px-2 py-0.5 text-[11px] text-muted">
+                      {libelleNature(a.nature)}
+                    </span>
+                  )}
                   {a.notes && <span className="ml-2 text-xs text-muted">— {a.notes}</span>}
                 </span>
                 <span className="flex items-center gap-3 whitespace-nowrap">
@@ -179,23 +253,44 @@ export default function AffectationScolarite({
         </ul>
       )}
 
-      {reste > 0.005 && disponibles.length === 0 && anneeCible && (
+      {reste > 0.005 && inscriptionsAnnee.length === 0 && anneeCible && (
         <p className="text-xs text-muted">
-          Aucune famille inscrite en {anneeCible} n&apos;est encore disponible pour cette opération.
+          Aucune famille inscrite en {anneeCible} n&apos;est disponible pour cette opération.
         </p>
       )}
 
-      {reste > 0.005 && disponibles.length > 0 && (
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-[1fr_8rem_auto]">
+      {reste > 0.005 && inscriptionsAnnee.length > 0 && (
+        <div
+          className={`grid grid-cols-1 gap-2 ${
+            mode === "scolarite" ? "sm:grid-cols-[1fr_10rem_7rem_auto]" : "sm:grid-cols-[1fr_8rem_auto]"
+          }`}
+        >
           <select value={inscriptionId} onChange={(e) => setInscriptionId(e.target.value)} className={inputCls}>
             <option value="">— famille —</option>
-            {disponibles.map((i) => (
+            {inscriptionsAnnee.map((i) => (
               <option key={i.id} value={i.id}>
                 {i.famille_nom} · {i.annee_scolaire}
                 {i.nb_enfants ? ` (${i.nb_enfants} enf.)` : ""}
               </option>
             ))}
           </select>
+          {mode === "scolarite" && natureImposee && (
+            <div className="flex items-center text-xs text-muted" title="Nature déduite de la catégorie de l'écriture">
+              {libelleNature(natureImposee)}
+            </div>
+          )}
+          {mode === "scolarite" && !natureImposee && (
+            <select
+              value={nature}
+              onChange={(e) => setNature(e.target.value as NatureAffectation)}
+              className={inputCls}
+              title="Nature du montant rattaché"
+            >
+              {naturesProposees.map((n) => (
+                <option key={n.v} value={n.v}>{n.l}</option>
+              ))}
+            </select>
+          )}
           <input
             type="number"
             step="0.01"
@@ -211,20 +306,22 @@ export default function AffectationScolarite({
             disabled={busy}
             className="rounded-lg bg-accent px-3 py-2 text-sm font-medium text-accent-fg hover:opacity-90 disabled:opacity-50"
           >
-            {busy ? "…" : "Affecter"}
+            {busy ? "…" : mode === "don" ? "Affecter" : "Rattacher"}
           </button>
-          <input
-            type="text"
-            value={notes}
-            onChange={(e) => setNotes(e.target.value)}
-            className={`${inputCls} sm:col-span-3`}
-            placeholder="Note (facultatif) — ex. « subvention 2026-2027 »"
-          />
+          {!compact && (
+            <input
+              type="text"
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              className={`${inputCls} ${mode === "scolarite" ? "sm:col-span-4" : "sm:col-span-3"}`}
+              placeholder="Note (facultatif) — ex. « subvention 2026-2027 »"
+            />
+          )}
         </div>
       )}
 
       {reste <= 0.005 && (
-        <p className="text-xs text-positive">Montant intégralement affecté.</p>
+        <p className="text-xs text-positive">Montant intégralement {mode === "don" ? "affecté" : "rattaché"}.</p>
       )}
 
       {error && <p className="rounded-lg bg-negative/10 px-3 py-2 text-sm text-negative">{error}</p>}

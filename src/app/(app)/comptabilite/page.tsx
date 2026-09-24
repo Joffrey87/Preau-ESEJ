@@ -69,7 +69,7 @@ export default async function ComptabilitePage({
       .select("id, annee_scolaire, famille_nom, nb_enfants")
       .order("annee_scolaire", { ascending: false })
       .order("famille_nom"),
-    supabase.from("affectations_scolarite").select("id, operation_id, inscription_id, montant, notes"),
+    supabase.from("affectations_scolarite").select("id, operation_id, inscription_id, montant, notes, nature"),
   ]);
 
   // Dons (montant/date/lien) pour marquer les opérations « Don » déjà répertoriées.

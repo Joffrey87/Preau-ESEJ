@@ -2,10 +2,18 @@ import Link from "next/link";
 import Icon from "@/components/Icon";
 import { createClient } from "@/lib/supabase/server";
 import { formatEuros } from "@/lib/format";
+import { sansLignesVentilees } from "@/lib/operations";
 import { roleByEmail } from "@/lib/roles";
 import { recuEnvoye, champsImportantsManquants } from "@/lib/statutDon";
 
-type Op = { type: "recette" | "depense"; montant: number; date_operation: string };
+type Op = {
+  id: string;
+  type: "recette" | "depense";
+  montant: number;
+  date_operation: string;
+  parent_id: string | null;
+  est_ventilee: boolean;
+};
 type DonRow = {
   recu_etat: string | null;
   recu_numero: string | null;
@@ -69,7 +77,10 @@ export default async function Home() {
   const [comptesRes, opsRes, budgetRes, donsRes, scoAnneeRes] = await Promise.all([
     supabase.from("comptes").select("solde_initial").eq("archive", false),
     exercice
-      ? supabase.from("operations").select("type, montant, date_operation").eq("exercice_id", exercice.id)
+      ? supabase
+          .from("operations")
+          .select("id, type, montant, date_operation, parent_id, est_ventilee")
+          .eq("exercice_id", exercice.id)
       : Promise.resolve({ data: [] as Op[] }),
     exercice
       ? supabase.from("budget_lignes").select("montant_prevu, categories(type)").eq("exercice_id", exercice.id)
@@ -97,7 +108,8 @@ export default async function Home() {
 
   // Finances
   const soldeInitial = (comptesRes.data ?? []).reduce((s, c) => s + Number(c.solde_initial), 0);
-  const ops = (opsRes.data ?? []) as Op[];
+  // Sous-écritures plutôt que lignes ventilées, sinon double comptage.
+  const ops = sansLignesVentilees((opsRes.data ?? []) as Op[]);
   const sum = (arr: Op[], t: Op["type"]) =>
     arr.filter((o) => o.type === t).reduce((s, o) => s + Number(o.montant), 0);
   const solde = soldeInitial + sum(ops, "recette") - sum(ops, "depense");

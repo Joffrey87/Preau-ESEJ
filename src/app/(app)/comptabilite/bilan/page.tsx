@@ -9,7 +9,7 @@ import {
   formatPct,
   type Periode,
 } from "@/lib/bilan";
-import { toutesLesOperations } from "@/lib/operations";
+import { sansLignesVentilees, toutesLesOperations } from "@/lib/operations";
 
 type Op = {
   date_operation: string; montant: number; type: "recette" | "depense";
@@ -65,9 +65,7 @@ export default async function BilanPage({
   // catégories décrivent la réalité mieux que celle de la ligne bancaire.
   // Une ligne détaillée est donc écartée, qu'elle porte l'indicateur ou non —
   // la présence de filles fait foi.
-  const toutes = await opsP;
-  const meres = new Set(toutes.map((o) => o.parent_id).filter(Boolean) as string[]);
-  const ops = toutes.filter((o) => !meres.has(o.id) && !o.est_ventilee);
+  const ops = sansLignesVentilees(await opsP);
 
   const exercices = (exercicesRes.data ?? []) as Exo[];
 

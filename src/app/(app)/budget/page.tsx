@@ -2,6 +2,7 @@ import PageHeader from "@/components/PageHeader";
 import EditionBudget from "@/components/EditionBudget";
 import { createClient } from "@/lib/supabase/server";
 import { formatEuros } from "@/lib/format";
+import { sansLignesVentilees } from "@/lib/operations";
 
 type BudgetLigne = {
   id: string;
@@ -12,7 +13,14 @@ type BudgetLigne = {
 
 type Categorie = { id: string; nom: string; type: "recette" | "depense" };
 
-type OpAgg = { categorie_id: string | null; montant: number; type: "recette" | "depense" };
+type OpAgg = {
+  id: string;
+  categorie_id: string | null;
+  montant: number;
+  type: "recette" | "depense";
+  parent_id: string | null;
+  est_ventilee: boolean;
+};
 
 export default async function BudgetPage() {
   const supabase = await createClient();
@@ -35,7 +43,7 @@ export default async function BudgetPage() {
     exercice
       ? supabase
           .from("operations")
-          .select("categorie_id, montant, type")
+          .select("id, categorie_id, montant, type, parent_id, est_ventilee")
           .eq("exercice_id", exercice.id)
       : Promise.resolve({ data: [] as OpAgg[] }),
     supabase
@@ -48,7 +56,8 @@ export default async function BudgetPage() {
   ]);
 
   const lignes = (budgetRes.data ?? []) as unknown as BudgetLigne[];
-  const ops = (opsRes.data ?? []) as OpAgg[];
+  // Sous-écritures plutôt que lignes ventilées, sinon double comptage.
+  const ops = sansLignesVentilees((opsRes.data ?? []) as OpAgg[]);
   const categories = (catsRes.data ?? []) as Categorie[];
 
   // Montant prévu déjà enregistré, par catégorie (pour pré-remplir l'éditeur).
@@ -65,8 +74,16 @@ export default async function BudgetPage() {
     );
   }
 
-  const recettes = lignes.filter((l) => l.categories?.type === "recette");
-  const depenses = lignes.filter((l) => l.categories?.type === "depense");
+  // Un poste sans prévisionnel mais avec du réalisé s'affiche quand même
+  // (prévu à 0) : rien de ce qui est encaissé ou dépensé ne doit être invisible ici.
+  const prevues = new Set(lignes.map((l) => l.categorie_id));
+  const sansPrevu: BudgetLigne[] = categories
+    .filter((c) => !prevues.has(c.id) && (realiseParCat.get(c.id) ?? 0) !== 0)
+    .map((c) => ({ id: `realise-${c.id}`, montant_prevu: 0, categorie_id: c.id, categories: { nom: c.nom, type: c.type } }));
+  const toutes = [...lignes, ...sansPrevu];
+
+  const recettes = toutes.filter((l) => l.categories?.type === "recette");
+  const depenses = toutes.filter((l) => l.categories?.type === "depense");
 
   const renderRows = (rows: BudgetLigne[]) =>
     rows.map((l) => {
@@ -113,7 +130,7 @@ export default async function BudgetPage() {
         }
       />
 
-      {lignes.length === 0 ? (
+      {toutes.length === 0 ? (
         <div className="rounded-xl border border-border bg-surface px-4 py-16 text-center text-muted">
           Aucun poste budgétaire défini pour cet exercice.
           <br />

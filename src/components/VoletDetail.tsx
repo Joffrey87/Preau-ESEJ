@@ -1,10 +1,15 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { formatEuros, formatDate } from "@/lib/format";
+import { useCoffre } from "@/components/CoffreProvider";
+import { dechiffrerLibellesDon, type LibellesDon } from "@/lib/libelleDon";
 
 export type OpDetail = {
   libelle: string;
   libelle_origine: string | null;
+  /** Libellés d'origine chiffrés (opération « Don ») : lisibles coffre ouvert. */
+  libelle_origine_chiffre?: string | null;
   date_operation: string;
   montant: number;
   type: "recette" | "depense";
@@ -31,6 +36,20 @@ export default function VoletDetail({
   onFermer: () => void;
   colSpan: number;
 }) {
+  const coffre = useCoffre();
+  const [clair, setClair] = useState<LibellesDon | null>(null);
+  useEffect(() => {
+    if (!op.libelle_origine_chiffre || !coffre.estOuvert) return;
+    let annule = false;
+    dechiffrerLibellesDon(coffre.dechiffrer, op.libelle_origine_chiffre).then((l) => {
+      if (!annule) setClair(l);
+    });
+    return () => {
+      annule = true;
+    };
+  }, [op.libelle_origine_chiffre, coffre.estOuvert, coffre.dechiffrer]);
+  const chiffre = !!op.libelle_origine_chiffre;
+
   return (
     <tr
       className="border-b border-border bg-surface-2/40"
@@ -39,6 +58,20 @@ export default function VoletDetail({
       <td className="px-4 py-3" />
       <td colSpan={colSpan - 1} className="px-4 py-3">
         <dl className="grid grid-cols-1 gap-x-8 gap-y-1.5 text-sm sm:grid-cols-2">
+          {chiffre && (
+            <div className="sm:col-span-2">
+              <dt className="text-xs text-muted">Libellés d&apos;origine (chiffrés : don)</dt>
+              <dd className="font-mono text-xs break-all">
+                {!coffre.estOuvert
+                  ? "🔒 déverrouillez le coffre pour les lire"
+                  : clair
+                    ? [clair.brut, clair.libelle && clair.libelle !== clair.brut ? `« ${clair.libelle} »` : null]
+                        .filter(Boolean)
+                        .join(" — ")
+                    : "…"}
+              </dd>
+            </div>
+          )}
           {op.libelle_origine && (
             <div className="sm:col-span-2">
               <dt className="text-xs text-muted">Libellé bancaire (brut)</dt>

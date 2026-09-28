@@ -109,6 +109,10 @@ json.dump([{'id': o['id'], 'date': o['date_operation'], 'type': o['type'], 'mont
 def q(s): return "'" + s.replace("'", "''") + "'"
 sql = ["update operations as o set libelle_origine = v.lib from (values"]
 sql.append(",\n".join(f"  ({q(o['id'])}::uuid, {q(lib)})" for o, lib in updates))
-sql.append(") as v(id, lib) where o.id = v.id and o.libelle_origine is null;")
+# Jamais de libellé bancaire en clair sur une opération « Don » (noms de donateurs) :
+# ces libellés sont chiffrés dans Préau (colonne libelle_origine_chiffre).
+sql.append(") as v(id, lib) where o.id = v.id and o.libelle_origine is null"
+           " and o.libelle_origine_chiffre is null"
+           " and o.categorie_id is distinct from (select id from categories where nom = 'Don');")
 open(os.path.join(ROOT, 'scripts', 'update_libelles.sql'), 'w', encoding='utf-8').write('\n'.join(sql))
 print('SQL écrit :', len(updates), 'lignes')

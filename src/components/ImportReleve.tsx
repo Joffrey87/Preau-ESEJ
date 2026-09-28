@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
@@ -70,6 +70,7 @@ import {
   type IdentiteDonateur,
 } from "@/lib/reconciliation";
 import { nomDonateur, cleDonateur } from "@/lib/statutDon";
+import { LIBELLE_DON, chiffrerLibellesDon, dechiffrerLibellesDon, texteDonateur } from "@/lib/libelleDon";
 import type { Don } from "@/components/GestionDons";
 
 export type { ImportPasse };
@@ -86,6 +87,8 @@ export type OpExistante = {
   type: string;
   libelle: string;
   libelle_origine: string | null;
+  /** Libellés d'origine chiffrés (opérations « Don »). */
+  libelle_origine_chiffre?: string | null;
   categorie_id: string | null;
   compte_id: string | null;
   parent_id: string | null;
@@ -242,9 +245,35 @@ export default function ImportReleve({
   // --- Mémoire des choix déjà faits -----------------------------------------
 
   const opsParId = useMemo(() => new Map(existantes.map((o) => [o.id, o])), [existantes]);
+
+  // Libellés chiffrés des opérations « Don », relus coffre ouvert : ils
+  // nourrissent la mémoire des donateurs sans jamais être stockés en clair.
+  const [brutsDons, setBrutsDons] = useState<Map<string, string>>(new Map());
+  useEffect(() => {
+    if (!coffre.estOuvert) return;
+    let annule = false;
+    (async () => {
+      const m = new Map<string, string>();
+      for (const o of existantes) {
+        if (!o.libelle_origine_chiffre) continue;
+        const t = texteDonateur(await dechiffrerLibellesDon(coffre.dechiffrer, o.libelle_origine_chiffre));
+        if (t) m.set(o.id, t);
+      }
+      if (!annule) setBrutsDons(m);
+    })();
+    return () => {
+      annule = true;
+    };
+  }, [existantes, coffre.estOuvert, coffre.dechiffrer]);
+
   /** Libellé bancaire d'une opération (celui de sa ligne bancaire pour une sous-écriture). */
-  const brutDe = (o: OpExistante | undefined): string | null =>
-    o ? (o.libelle_origine ?? (o.parent_id ? (opsParId.get(o.parent_id)?.libelle_origine ?? null) : null)) : null;
+  const brutDe = (o: OpExistante | undefined): string | null => {
+    if (!o) return null;
+    const propre = o.libelle_origine ?? brutsDons.get(o.id) ?? null;
+    if (propre) return propre;
+    const p = o.parent_id ? opsParId.get(o.parent_id) : undefined;
+    return p ? (p.libelle_origine ?? brutsDons.get(p.id) ?? null) : null;
+  };
 
   /** Libellé bancaire → famille rattachée (hors Amitié Sainte Anne, payeur de plusieurs familles). */
   const souvenirsFamilles = useMemo<Souvenir[]>(() => {
@@ -273,7 +302,7 @@ export default function ImportReleve({
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dons, opsParId, coffre.estOuvert]);
+  }, [dons, opsParId, coffre.estOuvert, brutsDons]);
 
   /** Dernier versement d'Amitié Sainte Anne réparti entre des familles. */
   const derniereRepartition = useMemo<RepartitionTiers | null>(() => {
@@ -620,6 +649,26 @@ export default function ImportReleve({
           }
         }
 
+        // Chèque impayé ou rejeté : le don correspondant (même montant, encaissé
+        // dans les 4 mois précédents) est à annuler, ainsi que son reçu.
+        if (op.type === "depense") {
+          const n = op.libelle.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+          if (/(chq|cheque).*(impaye|rejet)|(impaye|rejet).*(chq|cheque)/.test(n)) {
+            const jourOp = Date.parse(op.date);
+            const donOrigine = existantes.find(
+              (o) =>
+                o.type === "recette" &&
+                catNom(o.categorie_id) === CAT_DON &&
+                Math.abs(Number(o.montant) - op.montant) < 0.005 &&
+                jourOp - Date.parse(o.date_operation) >= 0 &&
+                jourOp - Date.parse(o.date_operation) <= 120 * 86400000,
+            );
+            alerte = donOrigine
+              ? `Chèque impayé : le don de ${formatEuros(op.montant)} encaissé le ${formatDate(donOrigine.date_operation)} est à annuler dans l'onglet Dons (et son reçu s'il est établi).`
+              : "Chèque impayé : retrouvez le don concerné dans l'onglet Dons pour l'annuler (et son reçu s'il est établi).";
+          }
+        }
+
         return {
           ...op,
           libelle,
@@ -841,6 +890,20 @@ export default function ImportReleve({
     const nouveauxDons: { pii: ReturnType<typeof piiDeFiche>; ligne: Record<string, unknown> }[] = [];
     const liens: { donId: string; operationId: string; exerciceId: string | null }[] = [];
 
+    /**
+     * Libellés d'une écriture « Don » : « Don » en clair, le reste chiffré.
+     * Coffre fermé (import sans les dons), le brut reste provisoirement en clair
+     * et sera chiffré depuis la Comptabilité (« Chiffrer les libellés des dons »).
+     */
+    const libellesPourDon = async (brut: string, libelle: string) =>
+      coffre.estOuvert
+        ? {
+            libelle: LIBELLE_DON,
+            libelle_origine: null,
+            libelle_origine_chiffre: await chiffrerLibellesDon(coffre.chiffrer, { brut, libelle }),
+          }
+        : { libelle: LIBELLE_DON, libelle_origine: brut, libelle_origine_chiffre: null };
+
     /** Questions qui restent ouvertes sur une écriture → colonne « à vérifier » (ambre). */
     const questions = (e: Ecriture, fam: InfoFamille | null, don: InfoDon | null): string | null => {
       const q: string[] = [];
@@ -905,11 +968,14 @@ export default function ImportReleve({
       if (l.type === "recette") totalRec += l.montant; else totalDep += l.montant;
       const famMere = ventilee ? null : infoFamille(l, textesMere(l), l.date);
       const donMere = ventilee ? null : infoDon(l, textesMere(l), l.montant, l.date);
+      // Opération « Don » : libellé neutre, libellés d'origine chiffrés (aucun nom en clair).
+      const libellesMere = !ventilee && catNom(l.categorie_id) === CAT_DON
+        ? await libellesPourDon(l.libelle_origine, l.libelle)
+        : { libelle: l.libelle, libelle_origine: l.libelle_origine, libelle_origine_chiffre: null };
       meres.push({
         id,
         date_operation: l.date,
-        libelle: l.libelle,
-        libelle_origine: l.libelle_origine,
+        ...libellesMere,
         montant: l.montant,
         type: l.type,
         categorie_id: l.categorie_id || null,
@@ -929,12 +995,15 @@ export default function ImportReleve({
         const montant = Number(f.montant);
         const fam = infoFamille(f, textesFille(l, f), l.date);
         const don = infoDon(f, textesFille(l, f), montant, l.date);
+        const libFille = f.libelle.trim() || `${l.libelle} — ${catNom(f.categorie_id) ?? ""}`;
+        const libellesFille = catNom(f.categorie_id) === CAT_DON
+          ? await libellesPourDon(l.libelle_origine, libFille)
+          : { libelle: libFille, libelle_origine: l.libelle_origine, libelle_origine_chiffre: null };
         filles.push({
           id: fid,
           parent_id: id,
           date_operation: l.date,
-          libelle: f.libelle.trim() || `${l.libelle} — ${catNom(f.categorie_id) ?? ""}`,
-          libelle_origine: l.libelle_origine,
+          ...libellesFille,
           montant,
           type: l.type,
           categorie_id: f.categorie_id || null,

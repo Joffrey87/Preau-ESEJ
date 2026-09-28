@@ -19,6 +19,8 @@ import AffectationScolarite, {
   type Inscription,
 } from "@/components/AffectationScolarite";
 import { libelleNature } from "@/lib/scolariteDepots";
+import { useCoffre } from "@/components/CoffreProvider";
+import { LIBELLE_DON, chiffrerLibellesDon } from "@/lib/libelleDon";
 
 type Categorie = { id: string; nom: string; type: "recette" | "depense" };
 type Exercice = { id: string; libelle: string; date_debut: string; date_fin: string };
@@ -77,6 +79,7 @@ export default function VentilationOperation({
   affectations?: Affectation[];
 }) {
   const router = useRouter();
+  const coffre = useCoffre();
   const [categorieId, setCategorieId] = useState("");
   const [montant, setMontant] = useState("");
   const [libelle, setLibelle] = useState("");
@@ -121,10 +124,30 @@ export default function VentilationOperation({
     const supabase = createClient();
     const lot = nouveauLot();
 
+    // Sous-écriture « Don » : libellé neutre, le libellé saisi (souvent le nom
+    // du tireur) chiffré avec le coffre ; jamais de nom en clair.
+    const estDon = nomCat(categorieId) === "Don";
+    if (estDon && libelle.trim() && !coffre.estOuvert) {
+      setBusy(false);
+      return setError("Déverrouillez le coffre pour enregistrer le nom saisi (chiffré), ou laissez le libellé vide.");
+    }
+    const libelles = estDon
+      ? {
+          libelle: LIBELLE_DON,
+          libelle_origine: coffre.estOuvert ? null : mere.libelle_origine,
+          libelle_origine_chiffre: coffre.estOuvert
+            ? await chiffrerLibellesDon(coffre.chiffrer, { brut: mere.libelle_origine, libelle: libelle.trim() || null })
+            : null,
+        }
+      : {
+          libelle: libelle.trim() || `${mere.libelle} — ${nomCat(categorieId)}`,
+          libelle_origine: mere.libelle_origine,
+          libelle_origine_chiffre: null as string | null,
+        };
+
     const fille = {
       date_operation: mere.date_operation,
-      libelle: libelle.trim() || `${mere.libelle} — ${nomCat(categorieId)}`,
-      libelle_origine: mere.libelle_origine,
+      ...libelles,
       montant: m,
       type: mere.type,
       categorie_id: categorieId,
@@ -149,6 +172,12 @@ export default function VentilationOperation({
       { operation_id: (creee as { id: string }).id, action: "creation", apres: extraire(creee) },
     ];
 
+    // Un don relié à la ligne bancaire suit la sous-écriture « Don » de même montant.
+    if (nomCat(categorieId) === "Don") {
+      await supabase.from("dons").update({ operation_id: (creee as { id: string }).id })
+        .eq("operation_id", mere.id).eq("montant", m).is("supprime_le", null);
+    }
+
     // La mère devient ventilée dès la première fille : elle sort des totaux.
     if (!mere.est_ventilee) {
       await supabase.from("operations").update({ est_ventilee: true }).eq("id", mere.id);
@@ -172,6 +201,20 @@ export default function VentilationOperation({
 
   async function retirerFille(f: OperationVentilable) {
     setError(null);
+    // Une sous-écriture reliée à un don : la supprimer délie le don.
+    const { count } = await createClient()
+      .from("dons")
+      .select("id", { count: "exact", head: true })
+      .eq("operation_id", f.id)
+      .is("supprime_le", null);
+    if (
+      (count ?? 0) > 0 &&
+      !window.confirm(
+        "Cette sous-écriture est reliée à un don de l'onglet Dons. La supprimer déliera le don (il restera dans l'onglet Dons). Continuer ?",
+      )
+    ) {
+      return;
+    }
     setBusy(true);
     const supabase = createClient();
     const lot = nouveauLot();

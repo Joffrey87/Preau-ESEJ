@@ -48,6 +48,9 @@ export type Don = {
   recu_etat: string | null;
   recu_emis_le: string | null;
   observations: string | null;
+  /** Opération comptable reliée : elle fait foi pour le montant et la date d'encaissement. */
+  operation_id?: string | null;
+  operation?: { date_operation: string } | null;
   supprime_le: string | null;
   supprime_par: string | null;
 };
@@ -312,6 +315,18 @@ export default function GestionDons({
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) =>
     setF((p) => ({ ...p, [k]: v }));
 
+  // Don relié à la comptabilité : elle fait foi pour le montant et la date
+  // d'encaissement. Un chèque ou des espèces gardent une date de réception
+  // (fiscalement, la remise du chèque), au plus tard l'encaissement.
+  // Reçu établi : montant et date figés.
+  const [enCaisse, setEnCaisse] = useState(true);
+  const donEdite = edit && edit !== "nouveau" ? edit : null;
+  const lie = !!donEdite?.operation_id;
+  const encaissement = lie ? (donEdite?.operation?.date_operation ?? null) : null;
+  const recuFige = /^RE_/.test(donEdite?.recu_numero ?? "");
+  const montantFige = lie || recuFige;
+  const dateLibre = !recuFige && (!lie || ["Chèque", "Espèces"].includes(f.mode_paiement));
+
   function ouvrir(d: Don | "nouveau", signale = false) {
     setError(null);
     setSignaler(signale);
@@ -411,9 +426,45 @@ export default function GestionDons({
           raison_sociale: pii.raison, adresse: pii.adresse, cp_ville: pii.cp_ville, courriel: pii.courriel,
         };
 
+    // Don en espèces : la recette entre aussi dans le compte Caisse, et le don
+    // lui est relié (sinon la comptabilité ne correspond plus aux reçus).
+    let operationCaisse: string | null = null;
+    if (edit === "nouveau" && f.mode_paiement === "Espèces" && enCaisse) {
+      const [{ data: caisse }, { data: catDon }, { data: exo }] = await Promise.all([
+        supabase.from("comptes").select("id").ilike("nom", "caisse").limit(1).maybeSingle(),
+        supabase.from("categories").select("id").eq("nom", "Don").eq("type", "recette").limit(1).maybeSingle(),
+        supabase.from("exercices").select("id").lte("date_debut", f.date_don).gte("date_fin", f.date_don).limit(1).maybeSingle(),
+      ]);
+      if (!caisse) {
+        setError("Compte « Caisse » introuvable : créez-le dans Paramètres, ou décochez l'enregistrement en Caisse.");
+        setSaving(false);
+        return;
+      }
+      const { data: op, error: errOp } = await supabase
+        .from("operations")
+        .insert({
+          date_operation: f.date_don,
+          libelle: "Don",
+          montant: montantNum,
+          type: "recette",
+          categorie_id: catDon?.id ?? null,
+          compte_id: caisse.id,
+          exercice_id: exo?.id ?? null,
+          mode_paiement: "especes",
+        })
+        .select("id")
+        .single();
+      if (errOp || !op) {
+        setError("Enregistrement en Caisse impossible : " + (errOp?.message ?? "inconnu"));
+        setSaving(false);
+        return;
+      }
+      operationCaisse = (op as { id: string }).id;
+    }
+
     const { error: err } =
       edit === "nouveau"
-        ? await supabase.from("dons").insert(payload)
+        ? await supabase.from("dons").insert({ ...payload, operation_id: operationCaisse })
         : await supabase.from("dons").update(payload).eq("id", (edit as Don).id);
 
     if (err) {
@@ -953,13 +1004,41 @@ export default function GestionDons({
             )}
 
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Date d'encaissement">
-                <input type="date" required value={f.date_don} onChange={(e) => set("date_don", e.target.value)} className={inputCls} />
+              <Field label={dateLibre && lie ? "Date de réception" : "Date d'encaissement"}>
+                <input
+                  type="date"
+                  required
+                  value={f.date_don}
+                  onChange={(e) => set("date_don", e.target.value)}
+                  readOnly={!dateLibre}
+                  max={dateLibre && encaissement ? encaissement : undefined}
+                  title={
+                    dateLibre && lie
+                      ? `Remise ou réception du chèque / des espèces ; au plus tard l'encaissement (${formatDate(encaissement ?? "")})`
+                      : undefined
+                  }
+                  className={`${inputCls} ${dateLibre ? "" : "cursor-not-allowed bg-surface-2 text-muted"}`}
+                />
               </Field>
               <Field label="Montant (€)">
-                <input type="text" inputMode="decimal" required placeholder="0,00" value={f.montant} onChange={(e) => set("montant", e.target.value)} className={inputCls} />
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  required
+                  placeholder="0,00"
+                  value={f.montant}
+                  onChange={(e) => set("montant", e.target.value)}
+                  readOnly={montantFige}
+                  className={`${inputCls} ${montantFige ? "cursor-not-allowed bg-surface-2 text-muted" : ""}`}
+                />
               </Field>
             </div>
+            {edit === "nouveau" && f.mode_paiement === "Espèces" && (
+              <label className="-mt-2 flex items-center gap-2 text-xs text-muted">
+                <input type="checkbox" checked={enCaisse} onChange={(e) => setEnCaisse(e.target.checked)} />
+                Enregistrer aussi cette recette dans le compte Caisse de la comptabilité (don relié)
+              </label>
+            )}
 
             {f.est_personne_morale ? (
               <>

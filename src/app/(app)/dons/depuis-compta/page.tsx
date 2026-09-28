@@ -32,7 +32,7 @@ export default async function DepuisComptaPage() {
   if (catDon?.id) {
     const { data: ops } = await supabase
       .from("operations")
-      .select("id, date_operation, montant, libelle, libelle_origine, mode_paiement, exercice_id")
+      .select("id, date_operation, montant, libelle, libelle_origine, libelle_origine_chiffre, mode_paiement, exercice_id")
       .eq("categorie_id", catDon.id)
       .eq("type", "recette")
       // Une ligne ventilée n'est pas un don : ce sont ses sous-écritures qui le sont.

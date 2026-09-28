@@ -13,6 +13,7 @@ type OperationRow = {
   date_operation: string;
   libelle: string;
   libelle_origine: string | null;
+  libelle_origine_chiffre: string | null;
   montant: number;
   type: "recette" | "depense";
   mode_paiement: string | null;
@@ -27,7 +28,7 @@ type OperationRow = {
 };
 
 const COLONNES =
-  "id, date_operation, libelle, libelle_origine, montant, type, mode_paiement, categorie_id, compte_id, exercice_id, parent_id, est_ventilee, a_verifier, categories(nom), comptes(nom)";
+  "id, date_operation, libelle, libelle_origine, libelle_origine_chiffre, montant, type, mode_paiement, categorie_id, compte_id, exercice_id, parent_id, est_ventilee, a_verifier, categories(nom), comptes(nom)";
 
 export default async function ComptabilitePage({
   searchParams,

@@ -18,9 +18,15 @@ export default async function DonsPage() {
   const { data: dons } = await supabase
     .from("dons")
     .select(
-      "id, exercice_id, origine, categorie_donateur, est_personne_morale, donateur_titre, donateur_nom, donateur_prenom, raison_sociale, adresse, cp_ville, courriel, pii_chiffre, montant, date_don, mode_paiement, recu_numero, recu_etat, recu_emis_le, observations, supprime_le, supprime_par",
+      "id, exercice_id, origine, categorie_donateur, est_personne_morale, donateur_titre, donateur_nom, donateur_prenom, raison_sociale, adresse, cp_ville, courriel, pii_chiffre, montant, date_don, mode_paiement, recu_numero, recu_etat, recu_emis_le, observations, supprime_le, supprime_par, operation_id, operation:operations!dons_operation_id_fkey(date_operation)",
     )
     .order("date_don", { ascending: false });
+
+  // L'opération reliée arrive en tableau ou en objet selon la relation : on la ramène à un objet.
+  const donsNormalises = ((dons ?? []) as unknown as (Don & { operation: unknown })[]).map((d) => ({
+    ...d,
+    operation: (Array.isArray(d.operation) ? d.operation[0] : d.operation) as Don["operation"],
+  })) as Don[];
 
   // Signataires et adresse imprimés sur les reçus (modifiables depuis la page).
   const { data: modeleRecu } = await supabase.from("modele_recu").select("*").eq("id", 1).maybeSingle();
@@ -53,7 +59,7 @@ export default async function DonsPage() {
           </div>
         }
       />
-      <GestionDons dons={(dons ?? []) as Don[]} roleSlug={roleSlug}
+      <GestionDons dons={donsNormalises} roleSlug={roleSlug}
         relations={relations} />
     </div>
   );

@@ -7,6 +7,9 @@ import { Modal, Field, FormFooter, inputCls } from "./GestionComptes";
 import VoletDetail from "@/components/VoletDetail";
 import Icon from "@/components/Icon";
 import PastilleDon, { etatDon, type DonCompta } from "@/components/PastilleDon";
+import ChiffrerLibellesDons from "@/components/ChiffrerLibellesDons";
+import { useCoffre } from "@/components/CoffreProvider";
+import { LIBELLE_DON, chiffrerLibellesDon, dechiffrerLibellesDon } from "@/lib/libelleDon";
 import { useDonsDechiffres } from "@/lib/donsChiffre";
 import type { Rapprochement } from "@/lib/rapprochementDons";
 import { formatEuros, formatDate } from "@/lib/format";
@@ -34,6 +37,7 @@ export type OperationRow = {
   date_operation: string;
   libelle: string;
   libelle_origine: string | null;
+  libelle_origine_chiffre?: string | null;
   montant: number;
   type: "recette" | "depense";
   mode_paiement: string | null;
@@ -109,6 +113,7 @@ export default function ListeOperations({
   affectations: Affectation[];
 }) {
   const router = useRouter();
+  const coffre = useCoffre();
   const donsRepertoriesSet = new Set(donsRepertories);
   // Complétude des fiches donateur : jugée sur les dons déchiffrés.
   const { dons: donsClairs, verrou } = useDonsDechiffres(donsCompta);
@@ -251,11 +256,41 @@ export default function ListeOperations({
     if (!f.libelle.trim()) return setError("Le libellé est obligatoire.");
     if (!Number.isFinite(montantTotal) || montantTotal <= 0) return setError("Montant invalide.");
 
+    // Une opération reliée à un don qui quitte la catégorie « Don » libère ce
+    // don (la base rompt le lien) : on le fait confirmer.
+    const catDon = categories.find((c) => c.nom === "Don")?.id;
+    if (
+      rapprochementsDons[edit.id]?.lien === "explicite" &&
+      edit.categorie_id === catDon &&
+      (f.categorie_id || null) !== catDon &&
+      !window.confirm(
+        "Cette opération est reliée à un don de l'onglet Dons. En changeant sa catégorie, le don sera délié (il restera dans l'onglet Dons, à relier ailleurs ou à supprimer). Continuer ?",
+      )
+    ) {
+      return;
+    }
+
     setSaving(true);
     const supabase = createClient();
+    // Opération « Don » : libellé neutre ; le libellé saisi rejoint les
+    // libellés d'origine chiffrés (coffre ouvert), jamais en clair.
+    let libelles: { libelle: string; libelle_origine?: string | null; libelle_origine_chiffre?: string } = {
+      libelle: f.libelle.trim(),
+    };
+    if ((f.categorie_id || null) === catDon && coffre.estOuvert && (f.libelle.trim() !== LIBELLE_DON || edit.libelle_origine)) {
+      const avant = await dechiffrerLibellesDon(coffre.dechiffrer, edit.libelle_origine_chiffre ?? null);
+      libelles = {
+        libelle: LIBELLE_DON,
+        libelle_origine: null,
+        libelle_origine_chiffre: await chiffrerLibellesDon(coffre.chiffrer, {
+          brut: edit.libelle_origine ?? avant?.brut ?? null,
+          libelle: f.libelle.trim() !== LIBELLE_DON ? f.libelle.trim() : (avant?.libelle ?? null),
+        }),
+      };
+    }
     const champs = {
       date_operation: f.date_operation,
-      libelle: f.libelle.trim(),
+      ...libelles,
       type: f.type,
       compte_id: f.compte_id || null,
       mode_paiement: f.mode_paiement || null,
@@ -326,6 +361,8 @@ export default function ListeOperations({
           {modeEdition ? "✓ Mode modification actif" : "✏️ Mode modification"}
         </button>
       </div>
+
+      <ChiffrerLibellesDons />
 
       {(nbAVerifier > 0 || nbDonsARegulariser > 0) && (
         <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -580,6 +617,7 @@ export default function ListeOperations({
                     op={{
                       libelle: op.libelle,
                       libelle_origine: op.libelle_origine,
+                      libelle_origine_chiffre: op.libelle_origine_chiffre,
                       date_operation: op.date_operation,
                       montant: Number(op.montant),
                       type: op.type,

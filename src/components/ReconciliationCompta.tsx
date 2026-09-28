@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Modal, FormFooter, inputCls } from "./GestionComptes";
@@ -9,6 +9,7 @@ import { useDonsDechiffres } from "@/lib/donsChiffre";
 import DeverrouillerCoffre from "@/components/DeverrouillerCoffre";
 import { formatEuros, formatDate } from "@/lib/format";
 import { nomDonateur } from "@/lib/statutDon";
+import { dechiffrerLibellesDon, type LibellesDon } from "@/lib/libelleDon";
 import {
   extraireNom,
   donsProbables,
@@ -57,6 +58,27 @@ export default function ReconciliationCompta({
 }) {
   const router = useRouter();
   const coffre = useCoffre();
+
+  // Libellés d'origine chiffrés des opérations « Don » : relus coffre ouvert,
+  // pour deviner le donateur sans jamais les stocker en clair.
+  const [clairs, setClairs] = useState<Map<string, LibellesDon>>(new Map());
+  useEffect(() => {
+    if (!coffre.estOuvert) return;
+    let annule = false;
+    (async () => {
+      const m = new Map<string, LibellesDon>();
+      for (const op of operations) {
+        const l = await dechiffrerLibellesDon(coffre.dechiffrer, op.libelle_origine_chiffre ?? null);
+        if (l) m.set(op.id, l);
+      }
+      if (!annule) setClairs(m);
+    })();
+    return () => {
+      annule = true;
+    };
+  }, [operations, coffre.estOuvert, coffre.dechiffrer]);
+  const brutDe = (op: OpDon) => op.libelle_origine ?? clairs.get(op.id)?.brut ?? null;
+  const libelleDe = (op: OpDon) => clairs.get(op.id)?.libelle ?? op.libelle;
   const { dons, verrou } = useDonsDechiffres(donsInit);
 
   const [fiches, setFiches] = useState<Record<string, FormState>>({});
@@ -83,14 +105,16 @@ export default function ReconciliationCompta({
         .filter((op) => filtreExercice === "tous" || op.exercice_id === filtreExercice)
         .map((op) => {
           const probables = donsProbables(op, dons);
-          const nomExtrait = extraireNom(op.libelle_origine);
+          const nomExtrait = extraireNom(brutDe(op) ?? libelleDe(op));
           const ressemblants = donateursRessemblants(nomExtrait, identites).slice(0, 4);
           // Donateur connu dont le nom figure dans le libellé bancaire ou dans
           // le libellé saisi dans Préau : affecté d'office (doute si nom seul).
-          const reconnu = reconnaitreDonateur([op.libelle_origine, op.libelle], identites);
+          const reconnu = reconnaitreDonateur([brutDe(op), libelleDe(op)], identites);
           return { op, probables, nomExtrait, ressemblants, reconnu };
         }),
-    [operations, dons, identites, filtreExercice],
+    // brutDe / libelleDe ne dépendent que de `clairs`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [operations, dons, identites, filtreExercice, clairs],
   );
   const reconnus = useMemo(
     () =>
@@ -336,7 +360,7 @@ export default function ReconciliationCompta({
                   </td>
                   <td className="px-4 py-3 whitespace-nowrap tabular-nums">{formatDate(op.date_operation)}</td>
                   <td className="px-4 py-3 text-right tabular-nums font-medium">{formatEuros(Number(op.montant))}</td>
-                  <td className="px-4 py-3 max-w-[14rem] text-xs text-muted">{op.libelle_origine ?? op.libelle}</td>
+                  <td className="px-4 py-3 max-w-[14rem] text-xs text-muted">{brutDe(op) ?? libelleDe(op)}</td>
                   <td className="px-4 py-3">
                     {nom ? (
                       <span className="font-medium">{nom}</span>
@@ -432,7 +456,7 @@ export default function ReconciliationCompta({
             <div className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm">
               <span className="text-muted">Opération : </span>
               <strong>{formatEuros(Number(edit.montant))}</strong> le {formatDate(edit.date_operation)}
-              {edit.mode_paiement ? ` · ${edit.mode_paiement}` : ""} — <span className="text-xs text-muted">{edit.libelle_origine ?? edit.libelle}</span>
+              {edit.mode_paiement ? ` · ${edit.mode_paiement}` : ""} — <span className="text-xs text-muted">{brutDe(edit) ?? libelleDe(edit)}</span>
             </div>
 
             <ChoixDonateur

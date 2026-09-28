@@ -15,7 +15,7 @@ export default async function ImportRelevePage() {
   // apprises, mémoire des choix et contrôle du solde.
   const opsP = toutesLesOperations<OpExistante>(
     supabase,
-    "id, date_operation, montant, type, libelle, libelle_origine, categorie_id, compte_id, parent_id, est_ventilee",
+    "id, date_operation, montant, type, libelle, libelle_origine, libelle_origine_chiffre, categorie_id, compte_id, parent_id, est_ventilee",
   );
   const [catsRes, comptesRes, exercicesRes, corrRes, inscriptionsRes, donsRes, affRes, importsRes] = await Promise.all([
     supabase.from("categories").select("id, nom, type").eq("archive", false).order("type").order("ordre").order("nom"),

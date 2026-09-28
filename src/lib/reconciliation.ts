@@ -11,6 +11,8 @@ export type OpDon = {
   montant: number;
   libelle: string;
   libelle_origine: string | null;
+  /** Libellés d'origine chiffrés (opération « Don »). */
+  libelle_origine_chiffre?: string | null;
   mode_paiement: string | null;
   exercice_id: string | null;
 };

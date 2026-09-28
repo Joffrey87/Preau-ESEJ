@@ -9,6 +9,8 @@ import { Modal, Field, FormFooter, inputCls } from "./GestionComptes";
 import JaugeScolarite, { etatJauge } from "@/components/JaugeScolarite";
 import FamilleEnfants, { type FicheFamille } from "@/components/FamilleEnfants";
 import { partJuinNonDue, type Eleve } from "@/lib/eleves";
+import { telechargerAttestation, type Attestation } from "@/lib/attestationPdf";
+import { modeleRecuEnCache } from "@/lib/modeleRecu";
 import Icon from "@/components/Icon";
 import {
   etatDepot,
@@ -657,7 +659,26 @@ export default function GestionScolarite({
 // Détail d'une famille, déroulé sous sa ligne.
 // ---------------------------------------------------------------------------
 
-type LigneVersement = { date: string | null; libelle: string; montant: number; origine?: string };
+type LigneVersement = {
+  date: string | null;
+  libelle: string;
+  montant: number;
+  origine?: string;
+  /** Versement enregistré en comptabilité : une attestation de paiement peut être éditée. */
+  attestation?: Attestation;
+};
+
+/** Attestation de paiement, avec l'en-tête et la signature du modèle de reçu. */
+async function editerAttestation(a: Attestation) {
+  const m = await modeleRecuEnCache(createClient());
+  await telechargerAttestation(a, {
+    adresseRue: m.adresseRue,
+    adresseCpVille: m.adresseCpVille,
+    tresorierNom: m.tresorierNom,
+    courrielContact: m.courrielContact,
+    signatureTresorier: m.signatureTresorier,
+  });
+}
 
 function TableVersements({ lignes, vide }: { lignes: LigneVersement[]; vide: string }) {
   if (lignes.length === 0) return <p className="text-xs text-muted">{vide}</p>;
@@ -671,6 +692,18 @@ function TableVersements({ lignes, vide }: { lignes: LigneVersement[]; vide: str
             <td className="py-1 pr-2">{l.libelle}</td>
             <td className="py-1 pr-2 text-muted">{l.origine ?? ""}</td>
             <td className={`py-1 text-right tabular-nums ${l.montant < 0 ? "text-negative" : ""}`}>{formatEuros(l.montant)}</td>
+            <td className="w-20 py-1 text-right">
+              {l.attestation && (
+                <button
+                  type="button"
+                  onClick={() => editerAttestation(l.attestation!)}
+                  className="text-[11px] text-accent hover:underline"
+                  title="Attestation de paiement (PDF)"
+                >
+                  Attestation
+                </button>
+              )}
+            </td>
           </tr>
         ))}
         {lignes.length > 1 && (
@@ -679,6 +712,7 @@ function TableVersements({ lignes, vide }: { lignes: LigneVersement[]; vide: str
             <td className="pt-1 font-semibold">Total</td>
             <td />
             <td className="pt-1 text-right font-semibold tabular-nums">{formatEuros(total)}</td>
+            <td />
           </tr>
         )}
       </tbody>
@@ -686,12 +720,26 @@ function TableVersements({ lignes, vide }: { lignes: LigneVersement[]; vide: str
   );
 }
 
-const versementDepuis = (d: AffectationDetail): LigneVersement => ({
-  date: d.date_operation || null,
-  libelle: d.libelle,
-  montant: d.type === "depense" ? -Number(d.montant) : Number(d.montant),
-  origine: d.origine ?? (d.nature === "don_association" ? "Association (tiers)" : "Famille"),
-});
+const versementDepuis = (d: AffectationDetail, famille?: string, annee?: string): LigneVersement => {
+  const origine = d.origine ?? (d.nature === "don_association" ? "Association (tiers)" : "Famille");
+  return {
+    date: d.date_operation || null,
+    libelle: d.libelle,
+    montant: d.type === "depense" ? -Number(d.montant) : Number(d.montant),
+    origine,
+    attestation:
+      famille && annee && d.type === "recette" && d.date_operation
+        ? {
+            famille,
+            annee_scolaire: annee,
+            nature: d.nature,
+            montant: Number(d.montant),
+            date: d.date_operation,
+            origine: origine === "Association (tiers)" ? "Association" : origine,
+          }
+        : undefined,
+  };
+};
 
 /**
  * Tout ce que la ligne ne montre pas : le détail des versements par nature
@@ -731,7 +779,7 @@ function DetailFamille({
   }
   for (const a of affectations) {
     if (a.inscription_id === inscription.id && (a.nature === "mensualite" || a.nature === "don_association")) {
-      mensualites.push(versementDepuis(a));
+      mensualites.push(versementDepuis(a, inscription.famille_nom, inscription.annee_scolaire));
     }
   }
   const parOrigine = new Map<string, number>();
@@ -769,7 +817,7 @@ function DetailFamille({
               ? `${frais.nouveaux} enfant(s) entrant(s) : ${formatEuros(frais.du)} attendus, ${formatEuros(frais.paye)} réglés.`
               : "Aucun enfant entrant cette année."}
           </p>
-          <TableVersements lignes={frais.details.map(versementDepuis)} vide="Aucun versement." />
+          <TableVersements lignes={frais.details.map((d) => versementDepuis(d, inscription.famille_nom, inscription.annee_scolaire))} vide="Aucun versement." />
         </section>
 
         <section className="rounded-lg border border-border bg-surface p-3">
@@ -779,7 +827,7 @@ function DetailFamille({
             {depot.anterieur > 0 && ` (dont ${formatEuros(depot.anterieur)} antérieurs à la comptabilité)`}
             {Number(inscription.avance_consommee) > 0 && ` · ${formatEuros(Number(inscription.avance_consommee))} utilisés cette année`}
           </p>
-          <TableVersements lignes={depot.details.map(versementDepuis)} vide="Aucun versement fléché." />
+          <TableVersements lignes={depot.details.map((d) => versementDepuis(d, inscription.famille_nom, inscription.annee_scolaire))} vide="Aucun versement fléché." />
         </section>
 
         <section className="rounded-lg border border-border bg-surface p-3">

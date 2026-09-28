@@ -1,3 +1,4 @@
+import Link from "next/link";
 import PageHeader from "@/components/PageHeader";
 import GestionScolarite, {
   type Inscription,
@@ -145,6 +146,14 @@ export default async function ScolaritePage({
       <PageHeader
         title="Frais de scolarité"
         subtitle="Suivi des paiements par famille : dû, réglé, reste à percevoir et mois d'avance."
+        action={
+          <Link
+            href={`/scolarite/activites?annee=${encodeURIComponent(annee)}`}
+            className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-surface-2"
+          >
+            Activités
+          </Link>
+        }
       />
       {annees.length === 0 ? (
         <div className="rounded-xl border border-border bg-surface px-4 py-16 text-center text-muted">

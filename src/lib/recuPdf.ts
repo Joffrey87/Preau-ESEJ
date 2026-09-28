@@ -79,7 +79,7 @@ const FICHIERS = {
 type Ressources = Record<keyof typeof FICHIERS, ArrayBuffer>;
 let cache: Promise<Ressources> | null = null;
 
-function chargerRessources(): Promise<Ressources> {
+export function chargerRessources(): Promise<Ressources> {
   if (!cache) {
     cache = (async () => {
       const entrees = await Promise.all(
@@ -176,7 +176,7 @@ function paragraphe(
 const capitaliser = (s: string) => (s.length ? s[0].toUpperCase() + s.slice(1) : s);
 
 /** Retire ce que la police allégée ne saurait pas dessiner. */
-function assainir(s: string): string {
+export function assainir(s: string): string {
   return s
     .replace(/[\u00a0\u202f\u2009\r\n\t]/g, " ")
     .replace(/[^\u0020-\u017f\u20ac\u2018\u2019\u201c\u201d\u2013\u2014\u2026\u2116\u2022]/g, "");

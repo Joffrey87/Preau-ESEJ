@@ -7,6 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { formatEuros, formatDate } from "@/lib/format";
 import {
   parseReleve,
+  soldeReleve,
   embellirLibelle,
   suggereCategorieIntelligente,
   construireHistorique,
@@ -24,12 +25,23 @@ import {
   anneesCandidates,
   anneeDeLibelle,
   libelleFamille,
+  estAmitieSainteAnne,
+  proposerRepartition,
+  motsPayeur,
+  rappeler,
+  type InscriptionImport,
+  type RepartitionTiers,
+  type Souvenir,
+} from "@/lib/importEnrichi";
+import {
   CAT_SCOLARITE,
   CAT_MOIS_AVANCE,
   CAT_FRAIS_DOSSIER,
-  type InscriptionImport,
-} from "@/lib/importEnrichi";
-import { CAT_DON_ASSOCIATION, natureParCategorie } from "@/components/AffectationScolarite";
+  CAT_DON_ASSOCIATION,
+  CATS_SCOLARITE,
+  natureParCategorie,
+  nomCanonique,
+} from "@/lib/categoriesScolarite";
 import { libelleNature, type NatureAffectation } from "@/lib/scolariteDepots";
 import { useCoffre } from "@/components/CoffreProvider";
 import { useDonsDechiffres } from "@/lib/donsChiffre";
@@ -38,23 +50,55 @@ import ChoixDonateur, { type IdentiteSaisie } from "@/components/ChoixDonateur";
 import ChampsDonateur, {
   type FormDonateur,
   formDonateurDepuisNom,
+  formDonateurDepuisDon,
   resumeDonateur,
   ficheDonateurValide,
   piiDeFiche,
   relationsConnues,
 } from "@/components/FormulaireDonateur";
+import ImportsPasses, { type ImportPasse } from "@/components/ImportsPasses";
 import { Modal, FormFooter } from "./GestionComptes";
-import { extraireNom, joursEcart } from "@/lib/reconciliation";
-import { nomDonateur } from "@/lib/statutDon";
+import {
+  extraireNom,
+  joursEcart,
+  identitesDonateurs,
+  reconnaitreDonateur,
+  type IdentiteDonateur,
+} from "@/lib/reconciliation";
+import { nomDonateur, cleDonateur } from "@/lib/statutDon";
 import type { Don } from "@/components/GestionDons";
 
+export type { ImportPasse };
+
 type Cat = { id: string; nom: string; type: "recette" | "depense" };
-type Compte = { id: string; nom: string };
+type Compte = { id: string; nom: string; solde_initial: number };
 type Exercice = { id: string; libelle: string; date_debut: string; date_fin: string; actif: boolean };
 type DonExistant = Don & { operation_id: string | null };
 
+export type OpExistante = {
+  id: string;
+  date_operation: string;
+  montant: number;
+  type: string;
+  libelle: string;
+  libelle_origine: string | null;
+  categorie_id: string | null;
+  compte_id: string | null;
+  parent_id: string | null;
+  est_ventilee: boolean;
+};
+
+type AffectationExistante = { operation_id: string; inscription_id: string; montant: number; nature: NatureAffectation };
+
 const CAT_DON = "Don";
-const CATS_SCOLARITE = [CAT_SCOLARITE, CAT_MOIS_AVANCE, CAT_FRAIS_DOSSIER];
+
+/** Catégorie correspondant à une nature d'affectation. */
+const CATEGORIE_DE_NATURE: Record<NatureAffectation, string> = {
+  mensualite: CAT_SCOLARITE,
+  mois_avance: CAT_MOIS_AVANCE,
+  frais_dossier: CAT_FRAIS_DOSSIER,
+  don_association: CAT_DON_ASSOCIATION,
+};
 
 /**
  * Écriture en préparation : la ligne bancaire elle-même, ou l'une de ses
@@ -68,9 +112,9 @@ type Ecriture = {
   candidats?: string[];
   /** Famille choisie à la main ("" = aucune). Absent : choix automatique. */
   famille?: string;
-  /** Fiche donateur à créer dans l'onglet Dons. */
-  donateur?: FormDonateur;
-  /** Don existant à relier plutôt que d'en créer un. */
+  /** Fiche donateur choisie ou saisie (null = aucune). Absent : donateur reconnu automatiquement. */
+  donateur?: FormDonateur | null;
+  /** Don existant à relier ("" = ne pas relier). Absent : liaison automatique. */
   donLie?: string;
   /** Doute à lever (ambre). Vidé dès que l'utilisateur tranche. */
   alerte: string | null;
@@ -90,6 +134,8 @@ type Ligne = LigneReleve &
     // Alerte issue d'une règle de Correspondance (indicative, non enregistrée).
     regle_niveau: NiveauAlerte | null;
     regle_message: string | null;
+    /** Remise de chèques : une sous-écriture par chèque. */
+    remise: boolean;
     filles: Fille[];
     ouvert: boolean;
   };
@@ -102,11 +148,28 @@ type InfoFamille = {
   candidats: string[];
   effective: string;
   ambigu: boolean;
+  memorise: boolean;
   proposees: InscriptionImport[];
+};
+
+/** Rattachement calculé d'une écriture « Don » à l'onglet Dons. */
+type InfoDon = {
+  /** Don existant relié (explicitement ou automatiquement). */
+  donLie: string | null;
+  lienAuto: boolean;
+  /** Fiche du don à créer. */
+  fiche: FormDonateur | null;
+  source: "saisie" | "reconnu" | "memoire" | "doute" | "aucun";
+  /** Doute à lever (ambre, reporté dans « à vérifier »). */
+  doute: string | null;
+  candidats: IdentiteDonateur[];
+  proches: DonExistant[];
 };
 
 let compteurFille = 0;
 const nouvelleCle = () => `f${++compteurFille}`;
+const signe = (type: string, montant: number) => (type === "recette" ? montant : -montant);
+const arrondi = (n: number) => Math.round(n * 100) / 100;
 
 export default function ImportReleve({
   categories,
@@ -116,20 +179,18 @@ export default function ImportReleve({
   correspondances = [],
   inscriptions = [],
   dons: donsInit = [],
+  affectations = [],
+  imports = [],
 }: {
   categories: Cat[];
   comptes: Compte[];
   exercices: Exercice[];
-  existantes: {
-    date_operation: string;
-    montant: number;
-    type: string;
-    libelle: string;
-    categorie_id: string | null;
-  }[];
+  existantes: OpExistante[];
   correspondances?: Correspondance[];
   inscriptions?: InscriptionImport[];
   dons?: DonExistant[];
+  affectations?: AffectationExistante[];
+  imports?: ImportPasse[];
 }) {
   const router = useRouter();
   const coffre = useCoffre();
@@ -143,19 +204,85 @@ export default function ImportReleve({
   const [ignores, setIgnores] = useState(0);
   const [suspects, setSuspects] = useState(0);
   const [filtre, setFiltre] = useState<Filtre>("toutes");
+  const [solde, setSolde] = useState<{ date: string; montant: number } | null>(null);
+  const [calage, setCalage] = useState<"ferme" | "confirmer" | "encours">("ferme");
   // Fiche donateur en cours d'édition : ligne + sous-écriture éventuelle.
   const [cibleDon, setCibleDon] = useState<{ i: number; cle: string | null } | null>(null);
   const [fDon, setFDon] = useState<FormDonateur>(formDonateurDepuisNom(""));
   const [erreurDon, setErreurDon] = useState<string | null>(null);
 
+  // Les sous-écritures ne sont pas des lignes du relevé : la détection des
+  // doublons ne porte que sur les lignes bancaires.
+  const lignesBancaires = useMemo(() => existantes.filter((o) => !o.parent_id), [existantes]);
   const historique = useMemo(() => construireHistorique(existantes), [existantes]);
   const indexTokens = useMemo(() => construireIndexTokens(existantes), [existantes]);
   const catParId = useMemo(() => new Map(categories.map((c) => [c.id, c])), [categories]);
-  const catNom = (id: string | null | undefined) => (id ? catParId.get(id)?.nom ?? null : null);
+  /** Nom canonique de la catégorie (les anciens noms de scolarité sont traduits). */
+  const catNom = (id: string | null | undefined) => nomCanonique(id ? catParId.get(id)?.nom : null);
   const catIdParNom = (nom: string, type: "recette" | "depense") =>
-    categories.find((c) => c.nom === nom && c.type === type)?.id ?? "";
+    categories.find((c) => nomCanonique(c.nom) === nom && c.type === type)?.id ?? "";
   const inscParId = useMemo(() => new Map(inscriptions.map((i) => [i.id, i])), [inscriptions]);
   const relations = useMemo(() => relationsConnues(dons), [dons]);
+  const identites = useMemo(
+    () => (coffre.estOuvert ? identitesDonateurs(dons.filter((d) => !d.supprime_le)) : []),
+    [dons, coffre.estOuvert],
+  );
+
+  // --- Mémoire des choix déjà faits -----------------------------------------
+
+  const opsParId = useMemo(() => new Map(existantes.map((o) => [o.id, o])), [existantes]);
+  /** Libellé bancaire d'une opération (celui de sa ligne bancaire pour une sous-écriture). */
+  const brutDe = (o: OpExistante | undefined): string | null =>
+    o ? (o.libelle_origine ?? (o.parent_id ? (opsParId.get(o.parent_id)?.libelle_origine ?? null) : null)) : null;
+
+  /** Libellé bancaire → famille rattachée (hors Amitié Sainte Anne, payeur de plusieurs familles). */
+  const souvenirsFamilles = useMemo<Souvenir[]>(() => {
+    const out: Souvenir[] = [];
+    for (const a of affectations) {
+      const o = opsParId.get(a.operation_id);
+      const b = brutDe(o);
+      const i = inscParId.get(a.inscription_id);
+      if (!b || !i || estAmitieSainteAnne(b)) continue;
+      out.push({ mots: [...motsPayeur([b])], valeur: `${i.famille_nom}|${a.nature}` });
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [affectations, opsParId, inscParId]);
+
+  /** Libellé bancaire → donateur relié. */
+  const souvenirsDonateurs = useMemo<Souvenir[]>(() => {
+    if (!coffre.estOuvert) return [];
+    const out: Souvenir[] = [];
+    for (const d of dons) {
+      if (!d.operation_id || d.supprime_le) continue;
+      const b = brutDe(opsParId.get(d.operation_id));
+      const cle = cleDonateur(d);
+      if (!b || !cle || cle === "|") continue;
+      out.push({ mots: [...motsPayeur([b])], valeur: cle });
+    }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dons, opsParId, coffre.estOuvert]);
+
+  /** Dernier versement d'Amitié Sainte Anne réparti entre des familles. */
+  const derniereRepartition = useMemo<RepartitionTiers | null>(() => {
+    const groupes = new Map<string, RepartitionTiers>();
+    for (const a of affectations) {
+      const o = opsParId.get(a.operation_id);
+      const b = brutDe(o);
+      const i = inscParId.get(a.inscription_id);
+      if (!o || !b || !i || !estAmitieSainteAnne(b)) continue;
+      const cle = o.parent_id ?? o.id;
+      const g = groupes.get(cle) ?? { date: o.date_operation, total: 0, parts: [] };
+      g.parts.push({ famille_nom: i.famille_nom, montant: Number(a.montant), nature: a.nature });
+      g.total = arrondi(g.total + Number(a.montant));
+      groupes.set(cle, g);
+    }
+    let derniere: RepartitionTiers | null = null;
+    for (const g of groupes.values()) if (!derniere || g.date > derniere.date) derniere = g;
+    return derniere;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [affectations, opsParId, inscParId]);
 
   function exerciceDe(date: string): Exercice | null {
     return (
@@ -164,6 +291,7 @@ export default function ImportReleve({
       null
     );
   }
+  const anneesDe = (date: string) => anneesCandidates(date, anneeDeLibelle(exerciceDe(date)?.libelle));
 
   /** Nature d'affectation portée par la catégorie (null : écriture sans famille). */
   function natureDe(categorieId: string): NatureAffectation | null {
@@ -172,14 +300,26 @@ export default function ImportReleve({
     return natureParCategorie(nom);
   }
 
+  /** Famille mémorisée pour ces libellés, parmi les familles permises (toutes si vide). */
+  function familleMemorisee(textes: string[], date: string, parmi: string[]): string | null {
+    const m = rappeler(textes, souvenirsFamilles);
+    if (!m) return null;
+    const nom = m.split("|")[0];
+    const hit = famillesProposees(inscriptions, anneesDe(date)).find(
+      (p) => p.famille_nom === nom && (parmi.length === 0 || parmi.includes(p.id)),
+    );
+    return hit?.id ?? null;
+  }
+
   /**
    * Famille d'une écriture. Les groupes de textes sont essayés dans l'ordre :
    * pour une sous-écriture, son propre libellé d'abord, puis celui de la banque.
+   * La mémoire des choix départage des homonymes ou supplée un nom absent.
    */
   function infoFamille(e: Ecriture, textes: string[][], date: string): InfoFamille | null {
     const nature = natureDe(e.categorie_id);
     if (!nature) return null;
-    const annees = anneesCandidates(date, anneeDeLibelle(exerciceDe(date)?.libelle), nature);
+    const annees = anneesDe(date);
     let candidats = e.candidats;
     if (!candidats) {
       candidats = [];
@@ -191,12 +331,21 @@ export default function ImportReleve({
         }
       }
     }
+    let memorise = false;
+    if (e.famille === undefined && candidats.length !== 1) {
+      const m = familleMemorisee(textes.flat(), date, candidats);
+      if (m) {
+        candidats = [m];
+        memorise = true;
+      }
+    }
     const effective = e.famille !== undefined ? e.famille : candidats.length === 1 ? candidats[0] : "";
     return {
       nature,
       candidats,
       effective,
       ambigu: e.famille === undefined && candidats.length > 1,
+      memorise,
       proposees: famillesProposees(inscriptions, annees),
     };
   }
@@ -209,17 +358,81 @@ export default function ImportReleve({
     return dons.filter(
       (d) =>
         !d.operation_id &&
+        !d.supprime_le &&
         Math.abs(Number(d.montant) - montant) < 0.005 &&
         d.date_don &&
         joursEcart(d.date_don, date) <= 3,
     );
   }
 
+  /**
+   * Don d'une écriture : le donateur est reconnu d'office s'il figure dans le
+   * libellé bancaire ou dans le libellé saisi (nom + prénom : certain ; nom
+   * seul ou plusieurs donateurs : doute, alerte ambre). À défaut, la mémoire
+   * des liaisons passées. Un don déjà saisi du même donateur, même montant, à
+   * ±3 jours, est relié plutôt que recréé.
+   */
+  function infoDon(e: Ecriture, textes: string[][], montant: number, date: string): InfoDon | null {
+    if (catNom(e.categorie_id) !== CAT_DON) return null;
+    const proches = donsProches(montant, date);
+    const base: InfoDon = { donLie: null, lienAuto: false, fiche: null, source: "aucun", doute: null, candidats: [], proches };
+    if (e.donLie) return { ...base, donLie: e.donLie };
+    if (e.donateur !== undefined) return { ...base, fiche: e.donateur, source: e.donateur ? "saisie" : "aucun" };
+    if (!coffre.estOuvert) return base;
+
+    const plats = textes.flat();
+    const r = reconnaitreDonateur(plats, identites);
+    let candidats = r?.candidats ?? [];
+    let certain = r?.certain ?? false;
+    let source: InfoDon["source"] = certain ? "reconnu" : "doute";
+    if (candidats.length === 0) {
+      const cle = rappeler(plats, souvenirsDonateurs);
+      const id = cle ? identites.find((x) => x.cle === cle) : undefined;
+      if (id) {
+        candidats = [id];
+        certain = true;
+        source = "memoire";
+      }
+    }
+
+    if (candidats.length === 1) {
+      const c = candidats[0];
+      const memeDonateur = e.donLie === "" ? undefined : proches.find((p) => cleDonateur(p) === c.cle);
+      if (memeDonateur) return { ...base, donLie: memeDonateur.id, lienAuto: true, source, candidats };
+      return {
+        ...base,
+        fiche: formDonateurDepuisDon(c.exemple),
+        source,
+        candidats,
+        doute: certain ? null : `Donateur déduit du nom seul (${c.nom}) : à confirmer.`,
+      };
+    }
+    if (candidats.length > 1) {
+      return {
+        ...base,
+        source: "doute",
+        candidats,
+        doute: `Plusieurs donateurs possibles (${candidats.map((c) => c.nom).join(", ")}) : à valider.`,
+      };
+    }
+    if (proches.length > 0 && e.donLie !== "") {
+      return {
+        ...base,
+        doute: `Donateur non reconnu ; un don de même montant est déjà saisi (${proches.map((p) => `${nomDonateur(p)} ${formatDate(p.date_don)}`).join(", ")}) : relier ou renseigner la fiche.`,
+      };
+    }
+    return base;
+  }
+
+  // --- Lecture du relevé ------------------------------------------------------
+
   function traiter(buf: ArrayBuffer, nom: string) {
     setErreur(null);
     setFait(null);
+    setCalage("ferme");
     try {
       const brut = parseReleve(buf);
+      setSolde(soldeReleve(buf));
       if (brut.length === 0) {
         setErreur("Aucune opération détectée. Vérifiez que c'est bien l'export Excel de la banque (colonnes Date / Libellé / Débit / Crédit).");
         setLignes([]);
@@ -230,7 +443,7 @@ export default function ImportReleve({
       //   • ±1 jour  → déjà en compta      → grisée + DÉCOCHÉE
       //   • ±5 jours → doublon possible     → surlignée + COCHÉE (à vérifier)
       const jour = (iso: string) => Math.round(Date.parse(iso) / 86400000);
-      const existing = existantes.map((o) => ({
+      const existing = lignesBancaires.map((o) => ({
         m: Number(o.montant).toFixed(2), j: jour(o.date_operation),
         date: o.date_operation, lib: o.libelle, montant: Number(o.montant), type: o.type, cat: o.categorie_id, used: false,
       }));
@@ -260,7 +473,10 @@ export default function ImportReleve({
 
         // 1. Règles intégrées prioritaires (impayé) ;
         // 2. règles de Correspondances ; à défaut, l'embellissement intégré ;
-        // 3. reconnaissance des écritures de scolarité (mots-clés, puis montant).
+        // 3. cas particuliers : Amitié Sainte Anne (répartition entre familles),
+        //    remise de chèques (un chèque par sous-écriture) ;
+        // 4. reconnaissance des écritures de scolarité (mots-clés, puis montant),
+        //    puis mémoire des choix déjà faits pour ce payeur.
         const regle = regleImport(op.libelle, op.type);
         const res = appliquerCorrespondances(
           { libelle_origine: op.libelle, montant: op.montant, type: op.type, date_operation: op.date },
@@ -273,34 +489,89 @@ export default function ImportReleve({
         let alerte: string | null = null;
         let candidats: string[] | undefined;
         let filles: Fille[] = [];
+        let ouvert = false;
+        const remise = op.type === "recette" && /^rem(ise)?\s+(de\s+)?ch(q|eque)/i.test(op.libelle.trim());
+        const annees = anneesDe(op.date);
+        const idFamille = (nomFamille: string) =>
+          famillesProposees(inscriptions, annees).find((i) => i.famille_nom === nomFamille)?.id;
 
-        const catCorr = res.regle ? catNom(res.categorie_id) : null;
-        // Un don d'association (Amitié Sainte Anne, ASEC) reste un don : on ne
-        // le reclasse pas en scolarité, seule la famille bénéficiaire se rattache.
-        if (!regle && catCorr !== CAT_DON_ASSOCIATION) {
-          const corrAutre = !!catCorr && !CATS_SCOLARITE.includes(catCorr);
-          const a = analyserScolarite(
-            op.libelle,
-            op.type,
-            op.montant,
-            op.date,
-            anneeDeLibelle(exerciceDe(op.date)?.libelle),
-            inscriptions,
-            { avecNom: !corrAutre && !parleDeDon(op.libelle), sansNom: !categorie_id },
-          );
-          if (a) {
-            categorie_id = catIdParNom(a.categorie, op.type) || categorie_id;
-            if (a.libelle) libelle = a.libelle;
-            alerte = a.alerte;
-            candidats = a.candidats;
-            filles = a.ventilation.map((v) => ({
+        if (regle) {
+          // règle intégrée : rien d'autre à deviner
+        } else if (op.type === "recette" && estAmitieSainteAnne(op.libelle)) {
+          // Amitié Sainte Anne paie des frais de scolarité pour des familles : ce
+          // n'est pas un don. Répartition reprise du dernier versement réparti.
+          categorie_id = catIdParNom(CAT_SCOLARITE, op.type) || categorie_id;
+          const parts = proposerRepartition(derniereRepartition, op.montant);
+          filles = parts.map((pt) => {
+            const id = idFamille(pt.famille_nom);
+            return {
               cle: nouvelleCle(),
-              libelle: v.libelle,
-              categorie_id: catIdParNom(v.categorie, op.type),
-              montant: v.montant.toFixed(2),
-              candidats: a.candidats,
+              libelle: `Frais de scolarité — ${pt.famille_nom} (Amitié Sainte Anne)`,
+              categorie_id: catIdParNom(CATEGORIE_DE_NATURE[pt.nature] ?? CAT_SCOLARITE, op.type),
+              montant: pt.montant.toFixed(2),
+              candidats: id ? [id] : [],
               alerte: null,
-            }));
+            };
+          });
+          ouvert = true;
+          const identique = derniereRepartition && Math.abs(derniereRepartition.total - op.montant) < 0.005;
+          alerte =
+            parts.length > 0
+              ? `Répartition reprise du versement du ${formatDate(derniereRepartition!.date)} (${parts.map((pt) => pt.famille_nom).join(", ")})${identique ? "" : ", au prorata du montant"} : à vérifier.`
+              : "Amitié Sainte Anne : répartissez le versement entre les familles (une sous-écriture par famille).";
+        } else if (remise) {
+          ouvert = true;
+          alerte = "Remise de chèques : ajoutez une sous-écriture par chèque (tireur, objet).";
+        } else {
+          const catCorr = res.regle ? catNom(res.categorie_id) : null;
+          // Un don d'association reste un don : seule la famille bénéficiaire se rattache.
+          if (catCorr !== CAT_DON_ASSOCIATION) {
+            const corrAutre = !!catCorr && !CATS_SCOLARITE.includes(catCorr);
+            const a = analyserScolarite(
+              op.libelle,
+              op.type,
+              op.montant,
+              op.date,
+              anneeDeLibelle(exerciceDe(op.date)?.libelle),
+              inscriptions,
+              { avecNom: !corrAutre && !parleDeDon(op.libelle), sansNom: !categorie_id },
+            );
+            if (a) {
+              categorie_id = catIdParNom(a.categorie, op.type) || categorie_id;
+              if (a.libelle) libelle = a.libelle;
+              alerte = a.alerte;
+              candidats = a.candidats;
+              // Homonymes : un choix déjà fait pour ce payeur les départage.
+              if (a.candidats.length > 1) {
+                const m = familleMemorisee([op.libelle], op.date, a.candidats);
+                if (m) {
+                  candidats = [m];
+                  if (a.alerte?.startsWith("Plusieurs familles portent ce nom")) alerte = null;
+                }
+              }
+              filles = a.ventilation.map((v) => ({
+                cle: nouvelleCle(),
+                libelle: v.libelle,
+                categorie_id: catIdParNom(v.categorie, op.type),
+                montant: v.montant.toFixed(2),
+                candidats,
+                alerte: null,
+              }));
+              ouvert = filles.length > 0;
+            } else if (op.type === "recette" && !corrAutre && !parleDeDon(op.libelle)) {
+              // Payeur déjà rattaché à une famille lors d'un précédent import.
+              const m = rappeler([op.libelle], souvenirsFamilles);
+              if (m) {
+                const [nomFamille, nature] = m.split("|") as [string, NatureAffectation];
+                const id = idFamille(nomFamille);
+                const cat = catIdParNom(CATEGORIE_DE_NATURE[nature] ?? CAT_SCOLARITE, op.type);
+                if (id && cat) {
+                  categorie_id = cat;
+                  candidats = [id];
+                  alerte = `Famille ${nomFamille} reprise d'un précédent rattachement pour ce payeur : à confirmer.`;
+                }
+              }
+            }
           }
         }
 
@@ -318,8 +589,9 @@ export default function ImportReleve({
           categorie_id,
           candidats,
           alerte,
+          remise,
           filles,
-          ouvert: filles.length > 0,
+          ouvert,
         };
       });
       setLignes(l);
@@ -352,7 +624,7 @@ export default function ImportReleve({
     cle ? majFille(i, cle, patch) : maj(i, patch);
 
   const resteFilles = (l: Ligne) =>
-    Math.round((l.montant - l.filles.reduce((s, f) => s + (Number(f.montant) || 0), 0)) * 100) / 100;
+    arrondi(l.montant - l.filles.reduce((s, f) => s + (Number(f.montant) || 0), 0));
 
   function ajouterFille(i: number) {
     const l = lignes[i];
@@ -363,7 +635,7 @@ export default function ImportReleve({
         ...l.filles,
         {
           cle: nouvelleCle(),
-          libelle: `${l.libelle} — `,
+          libelle: l.remise ? "Chèque — " : `${l.libelle} — `,
           categorie_id: "",
           montant: reste > 0 ? reste.toFixed(2) : "",
           alerte: null,
@@ -385,7 +657,10 @@ export default function ImportReleve({
 
   const aValider = (l: Ligne) =>
     !!l.alerte ||
-    ecrituresDe(l).some(({ e, textes }) => !!e.alerte || !!infoFamille(e, textes, l.date)?.ambigu) ||
+    ecrituresDe(l).some(
+      ({ e, textes, montant }) =>
+        !!e.alerte || !!infoFamille(e, textes, l.date)?.ambigu || !!infoDon(e, textes, montant, l.date)?.doute,
+    ) ||
     (l.filles.length > 0 && Math.abs(resteFilles(l)) > 0.005);
 
   const correspondAuFiltre = (l: Ligne) => {
@@ -408,24 +683,55 @@ export default function ImportReleve({
   const nbRec = retenues.filter((l) => l.type === "recette").length;
   const nbDep = retenues.filter((l) => l.type === "depense").length;
   const nbClasses = retenues.filter((l) => l.categorie_id || l.filles.length > 0).length;
-  const compte = (pred: (l: Ligne) => boolean) => retenues.filter(pred).length;
+  const compter = (pred: (l: Ligne) => boolean) => retenues.filter(pred).length;
   const nbFamilles = retenues.reduce(
     (s, l) => s + ecrituresDe(l).filter(({ e, textes }) => !!infoFamille(e, textes, l.date)?.effective).length,
     0,
   );
-  const nbFiches = retenues.reduce(
-    (s, l) => s + ecrituresDe(l).filter(({ e }) => catNom(e.categorie_id) === CAT_DON && (e.donateur || e.donLie)).length,
+  const nbDonsDocumentes = retenues.reduce(
+    (s, l) =>
+      s +
+      ecrituresDe(l).filter(({ e, textes, montant }) => {
+        const d = infoDon(e, textes, montant, l.date);
+        return !!d && (!!d.donLie || !!d.fiche);
+      }).length,
     0,
   );
   const aDesDons = retenues.some((l) => ecrituresDe(l).some(({ e }) => catNom(e.categorie_id) === CAT_DON));
 
+  // --- Contrôle du solde -----------------------------------------------------
+
+  const compte = comptes.find((c) => c.id === compteId) ?? null;
+  const controle = useMemo(() => {
+    if (!solde || !compte) return null;
+    const meres = new Set(existantes.map((o) => o.parent_id).filter(Boolean) as string[]);
+    const avant = existantes
+      .filter((o) => o.compte_id === compte.id && !o.est_ventilee && !meres.has(o.id) && o.date_operation <= solde.date)
+      .reduce((s, o) => s + signe(o.type, Number(o.montant)), 0);
+    const nouvelles = lignes
+      .filter((l) => l.inclus && l.date <= solde.date)
+      .reduce((s, l) => s + signe(l.type, l.montant), 0);
+    const sansInitial = arrondi(avant + nouvelles);
+    const preau = arrondi(compte.solde_initial + sansInitial);
+    return { preau, sansInitial, ecart: arrondi(solde.montant - preau) };
+  }, [solde, compte, existantes, lignes]);
+
+  async function calerSoldeOuverture() {
+    if (!controle || !solde || !compte) return;
+    setCalage("encours");
+    const nouveau = arrondi(solde.montant - controle.sansInitial);
+    const { error } = await createClient().from("comptes").update({ solde_initial: nouveau }).eq("id", compte.id);
+    setCalage("ferme");
+    if (error) return setErreur("Calage impossible : " + error.message);
+    router.refresh();
+  }
+
   // --- Fiche donateur ------------------------------------------------------
 
-  function ouvrirDonateur(i: number, cle: string | null) {
+  function ouvrirDonateur(i: number, cle: string | null, depart?: FormDonateur | null) {
     const l = lignes[i];
-    const e: Ecriture = cle ? l.filles.find((f) => f.cle === cle)! : l;
     setErreurDon(null);
-    setFDon(e.donateur ?? formDonateurDepuisNom(extraireNom(l.libelle_origine)));
+    setFDon(depart ?? formDonateurDepuisNom(extraireNom(l.libelle_origine)));
     setCibleDon({ i, cle });
   }
 
@@ -436,7 +742,7 @@ export default function ImportReleve({
       setErreurDon(fDon.est_personne_morale ? "La raison sociale est obligatoire." : "Le nom est obligatoire.");
       return;
     }
-    majEcriture(cibleDon.i, cibleDon.cle, { donateur: fDon, donLie: undefined });
+    majEcriture(cibleDon.i, cibleDon.cle, { donateur: fDon, donLie: "" });
     setCibleDon(null);
   }
 
@@ -462,77 +768,81 @@ export default function ImportReleve({
     if (problemes.length > 0) {
       return setErreur(`Ventilation à corriger avant import — ${problemes.join(" ; ")}.`);
     }
-    const avecFiche = retenues.some((l) => ecrituresDe(l).some(({ e }) => catNom(e.categorie_id) === CAT_DON && e.donateur));
-    if (avecFiche && !coffre.estOuvert) {
-      return setErreur("Déverrouillez le coffre : les fiches donateur sont chiffrées à l'enregistrement.");
-    }
 
     setImporting(true);
     const supabase = createClient();
+    const importId = crypto.randomUUID();
 
     type OpInsert = Record<string, unknown> & { id: string };
     const meres: OpInsert[] = [];
     const filles: OpInsert[] = [];
-    const affectations: Record<string, unknown>[] = [];
-    const nouveauxDons: Record<string, unknown>[] = [];
+    const affectationsNouvelles: Record<string, unknown>[] = [];
+    const nouveauxDons: { pii: ReturnType<typeof piiDeFiche>; ligne: Record<string, unknown> }[] = [];
     const liens: { donId: string; operationId: string; exerciceId: string | null }[] = [];
 
     /** Questions qui restent ouvertes sur une écriture → colonne « à vérifier » (ambre). */
-    const questions = (e: Ecriture, info: InfoFamille | null): string | null => {
+    const questions = (e: Ecriture, fam: InfoFamille | null, don: InfoDon | null): string | null => {
       const q: string[] = [];
       if (e.alerte) q.push(e.alerte);
-      if (info?.ambigu) {
-        q.push(`Famille à valider : ${info.candidats.map((id) => inscParId.get(id)?.famille_nom ?? "?").join(" ou ")}.`);
+      if (fam?.ambigu) {
+        q.push(`Famille à valider : ${fam.candidats.map((id) => inscParId.get(id)?.famille_nom ?? "?").join(" ou ")}.`);
       }
+      if (don?.doute) q.push(don.doute);
       return q.length > 0 ? q.join(" ") : null;
     };
 
     /** Rattachements (famille, don) d'une écriture qui vient de recevoir son id. */
     const rattacher = (
       opId: string,
-      e: Ecriture,
-      info: InfoFamille | null,
+      fam: InfoFamille | null,
+      don: InfoDon | null,
       montant: number,
       date: string,
       exerciceId: string | null,
       mode: string | null,
     ) => {
-      if (info?.effective) {
-        affectations.push({
+      if (fam?.effective) {
+        affectationsNouvelles.push({
           operation_id: opId,
-          inscription_id: info.effective,
+          inscription_id: fam.effective,
           montant,
-          nature: info.nature,
+          nature: fam.nature,
           notes: "Rattaché à l'import du relevé",
         });
       }
-      if (catNom(e.categorie_id) !== CAT_DON) return;
-      if (e.donLie) {
-        liens.push({ donId: e.donLie, operationId: opId, exerciceId });
-      } else if (e.donateur && ficheDonateurValide(e.donateur)) {
+      if (!don) return;
+      if (don.donLie) {
+        liens.push({ donId: don.donLie, operationId: opId, exerciceId });
+      } else if (don.fiche && ficheDonateurValide(don.fiche) && coffre.estOuvert) {
         nouveauxDons.push({
-          _pii: piiDeFiche(e.donateur),
-          exercice_id: exerciceId,
-          origine: e.donateur.origine.trim() || null,
-          categorie_donateur: e.donateur.categorie_donateur || null,
-          est_personne_morale: e.donateur.est_personne_morale,
-          montant,
-          date_don: date,
-          mode_paiement: mode,
-          recu_numero: null,
-          recu_etat: null,
-          observations: "Saisi à l'import du relevé bancaire",
-          operation_id: opId,
+          pii: piiDeFiche(don.fiche),
+          ligne: {
+            exercice_id: exerciceId,
+            origine: don.fiche.origine.trim() || null,
+            categorie_donateur: don.fiche.categorie_donateur || null,
+            est_personne_morale: don.fiche.est_personne_morale,
+            montant,
+            date_don: date,
+            mode_paiement: mode,
+            recu_numero: null,
+            recu_etat: null,
+            observations: "Saisi à l'import du relevé bancaire",
+            operation_id: opId,
+            import_id: importId,
+          },
         });
       }
     };
 
+    let totalRec = 0, totalDep = 0;
     for (const l of retenues) {
       const id = crypto.randomUUID();
       const exerciceId = exerciceDe(l.date)?.id ?? null;
       const mode = devineMode(l.libelle_origine);
       const ventilee = l.filles.length > 0;
-      const infoMere = ventilee ? null : infoFamille(l, textesMere(l), l.date);
+      if (l.type === "recette") totalRec += l.montant; else totalDep += l.montant;
+      const famMere = ventilee ? null : infoFamille(l, textesMere(l), l.date);
+      const donMere = ventilee ? null : infoDon(l, textesMere(l), l.montant, l.date);
       meres.push({
         id,
         date_operation: l.date,
@@ -545,16 +855,18 @@ export default function ImportReleve({
         exercice_id: exerciceId,
         mode_paiement: mode,
         est_ventilee: ventilee,
-        a_verifier: ventilee ? l.alerte : questions(l, infoMere),
+        a_verifier: ventilee ? l.alerte : questions(l, famMere, donMere),
+        import_id: importId,
       });
       if (!ventilee) {
-        rattacher(id, l, infoMere, l.montant, l.date, exerciceId, mode);
+        rattacher(id, famMere, donMere, l.montant, l.date, exerciceId, mode);
         continue;
       }
       for (const f of l.filles) {
         const fid = crypto.randomUUID();
-        const info = infoFamille(f, textesFille(l, f), l.date);
         const montant = Number(f.montant);
+        const fam = infoFamille(f, textesFille(l, f), l.date);
+        const don = infoDon(f, textesFille(l, f), montant, l.date);
         filles.push({
           id: fid,
           parent_id: id,
@@ -568,35 +880,53 @@ export default function ImportReleve({
           exercice_id: exerciceId,
           mode_paiement: mode,
           est_ventilee: false,
-          a_verifier: questions(f, info),
+          a_verifier: questions(f, fam, don),
+          import_id: importId,
         });
-        rattacher(fid, f, info, montant, l.date, exerciceId, mode);
+        rattacher(fid, fam, don, montant, l.date, exerciceId, mode);
       }
     }
 
-    // Les lignes bancaires d'abord : les sous-écritures et rattachements y renvoient.
-    const etapes: string[] = [];
-    let err = (await supabase.from("operations").insert(meres)).error;
+    // Le lot d'abord (il porte le contrôle du solde), puis les lignes bancaires,
+    // puis les sous-écritures et rattachements qui y renvoient.
+    let err = (
+      await supabase.from("imports_releve").insert({
+        id: importId,
+        fichier: nomFichier,
+        compte_id: compteId,
+        nb_operations: meres.length,
+        total_recettes: arrondi(totalRec),
+        total_depenses: arrondi(totalDep),
+        solde_banque: solde?.montant ?? null,
+        solde_date: solde?.date ?? null,
+        solde_preau: controle?.preau ?? null,
+      })
+    ).error;
+    if (!err) err = (await supabase.from("operations").insert(meres)).error;
     if (!err && filles.length > 0) err = (await supabase.from("operations").insert(filles)).error;
     if (err) {
+      // Rien ne doit rester à moitié : on retire ce qui a pu passer.
+      await supabase.from("operations").delete().eq("import_id", importId);
+      await supabase.from("imports_releve").delete().eq("id", importId);
       setImporting(false);
       return setErreur("Import impossible : " + err.message);
     }
-    etapes.push(`${meres.length} opération${meres.length > 1 ? "s" : ""} importée${meres.length > 1 ? "s" : ""}${filles.length ? ` (dont ${filles.length} sous-écriture${filles.length > 1 ? "s" : ""})` : ""}`);
+    const etapes = [
+      `${meres.length} opération${meres.length > 1 ? "s" : ""} importée${meres.length > 1 ? "s" : ""}${filles.length ? ` (dont ${filles.length} sous-écriture${filles.length > 1 ? "s" : ""})` : ""}`,
+    ];
 
     const avertissements: string[] = [];
-    if (affectations.length > 0) {
-      const { error } = await supabase.from("affectations_scolarite").insert(affectations);
+    if (affectationsNouvelles.length > 0) {
+      const { error } = await supabase.from("affectations_scolarite").insert(affectationsNouvelles);
       if (error) avertissements.push("rattachements aux familles non enregistrés : " + error.message);
-      else etapes.push(`${affectations.length} rattachement${affectations.length > 1 ? "s" : ""} à l'onglet Frais de scolarité`);
+      else etapes.push(`${affectationsNouvelles.length} rattachement${affectationsNouvelles.length > 1 ? "s" : ""} à l'onglet Frais de scolarité`);
     }
     if (nouveauxDons.length > 0) {
       const payload = [];
       for (const d of nouveauxDons) {
-        const { _pii, ...reste } = d;
         payload.push({
-          ...reste,
-          pii_chiffre: await coffre.chiffrer(JSON.stringify(_pii)),
+          ...d.ligne,
+          pii_chiffre: await coffre.chiffrer(JSON.stringify(d.pii)),
           donateur_titre: null,
           donateur_nom: null,
           donateur_prenom: null,
@@ -611,10 +941,10 @@ export default function ImportReleve({
       else etapes.push(`${payload.length} don${payload.length > 1 ? "s" : ""} ajouté${payload.length > 1 ? "s" : ""} à l'onglet Dons`);
     }
     for (const lien of liens) {
-      const maj: { operation_id: string; exercice_id?: string } = { operation_id: lien.operationId };
+      const patch: { operation_id: string; exercice_id?: string } = { operation_id: lien.operationId };
       const don = dons.find((d) => d.id === lien.donId);
-      if (lien.exerciceId && don && !don.exercice_id) maj.exercice_id = lien.exerciceId;
-      const { error } = await supabase.from("dons").update(maj).eq("id", lien.donId);
+      if (lien.exerciceId && don && !don.exercice_id) patch.exercice_id = lien.exerciceId;
+      const { error } = await supabase.from("dons").update(patch).eq("id", lien.donId);
       if (error) avertissements.push("liaison d'un don impossible : " + error.message);
     }
     if (liens.length > 0) etapes.push(`${liens.length} don${liens.length > 1 ? "s" : ""} existant${liens.length > 1 ? "s" : ""} relié${liens.length > 1 ? "s" : ""}`);
@@ -622,10 +952,11 @@ export default function ImportReleve({
     setImporting(false);
     setFait(etapes.join(" · "));
     if (avertissements.length > 0) {
-      setErreur(`Opérations importées, mais : ${avertissements.join(" ; ")}. À reprendre depuis la Comptabilité.`);
+      setErreur(`Opérations importées, mais : ${avertissements.join(" ; ")}. À reprendre depuis la Comptabilité (ou annuler l'import).`);
     }
     setLignes([]);
     setNomFichier(null);
+    setSolde(null);
     router.refresh();
   }
 
@@ -634,23 +965,34 @@ export default function ImportReleve({
   const selectCls =
     "rounded-lg border border-border bg-background px-2 py-1 text-xs outline-none focus:border-accent";
 
-  /** Colonne « Rattachement » : famille (scolarité) ou fiche donateur (don). */
+  const pastille = (texte: string, ton: "ok" | "doute" | "neutre", title?: string) => (
+    <span
+      title={title}
+      className={`whitespace-nowrap rounded px-1 text-[10px] font-medium ${
+        ton === "ok" ? "text-positive" : ton === "doute" ? "bg-gold-soft text-gold" : "text-muted"
+      }`}
+    >
+      {texte}
+    </span>
+  );
+
+  /** Colonne « Rattachement » : famille (scolarité) ou donateur (don). */
   function rattachement(i: number, l: Ligne, e: Ecriture, cle: string | null, montant: number, textes: string[][]) {
-    const info = infoFamille(e, textes, l.date);
-    if (info) {
-      const candidats = info.candidats.map((id) => inscParId.get(id)).filter(Boolean) as InscriptionImport[];
-      const autres = info.proposees.filter((p) => !info.candidats.includes(p.id));
+    const fam = infoFamille(e, textes, l.date);
+    if (fam) {
+      const candidats = fam.candidats.map((id) => inscParId.get(id)).filter(Boolean) as InscriptionImport[];
+      const autres = fam.proposees.filter((p) => !fam.candidats.includes(p.id));
       return (
         <div className="flex flex-col gap-0.5">
           <select
-            value={info.effective}
+            value={fam.effective}
             onChange={(ev) => majEcriture(i, cle, { famille: ev.target.value, alerte: null })}
-            title={`${libelleNature(info.nature)} — famille de l'onglet Frais de scolarité`}
-            className={`w-44 ${selectCls} ${info.ambigu ? "border-gold bg-gold-soft/60" : ""}`}
+            title={`${libelleNature(fam.nature)} — famille de l'onglet Frais de scolarité`}
+            className={`w-44 ${selectCls} ${fam.ambigu ? "border-gold bg-gold-soft/60" : ""}`}
           >
-            <option value="">{info.ambigu ? "— à valider —" : "— famille —"}</option>
+            <option value="">{fam.ambigu ? "— à valider —" : "— famille —"}</option>
             {candidats.length > 0 && (
-              <optgroup label={info.ambigu ? "Homonymes reconnus" : "Reconnue"}>
+              <optgroup label={fam.ambigu ? "Homonymes reconnus" : "Reconnue"}>
                 {candidats.map((c) => (
                   <option key={c.id} value={c.id}>{libelleFamille(c)}</option>
                 ))}
@@ -663,39 +1005,65 @@ export default function ImportReleve({
             </optgroup>
           </select>
           <span className="text-[10px] text-muted">
-            {libelleNature(info.nature)}
-            {info.ambigu && <span className="ml-1 font-medium text-gold">· homonymes, à valider</span>}
-            {!info.ambigu && e.famille === undefined && info.effective && <span className="ml-1">· reconnue</span>}
+            {libelleNature(fam.nature)}
+            {fam.ambigu && <span className="ml-1 font-medium text-gold">· homonymes, à valider</span>}
+            {!fam.ambigu && e.famille === undefined && fam.effective && (
+              <span className="ml-1">· {fam.memorise ? "mémorisée" : "reconnue"}</span>
+            )}
           </span>
         </div>
       );
     }
 
-    if (catNom(e.categorie_id) !== CAT_DON) return <span className="text-xs text-muted/50">—</span>;
+    const don = infoDon(e, textes, montant, l.date);
+    if (!don) return <span className="text-xs text-muted/50">—</span>;
 
     if (!coffre.estOuvert) {
-      return <span className="text-xs text-gold" title="Déverrouillez le coffre (bandeau ci-dessus) pour saisir la fiche">🔒 fiche donateur</span>;
+      return <span className="text-xs text-gold" title="Déverrouillez le coffre (bandeau ci-dessus) pour reconnaître le donateur">🔒 donateur</span>;
     }
-    if (e.donLie) {
-      const d = dons.find((x) => x.id === e.donLie);
+    if (don.donLie) {
+      const d = dons.find((x) => x.id === don.donLie);
       return (
-        <span className="inline-flex items-center gap-1 text-xs">
+        <span className="inline-flex flex-wrap items-center gap-1 text-xs">
           <span className="text-positive">↔</span>
-          <span className="font-medium">{d ? nomDonateur(d) : "don existant"}</span>
-          <button type="button" onClick={() => majEcriture(i, cle, { donLie: undefined })} className="text-muted hover:text-negative" title="Ne plus relier">✕</button>
+          <span className="font-medium" title={d ? `Don déjà saisi le ${formatDate(d.date_don)} : il sera relié à cette opération` : undefined}>
+            {d ? nomDonateur(d) : "don existant"}
+          </span>
+          {pastille(don.lienAuto ? "déjà saisi, relié" : "relié", "ok")}
+          <button type="button" onClick={() => majEcriture(i, cle, { donLie: "" })} className="text-muted hover:text-negative" title="Ne pas relier">✕</button>
         </span>
       );
     }
-    const proches = donsProches(montant, l.date);
     return (
       <div className="flex flex-col items-start gap-0.5">
-        {e.donateur ? (
-          <span className="inline-flex items-center gap-1 text-xs">
-            <button type="button" onClick={() => ouvrirDonateur(i, cle)} className="font-medium text-accent hover:underline" title="Modifier la fiche">
-              {resumeDonateur(e.donateur) || "fiche sans nom"}
+        {don.fiche ? (
+          <span className="inline-flex flex-wrap items-center gap-1 text-xs">
+            <button type="button" onClick={() => ouvrirDonateur(i, cle, don.fiche)} className="font-medium text-accent hover:underline" title="Voir ou modifier la fiche">
+              {resumeDonateur(don.fiche) || "fiche sans nom"}
             </button>
-            <button type="button" onClick={() => majEcriture(i, cle, { donateur: undefined })} className="text-muted hover:text-negative" title="Retirer la fiche">✕</button>
+            {don.source === "reconnu" && pastille("reconnu", "ok")}
+            {don.source === "memoire" && pastille("mémorisé", "ok", "Donateur déjà relié à ce payeur lors d'un précédent import")}
+            {don.source === "doute" && pastille("à valider", "doute", don.doute ?? undefined)}
+            {don.source === "doute" && (
+              <button type="button" onClick={() => majEcriture(i, cle, { donateur: don.fiche })} className="rounded px-0.5 text-positive hover:bg-positive/10" title="Confirmer ce donateur">✓</button>
+            )}
+            <button type="button" onClick={() => majEcriture(i, cle, { donateur: null })} className="text-muted hover:text-negative" title="Pas de fiche donateur">✕</button>
           </span>
+        ) : don.candidats.length > 1 ? (
+          <select
+            value=""
+            onChange={(ev) => {
+              const c = don.candidats.find((x) => x.cle === ev.target.value);
+              if (c) majEcriture(i, cle, { donateur: formDonateurDepuisDon(c.exemple) });
+            }}
+            className={`w-44 ${selectCls} border-gold bg-gold-soft/60`}
+            title={don.doute ?? undefined}
+          >
+            <option value="">— donateur à valider —</option>
+            {don.candidats.map((c) => (
+              <option key={c.cle} value={c.cle}>{c.nom}</option>
+            ))}
+          </select>
         ) : (
           <button
             type="button"
@@ -706,15 +1074,15 @@ export default function ImportReleve({
             + Fiche donateur
           </button>
         )}
-        {proches.length > 0 && !e.donateur && (
+        {don.proches.length > 0 && (
           <select
             value=""
-            onChange={(ev) => ev.target.value && majEcriture(i, cle, { donLie: ev.target.value, donateur: undefined })}
+            onChange={(ev) => ev.target.value && majEcriture(i, cle, { donLie: ev.target.value })}
             className="w-44 rounded border border-positive/40 bg-background px-1 py-0.5 text-[11px] text-positive outline-none"
             title="Un don de même montant, à ±3 jours, est déjà saisi : reliez-le plutôt que de le recréer"
           >
             <option value="">Déjà saisi ? relier…</option>
-            {proches.map((d) => (
+            {don.proches.map((d) => (
               <option key={d.id} value={d.id}>{nomDonateur(d)} — {formatDate(d.date_don)}</option>
             ))}
           </select>
@@ -741,10 +1109,10 @@ export default function ImportReleve({
 
   const FILTRES: { v: Filtre; l: string; n: number }[] = [
     { v: "toutes", l: "Toutes", n: lignes.length },
-    { v: "a_classer", l: "À classer", n: compte((l) => ecrituresDe(l).some(({ e }) => !e.categorie_id)) },
-    { v: "scolarite", l: "Scolarité", n: compte((l) => ecrituresDe(l).some(({ e }) => natureDe(e.categorie_id) !== null)) },
-    { v: "dons", l: "Dons", n: compte((l) => ecrituresDe(l).some(({ e }) => catNom(e.categorie_id) === CAT_DON)) },
-    { v: "a_valider", l: "À valider", n: compte(aValider) },
+    { v: "a_classer", l: "À classer", n: compter((l) => ecrituresDe(l).some(({ e }) => !e.categorie_id)) },
+    { v: "scolarite", l: "Scolarité", n: compter((l) => ecrituresDe(l).some(({ e }) => natureDe(e.categorie_id) !== null)) },
+    { v: "dons", l: "Dons", n: compter((l) => ecrituresDe(l).some(({ e }) => catNom(e.categorie_id) === CAT_DON)) },
+    { v: "a_valider", l: "À valider", n: compter(aValider) },
   ];
 
   return (
@@ -756,7 +1124,7 @@ export default function ImportReleve({
             <p className="mt-1 text-xs text-muted">
               Export <strong>Excel</strong> du Crédit Mutuel (Situation de votre compte, .xlsx).
               Les opérations sont extraites puis validées une par une avant d&apos;entrer en comptabilité.
-              Les écritures de scolarité sont rattachées aux familles, les dons peuvent recevoir leur fiche donateur.
+              Les écritures de scolarité sont rattachées aux familles, les dons à leur donateur ; le solde est contrôlé.
             </p>
           </div>
           <label className="cursor-pointer rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-fg hover:opacity-90">
@@ -780,12 +1148,73 @@ export default function ImportReleve({
         )}
       </div>
 
+      {lignes.length === 0 && <ImportsPasses imports={imports} comptes={comptes} />}
+
       {lignes.length > 0 && (
         <>
           {aDesDons && coffre.estConfigure && !coffre.estOuvert && (
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-gold/40 bg-gold-soft/40 px-4 py-3 text-sm text-gold">
-              <span>🔒 Déverrouillez le coffre pour renseigner les fiches donateur (elles sont chiffrées). Sans fiche, le don reste à compléter depuis l&apos;onglet Dons.</span>
+              <span>🔒 Déverrouillez le coffre : les donateurs seront alors reconnus dans les libellés et les fiches créées (chiffrées). Sans cela, les dons restent à compléter depuis l&apos;onglet Dons.</span>
               <DeverrouillerCoffre />
+            </div>
+          )}
+
+          {controle && solde && (
+            <div
+              className={`rounded-xl border px-4 py-3 text-sm ${
+                Math.abs(controle.ecart) < 0.01 ? "border-positive/40 bg-positive/5" : "border-gold/50 bg-gold-soft/40"
+              }`}
+            >
+              <div className="flex flex-wrap items-center gap-x-6 gap-y-1">
+                <span className="font-semibold">Contrôle du solde au {formatDate(solde.date)}</span>
+                <span>Banque : <strong className="tabular-nums">{formatEuros(solde.montant)}</strong></span>
+                <span>Préau après import : <strong className="tabular-nums">{formatEuros(controle.preau)}</strong></span>
+                {Math.abs(controle.ecart) < 0.01 ? (
+                  <span className="font-medium text-positive">Solde conforme ✓</span>
+                ) : (
+                  <span className="font-medium text-gold">Écart : {formatEuros(controle.ecart)}</span>
+                )}
+              </div>
+              {Math.abs(controle.ecart) >= 0.01 && (
+                <p className="mt-1 text-xs text-muted">
+                  {compte && compte.solde_initial === 0
+                    ? "Le solde d'ouverture du compte n'est pas renseigné : l'écart comprend tout ce qui précède les données de Préau. "
+                    : ""}
+                  Un écart persistant signale une opération manquante, en trop ou mal datée (lignes décochées, doublons, saisies manuelles).
+                </p>
+              )}
+              {Math.abs(controle.ecart) >= 0.01 && compte && compte.solde_initial === 0 && (
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                  {calage === "ferme" ? (
+                    <button
+                      type="button"
+                      onClick={() => setCalage("confirmer")}
+                      className="rounded-lg border border-border bg-surface px-2 py-1 font-medium hover:bg-surface-2"
+                    >
+                      Caler le solde d&apos;ouverture sur ce relevé
+                    </button>
+                  ) : (
+                    <>
+                      <span>
+                        Solde d&apos;ouverture de « {compte.nom} » fixé à{" "}
+                        <strong>{formatEuros(arrondi(solde.montant - controle.sansInitial))}</strong> : les écarts futurs
+                        seront mesurés par rapport à ce relevé. Confirmer ?
+                      </span>
+                      <button
+                        type="button"
+                        onClick={calerSoldeOuverture}
+                        disabled={calage === "encours"}
+                        className="rounded-lg bg-accent px-2 py-1 font-medium text-accent-fg disabled:opacity-50"
+                      >
+                        Confirmer
+                      </button>
+                      <button type="button" onClick={() => setCalage("ferme")} className="rounded-lg border border-border px-2 py-1">
+                        Annuler
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
@@ -797,7 +1226,7 @@ export default function ImportReleve({
                 {" · "}<span className="text-negative">{nbDep} dépenses</span>
                 {" · "}<span>{nbClasses} classée(s)</span>
                 {nbFamilles > 0 && <> · <span>{nbFamilles} rattachée(s) à une famille</span></>}
-                {nbFiches > 0 && <> · <span>{nbFiches} don(s) documenté(s)</span></>}
+                {nbDonsDocumentes > 0 && <> · <span>{nbDonsDocumentes} don(s) documenté(s)</span></>}
                 {ignores > 0 && <> · <span className="text-gold">{ignores} déjà en compta (décochée·s)</span></>}
                 {suspects > 0 && <> · <span className="text-gold">{suspects} doublon·s possible·s (surlignés)</span></>}
               </span>
@@ -903,7 +1332,7 @@ export default function ImportReleve({
                                 doublon possible ±5 j
                               </span>
                             )}
-                            {l.regle_niveau && (
+                            {l.regle_niveau && !l.alerte && (
                               <span
                                 title={l.regle_message ?? "Règle de correspondance : à vérifier"}
                                 className={`whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] font-medium ${
@@ -931,6 +1360,8 @@ export default function ImportReleve({
                                 categorie_id: "",
                                 candidats: undefined,
                                 famille: undefined,
+                                donateur: undefined,
+                                donLie: undefined,
                                 alerte: null,
                                 filles: l.filles.map((f) => ({ ...f, categorie_id: "", candidats: undefined, famille: undefined })),
                               })
@@ -988,9 +1419,11 @@ export default function ImportReleve({
                                   <input
                                     type="text"
                                     value={f.libelle}
-                                    onChange={(e) => majFille(i, f.cle, { libelle: e.target.value, candidats: undefined })}
-                                    placeholder="Libellé — ex. « Frais de dossier — Beth »"
-                                    title="Un nom de famille dans le libellé suffit à la rattacher"
+                                    onChange={(e) =>
+                                      majFille(i, f.cle, { libelle: e.target.value, candidats: undefined, donateur: undefined })
+                                    }
+                                    placeholder={l.remise ? "Chèque — tireur et objet" : "Libellé — ex. « Frais de dossier — Beth »"}
+                                    title="Un nom de famille ou de donateur dans le libellé suffit à le rattacher"
                                     className="w-60 rounded-lg border border-border bg-background px-2 py-1 text-xs outline-none focus:border-accent"
                                   />
                                   {f.alerte && badgeAlerte(f.alerte, () => majFille(i, f.cle, { alerte: null }))}
@@ -1045,7 +1478,7 @@ export default function ImportReleve({
                                   onClick={() => ajouterFille(i)}
                                   className="rounded-lg border border-border px-2 py-1 font-medium hover:bg-surface-2"
                                 >
-                                  + Sous-écriture
+                                  {l.remise ? "+ Chèque" : "+ Sous-écriture"}
                                 </button>
                                 {ventilee && Math.abs(reste) > 0.005 ? (
                                   <span className="rounded-lg bg-gold-soft px-2 py-1 font-medium text-gold">
@@ -1053,6 +1486,11 @@ export default function ImportReleve({
                                   </span>
                                 ) : ventilee ? (
                                   <span className="text-positive">Répartition équilibrée ✓</span>
+                                ) : l.remise ? (
+                                  <span className="text-muted">
+                                    Une sous-écriture par chèque : le tireur dans le libellé, l&apos;objet par la catégorie. Sans détail,
+                                    la remise est importée telle quelle et reste « à vérifier ».
+                                  </span>
                                 ) : (
                                   <span className="text-muted">
                                     La ligne bancaire reste unique ; seules ses sous-écritures entrent dans les totaux.
@@ -1093,6 +1531,7 @@ export default function ImportReleve({
           </div>
           <p className="text-xs text-muted">
             Les alertes « à valider » non levées sont reportées dans la colonne « À vérifier » de la Comptabilité (lignes en ambre).
+            Un import peut être annulé en entier depuis « Derniers imports ».
           </p>
           <div className="h-20" aria-hidden />
 
@@ -1136,7 +1575,8 @@ export default function ImportReleve({
               idListe="relations-import-releve"
             />
             <p className="text-xs text-muted">
-              Le don sera créé dans l&apos;onglet Dons à l&apos;import, relié à cette opération (montant, date et mode repris du relevé).
+              Le don sera créé dans l&apos;onglet Dons au moment de l&apos;import, relié à cette opération (montant, date et
+              mode repris du relevé).
             </p>
             <FormFooter saving={false} error={erreurDon} onCancel={() => setCibleDon(null)} />
           </form>

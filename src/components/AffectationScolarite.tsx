@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { inputCls } from "./GestionComptes";
 import { formatEuros } from "@/lib/format";
 import { NATURES, libelleNature, type NatureAffectation } from "@/lib/scolariteDepots";
+import { natureParCategorie } from "@/lib/categoriesScolarite";
 
 export type Inscription = {
   id: string;
@@ -23,29 +24,20 @@ export type Affectation = {
   nature?: NatureAffectation;
 };
 
-/** Catégories ouvrant le fléchage vers une famille. */
-export const CAT_DON_ASSOCIATION = "Don d'Association";
-export const CAT_SCOLARITE = "Paiement frais de scolarité";
-export const CAT_MOIS_AVANCE = "Mois d'avance (dépôts)";
-export const CAT_FRAIS_DOSSIER = "Frais de dossier";
-
 /**
- * La catégorie fait la case du Bilan, la nature fait la colonne de l'onglet
- * Frais de scolarité : les deux vont ensemble. Une écriture de scolarité est
- * une mensualité, un dépôt ou des frais de dossier selon sa catégorie.
+ * Catégories ouvrant le fléchage vers une famille. La catégorie fait la case
+ * du Bilan, la nature fait la colonne de l'onglet Frais de scolarité : les deux
+ * vont ensemble. Voir `lib/categoriesScolarite`.
  */
-const NATURE_PAR_CATEGORIE: Record<string, NatureAffectation> = {
-  [CAT_SCOLARITE]: "mensualite",
-  [CAT_MOIS_AVANCE]: "mois_avance",
-  [CAT_FRAIS_DOSSIER]: "frais_dossier",
-};
-export const CATS_SCOLARITE = Object.keys(NATURE_PAR_CATEGORIE);
-
-/** Nature imposée par la catégorie de l'écriture (null : catégorie hors scolarité). */
-export function natureParCategorie(nomCategorie: string | null | undefined): NatureAffectation | null {
-  return nomCategorie ? (NATURE_PAR_CATEGORIE[nomCategorie] ?? null) : null;
-}
-export const estCategorieScolarite = (nom: string | null | undefined) => natureParCategorie(nom) !== null;
+export {
+  CAT_DON_ASSOCIATION,
+  CAT_SCOLARITE,
+  CAT_MOIS_AVANCE,
+  CAT_FRAIS_DOSSIER,
+  CATS_SCOLARITE,
+  natureParCategorie,
+  estCategorieScolarite,
+} from "@/lib/categoriesScolarite";
 
 /**
  * « Exercice 2026-2027 » → « 2026-2027 ». L'onglet Frais de scolarité raisonne

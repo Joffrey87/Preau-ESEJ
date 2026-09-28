@@ -14,6 +14,7 @@ import {
   donsProbables,
   identitesDonateurs,
   donateursRessemblants,
+  reconnaitreDonateur,
   type OpDon,
 } from "@/lib/reconciliation";
 import type { Don } from "@/components/GestionDons";
@@ -84,15 +85,27 @@ export default function ReconciliationCompta({
           const probables = donsProbables(op, dons);
           const nomExtrait = extraireNom(op.libelle_origine);
           const ressemblants = donateursRessemblants(nomExtrait, identites).slice(0, 4);
-          return { op, probables, nomExtrait, ressemblants };
+          // Donateur connu dont le nom figure dans le libellé bancaire ou dans
+          // le libellé saisi dans Préau : affecté d'office (doute si nom seul).
+          const reconnu = reconnaitreDonateur([op.libelle_origine, op.libelle], identites);
+          return { op, probables, nomExtrait, ressemblants, reconnu };
         }),
     [operations, dons, identites, filtreExercice],
+  );
+  const reconnus = useMemo(
+    () =>
+      new Map(
+        analyse
+          .filter((a) => a.reconnu?.candidats.length === 1)
+          .map((a) => [a.op.id, { fiche: formDepuisDon(a.reconnu!.candidats[0].exemple), certain: a.reconnu!.certain }]),
+      ),
+    [analyse],
   );
 
   // Les deux états ne contiennent que les MODIFICATIONS de l'utilisateur ; la
   // valeur par défaut est dérivée de l'analyse à chaque rendu.
   const ficheDe = (opId: string, nomExtrait: string): FormState =>
-    fiches[opId] ?? formDepuis(nomExtrait);
+    fiches[opId] ?? reconnus.get(opId)?.fiche ?? formDepuis(nomExtrait);
   const estChoisie = (opId: string, nouvelle: boolean): boolean => choisies[opId] ?? nouvelle;
 
   /** Exercice couvrant une date, ou null. */
@@ -337,6 +350,16 @@ export default function ReconciliationCompta({
                     >
                       modifier
                     </button>
+                    {!fiches[op.id] && reconnus.has(op.id) && (
+                      <span
+                        className={`ml-2 rounded px-1 text-[10px] font-medium ${
+                          reconnus.get(op.id)!.certain ? "text-positive" : "bg-gold-soft text-gold"
+                        }`}
+                        title={reconnus.get(op.id)!.certain ? "Nom et prénom lus dans le libellé" : "Nom seul lu dans le libellé : à confirmer"}
+                      >
+                        {reconnus.get(op.id)!.certain ? "reconnu" : "à valider"}
+                      </span>
+                    )}
                     {ressemblants.length > 0 && (
                       <div className="mt-0.5 text-xs text-muted">
                         Ressemble à : {ressemblants.map((r) => r.nom).join(", ")}
@@ -421,6 +444,11 @@ export default function ReconciliationCompta({
             />
 
             <ChampsDonateur f={f} set={set} relations={relations} idListe="relations-import" />
+
+            <p className="rounded-lg bg-gold-soft px-3 py-2 text-xs text-gold">
+              « Enregistrer » prépare la fiche et coche la ligne. Le don n&apos;est créé dans l&apos;onglet Dons
+              qu&apos;au clic sur « Importer … dons » en haut de la liste.
+            </p>
 
             <FormFooter saving={false} error={error} onCancel={() => setEdit(null)} />
           </form>

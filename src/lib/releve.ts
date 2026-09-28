@@ -3,6 +3,7 @@
 // Débit en négatif, Crédit en positif. On repère l'en-tête puis on lit les lignes.
 
 import * as XLSX from "xlsx";
+import { CAT_SCOLARITE, CAT_MOIS_AVANCE, CAT_FRAIS_DOSSIER, nomCanonique } from "@/lib/categoriesScolarite";
 
 export type LigneReleve = {
   date: string; // ISO YYYY-MM-DD
@@ -106,6 +107,27 @@ export function parseReleve(buffer: ArrayBuffer): LigneReleve[] {
 }
 
 /**
+ * Solde bancaire indiqué par l'export (« Solde au 31/08/2026 : 1 049,81 »),
+ * pour contrôler le solde calculé par Préau. Null si l'export n'en porte pas.
+ */
+export function soldeReleve(buffer: ArrayBuffer): { date: string; montant: number } | null {
+  const wb = XLSX.read(buffer, { type: "array" });
+  for (const sheetName of wb.SheetNames) {
+    const rows = XLSX.utils.sheet_to_json<unknown[]>(wb.Sheets[sheetName], { header: 1, raw: true, blankrows: false });
+    for (const r of rows) {
+      const cellules = Array.from(r ?? [], (c) => c);
+      const texte = cellules.find((c) => typeof c === "string" && /solde au\s+\d{1,2}\/\d{1,2}\/\d{4}/i.test(c));
+      if (typeof texte !== "string") continue;
+      const m = texte.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/)!;
+      const montant = cellules.map(toNum).find((n, i) => n !== null && typeof cellules[i] !== "string");
+      if (montant === undefined || montant === null) continue;
+      return { date: `${m[3]}-${pad(Number(m[2]))}-${pad(Number(m[1]))}`, montant };
+    }
+  }
+  return null;
+}
+
+/**
  * Transforme un libellé bancaire brut (souvent illisible) en libellé propre.
  * Règles déterministes validées avec le trésorier. Le brut reste conservé
  * dans `operations.libelle_origine` (accessible via l'icône « détails »).
@@ -173,9 +195,9 @@ type Cat = { id: string; nom: string; type: "recette" | "depense" };
 // Mots-clés (libellé bancaire) → nom de catégorie. Déterministe, à titre de suggestion.
 const REGLES: { kw: RegExp; cat: string }[] = [
   { kw: /\bdon\b|barroux|abbaye/i, cat: "Don" },
-  { kw: /mois (d.?)?avance|mois suppl/i, cat: "Mois d'avance (dépôts)" },
-  { kw: /frais de dossier/i, cat: "Frais de dossier" },
-  { kw: /scolarit/i, cat: "Paiement frais de scolarité" },
+  { kw: /mois (d.?)?avance|mois suppl/i, cat: CAT_MOIS_AVANCE },
+  { kw: /frais (de )?dossier|frais d.?inscription/i, cat: CAT_FRAIS_DOSSIER },
+  { kw: /scolarit/i, cat: CAT_SCOLARITE },
   { kw: /sumup|vrst|vente|marche de noel|sapin|porte-couteaux/i, cat: "Ventes diverses au profit de l'école" },
   { kw: /free|internet|hautdebit/i, cat: "Frais internet : Abonnement FREE" },
   { kw: /urssaf/i, cat: "Frais de personnel : URSSAF" },
@@ -194,7 +216,7 @@ export function suggereCategorie(libelle: string, type: "recette" | "depense", c
   const dispo = cats.filter((c) => c.type === type);
   for (const r of REGLES) {
     if (r.kw.test(libelle)) {
-      const c = dispo.find((x) => x.nom === r.cat);
+      const c = dispo.find((x) => nomCanonique(x.nom) === r.cat);
       if (c) return c.id;
     }
   }

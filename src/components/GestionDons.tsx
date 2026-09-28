@@ -411,6 +411,39 @@ export default function GestionDons({
       return;
     }
 
+    // La fiche est celle du DONATEUR, pas du seul versement : on la reporte sur
+    // ses autres dons (même identité avant modification), sans quoi ils restent
+    // incomplets et les reçus fiscaux divergeraient.
+    if (edit !== "nouveau" && edit) {
+      const cle = cleDonateur(edit);
+      const autres = donsHydrates.filter(
+        (d) => d.id !== edit.id && !d.supprime_le && cle !== "|" && cle !== "" && cleDonateur(d) === cle,
+      );
+      if (autres.length > 0) {
+        const { error: errReport } = await supabase
+          .from("dons")
+          .update({
+            est_personne_morale: payload.est_personne_morale,
+            categorie_donateur: payload.categorie_donateur,
+            pii_chiffre: payload.pii_chiffre,
+            donateur_titre: payload.donateur_titre,
+            donateur_nom: payload.donateur_nom,
+            donateur_prenom: payload.donateur_prenom,
+            raison_sociale: payload.raison_sociale,
+            adresse: payload.adresse,
+            cp_ville: payload.cp_ville,
+            courriel: payload.courriel,
+          })
+          .in("id", autres.map((d) => d.id));
+        if (errReport) {
+          setError(`Don enregistré, mais la fiche n'a pas pu être reportée sur ses ${autres.length} autre(s) don(s) : ${errReport.message}`);
+          setSaving(false);
+          router.refresh();
+          return;
+        }
+      }
+    }
+
     setSaving(false);
     setEdit(null);
     router.refresh();

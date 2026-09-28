@@ -100,3 +100,54 @@ export function donateursRessemblants(nomExtrait: string, identites: IdentiteDon
     .sort((a, b) => b.score - a.score);
   return notes.map((x) => x.id);
 }
+
+const PARTICULES_NOM = new Set(["de", "du", "des", "d", "le", "la", "l", "van", "von", "et"]);
+const MOTS_GENERIQUES = new Set(["association", "asso", "sas", "sarl", "sa", "sci", "eurl", "societe", "ste", "cie", "entreprise"]);
+
+/** Mots significatifs d'un nom (sans particules, sans initiales). */
+function motsNom(s: string | null | undefined): string[] {
+  return normaliser(s ?? "")
+    .split(" ")
+    .filter((m) => m.length > 1 && !PARTICULES_NOM.has(m) && !MOTS_GENERIQUES.has(m));
+}
+
+export type DonateurReconnu = {
+  /** Donateurs retenus (clés), le meilleur d'abord. */
+  candidats: IdentiteDonateur[];
+  /** Un seul donateur, nom ET prénom (ou raison sociale) lus dans le libellé. */
+  certain: boolean;
+};
+
+/**
+ * Reconnaît un donateur connu dans les libellés d'une opération (brut bancaire
+ * et libellé saisi dans Préau). Nom + prénom présents : certain ; nom seul :
+ * doute (alerte ambre). Plusieurs donateurs au même niveau : à valider.
+ */
+export function reconnaitreDonateur(textes: (string | null)[], identites: IdentiteDonateur[]): DonateurReconnu | null {
+  const presents = new Set(textes.flatMap((t) => normaliser(t ?? "").split(" ")));
+  let meilleurs: IdentiteDonateur[] = [];
+  let niveau = 0;
+  for (const id of identites) {
+    const d = id.exemple;
+    let n = 0;
+    if (d.est_personne_morale) {
+      const r = motsNom(d.raison_sociale);
+      if (r.length > 0 && r.every((m) => m.length >= 3 && presents.has(m))) n = 2;
+    } else {
+      const nom = motsNom(d.donateur_nom);
+      const prenom = motsNom(d.donateur_prenom);
+      if (nom.length > 0 && nom.every((m) => presents.has(m))) {
+        n = prenom.length > 0 && prenom.every((m) => presents.has(m)) ? 2 : 1;
+      }
+    }
+    if (n === 0) continue;
+    if (n > niveau) {
+      niveau = n;
+      meilleurs = [id];
+    } else if (n === niveau) {
+      meilleurs.push(id);
+    }
+  }
+  if (meilleurs.length === 0) return null;
+  return { candidats: meilleurs, certain: niveau === 2 && meilleurs.length === 1 };
+}

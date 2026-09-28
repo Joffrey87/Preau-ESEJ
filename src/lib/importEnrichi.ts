@@ -7,6 +7,7 @@
 // Tout est déterministe : aucune donnée ne quitte le navigateur.
 
 import { FRAIS_DOSSIER_PAR_ENFANT, type NatureAffectation } from "@/lib/scolariteDepots";
+import { CAT_SCOLARITE, CAT_MOIS_AVANCE, CAT_FRAIS_DOSSIER } from "@/lib/categoriesScolarite";
 
 const sansAccent = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "");
 const norm = (s: string) =>
@@ -77,23 +78,19 @@ const anneeSuivante = (a: string) => {
 /**
  * Années scolaires à examiner, la plus probable d'abord.
  *
- * Frais de dossier et mois d'avance se versent au printemps ou l'été qui
- * précède la rentrée : de mars à août, ils visent l'année suivante. Une
- * mensualité vise l'année de l'exercice.
+ * Règle du trésorier (28/09/2026) : un versement de JUILLET ou d'AOÛT vise
+ * l'année scolaire suivante — mois d'avance d'une nouvelle famille, frais de
+ * dossier de la rentrée ou mensualité de septembre. Jusqu'en juin, il vise
+ * l'année en cours. L'autre année reste proposée en second choix.
  */
 export function anneesCandidates(
   date: string,
   anneeExercice: string | null,
-  nature: NatureAffectation | null,
 ): string[] {
   if (!anneeExercice) return [];
   const suivante = anneeSuivante(anneeExercice);
   const mois = Number(date.slice(5, 7));
-  const avantRentree = mois >= 3 && mois <= 8;
-  if ((nature === "frais_dossier" || nature === "mois_avance") && avantRentree) {
-    return [suivante, anneeExercice];
-  }
-  return [anneeExercice, suivante];
+  return mois === 7 || mois === 8 ? [suivante, anneeExercice] : [anneeExercice, suivante];
 }
 
 export type ResultatFamille = {
@@ -145,9 +142,7 @@ export function libelleFamille(i: InscriptionImport): string {
 
 // --- Reconnaissance des écritures de scolarité ------------------------------
 
-export const CAT_SCOLARITE = "Paiement frais de scolarité";
-export const CAT_MOIS_AVANCE = "Mois d'avance (dépôts)";
-export const CAT_FRAIS_DOSSIER = "Frais de dossier";
+export { CAT_SCOLARITE, CAT_MOIS_AVANCE, CAT_FRAIS_DOSSIER };
 
 export type AnalyseScolarite = {
   /** Catégorie proposée pour la ligne. */
@@ -208,11 +203,14 @@ export function analyserScolarite(
   if (type !== "recette") return null;
   const s = norm(brut).replace(/'/g, " ");
   const kwAvance = /\bmois d ?avance\b/.test(s);
-  const kwDossier = /\bfrais (de |d )?dossiers?\b/.test(s);
+  // « Frais d'inscription » : comptés comme frais de dossier (décision du 28/09/2026).
+  const kwInscription = /\bfrais d ?inscriptions?\b/.test(s);
+  const kwDossier = /\bfrais (de |d )?dossiers?\b/.test(s) || kwInscription;
+  const noteInscription = kwInscription ? " « Frais d'inscription » comptés en frais de dossier." : "";
   const kwScolarite = /\bscolarit/.test(s);
 
-  const parNom = (nature: NatureAffectation) =>
-    reconnaitreFamille([brut], inscriptions, anneesCandidates(date, anneeExercice, nature));
+  const parNom = () =>
+    reconnaitreFamille([brut], inscriptions, anneesCandidates(date, anneeExercice));
   const parId = new Map(inscriptions.map((i) => [i.id, i]));
   // Homonymes (« Picard A », « Picard H ») : l'initiale rapprochée d'un prénom
   // du libellé oriente le choix, sans le trancher.
@@ -229,7 +227,7 @@ export function analyserScolarite(
 
   /** Intitulé, alerte et familles pour une nature donnée par un mot-clé. */
   const explicite = (categorie: string, nature: NatureAffectation): AnalyseScolarite => {
-    const r = parNom(nature);
+    const r = parNom();
     const ids = r.candidats.map((c) => c.id);
     let alerte: string | null = null;
     if (ids.length === 0) alerte = "Famille non reconnue dans le libellé : à rattacher.";
@@ -253,7 +251,13 @@ export function analyserScolarite(
     const base = explicite(CAT_FRAIS_DOSSIER, "frais_dossier");
     const nom = base.candidats.length === 1 ? parId.get(base.candidats[0])?.famille_nom : null;
     const suffixe = nom ? ` — ${nom}` : "";
-    const dossier = FRAIS_DOSSIER_PAR_ENFANT;
+    // Nombre d'enfants entrants : celui qui laisse exactement une mensualité
+    // de la famille en mois d'avance (270 = 60 + 210). À défaut, un enfant.
+    const famille = base.candidats.length === 1 ? parId.get(base.candidats[0]) : undefined;
+    const mensuel = famille?.montant_mensuel ?? 0;
+    const enfants =
+      [1, 2, 3, 4].find((n) => mensuel > 0 && Math.abs(montant - n * FRAIS_DOSSIER_PAR_ENFANT - mensuel) < 0.01) ?? 0;
+    const dossier = (enfants || 1) * FRAIS_DOSSIER_PAR_ENFANT;
     const reste = Math.round((montant - dossier) * 100) / 100;
     const ventilation =
       montant > dossier
@@ -266,20 +270,23 @@ export function analyserScolarite(
       ...base,
       libelle: nom ? `Frais de dossier et mois d'avance${suffixe}` : null,
       alerte:
-        ventilation.length > 0
-          ? `Ventilation proposée : ${dossier} € de frais de dossier + ${reste} € de mois d'avance (un enfant supposé) — à vérifier.${base.alerte ? " " + base.alerte : ""}`
-          : base.alerte,
+        ventilation.length > 0 && !enfants
+          ? `Ventilation proposée : ${dossier} € de frais de dossier + ${reste} € de mois d'avance (un enfant supposé) — à vérifier.${base.alerte ? " " + base.alerte : ""}${noteInscription}`
+          : `${base.alerte ?? ""}${noteInscription}`.trim() || null,
       ventilation,
     };
   }
-  if (kwDossier) return explicite(CAT_FRAIS_DOSSIER, "frais_dossier");
+  if (kwDossier) {
+    const r = explicite(CAT_FRAIS_DOSSIER, "frais_dossier");
+    return noteInscription ? { ...r, alerte: `${r.alerte ?? ""}${noteInscription}`.trim() } : r;
+  }
   if (kwAvance) return explicite(CAT_MOIS_AVANCE, "mois_avance");
   if (kwScolarite) return explicite(CAT_SCOLARITE, "mensualite");
 
   if (!deduction.avecNom) return null;
 
   // Sans mot-clé : déduction par le montant, appuyée sur le nom s'il figure.
-  const annees = anneesCandidates(date, anneeExercice, "mensualite");
+  const annees = anneesCandidates(date, anneeExercice);
   const r = reconnaitreFamille([brut], inscriptions, annees);
   if (r.candidats.length > 0) {
     const concordants = r.candidats.filter((c) => nbMensualites(montant, c.montant_mensuel) > 0);
@@ -315,4 +322,85 @@ export function analyserScolarite(
     candidats: ids,
     ventilation: [],
   };
+}
+
+// --- Tiers payeurs ------------------------------------------------------------
+
+/** Amitié Sainte Anne : frais de scolarité payés pour une ou plusieurs familles (pas un don). */
+export function estAmitieSainteAnne(brut: string): boolean {
+  return /\bamitie sainte anne\b/.test(norm(brut));
+}
+
+export type RepartitionTiers = {
+  date: string;
+  total: number;
+  parts: { famille_nom: string; montant: number; nature: NatureAffectation }[];
+};
+
+/**
+ * Répartition proposée pour un nouveau versement d'Amitié Sainte Anne, d'après
+ * le dernier versement réparti : mêmes familles ; mêmes montants si le total
+ * est identique, sinon au prorata (arrondi au centime, le reste sur la
+ * dernière part).
+ */
+export function proposerRepartition(
+  derniere: RepartitionTiers | null,
+  montant: number,
+): { famille_nom: string; montant: number; nature: NatureAffectation }[] {
+  if (!derniere || derniere.parts.length === 0 || derniere.total <= 0) return [];
+  if (Math.abs(derniere.total - montant) < 0.005) return derniere.parts.map((p) => ({ ...p }));
+  const parts = derniere.parts.map((p) => ({
+    ...p,
+    montant: Math.round((p.montant / derniere.total) * montant * 100) / 100,
+  }));
+  const ecart = Math.round((montant - parts.reduce((s, p) => s + p.montant, 0)) * 100) / 100;
+  parts[parts.length - 1].montant = Math.round((parts[parts.length - 1].montant + ecart) * 100) / 100;
+  return parts;
+}
+
+// --- Mémoire des choix ----------------------------------------------------------
+
+/**
+ * Mots propres au payeur dans un libellé bancaire : sans le vocabulaire de la
+ * banque ni celui de l'objet (scolarité, don…), sans références chiffrées.
+ * « VIR INST MME COTTEL CYNTHIA FRAIS DOSSIER PAUL COTTEL » → cottel, cynthia, paul.
+ */
+const VOCABULAIRE = new Set([
+  "vir", "inst", "instantane", "virement", "sepa", "recu", "prlv", "rem", "chq", "cheque", "ref", "rel",
+  "reference", "non", "transmise", "not", "provided", "mandat", "carte", "paiement", "remise",
+  "mr", "mme", "mlle", "monsieur", "madame", "ou", "et", "de", "du", "des", "la", "le", "les", "pour", "par", "au", "aux",
+  "frais", "scolarite", "scolarites", "dossier", "dossiers", "inscription", "mois", "avance", "don", "dons",
+  "janvier", "fevrier", "mars", "avril", "mai", "juin", "juillet", "aout", "septembre", "octobre", "novembre", "decembre",
+  "ecole", "annee", "enfant", "enfants", "famille", "solde", "acompte",
+]);
+
+export function motsPayeur(textes: string[]): Set<string> {
+  const out = new Set<string>();
+  for (const t of textes) {
+    for (const m of mots(t)) {
+      if (m.length < 3 || /\d/.test(m) || VOCABULAIRE.has(m)) continue;
+      out.add(m);
+    }
+  }
+  return out;
+}
+
+export type Souvenir = { mots: string[]; valeur: string };
+
+/**
+ * Choix déjà faits pour un libellé ressemblant : famille rattachée ou donateur
+ * relié. Retenu seulement si tous les souvenirs concordants désignent la même
+ * valeur (sinon, rien : les payeurs multiples comme Amitié Sainte Anne ne
+ * doivent pas être tranchés par la mémoire).
+ */
+export function rappeler(textes: string[], souvenirs: Souvenir[]): string | null {
+  const presents = motsPayeur(textes);
+  if (presents.size === 0) return null;
+  const valeurs = new Set<string>();
+  for (const s of souvenirs) {
+    if (s.mots.length === 0) continue;
+    const communs = s.mots.filter((m) => presents.has(m)).length;
+    if (communs >= Math.min(2, s.mots.length) && communs / s.mots.length >= 0.75) valeurs.add(s.valeur);
+  }
+  return valeurs.size === 1 ? [...valeurs][0] : null;
 }

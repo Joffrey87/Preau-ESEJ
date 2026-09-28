@@ -6,6 +6,8 @@ import GestionScolarite, {
 import { createClient } from "@/lib/supabase/server";
 import type { AffectationDetail, InscriptionDepot, NatureAffectation } from "@/lib/scolariteDepots";
 import { estAmitieSainteAnne } from "@/lib/importEnrichi";
+import type { FicheFamille } from "@/components/FamilleEnfants";
+import type { Eleve } from "@/lib/eleves";
 
 export default async function ScolaritePage({
   searchParams,
@@ -129,6 +131,12 @@ export default async function ScolaritePage({
       nature: a.nature,
     }));
 
+  // Familles (fiche) et élèves (prénom chiffré), pour le détail d'une famille.
+  const [famillesRes, elevesRes] = await Promise.all([
+    supabase.from("familles").select("id, nom, parent1, parent2, adresse, cp_ville, telephone, courriels, notes"),
+    supabase.from("eleves").select("id, famille_id, prenom_chiffre, initiale, classe_entree, annee_entree, decalage, sorti_le"),
+  ]);
+
   const bareme: Record<number, number> = {};
   for (const b of baremeRes.data ?? []) bareme[b.nb_enfants] = Number(b.montant_mensuel);
 
@@ -151,6 +159,8 @@ export default async function ScolaritePage({
           affectations={affectations}
           toutesInscriptions={toutes}
           affectationsDetail={affectationsDetail}
+          familles={(famillesRes.data ?? []) as FicheFamille[]}
+          eleves={(elevesRes.data ?? []) as Eleve[]}
         />
       )}
     </div>

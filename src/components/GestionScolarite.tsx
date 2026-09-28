@@ -7,6 +7,8 @@ import { createClient } from "@/lib/supabase/client";
 import { formatEurosCourt as formatEuros } from "@/lib/format";
 import { Modal, Field, FormFooter, inputCls } from "./GestionComptes";
 import JaugeScolarite, { etatJauge } from "@/components/JaugeScolarite";
+import FamilleEnfants, { type FicheFamille } from "@/components/FamilleEnfants";
+import { partJuinNonDue, type Eleve } from "@/lib/eleves";
 import Icon from "@/components/Icon";
 import {
   etatDepot,
@@ -43,6 +45,7 @@ export type Inscription = {
   avance_consommee?: number | null;
   /** Dépôt versé avant les données de la comptabilité (saisi à la main, une fois). */
   depot_anterieur?: number | null;
+  famille_id?: string | null;
 };
 
 const MOIS: { k: keyof Inscription; l: string }[] = [
@@ -135,6 +138,8 @@ export default function GestionScolarite({
   affectations = [],
   toutesInscriptions = [],
   affectationsDetail = [],
+  familles = [],
+  eleves = [],
 }: {
   annee: string;
   annees: string[];
@@ -147,6 +152,9 @@ export default function GestionScolarite({
   toutesInscriptions?: InscriptionDepot[];
   /** Toutes les affectations, avec leur nature et l'opération d'origine. */
   affectationsDetail?: AffectationDetail[];
+  /** Fiches familles et élèves (prénom chiffré), pour le détail et la part de juin. */
+  familles?: FicheFamille[];
+  eleves?: Eleve[];
 }) {
   const router = useRouter();
   const [edit, setEdit] = useState<Inscription | "nouveau" | null>(null);
@@ -271,8 +279,14 @@ export default function GestionScolarite({
   }
   const donDe = (id: string) => donParFamille.get(id)?.montant ?? 0;
 
+  // Enfants en CM2 : juin non dû pour leur part (couverte par le mois d'avance).
+  const elevesDe = (i: Inscription) => eleves.filter((e) => e.famille_id && e.famille_id === i.famille_id);
+  const partJuin = (i: Inscription) =>
+    partJuinNonDue({ ...i, montant_mensuel: Number(i.montant_mensuel) }, elevesDe(i), bareme);
+  const duDe = (i: Inscription) => totalDu(i) - partJuin(i).montant;
+
   // Totaux de l'année
-  const sumDu = inscriptions.reduce((s, i) => s + totalDu(i), 0);
+  const sumDu = inscriptions.reduce((s, i) => s + duDe(i), 0);
   const sumDon = inscriptions.reduce((s, i) => s + donDe(i.id), 0);
   const sumRegle = inscriptions.reduce((s, i) => s + totalRegle(i) + donDe(i.id), 0);
   const sumReste = sumDu - sumRegle;
@@ -432,7 +446,7 @@ export default function GestionScolarite({
               </tr>
             ) : (
               inscriptions.map((i) => {
-                const du = totalDu(i);
+                const du = duDe(i);
                 const don = donDe(i.id);
                 const regle = totalRegle(i) + don;
                 const reste = du - regle;
@@ -502,6 +516,9 @@ export default function GestionScolarite({
                           frais={depotDe(i).frais}
                           du={du}
                           regle={regle}
+                          juin={partJuin(i)}
+                          famille={familles.find((x) => x.id === i.famille_id) ?? null}
+                          eleves={elevesDe(i)}
                         />
                       </td>
                     </tr>
@@ -688,6 +705,9 @@ function DetailFamille({
   frais,
   du,
   regle,
+  juin,
+  famille,
+  eleves,
 }: {
   inscription: Inscription;
   affectations: AffectationDetail[];
@@ -695,6 +715,9 @@ function DetailFamille({
   frais: EtatFraisDossier;
   du: number;
   regle: number;
+  juin: { montant: number; enfants: Eleve[] };
+  famille: FicheFamille | null;
+  eleves: Eleve[];
 }) {
   // Mensualités : montants saisis mois par mois (classeur), report de l'année
   // précédente, et versements rattachés depuis la Comptabilité.
@@ -722,12 +745,19 @@ function DetailFamille({
       <section className="rounded-lg border border-border bg-surface p-3 lg:col-span-2">
         <h3 className="mb-1 text-sm font-semibold">Frais de scolarité · {inscription.annee_scolaire}</h3>
         <p className="mb-2 text-xs text-muted">
-          Dû {formatEuros(du)} ({formatEuros(Number(inscription.montant_mensuel))} × 10) · réglé {formatEuros(regle)} · reste{" "}
+          Dû {formatEuros(du)} ({formatEuros(Number(inscription.montant_mensuel))} × 10
+          {juin.montant > 0 && ` − ${formatEuros(juin.montant)} de juin`}) · réglé {formatEuros(regle)} · reste{" "}
           <span className={du - regle > 0 ? "text-negative" : "text-positive"}>{formatEuros(du - regle)}</span>
           {parOrigine.size > 0 && (
             <> · dont {[...parOrigine].map(([o, v]) => `${o} ${formatEuros(v)}`).join(", ")}</>
           )}
         </p>
+        {juin.montant > 0 && (
+          <p className="mb-2 rounded bg-gold-soft px-2 py-1 text-xs text-gold">
+            Fin de scolarité en juin pour {juin.enfants.length} enfant(s) en CM2 : {formatEuros(juin.montant)} de juin non dus,
+            couverts par le mois d&apos;avance.
+          </p>
+        )}
         <TableVersements lignes={mensualites} vide="Aucun versement enregistré pour cette année." />
       </section>
 
@@ -756,6 +786,9 @@ function DetailFamille({
           <h3 className="mb-1 text-sm font-semibold">Famille</h3>
           {inscription.emails && <p className="text-xs text-muted">Courriels : {inscription.emails}</p>}
           {inscription.notes && <p className="text-xs text-muted">Notes : {inscription.notes}</p>}
+          <div className="mt-2">
+            <FamilleEnfants famille={famille} eleves={eleves} annee={inscription.annee_scolaire} />
+          </div>
           <Link
             href={`/carnet?q=${encodeURIComponent(inscription.famille_nom.replace(/\s+[A-Z]$/, ""))}`}
             className="mt-1 inline-block text-xs font-medium text-accent hover:underline"

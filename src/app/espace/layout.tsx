@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Deconnexion } from "@/components/EspaceClient";
+import { familleEnApercu } from "@/lib/apercuFamille";
 
 const NAV = [
   { href: "/espace", label: "Tableau de bord" },
@@ -16,12 +17,27 @@ export default async function EspaceLayout({ children }: { children: React.React
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/login");
-  if ((user.app_metadata as { espace?: string } | undefined)?.espace !== "famille") redirect("/");
+  // Compte famille : sa famille. Bureau : uniquement en aperçu d'une famille.
+  const apercu = await familleEnApercu(user);
+  const estFamille = (user.app_metadata as { espace?: string } | undefined)?.espace === "famille";
+  if (!estFamille && !apercu) redirect("/");
 
-  const { data: famille } = await supabase.from("familles").select("nom").maybeSingle();
+  const { data: famille } = apercu
+    ? await supabase.from("familles").select("nom").eq("id", apercu).maybeSingle()
+    : await supabase.from("familles").select("nom").maybeSingle();
 
   return (
     <div className="min-h-full bg-background">
+      {apercu && (
+        <div className="flex flex-wrap items-center justify-center gap-3 bg-gold px-4 py-1.5 text-center text-xs font-medium text-white">
+          Aperçu (bureau) : vous voyez l&apos;espace tel que la famille {famille?.nom ?? ""} le verra.
+          {/* Lien simple : un <Link> préchargerait la route et quitterait l'aperçu à l'affichage. */}
+          {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
+          <a href="/apercu-famille/quitter" className="rounded bg-white/20 px-2 py-0.5 underline-offset-2 hover:underline">
+            Quitter l&apos;aperçu
+          </a>
+        </div>
+      )}
       <header className="border-b border-border bg-surface">
         <div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 px-5 py-3">
           <div className="flex items-center gap-3">
@@ -38,7 +54,7 @@ export default async function EspaceLayout({ children }: { children: React.React
                 {n.label}
               </Link>
             ))}
-            <Deconnexion />
+            {!apercu && <Deconnexion />}
           </nav>
         </div>
       </header>

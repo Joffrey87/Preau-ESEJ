@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { familleEnApercu } from "@/lib/apercuFamille";
 import { formatEurosCourt as formatEuros, formatDate, todayISO } from "@/lib/format";
 import { chargerEspace, situation, anneeCourante } from "@/lib/espaceFamille";
 import { BoutonAttestation } from "@/components/EspaceClient";
@@ -9,7 +10,11 @@ const MODES: Record<string, string> = { virement: "Virement", prelevement: "Pré
 
 export default async function PaiementsFamille({ searchParams }: { searchParams: Promise<{ annee?: string }> }) {
   const supabase = await createClient();
-  const { espace, association, erreur } = await chargerEspace(supabase);
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const apercu = await familleEnApercu(user);
+  const { espace, association, erreur } = await chargerEspace(supabase, apercu);
   if (!espace) return <p className="text-sm text-negative">{erreur ?? "Espace indisponible."}</p>;
 
   const aujourdhui = todayISO();

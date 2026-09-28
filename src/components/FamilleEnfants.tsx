@@ -269,7 +269,12 @@ export default function FamilleEnfants({
       </div>
 
       <div>
-        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted">Espace famille</h4>
+        <div className="flex items-center justify-between">
+          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted">Espace famille</h4>
+          <a href={`/apercu-famille/${famille.id}`} className="text-xs font-medium text-accent hover:underline">
+            Voir son espace (aperçu) →
+          </a>
+        </div>
         <p className="mt-1 text-[11px] text-muted">
           Invitez la famille depuis Supabase (Authentication → Invite user) : elle choisira son mot de passe via le lien reçu.
           Rattachez ensuite son adresse ici.

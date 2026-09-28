@@ -1,11 +1,16 @@
 import { createClient } from "@/lib/supabase/server";
+import { familleEnApercu } from "@/lib/apercuFamille";
 import { todayISO } from "@/lib/format";
 import { chargerEspace, anneeCourante, classeEn } from "@/lib/espaceFamille";
 import { depuis, termineEnJuin } from "@/lib/eleves";
 
 export default async function MaFamille() {
   const supabase = await createClient();
-  const { espace, association, erreur } = await chargerEspace(supabase);
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const apercu = await familleEnApercu(user);
+  const { espace, association, erreur } = await chargerEspace(supabase, apercu);
   if (!espace) return <p className="text-sm text-negative">{erreur ?? "Espace indisponible."}</p>;
   const f = espace.famille;
   const annee = anneeCourante(espace, todayISO());

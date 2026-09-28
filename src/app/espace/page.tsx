@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
+import { familleEnApercu } from "@/lib/apercuFamille";
 import { formatEurosCourt as formatEuros, todayISO } from "@/lib/format";
 import { chargerEspace, situation, alertes, anneeCourante, classeEn } from "@/lib/espaceFamille";
 import { termineEnJuin } from "@/lib/eleves";
@@ -12,7 +13,11 @@ const TONS = {
 
 export default async function TableauDeBordFamille() {
   const supabase = await createClient();
-  const { espace, erreur } = await chargerEspace(supabase);
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const apercu = await familleEnApercu(user);
+  const { espace, erreur } = await chargerEspace(supabase, apercu);
   if (!espace) return <p className="text-sm text-negative">{erreur ?? "Espace indisponible."}</p>;
 
   const aujourdhui = todayISO();

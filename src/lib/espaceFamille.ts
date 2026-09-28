@@ -62,8 +62,13 @@ export type Association = {
 
 export async function chargerEspace(
   supabase: SupabaseClient,
+  apercu: string | null = null,
 ): Promise<{ espace: EspaceFamille | null; association: Association; erreur: string | null }> {
-  const [e, a] = await Promise.all([supabase.rpc("espace_famille"), supabase.rpc("association_espace")]);
+  // Aperçu par le bureau : la famille désignée ; sinon, la famille du compte.
+  const [e, a] = await Promise.all([
+    apercu ? supabase.rpc("espace_famille_apercu", { p_famille: apercu }) : supabase.rpc("espace_famille"),
+    supabase.rpc("association_espace"),
+  ]);
   return {
     espace: (e.data as EspaceFamille | null) ?? null,
     association: (a.data as Association) ?? null,

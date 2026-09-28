@@ -60,7 +60,9 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (user && !estFamille && versEspace) {
+  // Le bureau n'entre dans l'espace famille qu'en aperçu (cookie posé par /apercu-famille/…).
+  const enApercu = !!request.cookies.get("apercu_famille")?.value;
+  if (user && !estFamille && versEspace && !enApercu) {
     const url = request.nextUrl.clone();
     url.pathname = "/";
     url.search = "";

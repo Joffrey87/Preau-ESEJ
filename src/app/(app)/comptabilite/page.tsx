@@ -36,14 +36,19 @@ export default async function ComptabilitePage({
   const supabase = await createClient();
   const { exercice: exParam } = await searchParams;
 
-  // Tous les exercices (pour le sélecteur d'année) ; défaut = actif, sinon le plus récent.
+  // Tous les exercices (pour le sélecteur d'année). Par défaut : l'exercice qui
+  // couvre la date du jour (septembre → août), sinon celui marqué actif, sinon
+  // le plus récent. La date seule fait foi : l'onglet s'ouvre sur l'année en
+  // cours dès le 1er septembre, sans attendre qu'on bascule l'indicateur actif.
   const { data: exercices } = await supabase
     .from("exercices")
     .select("id, libelle, actif, date_debut, date_fin")
     .order("date_debut", { ascending: false });
   const liste = exercices ?? [];
+  const aujourdhui = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Paris" }).format(new Date());
   const exercice =
     (exParam && liste.find((e) => e.id === exParam)) ||
+    liste.find((e) => e.date_debut <= aujourdhui && aujourdhui <= e.date_fin) ||
     liste.find((e) => e.actif) ||
     liste[0] ||
     null;

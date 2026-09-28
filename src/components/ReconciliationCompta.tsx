@@ -3,8 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { CATEGORIES_DONATEUR } from "@/lib/categoriesDonateur";
-import { Modal, Field, FormFooter, inputCls } from "./GestionComptes";
+import { Modal, FormFooter, inputCls } from "./GestionComptes";
 import { useCoffre } from "@/components/CoffreProvider";
 import { useDonsDechiffres } from "@/lib/donsChiffre";
 import DeverrouillerCoffre from "@/components/DeverrouillerCoffre";
@@ -19,6 +18,15 @@ import {
 } from "@/lib/reconciliation";
 import type { Don } from "@/components/GestionDons";
 import ChoixDonateur, { type IdentiteSaisie } from "@/components/ChoixDonateur";
+import ChampsDonateur, {
+  type FormDonateur,
+  formDonateurDepuisNom,
+  formDonateurDepuisDon,
+  resumeDonateur,
+  ficheDonateurValide,
+  piiDeFiche,
+  relationsConnues,
+} from "@/components/FormulaireDonateur";
 
 
 export type Exercice = {
@@ -29,59 +37,11 @@ export type Exercice = {
   actif: boolean;
 };
 
-type FormState = {
-  est_personne_morale: boolean;
-  donateur_titre: string;
-  donateur_nom: string;
-  donateur_prenom: string;
-  raison_sociale: string;
-  adresse: string;
-  cp_ville: string;
-  courriel: string;
-  categorie_donateur: string;
-  origine: string;
-};
-
-function formDepuis(nomExtrait: string): FormState {
-  return {
-    est_personne_morale: false,
-    donateur_titre: "",
-    donateur_nom: nomExtrait,
-    donateur_prenom: "",
-    raison_sociale: "",
-    adresse: "",
-    cp_ville: "",
-    courriel: "",
-    categorie_donateur: "Particulier",
-    origine: "",
-  };
-}
-
-function formDepuisDon(d: Don): FormState {
-  return {
-    est_personne_morale: d.est_personne_morale,
-    donateur_titre: d.donateur_titre ?? "",
-    donateur_nom: d.donateur_nom ?? "",
-    donateur_prenom: d.donateur_prenom ?? "",
-    raison_sociale: d.raison_sociale ?? "",
-    adresse: d.adresse ?? "",
-    cp_ville: d.cp_ville ?? "",
-    courriel: d.courriel ?? "",
-    categorie_donateur: d.categorie_donateur ?? "Particulier",
-    origine: d.origine ?? "",
-  };
-}
-
-/** Libellé court d'une fiche, pour la colonne « Donateur ». */
-function resume(f: FormState): string {
-  if (f.est_personne_morale) return f.raison_sociale.trim();
-  return [f.donateur_prenom.trim(), f.donateur_nom.trim()].filter(Boolean).join(" ");
-}
-
-/** Une fiche est-elle exploitable pour un import ? */
-function ficheValide(f: FormState): boolean {
-  return (f.est_personne_morale ? f.raison_sociale : f.donateur_nom).trim().length > 0;
-}
+type FormState = FormDonateur;
+const formDepuis = formDonateurDepuisNom;
+const formDepuisDon = formDonateurDepuisDon;
+const resume = resumeDonateur;
+const ficheValide = ficheDonateurValide;
 
 export default function ReconciliationCompta({
   operations,
@@ -113,13 +73,7 @@ export default function ReconciliationCompta({
   const identites = useMemo(() => identitesDonateurs(dons), [dons]);
 
   // Relations déjà employées, proposées en suggestion.
-  const relations = useMemo(
-    () =>
-      Array.from(new Set(dons.map((d) => (d.origine ?? "").trim()).filter(Boolean))).sort((a, b) =>
-        a.localeCompare(b, "fr"),
-      ),
-    [dons],
-  );
+  const relations = useMemo(() => relationsConnues(dons), [dons]);
 
   // Analyse de chaque opération : dons déjà enregistrés (montant+date) + nom deviné.
   const analyse = useMemo(
@@ -223,15 +177,7 @@ export default function ReconciliationCompta({
     const payloads = [];
     for (const { op, nomExtrait } of selection) {
       const fi = ficheDe(op.id, nomExtrait);
-      const pii = {
-        titre: fi.donateur_titre.trim() || null,
-        nom: fi.est_personne_morale ? fi.raison_sociale.trim() : fi.donateur_nom.trim(),
-        prenom: fi.donateur_prenom.trim() || null,
-        raison: fi.est_personne_morale ? fi.raison_sociale.trim() : null,
-        adresse: fi.adresse.trim() || null,
-        cp_ville: fi.cp_ville.trim() || null,
-        courriel: fi.courriel.trim() || null,
-      };
+      const pii = piiDeFiche(fi);
       payloads.push({
         exercice_id: exerciceDe(op)!.id,
         origine: fi.origine.trim() || null,
@@ -474,80 +420,7 @@ export default function ReconciliationCompta({
               coffreOuvert={coffre.estOuvert}
             />
 
-            <div className="grid grid-cols-2 gap-2">
-              <button type="button" onClick={() => set("est_personne_morale", false)} className={`rounded-lg border px-3 py-2 text-sm font-medium ${!f.est_personne_morale ? "border-accent bg-accent-soft text-accent" : "border-border text-muted"}`}>
-                Particulier
-              </button>
-              <button type="button" onClick={() => set("est_personne_morale", true)} className={`rounded-lg border px-3 py-2 text-sm font-medium ${f.est_personne_morale ? "border-accent bg-accent-soft text-accent" : "border-border text-muted"}`}>
-                Personne morale
-              </button>
-            </div>
-
-            {f.est_personne_morale ? (
-              <>
-                <Field label="Raison sociale">
-                  <input type="text" required value={f.raison_sociale} onChange={(e) => set("raison_sociale", e.target.value)} className={inputCls} />
-                </Field>
-                <div className="grid grid-cols-3 gap-3">
-                  <Field label="Contact — Titre">
-                    <input type="text" value={f.donateur_titre} onChange={(e) => set("donateur_titre", e.target.value)} className={inputCls} />
-                  </Field>
-                  <Field label="Contact — Nom">
-                    <input type="text" value={f.donateur_nom} onChange={(e) => set("donateur_nom", e.target.value)} className={inputCls} />
-                  </Field>
-                  <Field label="Contact — Prénom">
-                    <input type="text" value={f.donateur_prenom} onChange={(e) => set("donateur_prenom", e.target.value)} className={inputCls} />
-                  </Field>
-                </div>
-              </>
-            ) : (
-              <div className="grid grid-cols-3 gap-3">
-                <Field label="Titre">
-                  <input type="text" value={f.donateur_titre} onChange={(e) => set("donateur_titre", e.target.value)} className={inputCls} placeholder="Monsieur…" />
-                </Field>
-                <Field label="Prénom">
-                  <input type="text" value={f.donateur_prenom} onChange={(e) => set("donateur_prenom", e.target.value)} className={inputCls} />
-                </Field>
-                <Field label="Nom">
-                  <input type="text" required value={f.donateur_nom} onChange={(e) => set("donateur_nom", e.target.value)} className={inputCls} />
-                </Field>
-              </div>
-            )}
-
-            <Field label="Adresse">
-              <input type="text" value={f.adresse} onChange={(e) => set("adresse", e.target.value)} className={inputCls} />
-            </Field>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="CP et ville">
-                <input type="text" value={f.cp_ville} onChange={(e) => set("cp_ville", e.target.value)} className={inputCls} />
-              </Field>
-              <Field label="Courriel">
-                <input type="email" value={f.courriel} onChange={(e) => set("courriel", e.target.value)} className={inputCls} />
-              </Field>
-            </div>
-            <Field label="Catégorie donateur">
-              <select value={f.categorie_donateur} onChange={(e) => set("categorie_donateur", e.target.value)} className={inputCls}>
-                {CATEGORIES_DONATEUR.map((c) => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
-            </Field>
-
-            <Field label="Relation (qui a amené ce don)">
-              <input
-                type="text"
-                list="relations-import"
-                value={f.origine}
-                onChange={(e) => set("origine", e.target.value)}
-                className={inputCls}
-                placeholder="Chanoine Journé, Paroisse, CA…"
-              />
-              <datalist id="relations-import">
-                {relations.map((r) => (
-                  <option key={r} value={r} />
-                ))}
-              </datalist>
-            </Field>
+            <ChampsDonateur f={f} set={set} relations={relations} idListe="relations-import" />
 
             <FormFooter saving={false} error={error} onCancel={() => setEdit(null)} />
           </form>

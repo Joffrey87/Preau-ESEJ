@@ -4,11 +4,12 @@ import { Fragment, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { formatEurosCourt as formatEuros } from "@/lib/format";
+import { formatEurosCourt as formatEuros, todayISO } from "@/lib/format";
 import { Modal, Field, FormFooter, inputCls } from "./GestionComptes";
 import JaugeScolarite, { etatJauge } from "@/components/JaugeScolarite";
 import FamilleEnfants, { type FicheFamille } from "@/components/FamilleEnfants";
 import { partJuinNonDue, type Eleve } from "@/lib/eleves";
+import { etatPaiement } from "@/lib/retardScolarite";
 import { telechargerAttestation, type Attestation } from "@/lib/attestationPdf";
 import { modeleRecuEnCache } from "@/lib/modeleRecu";
 import Icon from "@/components/Icon";
@@ -287,6 +288,8 @@ export default function GestionScolarite({
     partJuinNonDue({ ...i, montant_mensuel: Number(i.montant_mensuel) }, elevesDe(i), bareme);
   const duDe = (i: Inscription) => totalDu(i) - partJuin(i).montant;
 
+  const aujourdhui = todayISO();
+
   // Totaux de l'année
   const sumDu = inscriptions.reduce((s, i) => s + duDe(i), 0);
   const sumDon = inscriptions.reduce((s, i) => s + donDe(i.id), 0);
@@ -351,11 +354,15 @@ export default function GestionScolarite({
     lignes.push(`Réglé : ${formatEuros(e.paye)}`);
     if (e.details.length > 0) lignes.push("", "Versements (Comptabilité) :", detailsTexte(e.details));
     else lignes.push("", "Aucun versement fléché « frais de dossier » dans la Comptabilité.");
-    const texte = e.du === 0 && e.paye === 0 ? "—" : `${formatEuros(e.paye)}/${formatEuros(e.du)}`;
+    // En règle (rien d'attendu, ou tout réglé) : coche verte ; sinon « ! » ambre.
+    const enRegle = e.couleur !== "jaune";
     return (
-      <Pastille couleur={e.couleur} title={lignes.join("\n")}>
-        {texte}
-      </Pastille>
+      <span
+        title={lignes.join("\n")}
+        className={`cursor-help text-base font-semibold ${enRegle ? "text-positive" : "text-gold"}`}
+      >
+        {enRegle ? "✓" : "!"}
+      </span>
     );
   };
 
@@ -413,14 +420,13 @@ export default function GestionScolarite({
         ))}
       </div>
 
-      <div className="overflow-x-auto rounded-xl border border-border bg-surface">
+      <div className="rounded-xl border border-border bg-surface">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border text-left text-muted">
-              <th className="px-4 py-3 font-medium">Famille</th>
-              <th className="px-4 py-3 font-medium text-center">Enf.</th>
-              <th className="px-4 py-3 font-medium text-right">Mensuel</th>
-              <th className="px-4 py-3 font-medium text-right">Total dû</th>
+              <th className="px-3 py-3 font-medium">Famille</th>
+              <th className="px-3 py-3 font-medium text-center">Enf.</th>
+              <th className="px-3 py-3 font-medium text-right">Total dû</th>
               <th
                 className="px-4 py-3 font-medium text-center"
                 title="Dépôt versé une fois par enfant, l'été précédant son entrée ; il éponge le dernier mois de sa scolarité à l'école. Alimenté par la Comptabilité (affectation « mois d'avance »)."
@@ -442,7 +448,7 @@ export default function GestionScolarite({
           <tbody>
             {inscriptions.length === 0 ? (
               <tr>
-                <td colSpan={10} className="px-4 py-12 text-center text-muted">
+                <td colSpan={9} className="px-4 py-12 text-center text-muted">
                   Aucune famille pour {annee}.
                 </td>
               </tr>
@@ -452,6 +458,7 @@ export default function GestionScolarite({
                 const don = donDe(i.id);
                 const regle = totalRegle(i) + don;
                 const reste = du - regle;
+                const paiement = etatPaiement(annee, Number(i.montant_mensuel), du, regle, aujourdhui, partJuin(i).montant);
                 const detailsDon = donParFamille.get(i.id)?.details ?? [];
                 const deroulee = ouverte === i.id;
                 return (
@@ -465,12 +472,19 @@ export default function GestionScolarite({
                       <span className={`mr-1.5 inline-block text-muted transition-transform ${deroulee ? "rotate-90" : ""}`}>›</span>
                       {i.famille_nom}
                     </td>
-                    <td className="px-4 py-3 text-center tabular-nums">{i.nb_enfants ?? "—"}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{formatEuros(Number(i.montant_mensuel))}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{formatEuros(du)}</td>
-                    <td className="px-4 py-3 text-center">{badgeDepot(i)}</td>
-                    <td className="px-4 py-3 text-center">{badgeFrais(i)}</td>
-                    <td className="px-4 py-3">
+                    <td className="px-3 py-3 text-center tabular-nums">{i.nb_enfants ?? "—"}</td>
+                    <td
+                      className="px-3 py-3 text-right tabular-nums whitespace-nowrap"
+                      title={`Total dû : ${formatEuros(du)}${partJuin(i).montant > 0 ? ` (juin non dû : −${formatEuros(partJuin(i).montant)})` : ""}`}
+                    >
+                      {formatEuros(Number(i.montant_mensuel))}×10
+                      {partJuin(i).montant > 0 && (
+                        <span className="block text-[11px] text-muted">−{formatEuros(partJuin(i).montant)} juin</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-3 text-center">{badgeDepot(i)}</td>
+                    <td className="px-3 py-3 text-center">{badgeFrais(i)}</td>
+                    <td className="px-3 py-3">
                       <JaugeScolarite
                         etat={etatJauge(Number(i.montant_mensuel), regle, annee)}
                         anneeScolaire={annee}
@@ -478,19 +492,32 @@ export default function GestionScolarite({
                       />
                     </td>
                     <td
-                      className="px-4 py-3 text-right tabular-nums text-positive"
+                      className={`px-3 py-3 text-right tabular-nums whitespace-nowrap ${
+                        paiement.retard > 0 ? "font-medium text-negative" : paiement.aReglerFinDeMois > 0 ? "font-medium text-orange-500" : "text-positive"
+                      }`}
                       title={
-                        detailsDon.length > 0
-                          ? "Dont rattachés depuis la compta : " +
-                            detailsDon
-                              .map((d) => `${d.libelle} — ${formatEuros(Number(d.montant))}`)
-                              .join(" · ")
-                          : undefined
+                        paiement.retard > 0
+                          ? `En retard de ${formatEuros(paiement.retard)} (réglé : ${formatEuros(regle)})`
+                          : paiement.aReglerFinDeMois > 0
+                            ? `À régler avant la fin du mois (réglé : ${formatEuros(regle)})`
+                            : detailsDon.length > 0
+                              ? "Dont rattachés depuis la compta : " +
+                                detailsDon.map((d) => `${d.libelle} : ${formatEuros(Number(d.montant))}`).join(" · ")
+                              : undefined
                       }
                     >
-                      {formatEuros(regle)}
+                      {paiement.retard > 0
+                        ? `−${formatEuros(paiement.retard)}`
+                        : paiement.aReglerFinDeMois > 0
+                          ? `−${formatEuros(paiement.aReglerFinDeMois)}`
+                          : formatEuros(regle)}
                     </td>
-                    <td className={`px-4 py-3 text-right tabular-nums ${reste > 0 ? "text-negative" : ""}`}>
+                    <td
+                      className={`px-3 py-3 text-right tabular-nums whitespace-nowrap ${
+                        paiement.retard > 0 ? "text-negative" : reste < -0.005 ? "text-positive" : ""
+                      }`}
+                      title={reste < -0.005 ? "Trop-perçu" : undefined}
+                    >
                       {formatEuros(reste)}
                     </td>
                     <td className="px-2 py-3 text-right">
@@ -510,7 +537,7 @@ export default function GestionScolarite({
                   </tr>
                   {deroulee && (
                     <tr className="border-b border-border bg-surface-2/40">
-                      <td colSpan={10} className="px-4 pb-3">
+                      <td colSpan={9} className="px-4 pb-3">
                         <DetailFamille
                           inscription={i}
                           affectations={affectationsDetail}

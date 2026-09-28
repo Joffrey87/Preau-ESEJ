@@ -29,6 +29,10 @@ import {
   proposerRepartition,
   motsPayeur,
   rappeler,
+  nomDepuisLibelle,
+  titreDepuisLibelle,
+  categorieDonateurDepuisLibelle,
+  modeDon,
   type InscriptionImport,
   type RepartitionTiers,
   type Souvenir,
@@ -116,6 +120,8 @@ type Ecriture = {
   donateur?: FormDonateur | null;
   /** Don existant à relier ("" = ne pas relier). Absent : liaison automatique. */
   donLie?: string;
+  /** Nom du donateur saisi pour le rapprochement. Absent : nom lu dans le libellé. */
+  nomDonateur?: string;
   /** Doute à lever (ambre). Vidé dès que l'utilisateur tranche. */
   alerte: string | null;
 };
@@ -157,9 +163,13 @@ type InfoDon = {
   /** Don existant relié (explicitement ou automatiquement). */
   donLie: string | null;
   lienAuto: boolean;
-  /** Fiche du don à créer. */
+  /** Fiche du don à créer (null : aucun don créé). */
   fiche: FormDonateur | null;
-  source: "saisie" | "reconnu" | "memoire" | "doute" | "aucun";
+  source: "saisie" | "reconnu" | "memoire" | "doute" | "nouveau" | "aucun";
+  /** Nom lu dans le libellé (bancaire, puis saisi dans Préau). */
+  nomDefaut: string;
+  /** Coffre verrouillé : ni rapprochement ni création possibles. */
+  verrou: boolean;
   /** Doute à lever (ambre, reporté dans « à vérifier »). */
   doute: string | null;
   candidats: IdentiteDonateur[];
@@ -206,6 +216,7 @@ export default function ImportReleve({
   const [filtre, setFiltre] = useState<Filtre>("toutes");
   const [solde, setSolde] = useState<{ date: string; montant: number } | null>(null);
   const [calage, setCalage] = useState<"ferme" | "confirmer" | "encours">("ferme");
+  const [demandeCoffre, setDemandeCoffre] = useState(false);
   // Fiche donateur en cours d'édition : ligne + sous-écriture éventuelle.
   const [cibleDon, setCibleDon] = useState<{ i: number; cle: string | null } | null>(null);
   const [fDon, setFDon] = useState<FormDonateur>(formDonateurDepuisNom(""));
@@ -366,26 +377,35 @@ export default function ImportReleve({
   }
 
   /**
-   * Don d'une écriture : le donateur est reconnu d'office s'il figure dans le
-   * libellé bancaire ou dans le libellé saisi (nom + prénom : certain ; nom
-   * seul ou plusieurs donateurs : doute, alerte ambre). À défaut, la mémoire
-   * des liaisons passées. Un don déjà saisi du même donateur, même montant, à
-   * ±3 jours, est relié plutôt que recréé.
+   * Don d'une écriture : il est CRÉÉ D'OFFICE dans l'onglet Dons, avec le
+   * maximum d'informations. Le donateur est rapproché de la base Donateurs
+   * d'après le nom saisi, à défaut d'après le libellé bancaire ou celui de
+   * Préau (nom + prénom : certain ; nom seul ou plusieurs donateurs : doute,
+   * alerte ambre), à défaut d'après la mémoire des liaisons passées. Sans
+   * correspondance, c'est un nouveau donateur : fiche tirée du libellé (nom,
+   * civilité), que l'onglet Dons signalera comme incomplète. Un don déjà saisi
+   * du même donateur, même montant, à ±3 jours, est relié plutôt que recréé.
    */
   function infoDon(e: Ecriture, textes: string[][], montant: number, date: string): InfoDon | null {
     if (catNom(e.categorie_id) !== CAT_DON) return null;
     const proches = donsProches(montant, date);
-    const base: InfoDon = { donLie: null, lienAuto: false, fiche: null, source: "aucun", doute: null, candidats: [], proches };
+    const plats = textes.flat();
+    const nomDefaut = plats.map((t) => nomDepuisLibelle(t)).find(Boolean) ?? "";
+    const base: InfoDon = {
+      donLie: null, lienAuto: false, fiche: null, source: "aucun", doute: null, candidats: [], proches,
+      nomDefaut, verrou: !coffre.estOuvert,
+    };
     if (e.donLie) return { ...base, donLie: e.donLie };
     if (e.donateur !== undefined) return { ...base, fiche: e.donateur, source: e.donateur ? "saisie" : "aucun" };
     if (!coffre.estOuvert) return base;
 
-    const plats = textes.flat();
-    const r = reconnaitreDonateur(plats, identites);
+    // Le nom saisi fait foi ; sinon les libellés.
+    const nom = (e.nomDonateur ?? nomDefaut).trim();
+    const r = reconnaitreDonateur(e.nomDonateur !== undefined ? [e.nomDonateur] : plats, identites);
     let candidats = r?.candidats ?? [];
     let certain = r?.certain ?? false;
     let source: InfoDon["source"] = certain ? "reconnu" : "doute";
-    if (candidats.length === 0) {
+    if (candidats.length === 0 && e.nomDonateur === undefined) {
       const cle = rappeler(plats, souvenirsDonateurs);
       const id = cle ? identites.find((x) => x.cle === cle) : undefined;
       if (id) {
@@ -407,21 +427,46 @@ export default function ImportReleve({
         doute: certain ? null : `Donateur déduit du nom seul (${c.nom}) : à confirmer.`,
       };
     }
+    // Fiche d'un nouveau donateur, tirée du libellé : nom, civilité, et
+    // personne morale reconnue à sa forme (association, société…).
+    const brutRef = plats[plats.length - 1] ?? "";
+    const ficheNouvelle = (): FormDonateur => {
+      const f = formDonateurDepuisNom(nom);
+      f.donateur_titre = titreDepuisLibelle(plats.join(" "));
+      const cat = categorieDonateurDepuisLibelle(`${nom} ${brutRef}`);
+      if (cat) {
+        f.categorie_donateur = cat;
+        f.est_personne_morale = true;
+        f.raison_sociale = nom;
+        f.donateur_nom = "";
+        f.donateur_titre = "";
+      }
+      return f;
+    };
+
     if (candidats.length > 1) {
+      // Créé au nom lu, rattachement au bon donateur à valider.
       return {
         ...base,
+        fiche: ficheNouvelle(),
         source: "doute",
         candidats,
         doute: `Plusieurs donateurs possibles (${candidats.map((c) => c.nom).join(", ")}) : à valider.`,
       };
     }
     if (proches.length > 0 && e.donLie !== "") {
+      // Un don de même montant est déjà saisi : on ne crée pas de doublon d'office.
       return {
         ...base,
-        doute: `Donateur non reconnu ; un don de même montant est déjà saisi (${proches.map((p) => `${nomDonateur(p)} ${formatDate(p.date_don)}`).join(", ")}) : relier ou renseigner la fiche.`,
+        doute: `Donateur non reconnu ; un don de même montant est déjà saisi (${proches.map((p) => `${nomDonateur(p)} ${formatDate(p.date_don)}`).join(", ")}) : relier, ou créer le don.`,
       };
     }
-    return base;
+    return {
+      ...base,
+      fiche: ficheNouvelle(),
+      source: "nouveau",
+      doute: nom ? null : "Nom du donateur absent du libellé : à renseigner.",
+    };
   }
 
   // --- Lecture du relevé ------------------------------------------------------
@@ -698,6 +743,15 @@ export default function ImportReleve({
     0,
   );
   const aDesDons = retenues.some((l) => ecrituresDe(l).some(({ e }) => catNom(e.categorie_id) === CAT_DON));
+  /** Dons qui seraient créés si le coffre était ouvert. */
+  const nbDonsEnAttenteCoffre = coffre.estOuvert
+    ? 0
+    : retenues.reduce(
+        (s, l) =>
+          s +
+          ecrituresDe(l).filter(({ e }) => catNom(e.categorie_id) === CAT_DON && e.donateur !== null && !e.donLie).length,
+        0,
+      );
 
   // --- Contrôle du solde -----------------------------------------------------
 
@@ -748,10 +802,17 @@ export default function ImportReleve({
 
   // --- Import --------------------------------------------------------------
 
-  async function importer() {
+  async function importer(sansDons = false) {
     setErreur(null);
     if (!compteId) return setErreur("Choisissez un compte de destination.");
     if (retenues.length === 0) return setErreur("Aucune ligne sélectionnée.");
+    // Les dons sont créés d'office et rapprochés de la base Donateurs : il faut
+    // le coffre ouvert. On le demande avant d'importer.
+    if (!sansDons && nbDonsEnAttenteCoffre > 0) {
+      setDemandeCoffre(true);
+      return;
+    }
+    setDemandeCoffre(false);
 
     // Contrôles des ventilations : filles complètes et somme égale à la ligne.
     const problemes: string[] = [];
@@ -813,7 +874,8 @@ export default function ImportReleve({
       if (!don) return;
       if (don.donLie) {
         liens.push({ donId: don.donLie, operationId: opId, exerciceId });
-      } else if (don.fiche && ficheDonateurValide(don.fiche) && coffre.estOuvert) {
+      } else if (don.fiche && coffre.estOuvert) {
+        // Créé même incomplet : l'onglet Dons signale ce qui manque.
         nouveauxDons.push({
           pii: piiDeFiche(don.fiche),
           ligne: {
@@ -823,10 +885,10 @@ export default function ImportReleve({
             est_personne_morale: don.fiche.est_personne_morale,
             montant,
             date_don: date,
-            mode_paiement: mode,
+            mode_paiement: modeDon(mode),
             recu_numero: null,
             recu_etat: null,
-            observations: "Saisi à l'import du relevé bancaire",
+            observations: "Créé automatiquement à l'import du relevé bancaire",
             operation_id: opId,
             import_id: importId,
           },
@@ -1018,8 +1080,18 @@ export default function ImportReleve({
     const don = infoDon(e, textes, montant, l.date);
     if (!don) return <span className="text-xs text-muted/50">—</span>;
 
-    if (!coffre.estOuvert) {
-      return <span className="text-xs text-gold" title="Déverrouillez le coffre (bandeau ci-dessus) pour reconnaître le donateur">🔒 donateur</span>;
+    // Coffre verrouillé : le nom est lu mais ni le rapprochement ni la
+    // création (chiffrée) ne sont possibles. On le demande sur place.
+    if (don.verrou) {
+      return (
+        <div className="flex flex-col items-start gap-1 text-xs">
+          <span className="text-muted">{don.nomDefaut || "nom non lu"}</span>
+          <span className="text-gold" title="Le coffre doit être ouvert pour rapprocher ce don de la base Donateurs et le créer (chiffré)">
+            🔒 rapprochement impossible
+          </span>
+          <DeverrouillerCoffre label="🔓 Déverrouiller" />
+        </div>
+      );
     }
     if (don.donLie) {
       const d = dons.find((x) => x.id === don.donLie);
@@ -1034,22 +1106,79 @@ export default function ImportReleve({
         </span>
       );
     }
+    if (e.donateur === null) {
+      return (
+        <span className="inline-flex items-center gap-1 text-xs text-muted">
+          aucun don créé
+          <button
+            type="button"
+            onClick={() => majEcriture(i, cle, { donateur: undefined })}
+            className="rounded px-1 text-accent hover:bg-accent-soft"
+            title="Créer le don dans l'onglet Dons"
+          >
+            ↺ créer
+          </button>
+        </span>
+      );
+    }
+
+    const valeurNom = e.nomDonateur ?? don.nomDefaut;
+    const statut =
+      don.source === "reconnu"
+        ? pastille("donateur connu", "ok", "Nom et prénom reconnus dans la base Donateurs")
+        : don.source === "memoire"
+          ? pastille("donateur connu · mémorisé", "ok", "Donateur déjà relié à ce payeur lors d'un précédent import")
+          : don.source === "saisie"
+            ? pastille("fiche saisie", "ok")
+            : don.source === "doute"
+              ? pastille("à valider", "doute", don.doute ?? undefined)
+              : don.source === "nouveau"
+                ? pastille(
+                    valeurNom.trim() ? "nouveau donateur" : "nom à renseigner",
+                    valeurNom.trim() ? "neutre" : "doute",
+                    "Aucun donateur connu à ce nom : le don sera créé avec les informations du libellé ; l'onglet Dons signalera ce qui manque.",
+                  )
+                : null;
+
     return (
       <div className="flex flex-col items-start gap-0.5">
-        {don.fiche ? (
-          <span className="inline-flex flex-wrap items-center gap-1 text-xs">
-            <button type="button" onClick={() => ouvrirDonateur(i, cle, don.fiche)} className="font-medium text-accent hover:underline" title="Voir ou modifier la fiche">
-              {resumeDonateur(don.fiche) || "fiche sans nom"}
+        {/* Nom demandé pour le rapprochement avec la base Donateurs. */}
+        <input
+          type="text"
+          value={valeurNom}
+          onChange={(ev) => majEcriture(i, cle, { nomDonateur: ev.target.value, donateur: undefined })}
+          placeholder="Nom du donateur"
+          title="Nom du donateur : sert à le retrouver dans la base Donateurs (prénom et nom de préférence)"
+          className={`w-44 ${selectCls} ${valeurNom.trim() ? "" : "border-gold bg-gold-soft/60"}`}
+        />
+        <span className="inline-flex flex-wrap items-center gap-1 text-xs">
+          {statut}
+          {don.fiche && (
+            <button
+              type="button"
+              onClick={() => ouvrirDonateur(i, cle, don.fiche)}
+              className="text-accent hover:underline"
+              title={`Fiche qui sera enregistrée : ${resumeDonateur(don.fiche) || "sans nom"}`}
+            >
+              fiche
             </button>
-            {don.source === "reconnu" && pastille("reconnu", "ok")}
-            {don.source === "memoire" && pastille("mémorisé", "ok", "Donateur déjà relié à ce payeur lors d'un précédent import")}
-            {don.source === "doute" && pastille("à valider", "doute", don.doute ?? undefined)}
-            {don.source === "doute" && (
-              <button type="button" onClick={() => majEcriture(i, cle, { donateur: don.fiche })} className="rounded px-0.5 text-positive hover:bg-positive/10" title="Confirmer ce donateur">✓</button>
-            )}
-            <button type="button" onClick={() => majEcriture(i, cle, { donateur: null })} className="text-muted hover:text-negative" title="Pas de fiche donateur">✕</button>
-          </span>
-        ) : don.candidats.length > 1 ? (
+          )}
+          {don.source === "doute" && don.fiche && don.candidats.length === 1 && (
+            <button type="button" onClick={() => majEcriture(i, cle, { donateur: don.fiche })} className="rounded px-0.5 text-positive hover:bg-positive/10" title="Confirmer ce donateur">✓</button>
+          )}
+          {!don.fiche && (
+            <button
+              type="button"
+              onClick={() => majEcriture(i, cle, { donLie: "", donateur: undefined })}
+              className="text-accent hover:underline"
+              title="Créer le don malgré le don voisin déjà saisi"
+            >
+              créer le don
+            </button>
+          )}
+          <button type="button" onClick={() => majEcriture(i, cle, { donateur: null })} className="text-muted hover:text-negative" title="Ne pas créer de don pour cette écriture">✕</button>
+        </span>
+        {don.candidats.length > 1 && (
           <select
             value=""
             onChange={(ev) => {
@@ -1064,15 +1193,6 @@ export default function ImportReleve({
               <option key={c.cle} value={c.cle}>{c.nom}</option>
             ))}
           </select>
-        ) : (
-          <button
-            type="button"
-            onClick={() => ouvrirDonateur(i, cle)}
-            className="rounded-full bg-gold-soft px-2 py-0.5 text-[11px] font-medium text-gold hover:opacity-90"
-            title="Renseigner le donateur : le don sera créé dans l'onglet Dons, relié à cette opération"
-          >
-            + Fiche donateur
-          </button>
         )}
         {don.proches.length > 0 && (
           <select
@@ -1535,10 +1655,34 @@ export default function ImportReleve({
           </p>
           <div className="h-20" aria-hidden />
 
+          {demandeCoffre && !coffre.estOuvert && (
+            <div className="fixed bottom-24 right-6 z-40 max-w-md rounded-xl border border-gold/50 bg-surface p-4 text-sm shadow-lg shadow-black/20">
+              <p className="font-semibold text-gold">🔒 Coffre à déverrouiller</p>
+              <p className="mt-1 text-xs text-muted">
+                {nbDonsEnAttenteCoffre} don(s) seront créés dans l&apos;onglet Dons. Déverrouillez le coffre pour les
+                rapprocher de la base Donateurs et les enregistrer (chiffrés), puis relancez l&apos;import.
+              </p>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <DeverrouillerCoffre label="🔓 Déverrouiller le coffre" />
+                <button
+                  type="button"
+                  onClick={() => importer(true)}
+                  className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-surface-2"
+                  title="Les opérations entrent en comptabilité ; les dons resteront à ajouter depuis l'onglet Dons"
+                >
+                  Importer sans créer les dons
+                </button>
+                <button type="button" onClick={() => setDemandeCoffre(false)} className="text-xs text-muted hover:underline">
+                  Fermer
+                </button>
+              </div>
+            </div>
+          )}
+
           {/* Bouton d'import volant : reste accessible en faisant défiler la liste. */}
           <button
             type="button"
-            onClick={importer}
+            onClick={() => importer()}
             disabled={importing || retenues.length === 0}
             className="fixed bottom-6 right-6 z-40 rounded-full bg-accent px-5 py-3 text-sm font-semibold text-accent-fg shadow-lg shadow-black/20 hover:opacity-90 disabled:opacity-50"
           >

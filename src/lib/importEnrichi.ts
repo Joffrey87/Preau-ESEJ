@@ -404,3 +404,80 @@ export function rappeler(textes: string[], souvenirs: Souvenir[]): string | null
   }
   return valeurs.size === 1 ? [...valeurs][0] : null;
 }
+
+// --- Fiche donateur tirée du libellé -------------------------------------------
+
+/**
+ * Nom du payeur lu dans le libellé bancaire, sans le vocabulaire de la banque
+ * ni de l'objet : « VIR INST M.OU MME DE BLIC PIERRE-EMMANUE FRAIS DOSSIER »
+ * → « De Blic Pierre-Emmanue ». L'ordre prénom / nom varie selon les banques :
+ * le tout est proposé comme nom, à corriger dans la fiche.
+ */
+export function nomDepuisLibelle(brut: string | null | undefined): string {
+  if (!brut) return "";
+  const vus = new Set<string>();
+  const out: string[] = [];
+  // Particules gardées en minuscules devant un nom (« de Blic »), jamais seules.
+  let particules: string[] = [];
+  const capitaliser = (m: string) =>
+    m
+      .toLowerCase()
+      .split("-")
+      .map((p) => p.charAt(0).toUpperCase() + p.slice(1))
+      .join("-");
+  for (const brutMot of brut.replace(/\d+/g, " ").split(/[\s.,;:/()]+/)) {
+    const m = brutMot.replace(/^[-']+|[-']+$/g, "");
+    if (!m) continue;
+    const k = norm(m).replace(/'/g, "");
+    if (PARTICULES_LIBELLE.has(k)) {
+      if (out.length > 0 || particules.length > 0 || /^(de|du|des)$/.test(k)) particules.push(k);
+      continue;
+    }
+    if (k.length < 2 || VOCABULAIRE.has(k) || vus.has(k)) {
+      particules = [];
+      continue;
+    }
+    vus.add(k);
+    out.push(...particules, capitaliser(m));
+    particules = [];
+  }
+  return out.join(" ");
+}
+
+const PARTICULES_LIBELLE = new Set(["de", "du", "des", "la", "le", "les"]);
+
+/** Civilité lue dans le libellé (« M.OU MME » → « Monsieur et Madame »). */
+export function titreDepuisLibelle(brut: string | null | undefined): string {
+  const s = ` ${norm(brut ?? "").replace(/[.']/g, " ")} `;
+  if (/\s(m|mr|monsieur)\s+(ou|et)\s+(mme|madame)\s/.test(s)) return "Monsieur et Madame";
+  if (/\s(mme|madame)\s/.test(s)) return "Madame";
+  if (/\s(mlle|mademoiselle)\s/.test(s)) return "Mademoiselle";
+  if (/\s(m|mr|monsieur)\s/.test(s)) return "Monsieur";
+  return "";
+}
+
+/** Mode de paiement au format de l'onglet Dons, d'après le mode bancaire deviné. */
+export function modeDon(modeBancaire: string | null): string | null {
+  switch (modeBancaire) {
+    case "virement":
+    case "prelevement":
+      return "Virement";
+    case "cheque":
+      return "Chèque";
+    case "carte":
+      return "Carte bancaire";
+    case "especes":
+      return "Espèces";
+    default:
+      return null;
+  }
+}
+
+/** Catégorie donateur d'une personne morale reconnue à sa forme (null : particulier). */
+export function categorieDonateurDepuisLibelle(texte: string): string | null {
+  const s = ` ${norm(texte).replace(/[.']/g, " ")} `;
+  if (/\s(abbaye|monastere|congregation|soeurs|freres|carmel|prieure)\s/.test(s)) return "Communauté religieuse";
+  if (/\s(association|asso|amicale|fondation|paroisse|diocese|fonds de dotation)\s/.test(s)) return "Association";
+  if (/\s(sarl|sas|sasu|eurl|sci|societe|ste|selarl|scp)\s/.test(s)) return "Entreprise";
+  return null;
+}

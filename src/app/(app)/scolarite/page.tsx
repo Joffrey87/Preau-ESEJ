@@ -147,12 +147,17 @@ export default async function ScolaritePage({
         title="Frais de scolarité"
         subtitle="Suivi des paiements par famille : dû, réglé, reste à percevoir et mois d'avance."
         action={
-          <Link
-            href={`/scolarite/activites?annee=${encodeURIComponent(annee)}`}
-            className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-surface-2"
-          >
-            Activités
-          </Link>
+          <div className="flex gap-2">
+            <Link href="/scolarite/eleves" className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-surface-2">
+              Élèves
+            </Link>
+            <Link
+              href={`/scolarite/activites?annee=${encodeURIComponent(annee)}`}
+              className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-surface-2"
+            >
+              Activités
+            </Link>
+          </div>
         }
       />
       {annees.length === 0 ? (

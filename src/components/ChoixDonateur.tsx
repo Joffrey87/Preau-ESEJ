@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { inputCls } from "./GestionComptes";
 import { formatEuros } from "@/lib/format";
 import { cleDonateur, nomDonateur } from "@/lib/statutDon";
+import { normaliserCategorieDonateur } from "@/lib/categoriesDonateur";
 import type { Don } from "@/components/GestionDons";
 
 /** Champs d'identité partagés par la fiche donateur, quel que soit l'écran. */
@@ -30,7 +31,8 @@ export function identiteDepuisDon(d: Don): IdentiteSaisie {
     adresse: d.adresse ?? "",
     cp_ville: d.cp_ville ?? "",
     courriel: d.courriel ?? "",
-    categorie_donateur: d.categorie_donateur ?? "Particulier",
+    categorie_donateur:
+      normaliserCategorieDonateur(d.categorie_donateur) ?? (d.est_personne_morale ? "Association" : "Particulier"),
   };
 }
 
@@ -133,7 +135,8 @@ export default function ChoixDonateur({
     const v = valeurCourante;
     const pii = {
       titre: v.donateur_titre.trim() || null,
-      nom: v.est_personne_morale ? v.raison_sociale.trim() : v.donateur_nom.trim(),
+      // Personne morale : nom et prénom = le contact ; la raison sociale porte le reçu.
+      nom: v.donateur_nom.trim() || null,
       prenom: v.donateur_prenom.trim() || null,
       raison: v.est_personne_morale ? v.raison_sociale.trim() : null,
       adresse: v.adresse.trim() || null,

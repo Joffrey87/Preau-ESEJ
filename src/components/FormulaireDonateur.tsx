@@ -1,6 +1,6 @@
 "use client";
 
-import { CATEGORIES_DONATEUR } from "@/lib/categoriesDonateur";
+import { CATEGORIES_DONATEUR, estCategoriePersonneMorale, normaliserCategorieDonateur } from "@/lib/categoriesDonateur";
 import { Field, inputCls } from "./GestionComptes";
 import type { Don } from "@/components/GestionDons";
 
@@ -46,7 +46,7 @@ export function formDonateurDepuisDon(d: Don): FormDonateur {
     adresse: d.adresse ?? "",
     cp_ville: d.cp_ville ?? "",
     courriel: d.courriel ?? "",
-    categorie_donateur: d.categorie_donateur ?? "Particulier",
+    categorie_donateur: normaliserCategorieDonateur(d.categorie_donateur) ?? (d.est_personne_morale ? "Association" : "Particulier"),
     origine: d.origine ?? "",
   };
 }
@@ -62,11 +62,15 @@ export function ficheDonateurValide(f: FormDonateur): boolean {
   return (f.est_personne_morale ? f.raison_sociale : f.donateur_nom).trim().length > 0;
 }
 
-/** Données personnelles de la fiche, prêtes à chiffrer (`dons.pii_chiffre`). */
+/**
+ * Données personnelles de la fiche, prêtes à chiffrer (`dons.pii_chiffre`).
+ * Personne morale : nom et prénom désignent le CONTACT (destinataire du
+ * courriel), la raison sociale porte le reçu — même convention que l'onglet Dons.
+ */
 export function piiDeFiche(f: FormDonateur) {
   return {
     titre: f.donateur_titre.trim() || null,
-    nom: f.est_personne_morale ? f.raison_sociale.trim() : f.donateur_nom.trim(),
+    nom: f.donateur_nom.trim() || null,
     prenom: f.donateur_prenom.trim() || null,
     raison: f.est_personne_morale ? f.raison_sociale.trim() : null,
     adresse: f.adresse.trim() || null,
@@ -96,22 +100,26 @@ export default function ChampsDonateur({
 }) {
   return (
     <>
-      <div className="grid grid-cols-2 gap-2">
-        <button
-          type="button"
-          onClick={() => set("est_personne_morale", false)}
-          className={`rounded-lg border px-3 py-2 text-sm font-medium ${!f.est_personne_morale ? "border-accent bg-accent-soft text-accent" : "border-border text-muted"}`}
+      <Field label="Catégorie donateur">
+        <select
+          value={f.categorie_donateur}
+          onChange={(e) => {
+            set("categorie_donateur", e.target.value);
+            // La catégorie fait foi : hors « Particulier », c'est une personne morale.
+            set("est_personne_morale", estCategoriePersonneMorale(e.target.value));
+          }}
+          className={inputCls}
         >
-          Particulier
-        </button>
-        <button
-          type="button"
-          onClick={() => set("est_personne_morale", true)}
-          className={`rounded-lg border px-3 py-2 text-sm font-medium ${f.est_personne_morale ? "border-accent bg-accent-soft text-accent" : "border-border text-muted"}`}
-        >
-          Personne morale
-        </button>
-      </div>
+          {CATEGORIES_DONATEUR.map((c) => (
+            <option key={c} value={c}>{c}</option>
+          ))}
+        </select>
+        <span className="mt-1 block text-xs text-muted">
+          {f.est_personne_morale
+            ? "Personne morale : le reçu est établi à la raison sociale ; nom et prénom désignent le contact."
+            : "Particulier : le reçu est établi au nom et prénom."}
+        </span>
+      </Field>
 
       {f.est_personne_morale ? (
         <>
@@ -155,14 +163,6 @@ export default function ChampsDonateur({
           <input type="email" value={f.courriel} onChange={(e) => set("courriel", e.target.value)} className={inputCls} />
         </Field>
       </div>
-      <Field label="Catégorie donateur">
-        <select value={f.categorie_donateur} onChange={(e) => set("categorie_donateur", e.target.value)} className={inputCls}>
-          {CATEGORIES_DONATEUR.map((c) => (
-            <option key={c} value={c}>{c}</option>
-          ))}
-        </select>
-      </Field>
-
       <Field label="Relation (qui a amené ce don)">
         <input
           type="text"

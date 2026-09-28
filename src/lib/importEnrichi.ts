@@ -477,7 +477,11 @@ export function modeDon(modeBancaire: string | null): string | null {
 export function categorieDonateurDepuisLibelle(texte: string): string | null {
   const s = ` ${norm(texte).replace(/[.']/g, " ")} `;
   if (/\s(abbaye|monastere|congregation|soeurs|freres|carmel|prieure)\s/.test(s)) return "Communauté religieuse";
-  if (/\s(association|asso|amicale|fondation|paroisse|diocese|fonds de dotation)\s/.test(s)) return "Association";
+  if (/\sfonds? de dotation\s/.test(s)) return "Fonds de dotation";
+  if (/\sfondation\s/.test(s)) return "Fondation";
+  if (/\s(paroisse|diocese)\s/.test(s)) return "Communauté religieuse";
+  if (/\s(mairie|commune|departement|region|conseil (departemental|regional)|tresor public)\s/.test(s)) return "Collectivité ou organisme public";
+  if (/\s(association|asso|amicale)\s/.test(s)) return "Association";
   if (/\s(sarl|sas|sasu|eurl|sci|societe|ste|selarl|scp)\s/.test(s)) return "Entreprise";
   return null;
 }

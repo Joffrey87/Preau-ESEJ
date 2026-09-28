@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
-import { normaliserCategorieDonateur } from "@/lib/categoriesDonateur";
+import { normaliserCategorieDonateur, estCategoriePersonneMorale } from "@/lib/categoriesDonateur";
 import { useCoffre } from "@/components/CoffreProvider";
 import DeverrouillerCoffre from "@/components/DeverrouillerCoffre";
 import { formatEuros, formatDate } from "@/lib/format";
@@ -206,7 +206,9 @@ export default function ImportDons() {
           courriel: toTexte(champEff(i, "courriel")) || null,
         };
         payloads.push({
-          est_personne_morale: !!raison,
+          // La catégorie fait foi : hors « Particulier », c'est une personne morale.
+          est_personne_morale:
+            !!raison || estCategoriePersonneMorale(toTexte(champEff(i, "categorie_donateur"))),
           categorie_donateur: normaliserCategorieDonateur(toTexte(champEff(i, "categorie_donateur"))),
           montant,
           date_don,

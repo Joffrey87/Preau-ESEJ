@@ -1,6 +1,11 @@
 "use client";
 
-import { CATEGORIES_DONATEUR } from "@/lib/categoriesDonateur";
+import {
+  CATEGORIES_DONATEUR,
+  estCategoriePersonneMorale,
+  incoherenceCategorie,
+  normaliserCategorieDonateur,
+} from "@/lib/categoriesDonateur";
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -207,6 +212,9 @@ export default function GestionDons({
     return [...s].sort();
   }, [dons]);
 
+  /** Dons dont la catégorie contredit le type de personne (à corriger à la main). */
+  const nbIncoherents = useMemo(() => dons.filter((d) => incoherenceCategorie(d)).length, [dons]);
+
   const donsAffiches = useMemo(() => {
     const q = recherche.trim().toLowerCase();
     // Corbeille : on montre tous les dons supprimés (seule la recherche s'applique).
@@ -222,7 +230,9 @@ export default function GestionDons({
     return dons.filter((d) => {
       if (filtre && !(chipsParDon.get(d.id) ?? []).some((c) => c.key === filtre)) return false;
       if (!periodeDuDon(d, anneeFiltre)) return false;
-      if (catFiltre !== "toutes" && (d.categorie_donateur ?? "") !== catFiltre) return false;
+      if (catFiltre === "incoherents") {
+        if (!incoherenceCategorie(d)) return false;
+      } else if (catFiltre !== "toutes" && (d.categorie_donateur ?? "") !== catFiltre) return false;
       if (q) {
         const nom = d.est_personne_morale
           ? d.raison_sociale ?? d.donateur_nom
@@ -310,7 +320,8 @@ export default function GestionDons({
     } else {
       setF({
         origine: d.origine ?? "",
-        categorie_donateur: d.categorie_donateur ?? "Particulier",
+        categorie_donateur:
+          normaliserCategorieDonateur(d.categorie_donateur) ?? (d.est_personne_morale ? "Association" : "Particulier"),
         est_personne_morale: d.est_personne_morale,
         donateur_titre: d.donateur_titre ?? "",
         donateur_nom: d.donateur_nom ?? "",
@@ -663,6 +674,18 @@ export default function GestionDons({
         {categoriesPresentes.map((c) => (
           <FiltreBtn key={c} actif={catFiltre === c} onClick={() => setCatFiltre(c)}>{c}</FiltreBtn>
         ))}
+        {nbIncoherents > 0 && (
+          <button
+            type="button"
+            onClick={() => setCatFiltre(catFiltre === "incoherents" ? "toutes" : "incoherents")}
+            title="Dons dont la catégorie ne correspond pas au type de personne (ex. « Association » saisie comme particulier)"
+            className={`rounded-full border px-3 py-1 text-xs font-medium ${
+              catFiltre === "incoherents" ? "border-gold bg-gold-soft text-gold" : "border-gold/50 text-gold hover:bg-gold-soft/50"
+            }`}
+          >
+            ⚠ Catégorie à corriger ({nbIncoherents})
+          </button>
+        )}
       </div>
 
       {/* Analyse : synthèse de la sélection courante */}
@@ -887,26 +910,34 @@ export default function GestionDons({
               coffreOuvert={coffre.estOuvert}
             />
 
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => set("est_personne_morale", false)}
-                className={`rounded-lg border px-3 py-2 text-sm font-medium ${
-                  !f.est_personne_morale ? "border-accent bg-accent-soft text-accent" : "border-border text-muted"
-                }`}
+            <Field label="Catégorie donateur">
+              <select
+                value={f.categorie_donateur}
+                onChange={(e) => {
+                  set("categorie_donateur", e.target.value);
+                  // La catégorie fait foi : hors « Particulier », c'est une personne morale.
+                  set("est_personne_morale", estCategoriePersonneMorale(e.target.value));
+                }}
+                className={inputCls}
               >
-                Particulier
-              </button>
-              <button
-                type="button"
-                onClick={() => set("est_personne_morale", true)}
-                className={`rounded-lg border px-3 py-2 text-sm font-medium ${
-                  f.est_personne_morale ? "border-accent bg-accent-soft text-accent" : "border-border text-muted"
-                }`}
-              >
-                Personne morale
-              </button>
-            </div>
+                {!CATEGORIES.includes(f.categorie_donateur as (typeof CATEGORIES)[number]) && f.categorie_donateur && (
+                  <option value={f.categorie_donateur}>{f.categorie_donateur}</option>
+                )}
+                {CATEGORIES.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+              <span className="mt-1 block text-xs text-muted">
+                {f.est_personne_morale
+                  ? "Personne morale : le reçu est établi à la raison sociale ; nom et prénom désignent le contact."
+                  : "Particulier : le reçu est établi au nom et prénom."}
+              </span>
+            </Field>
+            {edit !== "nouveau" && edit && incoherenceCategorie(edit) && (
+              <p className="-mt-2 rounded-lg bg-gold-soft px-3 py-2 text-xs text-gold">
+                {incoherenceCategorie(edit)} Choisissez la bonne catégorie ci-dessus ; les champs s&apos;adaptent.
+              </p>
+            )}
 
             <div className="grid grid-cols-2 gap-3">
               <Field label="Date d'encaissement">
@@ -966,13 +997,6 @@ export default function GestionDons({
             </div>
 
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Catégorie donateur">
-                <select value={f.categorie_donateur} onChange={(e) => set("categorie_donateur", e.target.value)} className={inputCls}>
-                  {CATEGORIES.map((c) => (
-                    <option key={c} value={c}>{c}</option>
-                  ))}
-                </select>
-              </Field>
               <Field label="Mode de paiement">
                 <select value={f.mode_paiement} onChange={(e) => set("mode_paiement", e.target.value)} className={inputCls}>
                   <option value="">—</option>

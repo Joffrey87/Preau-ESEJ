@@ -10,13 +10,14 @@ export default async function RecusFiscauxPage() {
     .select(
       "id, date_don, donateur_titre, donateur_nom, donateur_prenom, raison_sociale, est_personne_morale, adresse, cp_ville, courriel, pii_chiffre, montant, mode_paiement, recu_numero, recu_etat",
     )
+    .is("supprime_le", null)
     .order("date_don", { ascending: false });
 
   return (
     <div className="mx-auto max-w-6xl px-5 py-8 md:px-8">
       <PageHeader
         title="Reçus fiscaux"
-        subtitle="Un reçu annuel par n° et par année, cumulant les versements. PDF sur une page, au modèle ESEJ."
+        subtitle="Un reçu par donateur et par année (ou intermédiaire), numéroté automatiquement ; chaque don figure sur un seul reçu, détaillé au modèle ESEJ."
       />
       <ListeRecus dons={(data ?? []) as DonRow[]} />
     </div>

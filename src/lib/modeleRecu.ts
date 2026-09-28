@@ -34,7 +34,7 @@ export type ModeleRecu = {
 export const MODELE_DEFAUT: ModeleRecu = {
   presidentNom: "Jean-François ANTONA",
   tresorierNom: "Joffrey Lenoble",
-  adresseRue: "71 avenue Jean Jaurès",
+  adresseRue: "6 rue du Colonel Charbonneaux",
   adresseCpVille: "51100 Reims",
   courrielContact: "ecole@saint-enfant-jesus.fr",
   signaturePresident: null,

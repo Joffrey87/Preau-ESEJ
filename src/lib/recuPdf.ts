@@ -14,6 +14,7 @@ import type { DonPourRecu } from "@/lib/recu";
 import { formatEuros, formatDate, todayISO } from "@/lib/format";
 import { montantEnLettres } from "@/lib/lettres";
 import { MODELE_DEFAUT, modeleRecuEnCache, type ModeleRecu } from "@/lib/modeleRecu";
+import { syntheseVersements } from "@/lib/recuVersements";
 import { createClient } from "@/lib/supabase/client";
 
 // ---------------------------------------------------------------------------
@@ -53,8 +54,15 @@ const LETTRE_FIN =
 const ATTESTATION =
   "L'Association Rémoise pour l'Instruction Libre, organisme d'intérêt général, reconnaît avoir reçu au titre des versements ouvrant droit à réduction d'impôt la somme de ;";
 
-const MENTION_LEGALE =
-  "Le bénéficiaire certifie sur l'honneur que les dons et versements qu'il reçoit ouvrent droit à la réduction d'impôt prévue aux articles : 200 du CGI (pour l'impôt sur le revenu des particuliers) et 238bis du CGI (pour l'impôt sur les sociétés ou l'impôt sur le revenu des entreprises).";
+// Mention légale adaptée au donateur : article 200 du CGI pour un particulier,
+// article 238 bis pour une personne morale (entreprise, association…).
+const MENTION_PARTICULIER =
+  "Le bénéficiaire certifie sur l'honneur que les dons et versements qu'il reçoit ouvrent droit à la réduction d'impôt prévue à l'article 200 du CGI (impôt sur le revenu des particuliers).";
+const MENTION_PERSONNE_MORALE =
+  "Le bénéficiaire certifie sur l'honneur que les dons et versements qu'il reçoit ouvrent droit à la réduction d'impôt prévue à l'article 238 bis du CGI (impôt sur les sociétés ou impôt sur le revenu des entreprises).";
+
+/** Forme et nature du don, mentions du modèle CERFA n° 11580. */
+const FORME_NATURE = "Forme : déclaration de don manuel · Nature : numéraire";
 
 // ---------------------------------------------------------------------------
 // Ressources (polices, images), chargées une fois par session.
@@ -237,13 +245,17 @@ export async function construireRecuPdf(don: DonPourRecu, options: OptionsRecu =
   const montant = Number(don.montant);
   const annee = options.annee ?? new Date(don.date_don).getFullYear();
   const numero = (don.recu_numero ?? "").replace(/^RE_/, "");
-  const nomComplet = don.est_personne_morale
-    ? ""
-    : [don.donateur_titre, don.donateur_nom, don.donateur_prenom].filter(Boolean).join(" ");
-  const raison = don.est_personne_morale ? (don.raison_sociale ?? don.donateur_nom) : "";
+  const pm = don.est_personne_morale;
+  const identite = [don.donateur_titre, don.donateur_nom, don.donateur_prenom].filter(Boolean).join(" ");
+  const raison = pm ? (don.raison_sociale ?? don.donateur_nom) : "";
   const sommeLettresCap = capitaliser(montantEnLettres(montant));
-  const dateVersement = don.date_affichee ?? formatDate(don.date_don);
-  const dateEdition = formatDate(options.dateEdition ?? todayISO());
+  const dateEdition = formatDate(options.dateEdition ?? don.date_edition ?? todayISO());
+  // Détail des dons couverts : chaque don, les dons réguliers synthétisés.
+  const lignesVersements = syntheseVersements(
+    don.versements && don.versements.length > 0
+      ? don.versements
+      : [{ date: don.date_don, montant, mode: don.mode_paiement }],
+  );
 
   // ---- En-tête -------------------------------------------------------------
   image(logo, 78.5, 31.5, 100, 99);
@@ -317,20 +329,24 @@ export async function construireRecuPdf(don: DonPourRecu, options: OptionsRecu =
     texte(etiquette, 314.5, top, regular, LBL);
     if (valeur) texte(valeur, 314.5 + largeur(etiquette, regular, LBL) + 3, top, regular, VAL, NOIR);
   };
+  // Particulier : nom et prénom. Personne morale : raison sociale, et le
+  // contact à qui le reçu est adressé.
   let d = 471.5;
   texte("Donateur :", 314.5, d, semi, LBL);
-  champ("Nom/Prénom :", nomComplet, (d += pas));
-  champ("ou Raison Sociale :", raison, (d += pas));
-  champ("Adresse :", don.adresse ?? "", (d += 2 * pas));
+  if (pm) {
+    champ("Raison sociale :", raison ?? "", (d += pas));
+    if (identite) champ("À l'attention de :", identite, (d += pas));
+    else d += pas;
+  } else {
+    champ("Nom/Prénom :", identite, (d += pas));
+    d += pas;
+  }
+  champ("Adresse :", don.adresse ?? "", (d += pas));
   champ("CP/ Ville :", don.cp_ville ?? "", (d += pas));
 
   // ---- Cases or ------------------------------------------------------------
   rect(52.5, 540.5, 243.5, 66.5);
   rect(300, 540.5, 239.5, 66.5);
-  rect(53.5, 611, 242.5, 32.5);
-  rect(300, 611, 239.5, 32.5);
-  rect(53.5, 647.5, 242.5, 32.5);
-  rect(300, 647.5, 239.5, 32.5);
 
   paragraphe(page, [{ t: ATTESTATION }], fonts, 56, 553.2, 235, {
     size: LBL,
@@ -346,27 +362,80 @@ export async function construireRecuPdf(don: DonPourRecu, options: OptionsRecu =
   somme("Somme en € :", formatEuros(montant), 563.6);
   somme("Somme en lettres :", sommeLettresCap, 588.2);
 
-  texte("Date du versement :", 57.5, 630.6, regular, LBL, NOIR);
-  texte(dateVersement, 323.5, 627.8, regular, VAL, NOIR);
+  // ---- Détail des versements ------------------------------------------------
+  // Un cadre pleine largeur remplace « date » et « mode » : un reçu peut couvrir
+  // plusieurs dons. Au-delà de ce que la page contient, le détail passe en annexe.
+  const LIGNE = 11;
+  const MAX_LIGNES = 7;
+  const avecTotal = lignesVersements.length > 1;
+  const nbAffichables = lignesVersements.length + (avecTotal ? 1 : 0);
+  const enAnnexe = nbAffichables > MAX_LIGNES;
+  const lignesCadre = enAnnexe ? lignesVersements.slice(0, MAX_LIGNES - 2) : lignesVersements;
+  const nbLignesCadre = lignesCadre.length + (enAnnexe ? 1 : 0) + (avecTotal ? 1 : 0);
+  const hauteurCadre = 20 + nbLignesCadre * LIGNE + 4;
+  rect(53.5, 611, 486, hauteurCadre);
 
-  texte("Mode de versement :", 57.5, 666.6, regular, LBL, NOIR);
-  texte(capitaliser(don.mode_paiement ?? ""), 323.5, 665.8, regular, VAL, NOIR);
+  texte(lignesVersements.length > 1 ? "Versements :" : "Versement :", 57.5, 623.6, semi, LBL, NOIR);
+  const libForme = FORME_NATURE;
+  texte(libForme, 535.5 - largeur(libForme, regular, 7.4), 623.6, regular, 7.4, NOIR);
+  let v = 623.6;
+  for (const l of lignesCadre) {
+    v += LIGNE;
+    texte(l.libelle, 64, v, regular, VAL, NOIR);
+    const m = formatEuros(l.montant);
+    texte(m, 532 - largeur(m, regular, VAL), v, regular, VAL, NOIR);
+  }
+  if (enAnnexe) {
+    v += LIGNE;
+    const reste = lignesVersements.length - lignesCadre.length;
+    texte(`… et ${reste} autre${reste > 1 ? "s" : ""} versement${reste > 1 ? "s" : ""} : détail en annexe`, 64, v, italic, VAL, NOIR);
+  }
+  if (avecTotal) {
+    v += LIGNE;
+    const t = formatEuros(montant);
+    texte("Total", 64, v, semi, VAL, NOIR);
+    texte(t, 532 - largeur(t, semi, VAL), v, semi, VAL, NOIR);
+  }
+
+  // Le pied descend d'autant que le cadre dépasse la hauteur du modèle (69 pt).
+  const decalage = Math.max(0, 611 + hauteurCadre - 680);
 
   // ---- Pied ----------------------------------------------------------------
   const tresorier = `${modele.tresorierNom}, Trésorier de l'ARIL`;
-  texte(tresorier, 450 - largeur(tresorier, regular, 8.3), 704, regular, 8.3, NOIR);
-  if (signTresorier) image(signTresorier, 348.5, 711.5, 109, 37.5);
+  texte(tresorier, 450 - largeur(tresorier, regular, 8.3), 704 + decalage, regular, 8.3, NOIR);
+  if (signTresorier) image(signTresorier, 348.5, 711.5 + decalage, 109, 37.5);
 
   const etiqDate = "Date d'édition et signature :";
-  texte(etiqDate, 82, 734, semi, 7.8);
-  texte(dateEdition, 82 + largeur(etiqDate, semi, 7.8) + 6, 734, regular, VAL, NOIR);
+  texte(etiqDate, 82, 734 + decalage, semi, 7.8);
+  texte(dateEdition, 82 + largeur(etiqDate, semi, 7.8) + 6, 734 + decalage, regular, VAL, NOIR);
 
-  paragraphe(page, [{ t: MENTION_LEGALE }], fonts, 81.5, 766.5, 434, {
+  paragraphe(page, [{ t: pm ? MENTION_PERSONNE_MORALE : MENTION_PARTICULIER }], fonts, 81.5, 766.5 + decalage, 434, {
     size: 7,
     color: NAVY,
     interligne: 9.5,
     justifier: true,
   });
+
+  // ---- Annexe : détail complet quand il ne tient pas sur la page ------------
+  if (enAnnexe) {
+    const annexe = doc.addPage([A4.w, A4.h]);
+    const t2 = (s2: string, x: number, top: number, font: PDFFont, size: number) =>
+      annexe.drawText(assainir(s2), { x, y: depuisLeHaut(top), size, font, color: NOIR });
+    t2(`Annexe au reçu fiscal N°RE_${numero} — détail des versements`, 54, 60, semi, 11);
+    t2(pm ? `Donateur : ${raison ?? ""}` : `Donateur : ${identite}`, 54, 80, regular, VAL);
+    let y = 110;
+    for (const l of lignesVersements) {
+      if (y > 800) break;
+      t2(l.libelle, 60, y, regular, VAL);
+      const m = formatEuros(l.montant);
+      t2(m, 535 - semi.widthOfTextAtSize(assainir(m), VAL), y, regular, VAL);
+      y += 13;
+    }
+    y += 6;
+    const tt = formatEuros(montant);
+    t2("Total", 60, y, semi, VAL);
+    t2(tt, 535 - semi.widthOfTextAtSize(assainir(tt), VAL), y, semi, VAL);
+  }
 
   doc.setTitle(`Reçu fiscal ${numero || ""}`.trim());
   doc.setAuthor("ARIL");

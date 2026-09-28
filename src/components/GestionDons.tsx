@@ -11,7 +11,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { formatEuros, formatDate, todayISO } from "@/lib/format";
-import { genererRecuPdf } from "@/lib/recu";
+import { genererRecuPdf, dateEditionDuNumero } from "@/lib/recu";
 import { Modal, Field, FormFooter, inputCls } from "./GestionComptes";
 import ChoixDonateur, { type IdentiteSaisie } from "@/components/ChoixDonateur";
 import { useCoffre } from "@/components/CoffreProvider";
@@ -509,8 +509,21 @@ export default function GestionDons({
       setGenErreur("Déverrouillez le coffre (Paramètres → Sécurité) pour générer un reçu.");
       return;
     }
+    // Le reçu couvre tous les dons portant son numéro (numérotation automatique
+    // depuis la page Reçus fiscaux) : un don sans numéro n'a pas encore de reçu.
+    if (!d.recu_numero || !/^RE_\d+/.test(d.recu_numero)) {
+      setGenErreur("Ce don n'a pas encore de reçu : établissez-le depuis la page Reçus fiscaux (numéro attribué automatiquement).");
+      return;
+    }
+    const couverts = donsHydrates.filter((x) => !x.supprime_le && x.recu_numero === d.recu_numero);
     try {
-      await genererRecuPdf({ ...d, donateur_nom: d.donateur_nom ?? "" });
+      await genererRecuPdf({
+        ...d,
+        donateur_nom: d.donateur_nom ?? "",
+        montant: couverts.reduce((s, x) => s + Number(x.montant), 0),
+        versements: couverts.map((x) => ({ date: x.date_don, montant: Number(x.montant), mode: x.mode_paiement })),
+        date_edition: dateEditionDuNumero(d.recu_numero) ?? undefined,
+      });
     } catch (e) {
       setGenErreur(e instanceof Error ? e.message : "Génération impossible.");
     }
@@ -1029,7 +1042,15 @@ export default function GestionDons({
 
             <div className="grid grid-cols-2 gap-3">
               <Field label="N° de reçu">
-                <input type="text" value={f.recu_numero} onChange={(e) => set("recu_numero", e.target.value)} className={inputCls} placeholder="RE_000210_20260808" />
+                {/* Attribué automatiquement (page Reçus fiscaux) : jamais saisi à la main. */}
+                <input
+                  type="text"
+                  value={f.recu_numero}
+                  readOnly
+                  className={`${inputCls} cursor-not-allowed bg-surface-2 text-muted`}
+                  placeholder="attribué à l'établissement du reçu"
+                  title="Le numéro est attribué automatiquement depuis la page Reçus fiscaux"
+                />
               </Field>
               <Field label="État du reçu">
                 <input type="text" value={f.recu_etat} onChange={(e) => set("recu_etat", e.target.value)} className={inputCls} placeholder="Envoyé - Courriel…" />

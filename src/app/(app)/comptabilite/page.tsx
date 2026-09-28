@@ -5,7 +5,8 @@ import ListeOperations from "@/components/ListeOperations";
 import type { Affectation, Inscription } from "@/components/AffectationScolarite";
 import { createClient } from "@/lib/supabase/server";
 import { formatEuros } from "@/lib/format";
-import { operationsRepertoriees } from "@/lib/rapprochementDons";
+import { rapprocherDons, type Rapprochement } from "@/lib/rapprochementDons";
+import type { DonCompta } from "@/components/PastilleDon";
 
 type OperationRow = {
   id: string;
@@ -77,12 +78,15 @@ export default async function ComptabilitePage({
     supabase.from("affectations_scolarite").select("id, operation_id, inscription_id, montant, notes, nature"),
   ]);
 
-  // Dons (montant/date/lien) pour marquer les opérations « Don » déjà répertoriées.
+  // Dons, pour la pastille des opérations « Don » : relié ou trouvé, et fiche
+  // complète ou non (coordonnées chiffrées : jugées dans le navigateur).
   const { data: donsData } = await supabase
     .from("dons")
-    .select("id, montant, date_don, operation_id")
+    .select(
+      "id, operation_id, exercice_id, montant, date_don, est_personne_morale, donateur_titre, donateur_nom, donateur_prenom, raison_sociale, adresse, cp_ville, courriel, mode_paiement, recu_numero, recu_etat, pii_chiffre",
+    )
     .is("supprime_le", null);
-  const dons = donsData ?? [];
+  const dons = (donsData ?? []) as DonCompta[];
 
   const operationsExercice = (opsRes.data ?? []) as unknown as OperationRow[];
 
@@ -121,7 +125,12 @@ export default async function ComptabilitePage({
 
   // Le lien explicite `dons.operation_id` fait foi ; à défaut, rapprochement
   // un-à-un par montant et date. Voir `lib/rapprochementDons`.
-  const donsRepertories = [...operationsRepertoriees(operations, dons)];
+  const rapprochements = rapprocherDons(operations, dons);
+  const donsRepertories = [...rapprochements.keys()];
+  const rapprochementsDons: Record<string, Rapprochement> = Object.fromEntries(rapprochements);
+  // Seuls les dons concernés par cette page partent vers le navigateur.
+  const idsDons = new Set([...rapprochements.values()].map((r) => r.donId));
+  const donsCompta = dons.filter((d) => idsDons.has(d.id));
 
   // Une ligne détaillée ne compte pas : ses sous-écritures portent les montants
   // et les catégories. La présence de filles fait foi, pas l'indicateur seul.
@@ -218,6 +227,8 @@ export default async function ComptabilitePage({
         exerciceId={exercice?.id ?? null}
         exercices={liste}
         donsRepertories={donsRepertories}
+        rapprochementsDons={rapprochementsDons}
+        donsCompta={donsCompta}
         inscriptions={(inscriptionsRes.data ?? []) as Inscription[]}
         affectations={(affectationsRes.data ?? []) as Affectation[]}
       />

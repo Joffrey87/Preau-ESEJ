@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
-import Link from "next/link";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Modal, Field, FormFooter, inputCls } from "./GestionComptes";
 import VoletDetail from "@/components/VoletDetail";
 import Icon from "@/components/Icon";
+import PastilleDon, { etatDon, type DonCompta } from "@/components/PastilleDon";
+import { useDonsDechiffres } from "@/lib/donsChiffre";
+import type { Rapprochement } from "@/lib/rapprochementDons";
 import { formatEuros, formatDate } from "@/lib/format";
 import VentilationOperation, { type OperationVentilable } from "@/components/VentilationOperation";
 import {
@@ -88,6 +90,8 @@ export default function ListeOperations({
   exerciceId,
   exercices,
   donsRepertories,
+  rapprochementsDons = {},
+  donsCompta = [],
   inscriptions,
   affectations,
 }: {
@@ -97,11 +101,29 @@ export default function ListeOperations({
   exerciceId: string | null;
   exercices: Exercice[];
   donsRepertories: string[];
+  /** Don correspondant à chaque opération « Don » : relié, ou trouvé par montant et date. */
+  rapprochementsDons?: Record<string, Rapprochement>;
+  /** Dons concernés (coordonnées chiffrées, déchiffrées ici si le coffre est ouvert). */
+  donsCompta?: DonCompta[];
   inscriptions: Inscription[];
   affectations: Affectation[];
 }) {
   const router = useRouter();
   const donsRepertoriesSet = new Set(donsRepertories);
+  // Complétude des fiches donateur : jugée sur les dons déchiffrés.
+  const { dons: donsClairs, verrou } = useDonsDechiffres(donsCompta);
+  const donParId = useMemo(() => new Map(donsClairs.map((d) => [d.id, d])), [donsClairs]);
+  const etatDonDe = (opId: string) =>
+    etatDon(rapprochementsDons[opId], donParId.get(rapprochementsDons[opId]?.donId ?? ""), verrou).etat;
+  const pastilleDon = (opId: string) => (
+    <PastilleDon
+      operationId={opId}
+      exerciceId={exerciceId}
+      rapprochement={rapprochementsDons[opId]}
+      don={donParId.get(rapprochementsDons[opId]?.donId ?? "")}
+      verrou={verrou}
+    />
+  );
   // Montant flèché vers les frais de scolarité, par opération.
   const affecteParOperation = new Map<string, number>();
   for (const a of affectations) {
@@ -112,6 +134,8 @@ export default function ListeOperations({
   const [filtreCats, setFiltreCats] = useState<string[]>([]);
   // Filtre « à vérifier » : ne garde que les lignes portant une question ouverte.
   const [filtreAVerifier, setFiltreAVerifier] = useState(false);
+  // Filtre « dons à régulariser » : écritures Don non reliées ou à fiche incomplète.
+  const [filtreDons, setFiltreDons] = useState(false);
   // Ouverture des volets : `ouverture` ne retient que les choix explicites de
   // l'utilisateur ; par défaut, une ligne dont des dons restent à rattacher
   // s'ouvre d'elle-même.
@@ -158,6 +182,13 @@ export default function ListeOperations({
     null;
   const nbAVerifier = racines.filter((op) => questionDe(op)).length;
 
+  /** Une écriture « Don » (la ligne ou l'une de ses sous-écritures) reste à régulariser. */
+  const aRegulariser = (o: OperationRow) =>
+    o.categories?.nom === "Don" && !o.est_ventilee && !["complet", "relie_verrouille"].includes(etatDonDe(o.id));
+  const donARegulariser = (op: OperationRow) =>
+    aRegulariser(op) || (fillesDe.get(op.id) ?? []).some((fi) => fi.exercice_id === exerciceId && aRegulariser(fi));
+  const nbDonsARegulariser = racines.filter(donARegulariser).length;
+
   const parCategorie =
     filtreCats.length === 0
       ? racines
@@ -170,7 +201,9 @@ export default function ListeOperations({
           }
           return filtreCats.includes(op.categorie_id ?? "__sans__");
         });
-  const operationsAffichees = filtreAVerifier ? parCategorie.filter((op) => questionDe(op)) : parCategorie;
+  const operationsAffichees = parCategorie
+    .filter((op) => !filtreAVerifier || questionDe(op))
+    .filter((op) => !filtreDons || donARegulariser(op));
   const totalAffiche = operationsAffichees.reduce(
     (s, op) => s + (op.type === "recette" ? 1 : -1) * Number(op.montant),
     0,
@@ -294,8 +327,9 @@ export default function ListeOperations({
         </button>
       </div>
 
-      {nbAVerifier > 0 && (
-        <div className="mb-3 flex items-center gap-2">
+      {(nbAVerifier > 0 || nbDonsARegulariser > 0) && (
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          {nbAVerifier > 0 && (
           <button
             type="button"
             onClick={() => setFiltreAVerifier((v) => !v)}
@@ -308,9 +342,27 @@ export default function ListeOperations({
           >
             ⚠ À vérifier <span className="opacity-70">{nbAVerifier}</span>
           </button>
-          {filtreAVerifier && (
+          )}
+          {nbDonsARegulariser > 0 && (
+            <button
+              type="button"
+              onClick={() => setFiltreDons((v) => !v)}
+              title="Dons non reliés à l'onglet Dons, ou reliés à une fiche donateur incomplète"
+              className={`rounded-full border px-3 py-1 text-xs font-medium ${
+                filtreDons
+                  ? "border-gold bg-gold text-white"
+                  : "border-gold/60 bg-gold-soft text-gold hover:opacity-90"
+              }`}
+            >
+              Dons à régulariser <span className="opacity-70">{nbDonsARegulariser}</span>
+            </button>
+          )}
+          {(filtreAVerifier || filtreDons) && (
             <span className="text-xs text-muted">
-              Seules les lignes à vérifier sont affichées.
+              Seules les lignes {filtreAVerifier ? "à vérifier" : ""}
+              {filtreAVerifier && filtreDons ? " et " : ""}
+              {filtreDons ? "portant un don à régulariser" : ""} sont affichées.
+              {filtreDons && verrou ? " Coffre verrouillé : seuls les dons non reliés sont repérés." : ""}
             </span>
           )}
         </div>
@@ -486,18 +538,7 @@ export default function ListeOperations({
                       )}
                       {!modeEdition && !op.est_ventilee && (fillesDe.get(op.id) ?? []).length === 0 &&
                         op.categories?.nom === "Don" &&
-                        (donsRepertoriesSet.has(op.id) ? (
-                          <span className="ml-2 text-positive" title="Enregistré dans les dons">✓</span>
-                        ) : (
-                          <Link
-                            href="/dons/depuis-compta"
-                            onClick={(e) => e.stopPropagation()}
-                            className="ml-2 rounded-full bg-gold-soft px-2 py-0.5 text-xs font-medium text-gold hover:opacity-90"
-                            title="Ce don n'est pas encore dans l'onglet Dons"
-                          >
-                            + Ajouter aux dons
-                          </Link>
-                        ))}
+                        pastilleDon(op.id)}
                     </span>
                   </td>
                   <td className="px-4 py-3 text-muted">
@@ -558,6 +599,7 @@ export default function ListeOperations({
                     exerciceAffiche={exerciceId}
                     modifiable={modeEdition}
                     donsRepertories={donsRepertories}
+                    pastilleDon={pastilleDon}
                     inscriptions={inscriptions}
                     affectations={affectations}
                   />

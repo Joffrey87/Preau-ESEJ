@@ -32,32 +32,37 @@ function ecartJours(a: string, b: string): number {
   return Math.abs(Math.round((Date.UTC(by, bm - 1, bd) - Date.UTC(ay, am - 1, ad)) / 86400000));
 }
 
+export type Rapprochement = {
+  donId: string;
+  /** « explicite » : lien enregistré sur le don ; « probable » : même montant à ±3 jours, à confirmer. */
+  lien: "explicite" | "probable";
+};
+
 /**
- * Identifiants des opérations considérées comme déjà répertoriées dans les dons.
- * L'ordre de parcours est rendu déterministe (date, puis identifiant) pour que
- * deux affichages successifs donnent le même résultat.
+ * Don correspondant à chaque opération : le lien explicite d'abord, puis le
+ * rapprochement un-à-un par montant et date. L'ordre de parcours est rendu
+ * déterministe (date, puis identifiant) pour que deux affichages successifs
+ * donnent le même résultat.
  */
-export function operationsRepertoriees(
+export function rapprocherDons(
   operations: OperationRapprochable[],
   dons: DonRapprochable[],
-): Set<string> {
-  const repertoriees = new Set<string>();
+): Map<string, Rapprochement> {
+  const res = new Map<string, Rapprochement>();
 
   // 1. Liens explicites.
   for (const d of dons) {
-    if (d.operation_id) repertoriees.add(d.operation_id);
+    if (d.operation_id) res.set(d.operation_id, { donId: d.id, lien: "explicite" });
   }
 
   // 2. Rapprochement un-à-un sur les dons encore non reliés.
   const libres = dons.filter((d) => !d.operation_id && d.date_don);
   const consommes = new Set<string>();
-
   const ordonnees = [...operations].sort(
     (a, b) => a.date_operation.localeCompare(b.date_operation) || a.id.localeCompare(b.id),
   );
-
   for (const op of ordonnees) {
-    if (repertoriees.has(op.id)) continue;
+    if (res.has(op.id)) continue;
     const candidat = libres.find(
       (d) =>
         !consommes.has(d.id) &&
@@ -66,9 +71,16 @@ export function operationsRepertoriees(
     );
     if (candidat) {
       consommes.add(candidat.id);
-      repertoriees.add(op.id);
+      res.set(op.id, { donId: candidat.id, lien: "probable" });
     }
   }
+  return res;
+}
 
-  return repertoriees;
+/** Identifiants des opérations considérées comme déjà répertoriées dans les dons. */
+export function operationsRepertoriees(
+  operations: OperationRapprochable[],
+  dons: DonRapprochable[],
+): Set<string> {
+  return new Set(rapprocherDons(operations, dons).keys());
 }

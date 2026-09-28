@@ -56,6 +56,7 @@ export default function VentilationOperation({
   exerciceAffiche,
   modifiable,
   donsRepertories = [],
+  pastilleDon,
   inscriptions = [],
   affectations = [],
 }: {
@@ -69,6 +70,8 @@ export default function VentilationOperation({
   modifiable: boolean;
   /** Sous-écritures déjà présentes dans l'onglet Dons. */
   donsRepertories?: string[];
+  /** Pastille « don » détaillée (relié, fiche complète…) ; à défaut, simple coche. */
+  pastilleDon?: (operationId: string) => React.ReactNode;
   /** Familles de l'onglet Frais de scolarité, pour rattacher une sous-écriture de scolarité. */
   inscriptions?: Inscription[];
   affectations?: Affectation[];
@@ -277,7 +280,8 @@ export default function VentilationOperation({
                   famille ?
                 </span>
               ))}
-            {nomCat(f.categorie_id) === "Don" &&
+            {nomCat(f.categorie_id) === "Don" && pastilleDon && pastilleDon(f.id)}
+            {nomCat(f.categorie_id) === "Don" && !pastilleDon &&
               (donsRepertories.includes(f.id) ? (
                 <span className="ml-2 text-positive" title="Enregistré dans les dons">✓</span>
               ) : (

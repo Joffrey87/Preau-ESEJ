@@ -54,6 +54,8 @@ export default function FamilleEnfants({
   const [f, setF] = useState<FormEleve>({ prenom: "", classe_entree: "PS", annee_entree: annee, decalage: "0", sorti_le: "" });
   const [busy, setBusy] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
+  const [courrielCompte, setCourrielCompte] = useState("");
+  const [messageCompte, setMessageCompte] = useState<string | null>(null);
 
   // Prénoms déchiffrés, coffre du carnet ouvert.
   const { estOuvert: carnetOuvert, dechiffrer } = carnet;
@@ -80,6 +82,18 @@ export default function FamilleEnfants({
   if (!famille) return <p className="text-xs text-muted">Famille non reliée : enregistrez-la à nouveau.</p>;
 
   const nomEleve = (e: Eleve) => prenoms[e.id] ?? (e.initiale ? `${e.initiale}.` : "Enfant");
+
+  /** Rattache un compte (invité depuis Supabase) à cette famille : il n'accèdera qu'à son espace. */
+  async function rattacherCompte() {
+    setMessageCompte(null);
+    if (!courrielCompte.trim()) return;
+    const { data, error } = await createClient().rpc("rattacher_compte_famille", {
+      p_email: courrielCompte.trim(),
+      p_famille: famille!.nom,
+    });
+    setMessageCompte(error ? error.message : (data as string));
+    if (!error) setCourrielCompte("");
+  }
 
   async function enregistrerFiche() {
     if (!fiche) return;
@@ -252,6 +266,27 @@ export default function FamilleEnfants({
           </div>
         )}
         {erreur && <p className="mt-1 text-xs text-negative">{erreur}</p>}
+      </div>
+
+      <div>
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-muted">Espace famille</h4>
+        <p className="mt-1 text-[11px] text-muted">
+          Invitez la famille depuis Supabase (Authentication → Invite user) : elle choisira son mot de passe via le lien reçu.
+          Rattachez ensuite son adresse ici.
+        </p>
+        <div className="mt-1 flex gap-1.5">
+          <input
+            type="email"
+            value={courrielCompte}
+            onChange={(e) => setCourrielCompte(e.target.value)}
+            placeholder="Adresse du compte famille"
+            className={`${inputCls} py-1 text-xs`}
+          />
+          <button type="button" onClick={rattacherCompte} className="rounded-lg border border-border px-2 text-xs font-medium hover:bg-surface-2">
+            Rattacher
+          </button>
+        </div>
+        {messageCompte && <p className="mt-1 text-[11px] text-muted">{messageCompte}</p>}
       </div>
     </div>
   );

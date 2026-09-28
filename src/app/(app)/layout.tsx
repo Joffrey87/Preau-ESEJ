@@ -16,6 +16,7 @@ export default async function AppLayout({
 
   // Le middleware protège déjà les routes ; double sécurité côté rendu.
   if (!user) redirect("/login");
+  if ((user.app_metadata as { espace?: string } | undefined)?.espace === "famille") redirect("/espace");
 
   const meta = (user.user_metadata ?? {}) as { prenom?: string; nom?: string };
   const userName = [meta.prenom, meta.nom].filter(Boolean).join(" ") || undefined;

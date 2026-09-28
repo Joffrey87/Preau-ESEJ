@@ -32,6 +32,9 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   const isAuthRoute = request.nextUrl.pathname.startsWith("/login");
+  // Page où une famille invitée choisit son mot de passe (lien reçu par courriel).
+  const isMotDePasse = request.nextUrl.pathname.startsWith("/auth/mot-de-passe");
+  if (isMotDePasse) return response;
 
   if (!user && !isAuthRoute) {
     const url = request.nextUrl.clone();
@@ -39,9 +42,28 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
+  // Un compte famille n'accède qu'à son espace ; le bureau, jamais à celui-ci.
+  // (La base le garantit aussi : un compte famille ne lit que sa famille.)
+  const estFamille = (user?.app_metadata as { espace?: string } | undefined)?.espace === "famille";
+  const versEspace = request.nextUrl.pathname.startsWith("/espace");
+
   if (user && isAuthRoute) {
     const url = request.nextUrl.clone();
+    url.pathname = estFamille ? "/espace" : "/";
+    return NextResponse.redirect(url);
+  }
+
+  if (user && estFamille && !versEspace) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/espace";
+    url.search = "";
+    return NextResponse.redirect(url);
+  }
+
+  if (user && !estFamille && versEspace) {
+    const url = request.nextUrl.clone();
     url.pathname = "/";
+    url.search = "";
     return NextResponse.redirect(url);
   }
 

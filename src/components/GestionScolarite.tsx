@@ -439,7 +439,7 @@ export default function GestionScolarite({
               >
                 Frais de dossier
               </th>
-              <th className="px-4 py-3 font-medium">Avancement</th>
+              <th className="hidden px-3 py-3 font-medium lg:table-cell">Avancement</th>
               <th className="px-4 py-3 font-medium text-right">Réglé</th>
               <th className="px-4 py-3 font-medium text-right">Reste</th>
               <th className="px-2 py-3 font-medium text-right"><span className="sr-only">Modifier</span></th>
@@ -484,7 +484,7 @@ export default function GestionScolarite({
                     </td>
                     <td className="px-3 py-3 text-center">{badgeDepot(i)}</td>
                     <td className="px-3 py-3 text-center">{badgeFrais(i)}</td>
-                    <td className="px-3 py-3">
+                    <td className="hidden px-3 py-3 lg:table-cell">
                       <JaugeScolarite
                         etat={etatJauge(Number(i.montant_mensuel), regle, annee)}
                         anneeScolaire={annee}

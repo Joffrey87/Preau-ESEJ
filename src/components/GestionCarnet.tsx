@@ -64,6 +64,7 @@ export default function GestionCarnet({
   roleLabel,
   roleSlug = null,
   relations = [],
+  rechercheInitiale = "",
 }: {
   contacts: Contact[];
   canVoirIban: boolean;
@@ -72,6 +73,8 @@ export default function GestionCarnet({
   roleSlug?: string | null;
   /** Relations déjà employées, partagées avec l'onglet Dons. */
   relations?: string[];
+  /** Recherche pré-remplie (lien depuis l'onglet Frais de scolarité : nom de famille). */
+  rechercheInitiale?: string;
 }) {
   const router = useRouter();
   const carnet = useCarnet();
@@ -89,7 +92,7 @@ export default function GestionCarnet({
   const [edit, setEdit] = useState<Contact | "nouveau" | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [recherche, setRecherche] = useState("");
+  const [recherche, setRecherche] = useState(rechercheInitiale);
   const [filtreCat, setFiltreCat] = useState<string | null>(null);
   const [f, setF] = useState<FormState>(vide());
   const [vueCorbeille, setVueCorbeille] = useState(false);

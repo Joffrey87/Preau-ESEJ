@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { Fragment, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { formatEurosCourt as formatEuros } from "@/lib/format";
@@ -13,6 +14,8 @@ import {
   famillesParties,
   FRAIS_DOSSIER_PAR_ENFANT,
   type AffectationDetail,
+  type EtatDepot,
+  type EtatFraisDossier,
   type InscriptionDepot,
   type NatureAffectation,
 } from "@/lib/scolariteDepots";
@@ -147,6 +150,8 @@ export default function GestionScolarite({
 }) {
   const router = useRouter();
   const [edit, setEdit] = useState<Inscription | "nouveau" | null>(null);
+  // Famille dont le détail est déroulé.
+  const [ouverte, setOuverte] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -432,9 +437,18 @@ export default function GestionScolarite({
                 const regle = totalRegle(i) + don;
                 const reste = du - regle;
                 const detailsDon = donParFamille.get(i.id)?.details ?? [];
+                const deroulee = ouverte === i.id;
                 return (
-                  <tr key={i.id} className="border-b border-border last:border-0">
-                    <td className="px-4 py-3">{i.famille_nom}</td>
+                  <Fragment key={i.id}>
+                  <tr
+                    onClick={() => setOuverte(deroulee ? null : i.id)}
+                    title="Afficher le détail des versements"
+                    className={`cursor-pointer border-b border-border last:border-0 hover:bg-surface-2 ${deroulee ? "bg-surface-2" : ""}`}
+                  >
+                    <td className="px-4 py-3">
+                      <span className={`mr-1.5 inline-block text-muted transition-transform ${deroulee ? "rotate-90" : ""}`}>›</span>
+                      {i.famille_nom}
+                    </td>
                     <td className="px-4 py-3 text-center tabular-nums">{i.nb_enfants ?? "—"}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{formatEuros(Number(i.montant_mensuel))}</td>
                     <td className="px-4 py-3 text-right tabular-nums">{formatEuros(du)}</td>
@@ -466,7 +480,10 @@ export default function GestionScolarite({
                     <td className="px-2 py-3 text-right">
                       <button
                         type="button"
-                        onClick={() => ouvrir(i)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          ouvrir(i);
+                        }}
                         title={`Saisir ou modifier — ${i.famille_nom}`}
                         aria-label={`Saisir ou modifier les règlements de ${i.famille_nom}`}
                         className="rounded-lg p-1.5 text-muted hover:bg-surface-2 hover:text-accent"
@@ -475,6 +492,21 @@ export default function GestionScolarite({
                       </button>
                     </td>
                   </tr>
+                  {deroulee && (
+                    <tr className="border-b border-border bg-surface-2/40">
+                      <td colSpan={10} className="px-4 pb-3">
+                        <DetailFamille
+                          inscription={i}
+                          affectations={affectationsDetail}
+                          depot={depotDe(i).depot}
+                          frais={depotDe(i).frais}
+                          du={du}
+                          regle={regle}
+                        />
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 );
               })
             )}
@@ -601,5 +633,137 @@ export default function GestionScolarite({
         </Modal>
       )}
     </>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Détail d'une famille, déroulé sous sa ligne.
+// ---------------------------------------------------------------------------
+
+type LigneVersement = { date: string | null; libelle: string; montant: number; origine?: string };
+
+function TableVersements({ lignes, vide }: { lignes: LigneVersement[]; vide: string }) {
+  if (lignes.length === 0) return <p className="text-xs text-muted">{vide}</p>;
+  const total = lignes.reduce((s, l) => s + l.montant, 0);
+  return (
+    <table className="w-full text-xs">
+      <tbody>
+        {lignes.map((l, k) => (
+          <tr key={k} className="border-b border-border/40 last:border-0">
+            <td className="w-20 py-1 pr-2 tabular-nums text-muted">{l.date ? formatDateCourte(l.date) : "—"}</td>
+            <td className="py-1 pr-2">{l.libelle}</td>
+            <td className="py-1 pr-2 text-muted">{l.origine ?? ""}</td>
+            <td className={`py-1 text-right tabular-nums ${l.montant < 0 ? "text-negative" : ""}`}>{formatEuros(l.montant)}</td>
+          </tr>
+        ))}
+        {lignes.length > 1 && (
+          <tr>
+            <td />
+            <td className="pt-1 font-semibold">Total</td>
+            <td />
+            <td className="pt-1 text-right font-semibold tabular-nums">{formatEuros(total)}</td>
+          </tr>
+        )}
+      </tbody>
+    </table>
+  );
+}
+
+const versementDepuis = (d: AffectationDetail): LigneVersement => ({
+  date: d.date_operation || null,
+  libelle: d.libelle,
+  montant: d.type === "depense" ? -Number(d.montant) : Number(d.montant),
+  origine: d.origine ?? (d.nature === "don_association" ? "Association (tiers)" : "Famille"),
+});
+
+/**
+ * Tout ce que la ligne ne montre pas : le détail des versements par nature
+ * (mensualités avec leur payeur — famille, Amitié Sainte-Anne… —, frais de
+ * dossier, mois d'avance), et l'accès aux coordonnées de la famille.
+ */
+function DetailFamille({
+  inscription,
+  affectations,
+  depot,
+  frais,
+  du,
+  regle,
+}: {
+  inscription: Inscription;
+  affectations: AffectationDetail[];
+  depot: EtatDepot;
+  frais: EtatFraisDossier;
+  du: number;
+  regle: number;
+}) {
+  // Mensualités : montants saisis mois par mois (classeur), report de l'année
+  // précédente, et versements rattachés depuis la Comptabilité.
+  const mensualites: LigneVersement[] = [];
+  if (Number(inscription.avance) > 0) {
+    mensualites.push({ date: null, libelle: "Report de l'année précédente (crédit)", montant: Number(inscription.avance), origine: "—" });
+  }
+  for (const m of MOIS) {
+    const v = Number(inscription[m.k]);
+    if (v) mensualites.push({ date: null, libelle: `${m.l} (saisi au classeur)`, montant: v, origine: "—" });
+  }
+  for (const a of affectations) {
+    if (a.inscription_id === inscription.id && (a.nature === "mensualite" || a.nature === "don_association")) {
+      mensualites.push(versementDepuis(a));
+    }
+  }
+  const parOrigine = new Map<string, number>();
+  for (const l of mensualites) {
+    if (!l.origine || l.origine === "—") continue;
+    parOrigine.set(l.origine, (parOrigine.get(l.origine) ?? 0) + l.montant);
+  }
+
+  return (
+    <div className="grid gap-4 py-2 lg:grid-cols-3">
+      <section className="rounded-lg border border-border bg-surface p-3 lg:col-span-2">
+        <h3 className="mb-1 text-sm font-semibold">Frais de scolarité · {inscription.annee_scolaire}</h3>
+        <p className="mb-2 text-xs text-muted">
+          Dû {formatEuros(du)} ({formatEuros(Number(inscription.montant_mensuel))} × 10) · réglé {formatEuros(regle)} · reste{" "}
+          <span className={du - regle > 0 ? "text-negative" : "text-positive"}>{formatEuros(du - regle)}</span>
+          {parOrigine.size > 0 && (
+            <> · dont {[...parOrigine].map(([o, v]) => `${o} ${formatEuros(v)}`).join(", ")}</>
+          )}
+        </p>
+        <TableVersements lignes={mensualites} vide="Aucun versement enregistré pour cette année." />
+      </section>
+
+      <div className="space-y-4">
+        <section className="rounded-lg border border-border bg-surface p-3">
+          <h3 className="mb-1 text-sm font-semibold">Frais de dossier</h3>
+          <p className="mb-2 text-xs text-muted">
+            {frais.nouveaux > 0
+              ? `${frais.nouveaux} enfant(s) entrant(s) : ${formatEuros(frais.du)} attendus, ${formatEuros(frais.paye)} réglés.`
+              : "Aucun enfant entrant cette année."}
+          </p>
+          <TableVersements lignes={frais.details.map(versementDepuis)} vide="Aucun versement." />
+        </section>
+
+        <section className="rounded-lg border border-border bg-surface p-3">
+          <h3 className="mb-1 text-sm font-semibold">Mois d&apos;avance (dépôt)</h3>
+          <p className="mb-2 text-xs text-muted">
+            Attendu {formatEuros(depot.du)} · détenu {formatEuros(depot.detenu)}
+            {depot.anterieur > 0 && ` (dont ${formatEuros(depot.anterieur)} antérieurs à la comptabilité)`}
+            {Number(inscription.avance_consommee) > 0 && ` · ${formatEuros(Number(inscription.avance_consommee))} utilisés cette année`}
+          </p>
+          <TableVersements lignes={depot.details.map(versementDepuis)} vide="Aucun versement fléché." />
+        </section>
+
+        <section className="rounded-lg border border-border bg-surface p-3">
+          <h3 className="mb-1 text-sm font-semibold">Famille</h3>
+          {inscription.emails && <p className="text-xs text-muted">Courriels : {inscription.emails}</p>}
+          {inscription.notes && <p className="text-xs text-muted">Notes : {inscription.notes}</p>}
+          <Link
+            href={`/carnet?q=${encodeURIComponent(inscription.famille_nom.replace(/\s+[A-Z]$/, ""))}`}
+            className="mt-1 inline-block text-xs font-medium text-accent hover:underline"
+          >
+            Coordonnées dans le carnet d&apos;adresses →
+          </Link>
+        </section>
+      </div>
+    </div>
   );
 }

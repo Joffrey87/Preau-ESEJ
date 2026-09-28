@@ -52,6 +52,8 @@ export type AffectationDetail = {
   date_operation: string;
   /** Une dépense fléchée « mois d'avance » est une restitution. */
   type: "recette" | "depense";
+  /** Qui a payé : « Amitié Sainte-Anne », une autre association, ou la famille. */
+  origine?: string;
 };
 
 export type EtatDepot = {

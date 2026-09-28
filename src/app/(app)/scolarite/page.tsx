@@ -5,6 +5,7 @@ import GestionScolarite, {
 } from "@/components/GestionScolarite";
 import { createClient } from "@/lib/supabase/server";
 import type { AffectationDetail, InscriptionDepot, NatureAffectation } from "@/lib/scolariteDepots";
+import { estAmitieSainteAnne } from "@/lib/importEnrichi";
 
 export default async function ScolaritePage({
   searchParams,
@@ -71,15 +72,38 @@ export default async function ScolaritePage({
     nature: NatureAffectation;
   }[];
 
-  // Libellé, date et sens de l'opération d'origine, pour les infobulles.
-  const parOperation = new Map<string, { libelle: string; date_operation: string; type: "recette" | "depense" }>();
+  // Libellé, date, sens et payeur de l'opération d'origine (détail par famille).
+  type OpInfo = { libelle: string; date_operation: string; type: "recette" | "depense"; origine: string };
+  const parOperation = new Map<string, OpInfo>();
   if (brutes.length > 0) {
+    type OpRow = {
+      id: string; libelle: string; libelle_origine: string | null; date_operation: string;
+      type: "recette" | "depense"; parent_id: string | null; categories: { nom: string } | null;
+    };
     const { data: opsData } = await supabase
       .from("operations")
-      .select("id, libelle, date_operation, type")
+      .select("id, libelle, libelle_origine, date_operation, type, parent_id, categories(nom)")
       .in("id", [...new Set(brutes.map((a) => a.operation_id))]);
-    for (const o of (opsData ?? []) as { id: string; libelle: string; date_operation: string; type: "recette" | "depense" }[]) {
-      parOperation.set(o.id, { libelle: o.libelle, date_operation: o.date_operation, type: o.type });
+    const ops = (opsData ?? []) as unknown as OpRow[];
+    // Le libellé bancaire d'une sous-écriture est celui de sa ligne bancaire.
+    const parents = new Map<string, OpRow>();
+    const idsParents = [...new Set(ops.map((o) => o.parent_id).filter((v): v is string => !!v))];
+    if (idsParents.length > 0) {
+      const { data: pData } = await supabase
+        .from("operations")
+        .select("id, libelle, libelle_origine, date_operation, type, parent_id, categories(nom)")
+        .in("id", idsParents);
+      for (const p of (pData ?? []) as unknown as OpRow[]) parents.set(p.id, p);
+    }
+    for (const o of ops) {
+      const p = o.parent_id ? parents.get(o.parent_id) : undefined;
+      const textes = `${o.libelle_origine ?? ""} ${o.libelle} ${p?.libelle_origine ?? ""} ${p?.libelle ?? ""}`;
+      const origine = estAmitieSainteAnne(textes)
+        ? "Amitié Sainte-Anne"
+        : o.categories?.nom === "Don d'Association"
+          ? "Association (tiers)"
+          : "Famille";
+      parOperation.set(o.id, { libelle: o.libelle, date_operation: o.date_operation, type: o.type, origine });
     }
   }
 
@@ -90,6 +114,7 @@ export default async function ScolaritePage({
     libelle: parOperation.get(a.operation_id)?.libelle ?? "Opération",
     date_operation: parOperation.get(a.operation_id)?.date_operation ?? "",
     type: parOperation.get(a.operation_id)?.type ?? "recette",
+    origine: parOperation.get(a.operation_id)?.origine,
   }));
 
   // Ce qui compte comme réglé pour l'année consultée : dons fléchés et mensualités.

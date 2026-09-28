@@ -10,7 +10,12 @@ import {
   type Contact,
 } from "@/lib/carnet";
 
-export default async function CarnetPage() {
+export default async function CarnetPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ q?: string }>;
+}) {
+  const { q } = await searchParams;
   const supabase = await createClient();
   const {
     data: { user },
@@ -52,7 +57,7 @@ export default async function CarnetPage() {
         <SaisieGroupeeCarnet />
       </div>
 
-      <GestionCarnet
+      <GestionCarnet rechercheInitiale={q ?? ""}
         relations={relations}
         contacts={visibles}
         canVoirIban={canIban}

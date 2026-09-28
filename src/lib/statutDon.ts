@@ -24,7 +24,8 @@ export type StatutKey =
   | "envoye"
   | "annuel"
   | "envoyer"
-  | "etablir";
+  | "etablir"
+  | "sans";
 
 export type Chip = { key: StatutKey; label: string; tone: Tone; detail?: string };
 
@@ -66,6 +67,16 @@ export function recuEnvoye(d: Don): boolean {
   return (d.recu_etat ?? "").trim().toLowerCase().startsWith("envoy");
 }
 
+/**
+ * Le donateur ne demande pas de reçu fiscal. Noté en texte libre dans
+ * « Reçu – état » (« Pas de reçu demandé »…) ; l'ancien usage qui l'écrivait
+ * à la place du numéro (« ne veut pas de reçu fiscal ») est aussi reconnu.
+ */
+export function sansRecu(d: Pick<Don, "recu_etat" | "recu_numero">): boolean {
+  const t = `${d.recu_etat ?? ""} ${d.recu_numero ?? ""}`.toLowerCase();
+  return /pas de re[çc]u|sans re[çc]u|ne veut pas|non demand/.test(t);
+}
+
 /** Champs importants manquants : bloquent un reçu CERFA valide ou son envoi. */
 export function champsImportantsManquants(d: Don): string[] {
   const m: string[] = [];
@@ -90,7 +101,10 @@ export function statutsDon(d: Don, recurrents: Set<string>): Chip[] {
   const chips: Chip[] = [];
 
   // Axe workflow du reçu (une seule pastille).
-  if (recuEnvoye(d)) {
+  const sans = sansRecu(d);
+  if (sans) {
+    chips.push({ key: "sans", label: "Sans reçu fiscal", tone: "gray", detail: "Le donateur ne demande pas de reçu" });
+  } else if (recuEnvoye(d)) {
     chips.push({ key: "envoye", label: "Reçu envoyé", tone: "green" });
   } else if (vide(d.recu_numero)) {
     chips.push({ key: "etablir", label: "Reçu à établir", tone: "amber" });
@@ -100,8 +114,12 @@ export function statutsDon(d: Don, recurrents: Set<string>): Chip[] {
     chips.push({ key: "envoyer", label: "Reçu à envoyer", tone: "blue" });
   }
 
-  // Axe complétude (au plus une pastille : important > mineur).
-  const importants = champsImportantsManquants(d);
+  // Axe complétude (au plus une pastille : important > mineur). Sans reçu,
+  // seule l'identité du donateur reste importante : l'adresse et le courriel
+  // ne servent qu'au reçu.
+  const importants = champsImportantsManquants(d).filter(
+    (c) => !sans || c === "nom" || c === "raison sociale",
+  );
   const mineurs = champsMineursManquants(d);
   if (importants.length) {
     chips.push({
@@ -140,4 +158,5 @@ export const FILTRES: { key: StatutKey; label: string; tone: Tone }[] = [
   { key: "annuel", label: "Reçu annuel en attente", tone: "violet" },
   { key: "envoyer", label: "Reçu à envoyer", tone: "blue" },
   { key: "envoye", label: "Reçu envoyé", tone: "green" },
+  { key: "sans", label: "Sans reçu fiscal", tone: "gray" },
 ];

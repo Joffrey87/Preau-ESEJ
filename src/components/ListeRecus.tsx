@@ -5,7 +5,7 @@ import DeverrouillerCoffre from "@/components/DeverrouillerCoffre";
 import { formatEuros, formatDate } from "@/lib/format";
 import { useDonsDechiffres } from "@/lib/donsChiffre";
 import { useMemo, useState } from "react";
-import { cleDonateur, champsImportantsManquants, recuEnvoye } from "@/lib/statutDon";
+import { cleDonateur, champsImportantsManquants, recuEnvoye, sansRecu } from "@/lib/statutDon";
 import type { DonPourRecu } from "@/lib/recu";
 
 export type DonRow = {
@@ -41,6 +41,8 @@ type Groupe = {
 function grouper(dons: DonRow[]): Groupe[] {
   const map = new Map<string, DonRow[]>();
   for (const d of dons) {
+    // Le donateur n'a pas demandé de reçu : rien à établir.
+    if (sansRecu(d)) continue;
     const annee = d.date_don.slice(0, 4);
     const cle = d.recu_numero ? `${d.recu_numero}|${annee}` : `sans|${d.id}`;
     (map.get(cle) ?? map.set(cle, []).get(cle)!).push(d);

@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { formatEuros } from "@/lib/format";
 import { sansLignesVentilees } from "@/lib/operations";
 import { roleByEmail } from "@/lib/roles";
-import { recuEnvoye, champsImportantsManquants } from "@/lib/statutDon";
+import { recuEnvoye, champsImportantsManquants, sansRecu } from "@/lib/statutDon";
 
 type Op = {
   id: string;
@@ -123,8 +123,11 @@ export default async function Home() {
 
   // Dons
   const dons = (donsRes.data ?? []) as DonRow[];
-  const recusAEnvoyer = dons.filter((d) => !recuEnvoye(d)).length;
-  const donsIncomplets = dons.filter((d) => champsImportantsManquants(d).length > 0).length;
+  const recusAEnvoyer = dons.filter((d) => !recuEnvoye(d) && !sansRecu(d)).length;
+  // Sans reçu demandé, seule l'identité du donateur compte (adresse et courriel ne servent qu'au reçu).
+  const donsIncomplets = dons.filter((d) =>
+    champsImportantsManquants(d).some((c) => !sansRecu(d) || c === "nom" || c === "raison sociale"),
+  ).length;
   const totalDons = dons.length;
 
   // Scolarité — reste à payer = montant_mensuel*10 − (avance + Σ mois)

@@ -311,6 +311,32 @@ export default function GestionScolarite({
   };
   const parties = famillesParties(annee, toutesInscriptions, affectationsDetail);
 
+  // Taux de perception de l'année : mensualités + frais de dossier (hors mois
+  // d'avance). Le perçu de chaque famille est plafonné à son dû, pour qu'un
+  // trop-versé ne masque pas le retard d'une autre.
+  const perception = inscriptions.reduce(
+    (acc, i) => {
+      const du = duDe(i);
+      const f = depotDe(i).frais;
+      acc.duMens += du;
+      acc.percuMens += Math.min(Math.max(totalRegle(i) + donDe(i.id), 0), du);
+      acc.duFrais += f.du;
+      acc.percuFrais += Math.min(Math.max(f.paye, 0), f.du);
+      return acc;
+    },
+    { duMens: 0, percuMens: 0, duFrais: 0, percuFrais: 0 },
+  );
+  const pct = (percu: number, du: number) =>
+    du > 0 ? `${(percu / du * 100).toLocaleString("fr-FR", { maximumFractionDigits: 0 })} %` : "—";
+  const duPerception = perception.duMens + perception.duFrais;
+  const tauxPerception = pct(perception.percuMens + perception.percuFrais, duPerception);
+  const aidePerception = [
+    `Perçu sur l'année ${annee} (mensualités + frais de dossier) : ${formatEuros(perception.percuMens + perception.percuFrais)} / ${formatEuros(duPerception)}`,
+    `Mensualités : ${formatEuros(perception.percuMens)} / ${formatEuros(perception.duMens)} (${pct(perception.percuMens, perception.duMens)})`,
+    `Frais de dossier : ${formatEuros(perception.percuFrais)} / ${formatEuros(perception.duFrais)} (${pct(perception.percuFrais, perception.duFrais)})`,
+    "Mois d'avance exclus ; perçu de chaque famille plafonné à son dû.",
+  ].join("\n");
+
   const badgeDepot = (i: Inscription) => {
     const e = depotDe(i).depot;
     const lignes: string[] = [];
@@ -404,19 +430,26 @@ export default function GestionScolarite({
               manqueFinMois > 0.005
                 ? `Il manque ${formatEuros(manqueFinMois)} sur le dû à la fin du mois`
                 : "Le réglé couvre le dû à la fin du mois",
+            sous: `Perception annuelle : ${tauxPerception}`,
+            aideSous: aidePerception,
           },
           {
             l: "Reste à percevoir",
             v: sumReste,
             c: paiementGlobal.retard > 0 ? "text-negative" : paiementGlobal.aReglerFinDeMois > 0 ? "text-gold" : "",
           },
-        ].map((s: { l: string; v: number; c: string; apres?: number; aide?: string }) => (
+        ].map((s: { l: string; v: number; c: string; apres?: number; aide?: string; sous?: string; aideSous?: string }) => (
           <div key={s.l} className="rounded-xl border border-border bg-surface px-4 py-3" title={s.aide}>
             <div className="text-xs uppercase tracking-wider text-muted">{s.l}</div>
             <div className={`mt-1 text-xl font-semibold tabular-nums ${s.c}`}>
               {formatEuros(s.v)}
               {s.apres != null && <span className="font-normal"> / {formatEuros(s.apres)}</span>}
             </div>
+            {s.sous && (
+              <div className="mt-0.5 cursor-help text-xs tabular-nums text-muted" title={s.aideSous}>
+                {s.sous}
+              </div>
+            )}
           </div>
         ))}
       </div>

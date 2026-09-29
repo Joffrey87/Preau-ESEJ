@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Modal, Field, FormFooter, inputCls } from "./GestionComptes";
@@ -9,7 +9,7 @@ import Icon from "@/components/Icon";
 import PastilleDon, { etatDon, type DonCompta } from "@/components/PastilleDon";
 import ChiffrerLibellesDons from "@/components/ChiffrerLibellesDons";
 import { useCoffre } from "@/components/CoffreProvider";
-import { LIBELLE_DON, chiffrerLibellesDon, dechiffrerLibellesDon } from "@/lib/libelleDon";
+import { LIBELLE_DON, chiffrerLibellesDon, dechiffrerLibellesDon, texteDonateur } from "@/lib/libelleDon";
 import { useDonsDechiffres } from "@/lib/donsChiffre";
 import type { Rapprochement } from "@/lib/rapprochementDons";
 import { formatEuros, formatDate } from "@/lib/format";
@@ -72,6 +72,13 @@ type FormState = {
   exercice_id: string;
   a_verifier: string;
 };
+
+/** Texte comparable : minuscules, sans accents. */
+const normaliser = (t: string) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
+/** Mot de recherche qui ressemble à un montant (« 60 », « 60,50 », « 1 234,5 »). */
+const montantDe = (mot: string): number | null =>
+  /^\d+([.,]\d{1,2})?$/.test(mot) ? Number(mot.replace(",", ".")) : null;
 
 function formDepuis(op: OperationRow): FormState {
   return {
@@ -141,6 +148,27 @@ export default function ListeOperations({
   const [filtreAVerifier, setFiltreAVerifier] = useState(false);
   // Filtre « dons à régulariser » : écritures Don non reliées ou à fiche incomplète.
   const [filtreDons, setFiltreDons] = useState(false);
+  // Recherche libre : tous les mots doivent figurer dans la ligne ou l'une de ses sous-écritures.
+  const [recherche, setRecherche] = useState("");
+  // Libellés des opérations « Don », déchiffrés coffre ouvert : on peut
+  // rechercher un donateur sans que son nom soit jamais stocké en clair.
+  const [libellesDons, setLibellesDons] = useState<Map<string, string>>(new Map());
+  useEffect(() => {
+    if (!coffre.estOuvert) return;
+    let annule = false;
+    (async () => {
+      const m = new Map<string, string>();
+      for (const o of operations) {
+        if (!o.libelle_origine_chiffre) continue;
+        const t = texteDonateur(await dechiffrerLibellesDon(coffre.dechiffrer, o.libelle_origine_chiffre));
+        if (t) m.set(o.id, t);
+      }
+      if (!annule) setLibellesDons(m);
+    })();
+    return () => {
+      annule = true;
+    };
+  }, [operations, coffre.estOuvert, coffre.dechiffrer]);
   // Ouverture des volets : `ouverture` ne retient que les choix explicites de
   // l'utilisateur ; par défaut, une ligne dont des dons restent à rattacher
   // s'ouvre d'elle-même.
@@ -206,9 +234,45 @@ export default function ListeOperations({
           }
           return filtreCats.includes(op.categorie_id ?? "__sans__");
         });
+  // Recherche : libellés (Préau, banque, donateur déchiffré), catégorie, mode,
+  // compte, date, question ouverte ; un mot en forme de montant vise aussi le
+  // montant exact de la ligne ou d'une sous-écriture.
+  const motsRecherche = normaliser(recherche).split(/\s+/).filter(Boolean);
+  const texteDe = (o: OperationRow) =>
+    normaliser(
+      [
+        o.libelle,
+        o.libelle_origine,
+        // Coffre refermé : les noms déchiffrés ne sont plus cherchés.
+        coffre.estOuvert ? libellesDons.get(o.id) : null,
+        o.categories?.nom,
+        MODES.find((m) => m.v === o.mode_paiement)?.l,
+        o.comptes?.nom,
+        formatDate(o.date_operation),
+        o.a_verifier,
+      ]
+        .filter(Boolean)
+        .join(" "),
+    );
+  const correspondent = (ecritures: OperationRow[]) => {
+    if (motsRecherche.length === 0) return true;
+    const texte = ecritures.map(texteDe).join(" ");
+    return motsRecherche.every((mot) => {
+      const m = montantDe(mot);
+      if (m != null && ecritures.some((e) => Math.abs(Number(e.montant) - m) < 0.005)) return true;
+      return texte.includes(mot);
+    });
+  };
+  const correspondRecherche = (op: OperationRow) => correspondent([op, ...(fillesDe.get(op.id) ?? [])]);
+  /** Trouvée grâce à ses seules sous-écritures : on la déplie pour les montrer. */
+  const trouveeParSesFilles = (opId: string) => {
+    const op = racines.find((o) => o.id === opId);
+    return motsRecherche.length > 0 && !!op && !correspondent([op]) && (fillesDe.get(opId) ?? []).length > 0;
+  };
   const operationsAffichees = parCategorie
     .filter((op) => !filtreAVerifier || questionDe(op))
-    .filter((op) => !filtreDons || donARegulariser(op));
+    .filter((op) => !filtreDons || donARegulariser(op))
+    .filter(correspondRecherche);
   const totalAffiche = operationsAffichees.reduce(
     (s, op) => s + (op.type === "recette" ? 1 : -1) * Number(op.montant),
     0,
@@ -236,7 +300,8 @@ export default function ListeOperations({
       (fi) => fi.categories?.nom === "Don" && !donsRepertoriesSet.has(fi.id),
     ).length;
 
-  const estOuverte = (opId: string) => ouverture[opId] ?? donsARattacher(opId) > 0;
+  const estOuverte = (opId: string) =>
+    ouverture[opId] ?? (donsARattacher(opId) > 0 || trouveeParSesFilles(opId));
   const basculer = (opId: string) =>
     setOuverture((p) => ({ ...p, [opId]: !estOuverte(opId) }));
 
@@ -339,9 +404,33 @@ export default function ListeOperations({
   return (
     <>
       <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
-        {annulation && (
-          <span className="mr-auto text-sm text-muted">{annulation}</span>
-        )}
+        <div className="mr-auto flex min-w-0 flex-1 flex-wrap items-center gap-2">
+          <div className="relative w-full max-w-sm">
+            <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted">⌕</span>
+            <input
+              type="search"
+              value={recherche}
+              onChange={(e) => setRecherche(e.target.value)}
+              onKeyDown={(e) => e.key === "Escape" && setRecherche("")}
+              placeholder="Rechercher : libellé, famille, montant, date…"
+              title={
+                "Tous les mots doivent figurer dans l'opération ou l'une de ses sous-écritures : libellé Préau ou bancaire, catégorie, mode, compte, date (jj/mm/aaaa)." +
+                "\nUn nombre (« 60 », « 430,50 ») retrouve aussi le montant exact." +
+                (coffre.estOuvert ? "\nCoffre ouvert : les noms des donateurs sont aussi cherchés." : "\nCoffre verrouillé : les noms des donateurs ne sont pas cherchés.")
+              }
+              className={`w-full rounded-lg border bg-background py-2 pl-8 pr-3 text-sm outline-none focus:border-accent ${
+                motsRecherche.length > 0 ? "border-accent" : "border-border"
+              }`}
+            />
+          </div>
+          {motsRecherche.length > 0 && (
+            <span className="text-xs text-muted tabular-nums">
+              {operationsAffichees.length} opération{operationsAffichees.length > 1 ? "s" : ""} · solde{" "}
+              {formatEuros(totalAffiche)}
+            </span>
+          )}
+          {annulation && <span className="text-sm text-muted">{annulation}</span>}
+        </div>
         <button
           type="button"
           onClick={annuler}
@@ -492,6 +581,14 @@ export default function ListeOperations({
                       Aucune opération pour l&apos;instant.
                       <br />
                       <span className="text-sm">Cliquez sur « Nouvelle opération » pour commencer la saisie.</span>
+                    </>
+                  ) : motsRecherche.length > 0 ? (
+                    <>
+                      Aucune opération ne correspond à « {recherche.trim()} ».
+                      <br />
+                      <button type="button" onClick={() => setRecherche("")} className="text-sm text-accent hover:underline">
+                        Effacer la recherche
+                      </button>
                     </>
                   ) : (
                     <>

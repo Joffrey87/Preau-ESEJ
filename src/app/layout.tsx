@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { Montserrat } from "next/font/google";
+import ThemeApplique from "@/components/ThemeApplique";
+import { SCRIPT_THEME } from "@/lib/theme";
 import "./globals.css";
 
 const montserrat = Montserrat({
@@ -16,8 +18,20 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="fr" className={`${montserrat.variable} h-full antialiased`}>
-      <body className="min-h-full">{children}</body>
+    // suppressHydrationWarning : le script de <head> pose data-theme avant React.
+    <html lang="fr" className={`${montserrat.variable} h-full antialiased`} suppressHydrationWarning>
+      <head>
+        {/* Exécuté au chargement seulement : inerte (text/plain) lors d'un rendu côté client. */}
+        <script
+          type={typeof window === "undefined" ? "text/javascript" : "text/plain"}
+          suppressHydrationWarning
+          dangerouslySetInnerHTML={{ __html: SCRIPT_THEME }}
+        />
+      </head>
+      <body className="min-h-full">
+        <ThemeApplique />
+        {children}
+      </body>
     </html>
   );
 }

@@ -4,6 +4,7 @@ import GestionCategories from "@/components/GestionCategories";
 import GestionExercices from "@/components/GestionExercices";
 import GestionOrganisation, { type Organisation } from "@/components/GestionOrganisation";
 import MonProfil from "@/components/MonProfil";
+import ChoixTheme from "@/components/ChoixTheme";
 import SecuriteDonnees from "@/components/SecuriteDonnees";
 import { createClient } from "@/lib/supabase/server";
 import { roleByEmail } from "@/lib/roles";
@@ -32,6 +33,7 @@ export default async function ParametresPage() {
 
       <div className="space-y-10">
         <MonProfil prenom={meta.prenom ?? ""} nom={meta.nom ?? ""} roleLabel={role?.label ?? "—"} />
+        <ChoixTheme />
         <SecuriteDonnees />
         <GestionOrganisation organisation={(organisationRes.data ?? null) as Organisation | null} />
         <GestionExercices exercices={exercicesRes.data ?? []} />

@@ -1,5 +1,18 @@
 @import "tailwindcss";
 
+/* Thème : « Automatique » suit le système ; un choix explicite (Paramètres)
+   pose data-theme="light" | "dark" sur <html>. La variante dark: suit la même règle. */
+@custom-variant dark {
+  @media (prefers-color-scheme: dark) {
+    &:where(:root:not([data-theme="light"]), :root:not([data-theme="light"]) *) {
+      @slot;
+    }
+  }
+  &:where([data-theme="dark"], [data-theme="dark"] *) {
+    @slot;
+  }
+}
+
 /* Charte « Préau » — d'après le logo (marine, crème, or) et le site officiel
    saint-enfant-jesus.fr (marine #021d51, Montserrat). */
 :root {
@@ -17,10 +30,32 @@
   --positive: #15803d;
   --negative: #c0392b;
   --jauge: #126d34;        /* vert forêt : barres de progression (15 % plus sombre) */
+  color-scheme: light;
+}
+
+/* Thème sombre : choisi explicitement, ou suivi du système sauf choix « clair ».
+   Les deux blocs doivent rester identiques. */
+:root[data-theme="dark"] {
+  --background: #0a0f1f;
+  --surface: #111a30;
+  --surface-2: #17233f;
+  --foreground: #e8ecf5;
+  --muted: #93a1bd;
+  --border: #24314d;
+  --accent: #7ea0e0;
+  --accent-fg: #061029;
+  --accent-soft: #1b2a4a;
+  --gold: #d9ad5a;
+  --gold-soft: #2a2415;
+  --positive: #4ade80;
+  --negative: #f87171;
+  --jauge: #3ebd6d;
+  color-scheme: dark;
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
     --background: #0a0f1f;  /* nuit marine */
     --surface: #111a30;
     --surface-2: #17233f;

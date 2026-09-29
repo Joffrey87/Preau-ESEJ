@@ -21,9 +21,11 @@ import {
   extraire,
   type OperationJournalisable,
 } from "@/lib/journalOperations";
+import { libelleNature } from "@/lib/scolariteDepots";
 import AffectationScolarite, {
   CAT_DON_ASSOCIATION,
   estCategorieScolarite,
+  natureParCategorie,
   type Affectation,
   type Inscription,
 } from "@/components/AffectationScolarite";
@@ -136,11 +138,12 @@ export default function ListeOperations({
       verrou={verrou}
     />
   );
-  // Montant flèché vers les frais de scolarité, par opération.
-  const affecteParOperation = new Map<string, number>();
+  // Rattachements aux familles (onglet Frais de scolarité), par opération.
+  const affectationsDe = new Map<string, Affectation[]>();
   for (const a of affectations) {
-    affecteParOperation.set(a.operation_id, (affecteParOperation.get(a.operation_id) ?? 0) + Number(a.montant));
+    affectationsDe.set(a.operation_id, [...(affectationsDe.get(a.operation_id) ?? []), a]);
   }
+  const familleDe = new Map(inscriptions.map((i) => [i.id, i.famille_nom]));
   const [modeEdition, setModeEdition] = useState(false);
   // Filtre par catégories : vide = toutes. « __sans__ » vise les non catégorisées.
   const [filtreCats, setFiltreCats] = useState<string[]>([]);
@@ -207,6 +210,54 @@ export default function ListeOperations({
     fillesDe.set(op.parent_id, [...(fillesDe.get(op.parent_id) ?? []), op]);
   }
   const racines = operations.filter((op) => !op.parent_id);
+
+  /**
+   * L'opération alimente-t-elle correctement l'onglet Frais de scolarité ?
+   * Chaque écriture de scolarité (la ligne, ou ses sous-écritures si elle est
+   * ventilée) doit être rattachée à une ou des familles pour tout son montant,
+   * avec la nature de sa catégorie (mensualités, mois d'avance, frais de
+   * dossier). Un don d'association fléché compte aussi, sans exigence de
+   * totalité. Null : l'opération ne concerne pas la scolarité.
+   */
+  const etatScolarite = (op: OperationRow): { complet: boolean; detail: string[] } | null => {
+    const filles = fillesDe.get(op.id) ?? [];
+    const ecritures = filles.length > 0 ? filles : [op];
+    const detail: string[] = [];
+    let concernee = false;
+    let complet = true;
+    for (const e of ecritures) {
+      const affs = affectationsDe.get(e.id) ?? [];
+      const nom = e.categories?.nom ?? null;
+      const nature = natureParCategorie(nom);
+      const familles = [...new Set(affs.map((a) => familleDe.get(a.inscription_id) ?? "?"))].join(", ");
+      if (!nature) {
+        if (nom === CAT_DON_ASSOCIATION && affs.length > 0) {
+          concernee = true;
+          detail.push(`✓ Don d'association → ${familles}`);
+        }
+        continue;
+      }
+      concernee = true;
+      const quoi = `${libelleNature(nature)} ${formatEuros(Number(e.montant))}`;
+      const affecte = affs.reduce((s, a) => s + Number(a.montant), 0);
+      const reste = Number(e.montant) - affecte;
+      if (affs.length === 0) {
+        complet = false;
+        detail.push(`⚠ ${quoi} : aucune famille rattachée`);
+      } else if (Math.abs(reste) > 0.005) {
+        complet = false;
+        detail.push(
+          `⚠ ${quoi} → ${familles} : ${reste > 0 ? `${formatEuros(reste)} non rattachés` : `${formatEuros(-reste)} rattachés en trop`}`,
+        );
+      } else if (affs.some((a) => (a.nature ?? "mensualite") !== nature)) {
+        complet = false;
+        detail.push(`⚠ ${quoi} → ${familles} : rattaché avec une autre nature que la catégorie`);
+      } else {
+        detail.push(`✓ ${quoi} → ${familles}`);
+      }
+    }
+    return concernee ? { complet, detail } : null;
+  };
 
   /** Question ouverte sur la ligne ou sur l'une de ses sous-écritures. */
   const questionDe = (op: OperationRow): string | null =>
@@ -681,14 +732,25 @@ export default function ListeOperations({
                         [...new Set(fillesRetenues(op.id).map((fi) => fi.categories?.nom ?? "— à classer —"))]
                           .join(", ") || "—"
                       : (op.categories?.nom ?? "—")}
-                    {affecteParOperation.has(op.id) && (
-                      <span
-                        className="ml-2 whitespace-nowrap rounded-full bg-jauge/10 px-2 py-0.5 text-[11px] font-medium text-jauge dark:bg-jauge/15"
-                        title={`${formatEuros(affecteParOperation.get(op.id) ?? 0)} fléchés vers des frais de scolarité`}
-                      >
-                        → scolarité
-                      </span>
-                    )}
+                    {(() => {
+                      const sco = etatScolarite(op);
+                      if (!sco) return null;
+                      return sco.complet ? (
+                        <span
+                          className="ml-2 whitespace-nowrap rounded-full bg-jauge/10 px-2 py-0.5 text-[11px] font-medium text-jauge dark:bg-jauge/15"
+                          title={`Onglet Frais de scolarité correctement alimenté :\n${sco.detail.join("\n")}`}
+                        >
+                          Scolarité
+                        </span>
+                      ) : (
+                        <span
+                          className="ml-2 whitespace-nowrap rounded-full bg-gold-soft px-2 py-0.5 text-[11px] font-medium text-gold"
+                          title={`Rattachement incomplet — l'onglet Frais de scolarité n'est pas entièrement alimenté :\n${sco.detail.join("\n")}\n\nMode modification : rattachez chaque écriture à sa famille.`}
+                        >
+                          ⚠ Scolarité à compléter
+                        </span>
+                      );
+                    })()}
                   </td>
                   <td className="px-4 py-3 text-muted capitalize">{op.mode_paiement ?? "—"}</td>
                   <td

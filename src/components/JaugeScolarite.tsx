@@ -80,10 +80,13 @@ export default function JaugeScolarite({
   etat,
   anneeScolaire,
   compacte = false,
+  etendue = false,
 }: {
   etat: EtatJauge;
   anneeScolaire: string;
   compacte?: boolean;
+  /** Version compacte qui occupe toute la largeur disponible (colonne large). */
+  etendue?: boolean;
 }) {
   const { du, attendu, paye, ton } = etat;
   const pct = du > 0 ? Math.min(100, (paye / du) * 100) : 0;
@@ -93,7 +96,7 @@ export default function JaugeScolarite({
   const hauteur = compacte ? "h-2.5" : "h-5";
 
   return (
-    <div className={compacte ? "w-full min-w-20 max-w-44" : "w-full"}>
+    <div className={compacte ? `w-full min-w-20 ${etendue ? "" : "max-w-44"}` : "w-full"}>
       {/* Conteneur SANS overflow caché : le repère doit pouvoir déborder. */}
       <div className={`relative ${compacte ? "py-1.5" : "py-2"}`}>
         <div className={`relative ${hauteur} overflow-hidden rounded-full bg-surface-2`}>

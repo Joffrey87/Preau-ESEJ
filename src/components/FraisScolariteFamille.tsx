@@ -136,7 +136,7 @@ function TablePaiements({ lignes, famille, association }: { lignes: Paiement[]; 
 
 /**
  * Frais de scolarité d'une famille, présentés comme dans l'onglet du bureau :
- * une ligne par année (total dû « mensuel ×10 », mois d'avance, frais de
+ * une ligne par année (total dû « mensuel x10 », mois d'avance, frais de
  * dossier, avancement, réglé avec retard, reste) et, au clic, ses paiements
  * avec les attestations.
  */
@@ -159,9 +159,13 @@ export default function FraisScolariteFamille({
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border text-left text-muted">
-              <th className="px-3 py-3 font-medium">Année scolaire</th>
-              <th className="px-2 py-3 text-center font-medium">Enfants</th>
-              <th className="px-3 py-3 text-right font-medium">Total dû</th>
+              <th className="w-px px-3 py-3 font-medium leading-tight">
+                Année
+                <br />
+                scolaire
+              </th>
+              <th className="w-px px-2 py-3 text-center font-medium">Enfants</th>
+              <th className="w-px whitespace-nowrap px-3 py-3 text-right font-medium">Total dû</th>
               <th
                 className="w-px px-2 py-3 text-center font-medium leading-tight"
                 title="Dépôt versé une fois par enfant ; il couvre son dernier mois à l'école."
@@ -175,9 +179,9 @@ export default function FraisScolariteFamille({
                 <br />
                 dossier
               </th>
-              <th className="hidden px-3 py-3 font-medium lg:table-cell">Avancement</th>
-              <th className="px-3 py-3 text-right font-medium">Réglé</th>
-              <th className="px-3 py-3 text-right font-medium">Reste</th>
+              <th className="hidden px-4 py-3 font-medium md:table-cell">Avancement</th>
+              <th className="w-px px-3 py-3 text-right font-medium">Réglé</th>
+              <th className="w-px px-3 py-3 text-right font-medium">Reste</th>
             </tr>
           </thead>
           <tbody>
@@ -197,15 +201,13 @@ export default function FraisScolariteFamille({
                     title="Afficher les paiements"
                     className={`cursor-pointer hover:bg-surface-2 ${deroulee ? "bg-surface-2" : ""}`}
                   >
-                    <td className="px-3 py-3">
-                      {annee}
-                    </td>
+                    <td className="whitespace-nowrap px-3 py-3">{annee}</td>
                     <td className="px-3 py-3 text-center tabular-nums">{nbEnfants ?? "—"}</td>
                     <td
                       className="px-3 py-3 text-right tabular-nums whitespace-nowrap"
                       title={`Total dû : ${formatEuros(s.du)}${s.partJuin.montant > 0 ? ` (juin non dû : −${formatEuros(s.partJuin.montant)})` : ""}`}
                     >
-                      {formatEuros(s.mensuel)}×10
+                      {formatEuros(s.mensuel)} x10
                       {s.partJuin.montant > 0 && <span className="block text-[11px] text-muted">−{formatEuros(s.partJuin.montant)} juin</span>}
                     </td>
                     <td className="px-2 py-3 text-center">
@@ -221,8 +223,8 @@ export default function FraisScolariteFamille({
                         }
                       />
                     </td>
-                    <td className="hidden px-3 py-3 lg:table-cell">
-                      <JaugeScolarite etat={etatJauge(s.mensuel, s.regle, annee)} anneeScolaire={annee} compacte />
+                    <td className="hidden px-4 py-3 md:table-cell">
+                      <JaugeScolarite etat={etatJauge(s.mensuel, s.regle, annee)} anneeScolaire={annee} compacte etendue />
                     </td>
                     <td
                       className={`px-3 py-3 text-right tabular-nums whitespace-nowrap ${

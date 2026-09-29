@@ -482,7 +482,7 @@ export default function GestionScolarite({
                       className="px-3 py-3 text-right tabular-nums whitespace-nowrap"
                       title={`Total dû : ${formatEuros(du)}${partJuin(i).montant > 0 ? ` (juin non dû : −${formatEuros(partJuin(i).montant)})` : ""}`}
                     >
-                      {formatEuros(Number(i.montant_mensuel))}×10
+                      {formatEuros(Number(i.montant_mensuel))} x10
                       {partJuin(i).montant > 0 && (
                         <span className="block text-[11px] text-muted">−{formatEuros(partJuin(i).montant)} juin</span>
                       )}

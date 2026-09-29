@@ -46,7 +46,6 @@ export default async function PaiementsFamille({ searchParams }: { searchParams:
         <FraisScolariteFamille
           famille={nom}
           association={association}
-          anneeOuverte={annee}
           annees={toutesAnnees.filter((a) => a.annee === annee)}
         />
       </section>

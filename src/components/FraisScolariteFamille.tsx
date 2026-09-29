@@ -144,14 +144,13 @@ export default function FraisScolariteFamille({
   famille,
   annees,
   association,
-  anneeOuverte,
 }: {
   famille: string;
   annees: AnneeFamille[];
   association: Association;
-  anneeOuverte: string | null;
 }) {
-  const [ouverte, setOuverte] = useState<string | null>(anneeOuverte);
+  // Replié par défaut : l'indication « Détails » invite à ouvrir.
+  const [ouverte, setOuverte] = useState<string | null>(null);
   const basculer = (annee: string) => setOuverte((o) => (o === annee ? null : annee));
 
   return (
@@ -196,10 +195,9 @@ export default function FraisScolariteFamille({
                   <tr
                     onClick={() => basculer(annee)}
                     title="Afficher les paiements"
-                    className={`cursor-pointer border-b border-border last:border-0 hover:bg-surface-2 ${deroulee ? "bg-surface-2" : ""}`}
+                    className={`cursor-pointer hover:bg-surface-2 ${deroulee ? "bg-surface-2" : ""}`}
                   >
                     <td className="px-3 py-3">
-                      <span className={`mr-1.5 inline-block text-muted transition-transform ${deroulee ? "rotate-90" : ""}`}>›</span>
                       {annee}
                     </td>
                     <td className="px-3 py-3 text-center tabular-nums">{nbEnfants ?? "—"}</td>
@@ -252,6 +250,21 @@ export default function FraisScolariteFamille({
                       title={s.reste < -0.005 ? "Trop-perçu" : undefined}
                     >
                       {formatEuros(s.reste)}
+                    </td>
+                  </tr>
+                  <tr className={deroulee ? "bg-surface-2" : "border-b border-border last:border-0"}>
+                    <td colSpan={8} className="px-3 pb-2 text-center">
+                      <button
+                        type="button"
+                        onClick={() => basculer(annee)}
+                        aria-expanded={deroulee}
+                        className="inline-flex items-center gap-1 text-xs font-medium text-gold hover:underline"
+                      >
+                        {deroulee ? "Masquer" : "Détails"}
+                        <svg viewBox="0 0 20 20" fill="currentColor" aria-hidden className={`h-4 w-4 transition-transform ${deroulee ? "rotate-180" : ""}`}>
+                          <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.06l3.71-3.83a.75.75 0 111.08 1.04l-4.25 4.39a.75.75 0 01-1.08 0L5.21 8.27a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+                        </svg>
+                      </button>
                     </td>
                   </tr>
 

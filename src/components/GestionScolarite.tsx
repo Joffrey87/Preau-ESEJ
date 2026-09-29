@@ -277,6 +277,9 @@ export default function GestionScolarite({
 
   const mensuelTotal = inscriptions.reduce((s, i) => s + Number(i.montant_mensuel), 0);
   const etatGlobal = etatJauge(mensuelTotal, sumRegle, annee);
+  // Reste à percevoir : normal tant que le réglé couvre le dû au jour J ; même
+  // règle que les familles (ambre à partir du 27, rouge dès le 1er du mois suivant).
+  const paiementGlobal = etatPaiement(annee, mensuelTotal, sumDu, sumRegle, todayISO());
 
   // Mois d'avance (dépôt) et frais de dossier, calculés depuis la Comptabilité.
   const depotDe = (i: Inscription) => {
@@ -382,7 +385,11 @@ export default function GestionScolarite({
           { l: "Total attendu", v: sumDu, c: "" },
           { l: "Dont rattachés depuis la compta", v: sumDon, c: sumDon > 0 ? "text-gold" : "text-muted" },
           { l: "Total réglé", v: sumRegle, c: "text-positive" },
-          { l: "Reste à percevoir", v: sumReste, c: sumReste > 0 ? "text-negative" : "" },
+          {
+            l: "Reste à percevoir",
+            v: sumReste,
+            c: paiementGlobal.retard > 0 ? "text-negative" : paiementGlobal.aReglerFinDeMois > 0 ? "text-gold" : "",
+          },
         ].map((s) => (
           <div key={s.l} className="rounded-xl border border-border bg-surface px-4 py-3">
             <div className="text-xs uppercase tracking-wider text-muted">{s.l}</div>

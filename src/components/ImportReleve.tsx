@@ -127,6 +127,8 @@ type Ecriture = {
   nomDonateur?: string;
   /** Doute à lever (ambre). Vidé dès que l'utilisateur tranche. */
   alerte: string | null;
+  /** Exercice choisi pour une sous-écriture (id). Absent : celui de la date de l'opération. */
+  exercice?: string;
 };
 
 type Fille = Ecriture & {
@@ -349,6 +351,15 @@ export default function ImportReleve({
     );
   }
   const anneesDe = (date: string) => anneesCandidates(date, anneeDeLibelle(exerciceDe(date)?.libelle));
+  /** Exercice d'une écriture : celui choisi pour la sous-écriture, à défaut celui de la date. */
+  const exerciceIdDe = (e: Ecriture, date: string) => e.exercice || exerciceDe(date)?.id || null;
+  /** Années scolaires à examiner : celle de l'exercice choisi d'abord, puis celles de la date. */
+  function anneesEcriture(e: Ecriture, date: string): string[] {
+    const parDate = anneesDe(date);
+    if (!e.exercice) return parDate;
+    const annee = anneeDeLibelle(exercices.find((x) => x.id === e.exercice)?.libelle);
+    return annee ? [annee, ...parDate.filter((a) => a !== annee)] : parDate;
+  }
 
   /** Nature d'affectation portée par la catégorie (null : écriture sans famille). */
   function natureDe(categorieId: string): NatureAffectation | null {
@@ -358,11 +369,11 @@ export default function ImportReleve({
   }
 
   /** Famille mémorisée pour ces libellés, parmi les familles permises (toutes si vide). */
-  function familleMemorisee(textes: string[], date: string, parmi: string[]): string | null {
+  function familleMemorisee(textes: string[], annees: string[], parmi: string[]): string | null {
     const m = rappeler(textes, souvenirsFamilles);
     if (!m) return null;
     const nom = m.split("|")[0];
-    const hit = famillesProposees(inscriptions, anneesDe(date)).find(
+    const hit = famillesProposees(inscriptions, annees).find(
       (p) => p.famille_nom === nom && (parmi.length === 0 || parmi.includes(p.id)),
     );
     return hit?.id ?? null;
@@ -376,7 +387,7 @@ export default function ImportReleve({
   function infoFamille(e: Ecriture, textes: string[][], date: string): InfoFamille | null {
     const nature = natureDe(e.categorie_id);
     if (!nature) return null;
-    const annees = anneesDe(date);
+    const annees = anneesEcriture(e, date);
     let candidats = e.candidats;
     if (!candidats) {
       candidats = [];
@@ -390,7 +401,7 @@ export default function ImportReleve({
     }
     let memorise = false;
     if (e.famille === undefined && candidats.length !== 1) {
-      const m = familleMemorisee(textes.flat(), date, candidats);
+      const m = familleMemorisee(textes.flat(), annees, candidats);
       if (m) {
         candidats = [m];
         memorise = true;
@@ -668,7 +679,7 @@ export default function ImportReleve({
               candidats = a.candidats;
               // Homonymes : un choix déjà fait pour ce payeur les départage.
               if (a.candidats.length > 1) {
-                const m = familleMemorisee([op.libelle], op.date, a.candidats);
+                const m = familleMemorisee([op.libelle], anneesDe(op.date), a.candidats);
                 if (m) {
                   candidats = [m];
                   if (a.alerte?.startsWith("Plusieurs familles portent ce nom")) alerte = null;
@@ -1062,6 +1073,7 @@ export default function ImportReleve({
       for (const f of l.filles) {
         const fid = crypto.randomUUID();
         const montant = Number(f.montant);
+        const exerciceFille = exerciceIdDe(f, l.date);
         const fam = infoFamille(f, textesFille(l, f), l.date);
         const don = infoDon(f, textesFille(l, f), montant, l.date);
         const libFille = f.libelle.trim() || `${l.libelle} — ${catNom(f.categorie_id) ?? ""}`;
@@ -1077,13 +1089,13 @@ export default function ImportReleve({
           type: l.type,
           categorie_id: f.categorie_id || null,
           compte_id: compteId,
-          exercice_id: exerciceId,
+          exercice_id: exerciceFille,
           mode_paiement: mode,
           est_ventilee: false,
           a_verifier: questions(f, fam, don),
           import_id: importId,
         });
-        rattacher(fid, fam, don, montant, l.date, exerciceId, mode);
+        rattacher(fid, fam, don, montant, l.date, exerciceFille, mode);
       }
     }
 
@@ -1543,6 +1555,7 @@ export default function ImportReleve({
                   const reste = resteFilles(l);
                   const catsDuSens = categories.filter((c) => c.type === l.type);
                   const ambre = l.inclus && aValider(l);
+                  const exoLigne = exerciceDe(l.date)?.id ?? "";
                   return (
                     <Fragment key={l.key}>
                       <tr
@@ -1691,7 +1704,25 @@ export default function ImportReleve({
                                   {f.alerte && badgeAlerte(f.alerte, () => majFille(i, f.cle, { alerte: null }))}
                                 </div>
                               </td>
-                              <td />
+                              <td className="px-3 py-1.5">
+                                <select
+                                  value={exerciceIdDe(f, l.date) ?? ""}
+                                  onChange={(e) =>
+                                    majFille(i, f.cle, {
+                                      exercice: e.target.value === exoLigne ? undefined : e.target.value,
+                                      candidats: undefined,
+                                      famille: undefined,
+                                    })
+                                  }
+                                  title="Exercice d'affectation de cette sous-écriture (par défaut, celui de la date de l'opération)"
+                                  className={`${selectCls} ${f.exercice && f.exercice !== exoLigne ? "border-accent text-accent" : ""}`}
+                                >
+                                  {!exoLigne && <option value="">— exercice —</option>}
+                                  {exercices.map((x) => (
+                                    <option key={x.id} value={x.id}>{x.libelle.replace("Exercice ", "")}</option>
+                                  ))}
+                                </select>
+                              </td>
                               <td className="px-3 py-1.5">
                                 <select
                                   value={f.categorie_id}

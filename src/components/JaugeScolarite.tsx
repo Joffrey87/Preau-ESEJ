@@ -1,6 +1,7 @@
 "use client";
 
-import { formatEurosCourt as formatEuros } from "@/lib/format";
+import { formatEurosCourt as formatEuros, todayISO } from "@/lib/format";
+import { etatPaiement } from "@/lib/retardScolarite";
 
 export const MOIS_PAR_AN = 10;
 
@@ -50,12 +51,13 @@ export function etatJauge(
   const dus = moisDus(anneeScolaire, aujourdhui);
   const du = montantMensuel * MOIS_PAR_AN;
   const attendu = montantMensuel * dus;
-  const manque = attendu - paye;
-  const retardMois = montantMensuel > 0 ? manque / montantMensuel : 0;
+  const retardMois = montantMensuel > 0 ? (attendu - paye) / montantMensuel : 0;
 
-  // Tolérance d'un centime : un arrondi ne doit pas déclencher une alerte.
+  // Même règle que la colonne Réglé : ambre à partir du 27 pour la mensualité
+  // du mois non encore réglée, rouge dès le 1er du mois suivant.
+  const p = etatPaiement(anneeScolaire, montantMensuel, du, paye, todayISO(aujourdhui));
   const ton: EtatJauge["ton"] =
-    dus === 0 ? "neutre" : retardMois >= 2 ? "rouge" : retardMois >= 1 ? "orange" : "vert";
+    dus === 0 ? "neutre" : p.retard > 0 ? "rouge" : p.aReglerFinDeMois > 0 ? "orange" : "vert";
 
   return { du, attendu, paye, retardMois, ton };
 }
@@ -157,7 +159,7 @@ export function AideReglement({ retard, finDeMois }: { retard: boolean; finDeMoi
     <span
       title={retard ? "En retard : mensualité due depuis la fin du mois dernier" : "À payer d'ici la fin du mois"}
       className={`ml-1 inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border text-[10px] font-bold ${
-        retard ? "border-negative/50 text-negative" : "border-orange-500/50 text-orange-500"
+        retard ? "border-negative/50 text-negative" : "border-gold/60 text-gold"
       }`}
     >
       ?

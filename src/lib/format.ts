@@ -28,6 +28,7 @@ export function formatDate(iso: string): string {
   });
 }
 
-export function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
+/** Date du jour (AAAA-MM-JJ) à l'heure de Paris, quel que soit le fuseau du serveur. */
+export function todayISO(date: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/Paris" }).format(date);
 }

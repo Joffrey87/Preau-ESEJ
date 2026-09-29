@@ -226,7 +226,7 @@ export default function FraisScolariteFamille({
                     </td>
                     <td
                       className={`px-3 py-3 text-right tabular-nums whitespace-nowrap ${
-                        s.retard > 0 ? "font-medium text-negative" : s.aReglerFinDeMois > 0 ? "font-medium text-orange-500" : "text-positive"
+                        s.retard > 0 ? "font-medium text-negative" : s.aReglerFinDeMois > 0 ? "font-medium text-gold" : "text-positive"
                       }`}
                       title={
                         s.retard > 0

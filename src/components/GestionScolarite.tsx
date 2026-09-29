@@ -468,7 +468,7 @@ export default function GestionScolarite({
                     </td>
                     <td
                       className={`px-3 py-3 text-right tabular-nums whitespace-nowrap ${
-                        paiement.retard > 0 ? "font-medium text-negative" : paiement.aReglerFinDeMois > 0 ? "font-medium text-orange-500" : "text-positive"
+                        paiement.retard > 0 ? "font-medium text-negative" : paiement.aReglerFinDeMois > 0 ? "font-medium text-gold" : "text-positive"
                       }`}
                       title={
                         paiement.retard > 0

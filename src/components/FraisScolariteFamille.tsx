@@ -279,41 +279,45 @@ export function DossierAnneesPrecedentes({
 }) {
   const triees = [...annees].sort((a, b) => b.annee.localeCompare(a.annee));
   return (
-    <section className="rounded-xl border border-border bg-surface p-4">
-      <h2 className="text-sm font-semibold">Dossier famille · années précédentes</h2>
-      {triees.length === 0 ? (
-        <p className="mt-2 text-sm text-muted">Aucune année précédente à l&apos;école.</p>
-      ) : (
-        <div className="mt-3 space-y-5">
-          {triees.map(({ annee, nbEnfants, s }) => (
-            <div key={annee}>
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg bg-surface-2 px-3 py-2 text-xs">
-                <span className="rounded-full bg-accent px-2.5 py-0.5 text-[11px] font-semibold text-accent-fg">{annee}</span>
-                {nbEnfants != null && (
+    <section>
+      <h2 className="mb-2 text-sm font-semibold">
+        Dossier famille <span className="font-normal text-muted">· années précédentes</span>
+      </h2>
+      <div className="rounded-xl border border-border bg-surface p-4">
+        {triees.length === 0 ? (
+          <p className="text-sm text-muted">Aucune année précédente à l&apos;école.</p>
+        ) : (
+          <div className="space-y-5">
+            {triees.map(({ annee, nbEnfants, s }) => (
+              <div key={annee}>
+                <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg bg-surface-2 px-3 py-2 text-xs">
+                  <span className="rounded-full bg-accent px-2.5 py-0.5 text-[11px] font-semibold text-accent-fg">{annee}</span>
+                  {nbEnfants != null && (
+                    <span className="text-muted">
+                      {nbEnfants} enfant{nbEnfants > 1 ? "s" : ""}
+                    </span>
+                  )}
                   <span className="text-muted">
-                    {nbEnfants} enfant{nbEnfants > 1 ? "s" : ""}
+                    Dû <span className="tabular-nums text-foreground">{formatEuros(s.du)}</span>
                   </span>
-                )}
-                <span className="text-muted">
-                  Dû <span className="tabular-nums text-foreground">{formatEuros(s.du)}</span>
-                </span>
-                <span className="text-muted">
-                  Réglé <span className="tabular-nums text-foreground">{formatEuros(s.regle)}</span>
-                </span>
-                <span className="ml-auto text-muted">
-                  Reste{" "}
-                  <span className={`font-medium tabular-nums ${s.reste > 0.005 ? "text-negative" : s.reste < -0.005 ? "text-positive" : "text-foreground"}`}>
-                    {formatEuros(s.reste)}
+                  <span className="text-muted">
+                    Réglé <span className="tabular-nums text-foreground">{formatEuros(s.regle)}</span>
                   </span>
-                </span>
+                  <span className="ml-auto text-muted">
+                    Reste{" "}
+                    <span className={`font-medium tabular-nums ${s.reste > 0.005 ? "text-negative" : s.reste < -0.005 ? "text-positive" : "text-foreground"}`}>
+                      {formatEuros(s.reste)}
+                    </span>
+                  </span>
+                </div>
+                <div className="mt-1 px-1 text-xs">
+                  <TablePaiements lignes={paiements(s)} famille={famille} association={association} />
+                </div>
               </div>
-              <div className="mt-1 px-1 text-xs">
-                <TablePaiements lignes={paiements(s)} famille={famille} association={association} />
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
+      </div>
     </section>
   );
 }

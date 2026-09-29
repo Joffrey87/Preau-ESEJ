@@ -39,7 +39,7 @@ export default async function PaiementsFamille({ searchParams }: { searchParams:
 
   return (
     <div className="space-y-6">
-      <h1 className="text-lg font-semibold">Paiements</h1>
+      <h1 className="text-center text-lg font-semibold">Paiements</h1>
 
       <section>
         <h2 className="mb-2 text-sm font-semibold">Frais de scolarité</h2>
@@ -51,41 +51,43 @@ export default async function PaiementsFamille({ searchParams }: { searchParams:
         />
       </section>
 
-      <section className="rounded-xl border border-border bg-surface p-4">
-        <h2 className="text-sm font-semibold">Activités{annee ? ` · ${annee}` : ""}</h2>
-        {activites.length === 0 ? (
-          <p className="mt-2 text-sm text-muted">Aucune activité pour le moment.</p>
-        ) : (
-          <table className="mt-2 w-full text-sm">
-            <tbody>
-              {activites.map((a) => (
-                <tr key={`${a.activite_id}-${a.eleve_id}`} className="border-b border-border/50 last:border-0">
-                  <td className="py-2">
-                    {a.titre}
-                    {a.date_activite && <span className="ml-1 text-xs text-muted">({formatDate(a.date_activite)})</span>}
-                  </td>
-                  <td className="py-2 text-muted">{a.prenom || a.initiale ? prenomEleve(a) : ""}</td>
-                  <td className="py-2 text-right tabular-nums">{formatEuros(Number(a.montant))}</td>
-                  <td className="py-2 text-right">
-                    {a.paye_le ? (
-                      <span className="inline-flex items-center gap-2 text-xs text-positive">
-                        payé le {formatDate(a.paye_le)}
-                        <BoutonAttestation
-                          association={association}
-                          attestation={attestation("activite", Number(a.montant), a.paye_le, "Famille", null, a.titre, a.prenom || a.initiale ? prenomEleve(a) : null)}
-                        />
-                      </span>
-                    ) : (
-                      <span className="text-xs text-gold">
-                        à régler{a.date_limite ? ` avant le ${formatDate(a.date_limite)}` : ""}
-                      </span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+      <section>
+        <h2 className="mb-2 text-sm font-semibold">Activités</h2>
+        <div className="rounded-xl border border-border bg-surface p-4">
+          {activites.length === 0 ? (
+            <p className="text-sm text-muted">Aucune activité pour le moment.</p>
+          ) : (
+            <table className="w-full text-sm">
+              <tbody>
+                {activites.map((a) => (
+                  <tr key={`${a.activite_id}-${a.eleve_id}`} className="border-b border-border/50 last:border-0">
+                    <td className="py-2">
+                      {a.titre}
+                      {a.date_activite && <span className="ml-1 text-xs text-muted">({formatDate(a.date_activite)})</span>}
+                    </td>
+                    <td className="py-2 text-muted">{a.prenom || a.initiale ? prenomEleve(a) : ""}</td>
+                    <td className="py-2 text-right tabular-nums">{formatEuros(Number(a.montant))}</td>
+                    <td className="py-2 text-right">
+                      {a.paye_le ? (
+                        <span className="inline-flex items-center gap-2 text-xs text-positive">
+                          payé le {formatDate(a.paye_le)}
+                          <BoutonAttestation
+                            association={association}
+                            attestation={attestation("activite", Number(a.montant), a.paye_le, "Famille", null, a.titre, a.prenom || a.initiale ? prenomEleve(a) : null)}
+                          />
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gold">
+                          à régler{a.date_limite ? ` avant le ${formatDate(a.date_limite)}` : ""}
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
       </section>
 
       <DossierAnneesPrecedentes

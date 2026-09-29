@@ -270,8 +270,8 @@ export default function FraisScolariteFamille({
 
                   {deroulee && (
                     <tr className="border-b border-border bg-surface-2/40">
-                      <td colSpan={8} className="px-4 py-2 text-xs">
-                        <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">Détails des paiements</h3>
+                      <td colSpan={8} className="px-4 py-2 text-left text-xs">
+                        <h3 className="mb-1 text-left text-xs font-semibold uppercase tracking-wide text-muted">Détails des paiements</h3>
                         <TablePaiements lignes={lignes} famille={famille} association={association} />
                       </td>
                     </tr>

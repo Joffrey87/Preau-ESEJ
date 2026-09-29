@@ -253,7 +253,7 @@ export default function FraisScolariteFamille({
                     </td>
                   </tr>
                   <tr className={deroulee ? "bg-surface-2" : "border-b border-border last:border-0"}>
-                    <td colSpan={8} className="px-3 pb-2 text-center">
+                    <td colSpan={8} className="px-3 pb-2 text-left">
                       <button
                         type="button"
                         onClick={() => basculer(annee)}

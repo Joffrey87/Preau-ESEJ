@@ -129,7 +129,12 @@ type Ecriture = {
   alerte: string | null;
 };
 
-type Fille = Ecriture & { cle: string; montant: string };
+type Fille = Ecriture & {
+  cle: string;
+  montant: string;
+  /** Montant calculé (reste à ventiler), recalculé tant qu'il n'est pas saisi à la main. */
+  montantAuto?: boolean;
+};
 
 type Ligne = LigneReleve &
   Ecriture & {
@@ -183,6 +188,18 @@ let compteurFille = 0;
 const nouvelleCle = () => `f${++compteurFille}`;
 const signe = (type: string, montant: number) => (type === "recette" ? montant : -montant);
 const arrondi = (n: number) => Math.round(n * 100) / 100;
+
+/** Reporte le reste à ventiler sur la dernière sous-écriture au montant automatique. */
+function equilibrer(total: number, filles: Fille[]): Fille[] {
+  let k = -1;
+  filles.forEach((f, j) => {
+    if (f.montantAuto) k = j;
+  });
+  if (k < 0) return filles;
+  const autres = filles.reduce((s, f, j) => (j === k ? s : s + (Number(f.montant) || 0)), 0);
+  const reste = arrondi(total - autres);
+  return filles.map((f, j) => (j === k ? { ...f, montant: reste > 0 ? reste.toFixed(2) : "" } : f));
+}
 
 export default function ImportReleve({
   categories,
@@ -512,31 +529,65 @@ export default function ImportReleve({
         setLignes([]);
         return;
       }
-      // Détection sur DATE + MONTANT uniquement. Deux niveaux, en deux passes
+      // Détection sur DATE + MONTANT. Deux niveaux, en deux passes
       // (le match exact ±1j est prioritaire, il « consomme » l'opération) :
       //   • ±1 jour  → déjà en compta      → grisée + DÉCOCHÉE
       //   • ±5 jours → doublon possible     → surlignée + COCHÉE (à vérifier)
+      // Exception : deux opérations clairement rattachées à des familles
+      // différentes (ex. frais de dossier de deux familles le même mois) ne sont
+      // jamais rapprochées, quel que soit l'écart de date.
       const jour = (iso: string) => Math.round(Date.parse(iso) / 86400000);
-      const existing = lignesBancaires.map((o) => ({
-        m: Number(o.montant).toFixed(2), j: jour(o.date_operation),
-        date: o.date_operation, lib: o.libelle, montant: Number(o.montant), type: o.type, cat: o.categorie_id, used: false,
-      }));
+      const famillesDeTextes = (textes: string[], date: string) =>
+        new Set(reconnaitreFamille(textes, inscriptions, anneesDe(date)).candidats.map((c) => c.famille_nom));
+      // Familles déjà rattachées en compta, portées par la ligne bancaire (ou ses sous-écritures).
+      const famillesAffectees = new Map<string, Set<string>>();
+      for (const a of affectations) {
+        const o = opsParId.get(a.operation_id);
+        const i = inscParId.get(a.inscription_id);
+        if (!o || !i) continue;
+        const cle = o.parent_id ?? o.id;
+        const s = famillesAffectees.get(cle) ?? new Set<string>();
+        s.add(i.famille_nom);
+        famillesAffectees.set(cle, s);
+      }
+      const existing = lignesBancaires.map((o) => {
+        const affectees = famillesAffectees.get(o.id);
+        const b = brutDe(o);
+        return {
+          m: Number(o.montant).toFixed(2), j: jour(o.date_operation),
+          date: o.date_operation, lib: o.libelle, montant: Number(o.montant), type: o.type, cat: o.categorie_id, used: false,
+          familles: affectees && affectees.size > 0
+            ? affectees
+            : famillesDeTextes(b ? [b, o.libelle] : [o.libelle], o.date_operation),
+        };
+      });
       type Existant = { date: string; libelle: string; montant: number; type: string; categorie: string | null };
       const mkExistant = (e: (typeof existing)[number]): Existant => ({
         date: e.date, libelle: e.lib, montant: e.montant, type: e.type,
         categorie: catNom(e.cat),
       });
-      type P = { op: (typeof brut)[number]; i: number; m: string; j: number; doublon: boolean; suspect: boolean; existant: Existant | null };
-      const p: P[] = brut.map((op, i) => ({ op, i, m: op.montant.toFixed(2), j: jour(op.date), doublon: false, suspect: false, existant: null }));
-      const chercher = (m: string, j: number, tol: number) =>
-        existing.findIndex((e) => !e.used && e.m === m && Math.abs(e.j - j) <= tol);
+      type P = {
+        op: (typeof brut)[number]; i: number; m: string; j: number; familles: Set<string>;
+        doublon: boolean; suspect: boolean; existant: Existant | null;
+      };
+      const p: P[] = brut.map((op, i) => ({
+        op, i, m: op.montant.toFixed(2), j: jour(op.date), familles: famillesDeTextes([op.libelle], op.date),
+        doublon: false, suspect: false, existant: null,
+      }));
+      /** Familles identifiées des deux côtés et sans aucune en commun : opérations distinctes. */
+      const famillesDistinctes = (a: Set<string>, b: Set<string>) =>
+        a.size > 0 && b.size > 0 && ![...a].some((f) => b.has(f));
+      const chercher = (x: P, tol: number) =>
+        existing.findIndex(
+          (e) => !e.used && e.m === x.m && Math.abs(e.j - x.j) <= tol && !famillesDistinctes(e.familles, x.familles),
+        );
       for (const x of p) {
-        const idx = chercher(x.m, x.j, 1);
+        const idx = chercher(x, 1);
         if (idx >= 0) { existing[idx].used = true; x.doublon = true; x.existant = mkExistant(existing[idx]); }
       }
       for (const x of p) {
         if (x.doublon) continue;
-        const idx = chercher(x.m, x.j, 5);
+        const idx = chercher(x, 5);
         if (idx >= 0) { existing[idx].used = true; x.suspect = true; x.existant = mkExistant(existing[idx]); }
       }
       let ignoresN = 0, suspectsN = 0;
@@ -709,9 +760,14 @@ export default function ImportReleve({
     setLignes((ls) => ls.map((l, j) => (j === i ? { ...l, ...patch } : l)));
   const majFille = (i: number, cle: string, patch: Partial<Fille>) =>
     setLignes((ls) =>
-      ls.map((l, j) =>
-        j === i ? { ...l, filles: l.filles.map((f) => (f.cle === cle ? { ...f, ...patch } : f)) } : l,
-      ),
+      ls.map((l, j) => {
+        if (j !== i) return l;
+        // Un montant saisi à la main n'est plus recalculé ; le reste est reporté
+        // sur la dernière sous-écriture au montant automatique.
+        const p = patch.montant !== undefined ? { ...patch, montantAuto: false } : patch;
+        const filles = l.filles.map((f) => (f.cle === cle ? { ...f, ...p } : f));
+        return { ...l, filles: patch.montant !== undefined ? equilibrer(l.montant, filles) : filles };
+      }),
     );
   /** Modifie la ligne ou l'une de ses sous-écritures. */
   const majEcriture = (i: number, cle: string | null, patch: Partial<Ecriture>) =>
@@ -720,26 +776,39 @@ export default function ImportReleve({
   const resteFilles = (l: Ligne) =>
     arrondi(l.montant - l.filles.reduce((s, f) => s + (Number(f.montant) || 0), 0));
 
+  const filleVide = (l: Ligne, montant: string, montantAuto: boolean): Fille => ({
+    cle: nouvelleCle(),
+    libelle: l.remise ? "Chèque — " : `${l.libelle} — `,
+    categorie_id: "",
+    montant,
+    montantAuto,
+    alerte: null,
+  });
+
+  /** Ajoute une sous-écriture, qui reçoit le reste à ventiler (les précédentes sont figées). */
   function ajouterFille(i: number) {
     const l = lignes[i];
     const reste = resteFilles(l);
     maj(i, {
       ouvert: true,
       filles: [
-        ...l.filles,
-        {
-          cle: nouvelleCle(),
-          libelle: l.remise ? "Chèque — " : `${l.libelle} — `,
-          categorie_id: "",
-          montant: reste > 0 ? reste.toFixed(2) : "",
-          alerte: null,
-        },
+        ...l.filles.map((f) => ({ ...f, montantAuto: false })),
+        filleVide(l, reste > 0 ? reste.toFixed(2) : "", true),
       ],
     });
   }
 
+  /**
+   * Chevron d'une ligne non ventilée : ouvre directement deux sous-écritures.
+   * La seconde porte le reste et se recalcule quand on saisit le montant de la première.
+   */
+  function ventiler(i: number) {
+    const l = lignes[i];
+    maj(i, { ouvert: true, filles: [filleVide(l, "", false), filleVide(l, l.montant.toFixed(2), true)] });
+  }
+
   const retirerFille = (i: number, cle: string) =>
-    maj(i, { filles: lignes[i].filles.filter((f) => f.cle !== cle) });
+    maj(i, { filles: equilibrer(lignes[i].montant, lignes[i].filles.filter((f) => f.cle !== cle)) });
 
   // --- Synthèse et filtres -------------------------------------------------
 
@@ -1484,10 +1553,14 @@ export default function ImportReleve({
                         <td className="py-2 pl-2 align-middle">
                           <button
                             type="button"
-                            onClick={() => (ventilee || l.ouvert ? maj(i, { ouvert: !l.ouvert }) : ajouterFille(i))}
-                            title={ventilee ? "Voir les sous-écritures" : "Ventiler cette ligne en sous-écritures"}
-                            className={`flex h-6 w-6 items-center justify-center rounded text-base leading-none hover:bg-surface-2 ${
-                              ventilee ? "text-accent" : "text-muted/50"
+                            onClick={() => (ventilee || l.ouvert ? maj(i, { ouvert: !l.ouvert }) : ventiler(i))}
+                            title={
+                              ventilee
+                                ? l.ouvert ? "Replier les sous-écritures" : "Voir les sous-écritures"
+                                : "Ventiler cette ligne en plusieurs sous-écritures"
+                            }
+                            className={`flex h-6 w-6 items-center justify-center rounded border text-base leading-none hover:bg-surface-2 hover:text-accent ${
+                              ventilee ? "border-accent/40 text-accent" : "border-border text-muted"
                             }`}
                           >
                             <span className={`transition-transform ${l.ouvert ? "rotate-90" : ""}`}>›</span>

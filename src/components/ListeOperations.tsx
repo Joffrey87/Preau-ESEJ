@@ -683,7 +683,7 @@ export default function ListeOperations({
                       : (op.categories?.nom ?? "—")}
                     {affecteParOperation.has(op.id) && (
                       <span
-                        className="ml-2 whitespace-nowrap rounded-full bg-gold-soft px-2 py-0.5 text-[11px] font-medium text-gold"
+                        className="ml-2 whitespace-nowrap rounded-full bg-jauge/10 px-2 py-0.5 text-[11px] font-medium text-jauge dark:bg-jauge/15"
                         title={`${formatEuros(affecteParOperation.get(op.id) ?? 0)} fléchés vers des frais de scolarité`}
                       >
                         → scolarité

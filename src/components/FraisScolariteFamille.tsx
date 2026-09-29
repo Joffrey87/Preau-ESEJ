@@ -159,7 +159,7 @@ export default function FraisScolariteFamille({
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border text-left text-muted">
-              <th className="w-px px-3 py-3 font-medium leading-tight">
+              <th className="w-px whitespace-nowrap px-3 py-3 font-medium leading-tight">
                 Année
                 <br />
                 scolaire
@@ -167,14 +167,14 @@ export default function FraisScolariteFamille({
               <th className="w-px px-2 py-3 text-center font-medium">Enfants</th>
               <th className="w-px whitespace-nowrap px-3 py-3 text-right font-medium">Total dû</th>
               <th
-                className="w-px px-2 py-3 text-center font-medium leading-tight"
+                className="w-px whitespace-nowrap px-2 py-3 text-center font-medium leading-tight"
                 title="Dépôt versé une fois par enfant ; il couvre son dernier mois à l'école."
               >
                 Mois
                 <br />
                 d&apos;avance
               </th>
-              <th className="w-px px-2 py-3 text-center font-medium leading-tight">
+              <th className="w-px whitespace-nowrap px-2 py-3 text-center font-medium leading-tight">
                 Frais de
                 <br />
                 dossier

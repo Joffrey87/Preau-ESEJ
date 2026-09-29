@@ -429,7 +429,7 @@ export default function GestionScolarite({
               <th className="px-2 py-3 font-medium text-center">Enfants</th>
               <th className="px-3 py-3 font-medium text-right">Total dû</th>
               <th
-                className="w-px px-2 py-3 text-center font-medium leading-tight"
+                className="w-px whitespace-nowrap px-2 py-3 text-center font-medium leading-tight"
                 title="Dépôt versé une fois par enfant, l'été précédant son entrée ; il éponge le dernier mois de sa scolarité à l'école. Alimenté par la Comptabilité (affectation « mois d'avance »)."
               >
                 Mois
@@ -437,7 +437,7 @@ export default function GestionScolarite({
                 d&apos;avance
               </th>
               <th
-                className="w-px px-2 py-3 text-center font-medium leading-tight"
+                className="w-px whitespace-nowrap px-2 py-3 text-center font-medium leading-tight"
                 title={`${FRAIS_DOSSIER_PAR_ENFANT} € par enfant entrant. Alimenté par la Comptabilité (affectation « frais de dossier »).`}
               >
                 Frais de

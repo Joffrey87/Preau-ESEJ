@@ -264,7 +264,11 @@ export default function ListeOperations({
     op.a_verifier ||
     (fillesDe.get(op.id) ?? []).map((fi) => fi.a_verifier).find((q): q is string => !!q) ||
     null;
-  const nbAVerifier = racines.filter((op) => questionDe(op)).length;
+  /** Rattachement à l'onglet Frais de scolarité incomplet : une information manque. */
+  const scolariteIncomplete = (op: OperationRow) => etatScolarite(op)?.complet === false;
+  /** Ligne à signaler en ambre : question ouverte ou scolarité à compléter. */
+  const aVerifier = (op: OperationRow) => !!questionDe(op) || scolariteIncomplete(op);
+  const nbAVerifier = racines.filter(aVerifier).length;
 
   /** Une écriture « Don » (la ligne ou l'une de ses sous-écritures) reste à régulariser. */
   const aRegulariser = (o: OperationRow) =>
@@ -321,7 +325,7 @@ export default function ListeOperations({
     return motsRecherche.length > 0 && !!op && !correspondent([op]) && (fillesDe.get(opId) ?? []).length > 0;
   };
   const operationsAffichees = parCategorie
-    .filter((op) => !filtreAVerifier || questionDe(op))
+    .filter((op) => !filtreAVerifier || aVerifier(op))
     .filter((op) => !filtreDons || donARegulariser(op))
     .filter(correspondRecherche);
   const totalAffiche = operationsAffichees.reduce(
@@ -510,7 +514,7 @@ export default function ListeOperations({
           <button
             type="button"
             onClick={() => setFiltreAVerifier((v) => !v)}
-            title="Lignes portant une question ouverte (en ambre dans le tableau)"
+            title="Lignes portant une question ouverte, ou dont le rattachement à l'onglet Frais de scolarité est à compléter (en ambre dans le tableau)"
             className={`rounded-full border px-3 py-1 text-xs font-medium ${
               filtreAVerifier
                 ? "border-gold bg-gold text-white"
@@ -664,7 +668,7 @@ export default function ListeOperations({
                   className={`cursor-pointer border-b border-border last:border-0 transition-colors hover:bg-surface-2 ${
                     restaurees.includes(op.id)
                       ? "bg-positive/10 ring-1 ring-inset ring-positive/40"
-                      : questionDe(op)
+                      : aVerifier(op)
                         ? "bg-gold-soft/60"
                         : ""
                   }`}
@@ -747,7 +751,7 @@ export default function ListeOperations({
                           className="ml-2 whitespace-nowrap rounded-full bg-gold-soft px-2 py-0.5 text-[11px] font-medium text-gold"
                           title={`Rattachement incomplet — l'onglet Frais de scolarité n'est pas entièrement alimenté :\n${sco.detail.join("\n")}\n\nMode modification : rattachez chaque écriture à sa famille.`}
                         >
-                          ⚠ Scolarité à compléter
+                          ⚠ À compléter
                         </span>
                       );
                     })()}

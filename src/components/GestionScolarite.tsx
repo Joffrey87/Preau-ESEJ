@@ -9,7 +9,7 @@ import { Modal, Field, FormFooter, inputCls } from "./GestionComptes";
 import JaugeScolarite, { AideReglement, etatJauge } from "@/components/JaugeScolarite";
 import FamilleEnfants, { type FicheFamille } from "@/components/FamilleEnfants";
 import { partJuinNonDue, type Eleve } from "@/lib/eleves";
-import { etatPaiement } from "@/lib/retardScolarite";
+import { etatPaiement, moisEchus } from "@/lib/retardScolarite";
 import { telechargerAttestation, type Attestation } from "@/lib/attestationPdf";
 import { modeleRecuEnCache } from "@/lib/modeleRecu";
 import Icon from "@/components/Icon";
@@ -279,7 +279,18 @@ export default function GestionScolarite({
   const etatGlobal = etatJauge(mensuelTotal, sumRegle, annee);
   // Reste à percevoir : normal tant que le réglé couvre le dû au jour J ; même
   // règle que les familles (ambre à partir du 27, rouge dès le 1er du mois suivant).
-  const paiementGlobal = etatPaiement(annee, mensuelTotal, sumDu, sumRegle, todayISO());
+  const paiementGlobal = etatPaiement(annee, mensuelTotal, sumDu, sumRegle, aujourdhui);
+
+  // Dû à la fin du mois en cours : mensualités échues, mois en cours compris
+  // (juin allégé de la part des enfants en CM2).
+  const echus = moisEchus(annee, aujourdhui);
+  const sumDuFinMois = inscriptions.reduce(
+    (s, i) => s + Math.min(duDe(i), echus * Number(i.montant_mensuel) - (echus === 10 ? partJuin(i).montant : 0)),
+    0,
+  );
+  // Vert si le réglé couvre ce dû ; ambre jusqu'à 1 000 € de manque ; rouge au-delà.
+  const manqueFinMois = sumDuFinMois - sumRegle;
+  const tonRegle = manqueFinMois <= 0.005 ? "text-positive" : manqueFinMois <= 1000 ? "text-gold" : "text-negative";
 
   // Mois d'avance (dépôt) et frais de dossier, calculés depuis la Comptabilité.
   const depotDe = (i: Inscription) => {
@@ -384,16 +395,28 @@ export default function GestionScolarite({
         {[
           { l: "Total attendu", v: sumDu, c: "" },
           { l: "Dont rattachés depuis la compta", v: sumDon, c: sumDon > 0 ? "text-gold" : "text-muted" },
-          { l: "Total réglé", v: sumRegle, c: "text-positive" },
+          {
+            l: "Total réglé / Dû",
+            v: sumRegle,
+            c: tonRegle,
+            apres: sumDuFinMois,
+            aide:
+              manqueFinMois > 0.005
+                ? `Il manque ${formatEuros(manqueFinMois)} sur le dû à la fin du mois`
+                : "Le réglé couvre le dû à la fin du mois",
+          },
           {
             l: "Reste à percevoir",
             v: sumReste,
             c: paiementGlobal.retard > 0 ? "text-negative" : paiementGlobal.aReglerFinDeMois > 0 ? "text-gold" : "",
           },
-        ].map((s) => (
-          <div key={s.l} className="rounded-xl border border-border bg-surface px-4 py-3">
+        ].map((s: { l: string; v: number; c: string; apres?: number; aide?: string }) => (
+          <div key={s.l} className="rounded-xl border border-border bg-surface px-4 py-3" title={s.aide}>
             <div className="text-xs uppercase tracking-wider text-muted">{s.l}</div>
-            <div className={`mt-1 text-xl font-semibold tabular-nums ${s.c}`}>{formatEuros(s.v)}</div>
+            <div className={`mt-1 text-xl font-semibold tabular-nums ${s.c}`}>
+              {formatEuros(s.v)}
+              {s.apres != null && <span className="font-normal"> / {formatEuros(s.apres)}</span>}
+            </div>
           </div>
         ))}
       </div>

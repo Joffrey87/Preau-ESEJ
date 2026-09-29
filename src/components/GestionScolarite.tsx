@@ -330,8 +330,13 @@ export default function GestionScolarite({
     du > 0 ? `${(percu / du * 100).toLocaleString("fr-FR", { maximumFractionDigits: 0 })} %` : "—";
   const duPerception = perception.duMens + perception.duFrais;
   const tauxPerception = pct(perception.percuMens + perception.percuFrais, duPerception);
+  // Part de l'année déjà exigible : mensualités échues à la fin du mois en
+  // cours, plus les frais de dossier (dus dès l'inscription).
+  const duExigible = sumDuFinMois + perception.duFrais;
+  const tauxDu = pct(duExigible, duPerception);
   const aidePerception = [
     `Perçu sur l'année ${annee} (mensualités + frais de dossier) : ${formatEuros(perception.percuMens + perception.percuFrais)} / ${formatEuros(duPerception)}`,
+    `Exigible à la fin du mois : ${formatEuros(duExigible)} (${tauxDu} de l'année)`,
     `Mensualités : ${formatEuros(perception.percuMens)} / ${formatEuros(perception.duMens)} (${pct(perception.percuMens, perception.duMens)})`,
     `Frais de dossier : ${formatEuros(perception.percuFrais)} / ${formatEuros(perception.duFrais)} (${pct(perception.percuFrais, perception.duFrais)})`,
     "Mois d'avance exclus ; perçu de chaque famille plafonné à son dû.",
@@ -430,7 +435,7 @@ export default function GestionScolarite({
               manqueFinMois > 0.005
                 ? `Il manque ${formatEuros(manqueFinMois)} sur le dû à la fin du mois`
                 : "Le réglé couvre le dû à la fin du mois",
-            sous: `Perception annuelle : ${tauxPerception}`,
+            sous: `Perception annuelle : ${tauxPerception} / ${tauxDu} dû`,
             aideSous: aidePerception,
           },
           {

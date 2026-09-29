@@ -2,24 +2,14 @@
 
 import { useState } from "react";
 import { useCoffre } from "@/components/CoffreProvider";
-import { useCarnet } from "@/components/CarnetProvider";
 
 /**
  * Déverrouillage du coffre « en place » : un bouton qui se transforme en champ
  * de saisie du code, sans passer par la page Paramètres. À poser sur toute page
  * touchant aux données chiffrées (dons, donateurs, reçus).
  */
-export default function DeverrouillerCoffre({
-  label = "🔓 Déverrouiller",
-  carnet = false,
-}: {
-  label?: string;
-  /** Coffre du carnet d'adresses (contacts, prénoms des élèves) au lieu de celui des dons. */
-  carnet?: boolean;
-}) {
-  const dons = useCoffre();
-  const adresses = useCarnet();
-  const { ouvrir } = carnet ? adresses : dons;
+export default function DeverrouillerCoffre({ label = "🔓 Déverrouiller" }: { label?: string }) {
+  const { ouvrir } = useCoffre();
   const [champOuvert, setChampOuvert] = useState(false);
   const [code, setCode] = useState("");
   const [err, setErr] = useState<string | null>(null);

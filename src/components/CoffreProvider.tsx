@@ -1,7 +1,6 @@
 "use client";
 
-// Coffre des données donateurs (id 1). Le mécanisme est mutualisé dans
-// `coffreContexte` et partagé avec le coffre du carnet d'adresses.
+// Coffre des données donateurs (id 1). Le mécanisme vit dans `coffreContexte`.
 
 import { creerContexteCoffre } from "@/lib/coffreContexte";
 import { COFFRE_DONS } from "@/lib/coffre";

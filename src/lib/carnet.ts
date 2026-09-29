@@ -19,7 +19,6 @@ export type Contact = {
   iban: string | null;
   notes: string | null;
   relation: string | null;
-  pii_chiffre: string | null;
   supprime_le: string | null;
   supprime_par: string | null;
 };

@@ -26,7 +26,7 @@ export default async function CarnetPage({
   const { data } = await supabase
     .from("contacts")
     .select(
-      "id, civilite, est_personne_morale, nom, prenom, raison_sociale, categories, courriel, telephone, adresse, cp_ville, iban, notes, relation, pii_chiffre, supprime_le, supprime_par",
+      "id, civilite, est_personne_morale, nom, prenom, raison_sociale, categories, courriel, telephone, adresse, cp_ville, iban, notes, relation, supprime_le, supprime_par",
     )
     .order("nom", { ascending: true });
 

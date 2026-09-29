@@ -1,12 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { useCarnet } from "@/components/CarnetProvider";
-import DeverrouillerCoffre from "@/components/DeverrouillerCoffre";
 import { inputCls } from "./GestionComptes";
-import { CLASSES, classeEn, depuis, termineEnJuin, type Classe, type Eleve } from "@/lib/eleves";
+import { CLASSES, classeEn, depuis, prenomEleve, termineEnJuin, type Classe, type Eleve } from "@/lib/eleves";
 import { motsFamille } from "@/lib/importEnrichi";
 
 type Famille = { id: string; nom: string };
@@ -57,9 +55,7 @@ function lireLigne(brut: string): Omit<LigneImport, "candidats" | "famille" | "i
 }
 
 /**
- * Élèves : liste de tous les enfants (prénoms déchiffrés, coffre du carnet
- * ouvert) et import de la liste tenue par l'école. Le prénom est chiffré à
- * l'enregistrement ; seule l'initiale reste en clair.
+ * Élèves : liste de tous les enfants et import de la liste tenue par l'école.
  */
 export default function ImportEleves({
   annee,
@@ -74,34 +70,11 @@ export default function ImportEleves({
   eleves: Eleve[];
 }) {
   const router = useRouter();
-  const carnet = useCarnet();
-  const { estOuvert, dechiffrer, chiffrer } = carnet;
-  const [prenoms, setPrenoms] = useState<Record<string, string>>({});
   const [texte, setTexte] = useState("");
   const [lignes, setLignes] = useState<LigneImport[]>([]);
   const [anneeEntree, setAnneeEntree] = useState(annee);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; t: string } | null>(null);
-
-  useEffect(() => {
-    if (!estOuvert) return;
-    let annule = false;
-    (async () => {
-      const m: Record<string, string> = {};
-      for (const e of eleves) {
-        if (!e.prenom_chiffre) continue;
-        try {
-          m[e.id] = await dechiffrer(e.prenom_chiffre);
-        } catch {
-          /* initiale à défaut */
-        }
-      }
-      if (!annule) setPrenoms(m);
-    })();
-    return () => {
-      annule = true;
-    };
-  }, [eleves, estOuvert, dechiffrer]);
 
   const nomFamille = useMemo(() => new Map(familles.map((f) => [f.id, f.nom])), [familles]);
 
@@ -126,7 +99,7 @@ export default function ImportEleves({
         const retenus = cetteAnnee.length > 0 ? cetteAnnee : candidats;
         const famille = retenus.length === 1 ? retenus[0].id : "";
         const doublon = !!famille && eleves.some(
-          (e) => e.famille_id === famille && sansAccent(prenoms[e.id] ?? "") === sansAccent(base.prenom),
+          (e) => e.famille_id === famille && sansAccent(e.prenom ?? "") === sansAccent(base.prenom),
         );
         return { ...base, candidats: retenus, famille, inclus: !doublon && !!base.classe, doublon };
       });
@@ -138,22 +111,18 @@ export default function ImportEleves({
   const incompletes = retenues.filter((l) => !l.famille || !l.classe || !l.prenom);
 
   async function importer() {
-    if (!estOuvert) return setMessage({ ok: false, t: "Déverrouillez le coffre du carnet : les prénoms sont chiffrés." });
     if (incompletes.length > 0) return setMessage({ ok: false, t: `${incompletes.length} ligne(s) sans famille, classe ou prénom : complétez-les ou décochez-les.` });
     if (!/^\d{4}-\d{4}$/.test(anneeEntree)) return setMessage({ ok: false, t: "Année d'entrée au format 2026-2027." });
     setBusy(true);
-    const payload = [];
-    for (const l of retenues) {
-      payload.push({
-        famille_id: l.famille,
-        prenom_chiffre: await chiffrer(l.prenom),
-        initiale: l.prenom.charAt(0).toUpperCase(),
-        // Classe connue pour l'année d'entrée indiquée (par défaut, cette année).
-        classe_entree: l.classe,
-        annee_entree: l.annee ?? anneeEntree,
-        decalage: 0,
-      });
-    }
+    const payload = retenues.map((l) => ({
+      famille_id: l.famille,
+      prenom: l.prenom.trim(),
+      initiale: l.prenom.trim().charAt(0).toUpperCase(),
+      // Classe connue pour l'année d'entrée indiquée (par défaut, cette année).
+      classe_entree: l.classe,
+      annee_entree: l.annee ?? anneeEntree,
+      decalage: 0,
+    }));
     const { error } = await createClient().from("eleves").insert(payload);
     setBusy(false);
     if (error) return setMessage({ ok: false, t: "Import impossible : " + error.message });
@@ -171,13 +140,6 @@ export default function ImportEleves({
 
   return (
     <div className="space-y-5">
-      {!estOuvert && (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-gold/40 bg-gold-soft/40 px-4 py-3 text-sm text-gold">
-          <span>🔒 Les prénoms des élèves sont chiffrés : déverrouillez le coffre du carnet pour les lire et importer.</span>
-          <DeverrouillerCoffre carnet label="🔓 Déverrouiller le carnet" />
-        </div>
-      )}
-
       <section className="rounded-xl border border-border bg-surface p-4">
         <h2 className="text-sm font-semibold">Importer la liste de l&apos;école</h2>
         <p className="mt-1 text-xs text-muted">
@@ -267,7 +229,7 @@ export default function ImportEleves({
                 liste.map((e, k) => (
                   <tr key={e.id} className="border-b border-border/50 last:border-0">
                     <td className="py-1.5 text-muted">{k === 0 ? nomFamille.get(fid) ?? "—" : ""}</td>
-                    <td className="py-1.5 font-medium">{prenoms[e.id] ?? `${e.initiale ?? "?"}.`}</td>
+                    <td className="py-1.5 font-medium">{prenomEleve(e)}</td>
                     <td className="py-1.5">{classeEn(e, annee) ?? <span className="text-muted">hors école</span>}</td>
                     <td className="py-1.5 text-xs text-muted">{depuis(e)}</td>
                     <td className="py-1.5 text-xs">{termineEnJuin(e, annee) && <span className="text-gold">dernière année</span>}</td>

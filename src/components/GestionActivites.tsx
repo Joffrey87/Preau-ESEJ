@@ -1,13 +1,11 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { formatEurosCourt as formatEuros, formatDate, todayISO } from "@/lib/format";
-import { useCarnet } from "@/components/CarnetProvider";
-import DeverrouillerCoffre from "@/components/DeverrouillerCoffre";
 import { inputCls } from "./GestionComptes";
-import { CLASSES, classeEn, type Classe, type Eleve } from "@/lib/eleves";
+import { CLASSES, classeEn, prenomEleve, type Classe, type Eleve } from "@/lib/eleves";
 
 export type Activite = {
   id: string;
@@ -47,9 +45,6 @@ export default function GestionActivites({
   eleves: EleveFamille[];
 }) {
   const router = useRouter();
-  const carnet = useCarnet();
-  const { estOuvert, dechiffrer } = carnet;
-  const [prenoms, setPrenoms] = useState<Record<string, string>>({});
   const [ouverte, setOuverte] = useState<string | null>(null);
   const [creation, setCreation] = useState(false);
   const [f, setF] = useState({
@@ -60,29 +55,9 @@ export default function GestionActivites({
   const [busy, setBusy] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!estOuvert) return;
-    let annule = false;
-    (async () => {
-      const m: Record<string, string> = {};
-      for (const e of eleves) {
-        if (!e.prenom_chiffre) continue;
-        try {
-          m[e.id] = await dechiffrer(e.prenom_chiffre);
-        } catch {
-          /* initiale à défaut */
-        }
-      }
-      if (!annule) setPrenoms(m);
-    })();
-    return () => {
-      annule = true;
-    };
-  }, [eleves, estOuvert, dechiffrer]);
-
   const eleveParId = useMemo(() => new Map(eleves.map((e) => [e.id, e])), [eleves]);
   const nomEleve = (e: EleveFamille | undefined) =>
-    e ? `${prenoms[e.id] ?? (e.initiale ? `${e.initiale}.` : "Enfant")} ${e.famille_nom}` : "—";
+    e ? `${prenomEleve(e)} ${e.famille_nom}` : "—";
   const scolarisesCetteAnnee = eleves.filter((e) => classeEn(e, annee) !== null);
 
   async function creer() {
@@ -156,11 +131,6 @@ export default function GestionActivites({
       <div className="flex flex-wrap items-center justify-between gap-3">
         <p className="text-sm text-muted">
           {scolarisesCetteAnnee.length} enfant(s) enregistré(s) pour {annee}.
-          {!estOuvert && eleves.length > 0 && (
-            <span className="ml-2 inline-flex items-center gap-2 text-gold">
-              Prénoms chiffrés <DeverrouillerCoffre carnet label="🔓 Carnet" />
-            </span>
-          )}
         </p>
         <button type="button" onClick={() => setCreation((v) => !v)} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-fg hover:opacity-90">
           {creation ? "Fermer" : "+ Nouvelle activité"}

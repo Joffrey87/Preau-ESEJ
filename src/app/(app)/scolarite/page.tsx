@@ -137,7 +137,7 @@ export default async function ScolaritePage({
   // Familles (fiche) et élèves (prénom chiffré), pour le détail d'une famille.
   const [famillesRes, elevesRes] = await Promise.all([
     supabase.from("familles").select("id, nom, parent1, parent2, adresse, cp_ville, telephone, courriels, notes"),
-    supabase.from("eleves").select("id, famille_id, prenom_chiffre, initiale, classe_entree, annee_entree, decalage, sorti_le"),
+    supabase.from("eleves").select("id, famille_id, prenom, initiale, classe_entree, annee_entree, decalage, sorti_le"),
   ]);
 
   const bareme: Record<number, number> = {};

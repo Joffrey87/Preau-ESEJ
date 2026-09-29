@@ -3,7 +3,7 @@
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { etatPaiement } from "@/lib/retardScolarite";
-import { classeEn, partJuinNonDue, scolarises, termineEnJuin, type Eleve } from "@/lib/eleves";
+import { classeEn, partJuinNonDue, prenomEleve, scolarises, termineEnJuin, type Eleve } from "@/lib/eleves";
 import {
   etatDepot,
   etatFraisDossier,
@@ -46,6 +46,7 @@ export type EspaceFamille = {
     date_limite: string | null;
     annee_scolaire: string;
     eleve_id: string;
+    prenom: string | null;
     initiale: string | null;
     montant: number;
     paye_le: string | null;
@@ -189,14 +190,14 @@ export function alertes(espace: EspaceFamille, s: Situation | null, aujourdhui: 
     const depasse = a.date_limite && a.date_limite < aujourdhui;
     out.push({
       ton: depasse ? "rouge" : "ambre",
-      titre: `Activité à régler : ${a.titre}${a.initiale ? ` (${a.initiale}.)` : ""}`,
+      titre: `Activité à régler : ${a.titre}${a.initiale ? ` (${a.prenom ?? `${a.initiale}.`})` : ""}`,
       detail: `${Number(a.montant).toFixed(2).replace(".", ",")} €${a.date_limite ? ` — avant le ${a.date_limite.split("-").reverse().join("/")}` : ""}`,
       lien: "/espace/paiements",
     });
   }
   if (s) {
     for (const e of espace.eleves.filter((x) => termineEnJuin(x, s.annee))) {
-      out.push({ ton: "info", titre: `Dernière année à l'école pour ${e.initiale ?? "votre enfant"}. (CM2)`, detail: "Le mois de juin n'est pas dû pour cet enfant : il est couvert par le mois d'avance." });
+      out.push({ ton: "info", titre: `Dernière année à l'école pour ${prenomEleve(e)} (CM2)`, detail: "Le mois de juin n'est pas dû pour cet enfant : il est couvert par le mois d'avance." });
     }
   }
   const f = espace.famille;

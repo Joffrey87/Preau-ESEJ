@@ -19,7 +19,7 @@ export default async function ActivitesPage({
   const [actRes, partRes, elevesRes, famillesRes] = await Promise.all([
     supabase.from("activites").select("*").eq("annee_scolaire", annee).order("date_activite", { ascending: true }),
     supabase.from("activites_participations").select("id, activite_id, eleve_id, montant, paye_le"),
-    supabase.from("eleves").select("id, famille_id, prenom_chiffre, initiale, classe_entree, annee_entree, decalage, sorti_le"),
+    supabase.from("eleves").select("id, famille_id, prenom, initiale, classe_entree, annee_entree, decalage, sorti_le"),
     supabase.from("familles").select("id, nom"),
   ]);
   const nomFamille = new Map((famillesRes.data ?? []).map((f) => [f.id as string, f.nom as string]));

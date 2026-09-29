@@ -2,7 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { familleEnApercu } from "@/lib/apercuFamille";
 import { todayISO } from "@/lib/format";
 import { chargerEspace, anneeCourante, classeEn } from "@/lib/espaceFamille";
-import { depuis, termineEnJuin } from "@/lib/eleves";
+import { depuis, prenomEleve, termineEnJuin } from "@/lib/eleves";
 
 export default async function MaFamille() {
   const supabase = await createClient();
@@ -50,7 +50,7 @@ export default async function MaFamille() {
               const c = annee ? classeEn(e, annee) : null;
               return (
                 <li key={e.id}>
-                  <span className="font-medium">{e.initiale ?? "?"}.</span> — {c ?? "plus scolarisé à l'école"} · {depuis(e)}
+                  <span className="font-medium">{prenomEleve(e)}</span> — {c ?? "plus scolarisé à l'école"} · {depuis(e)}
                   {annee && termineEnJuin(e, annee) && (
                     <span className="ml-1 text-xs text-gold">dernière année (juin non dû pour cet enfant)</span>
                   )}

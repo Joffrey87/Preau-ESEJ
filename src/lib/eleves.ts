@@ -7,8 +7,8 @@
 //    le mois de juin n'est pas dû pour CET enfant (sa part est couverte par le
 //    mois d'avance). La part = mensuel de la famille − mensuel avec un enfant
 //    de moins (barème de l'année).
-//  - le prénom est chiffré (coffre du carnet d'adresses) ; seule l'initiale
-//    reste en clair, pour l'espace de la famille.
+//  - le prénom est enregistré en clair : l'accès aux élèves est réservé au
+//    bureau, et chaque famille ne voit que ses propres enfants.
 
 export const CLASSES = ["PS", "MS", "GS", "CP", "CE1", "CE2", "CM1", "CM2"] as const;
 export type Classe = (typeof CLASSES)[number];
@@ -16,7 +16,7 @@ export type Classe = (typeof CLASSES)[number];
 export type Eleve = {
   id: string;
   famille_id?: string;
-  prenom_chiffre?: string | null;
+  prenom?: string | null;
   initiale: string | null;
   classe_entree: Classe;
   annee_entree: string;
@@ -25,6 +25,10 @@ export type Eleve = {
 };
 
 const debut = (annee: string) => Number(annee.slice(0, 4));
+
+/** Prénom de l'élève ; à défaut, son initiale. */
+export const prenomEleve = (e: Pick<Eleve, "prenom" | "initiale">): string =>
+  e.prenom?.trim() || (e.initiale ? `${e.initiale}.` : "Enfant");
 
 /** Classe de l'élève pour une année scolaire ; null s'il n'est pas (ou plus) à l'école. */
 export function classeEn(e: Eleve, annee: string): Classe | null {
@@ -38,7 +42,8 @@ export function classeEn(e: Eleve, annee: string): Classe | null {
 export const termineEnJuin = (e: Eleve, annee: string) => classeEn(e, annee) === "CM2";
 
 /** « depuis la PS (2019-2020) ». */
-export const depuis = (e: Eleve) => `depuis la ${e.classe_entree} (${e.annee_entree})`;
+export const depuis = (e: Eleve) =>
+  `depuis ${["PS", "MS", "GS"].includes(e.classe_entree) ? "la" : "le"} ${e.classe_entree} (${e.annee_entree})`;
 
 /** Élèves scolarisés à l'école cette année-là. */
 export const scolarises = (eleves: Eleve[], annee: string) => eleves.filter((e) => classeEn(e, annee) !== null);

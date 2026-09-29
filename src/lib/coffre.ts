@@ -29,7 +29,6 @@ export type CoffreMeta = {
 const normaliseCode = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, "");
 
 export const COFFRE_DONS = 1;
-export const COFFRE_CARNET = 2;
 
 export async function chargerMeta(supabase: SupabaseClient, id = COFFRE_DONS): Promise<CoffreMeta | null> {
   const { data } = await supabase.from("coffre").select("*").eq("id", id).maybeSingle();

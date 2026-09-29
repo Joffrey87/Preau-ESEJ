@@ -1,8 +1,9 @@
 import { createClient } from "@/lib/supabase/server";
 import { familleEnApercu } from "@/lib/apercuFamille";
 import { formatEurosCourt as formatEuros, formatDate, todayISO } from "@/lib/format";
+import { prenomEleve } from "@/lib/eleves";
 import { chargerEspace, situation, anneeCourante } from "@/lib/espaceFamille";
-import FraisScolariteFamille, { type AnneeFamille } from "@/components/FraisScolariteFamille";
+import FraisScolariteFamille, { DossierAnneesPrecedentes, type AnneeFamille } from "@/components/FraisScolariteFamille";
 import { BoutonAttestation } from "@/components/EspaceClient";
 import type { NatureAttestee } from "@/lib/attestationPdf";
 
@@ -21,6 +22,10 @@ export default async function PaiementsFamille({ searchParams }: { searchParams:
   const annee = anneeParam && annees.includes(anneeParam) ? anneeParam : anneeCourante(espace, aujourdhui);
   const activites = espace.activites.filter((a) => a.annee_scolaire === annee);
   const nom = espace.famille.nom;
+  // L'année en cours dans le tableau ; les autres dans le dossier, sous les activités.
+  const toutesAnnees = espace.inscriptions
+    .map((i) => ({ annee: i.annee_scolaire, nbEnfants: i.nb_enfants, s: situation(espace, i.annee_scolaire, aujourdhui) }))
+    .filter((x): x is AnneeFamille => x.s !== null);
 
   const attestation = (
     nature: NatureAttestee,
@@ -42,9 +47,7 @@ export default async function PaiementsFamille({ searchParams }: { searchParams:
           famille={nom}
           association={association}
           anneeOuverte={annee}
-          annees={espace.inscriptions
-            .map((i) => ({ annee: i.annee_scolaire, nbEnfants: i.nb_enfants, s: situation(espace, i.annee_scolaire, aujourdhui) }))
-            .filter((x): x is AnneeFamille => x.s !== null)}
+          annees={toutesAnnees.filter((a) => a.annee === annee)}
         />
       </section>
 
@@ -61,7 +64,7 @@ export default async function PaiementsFamille({ searchParams }: { searchParams:
                     {a.titre}
                     {a.date_activite && <span className="ml-1 text-xs text-muted">({formatDate(a.date_activite)})</span>}
                   </td>
-                  <td className="py-2 text-muted">{a.initiale ? `${a.initiale}.` : ""}</td>
+                  <td className="py-2 text-muted">{a.prenom || a.initiale ? prenomEleve(a) : ""}</td>
                   <td className="py-2 text-right tabular-nums">{formatEuros(Number(a.montant))}</td>
                   <td className="py-2 text-right">
                     {a.paye_le ? (
@@ -69,7 +72,7 @@ export default async function PaiementsFamille({ searchParams }: { searchParams:
                         payé le {formatDate(a.paye_le)}
                         <BoutonAttestation
                           association={association}
-                          attestation={attestation("activite", Number(a.montant), a.paye_le, "Famille", null, a.titre, a.initiale ? `${a.initiale}.` : null)}
+                          attestation={attestation("activite", Number(a.montant), a.paye_le, "Famille", null, a.titre, a.prenom || a.initiale ? prenomEleve(a) : null)}
                         />
                       </span>
                     ) : (
@@ -84,6 +87,12 @@ export default async function PaiementsFamille({ searchParams }: { searchParams:
           </table>
         )}
       </section>
+
+      <DossierAnneesPrecedentes
+        famille={nom}
+        association={association}
+        annees={toutesAnnees.filter((a) => a.annee !== annee)}
+      />
     </div>
   );
 }

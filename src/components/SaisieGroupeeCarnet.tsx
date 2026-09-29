@@ -4,8 +4,6 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { inputCls } from "./GestionComptes";
-import { useCarnet } from "@/components/CarnetProvider";
-import { piiDepuisContact, PII_VIDE } from "@/lib/contactsChiffre";
 import { CATEGORIES, type CategorieSlug } from "@/lib/carnet";
 
 const CIVILITES = ["", "Monsieur", "Madame", "Mademoiselle", "M. et Mme", "Père", "Sœur", "Abbé"];
@@ -40,7 +38,6 @@ const ligneVide = (categories: CategorieSlug[] = []): Ligne => ({
  */
 export default function SaisieGroupeeCarnet({ categorieParDefaut = "bureau" }: { categorieParDefaut?: CategorieSlug }) {
   const router = useRouter();
-  const carnet = useCarnet();
   const [lignes, setLignes] = useState<Ligne[]>(() =>
     Array.from({ length: 5 }, () => ligneVide([categorieParDefaut])),
   );
@@ -67,39 +64,21 @@ export default function SaisieGroupeeCarnet({ categorieParDefaut = "bureau" }: {
 
     setSaving(true);
     const supabase = createClient();
-    const payloads = [];
-
-    for (const l of remplies) {
-      const base = {
-        civilite: l.civilite || null,
-        est_personne_morale: false,
-        nom: l.nom.trim(),
-        prenom: l.prenom.trim() || null,
-        raison_sociale: null,
-        categories: l.categories,
-        courriel: l.courriel.trim() || null,
-        telephone: l.telephone.trim() || null,
-        adresse: null,
-        cp_ville: null,
-        iban: null,
-        notes: l.notes.trim() || null,
-        updated_at: new Date().toISOString(),
-      };
-
-      // Coffre du carnet ouvert → on chiffre, comme la saisie fiche par fiche.
-      if (carnet.estOuvert) {
-        const pii = piiDepuisContact({ ...base, pii_chiffre: null } as never);
-        payloads.push({
-          est_personne_morale: false,
-          categories: l.categories,
-          updated_at: base.updated_at,
-          ...PII_VIDE,
-          pii_chiffre: await carnet.chiffrer(JSON.stringify(pii)),
-        });
-      } else {
-        payloads.push(base);
-      }
-    }
+    const payloads = remplies.map((l) => ({
+      civilite: l.civilite || null,
+      est_personne_morale: false,
+      nom: l.nom.trim(),
+      prenom: l.prenom.trim() || null,
+      raison_sociale: null,
+      categories: l.categories,
+      courriel: l.courriel.trim() || null,
+      telephone: l.telephone.trim() || null,
+      adresse: null,
+      cp_ville: null,
+      iban: null,
+      notes: l.notes.trim() || null,
+      updated_at: new Date().toISOString(),
+    }));
 
     const { error: err } = await supabase.from("contacts").insert(payloads);
     setSaving(false);
@@ -128,13 +107,6 @@ export default function SaisieGroupeeCarnet({ categorieParDefaut = "bureau" }: {
           + Ajouter une ligne
         </button>
       </div>
-
-      {!carnet.estOuvert && carnet.estConfigure && (
-        <p className="mt-3 rounded-lg bg-gold-soft/40 px-3 py-2 text-xs text-gold">
-          🔒 Coffre du carnet verrouillé : les contacts seraient enregistrés en clair. Déverrouillez-le
-          depuis Paramètres pour qu&apos;ils soient chiffrés.
-        </p>
-      )}
 
       <div className="mt-4 overflow-x-auto">
         <table className="w-full text-sm">

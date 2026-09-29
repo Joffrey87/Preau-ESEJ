@@ -12,7 +12,7 @@ export default async function ElevesPage() {
 
   const [famillesRes, elevesRes] = await Promise.all([
     supabase.from("familles").select("id, nom").order("nom"),
-    supabase.from("eleves").select("id, famille_id, prenom_chiffre, initiale, classe_entree, annee_entree, decalage, sorti_le"),
+    supabase.from("eleves").select("id, famille_id, prenom, initiale, classe_entree, annee_entree, decalage, sorti_le"),
   ]);
 
   return (
@@ -22,7 +22,7 @@ export default async function ElevesPage() {
       </div>
       <PageHeader
         title={`Élèves ${annee}`}
-        subtitle="Enfants scolarisés, classe actuelle et année d'entrée ; import de la liste tenue par l'école. Prénoms chiffrés (coffre du carnet)."
+        subtitle="Enfants scolarisés, classe actuelle et année d'entrée ; import de la liste tenue par l'école."
       />
       <ImportEleves
         annee={annee}

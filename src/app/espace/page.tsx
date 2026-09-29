@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { familleEnApercu } from "@/lib/apercuFamille";
 import { formatEurosCourt as formatEuros, todayISO } from "@/lib/format";
 import { chargerEspace, situation, alertes, anneeCourante, classeEn } from "@/lib/espaceFamille";
-import { termineEnJuin } from "@/lib/eleves";
+import { prenomEleve, termineEnJuin } from "@/lib/eleves";
 
 const TONS = {
   rouge: "border-negative/40 bg-negative/5 text-negative",
@@ -79,7 +79,7 @@ export default async function TableauDeBordFamille() {
               if (!c) return null;
               return (
                 <li key={e.id} className="rounded-full border border-border bg-surface px-3 py-1 text-sm">
-                  {e.initiale ?? "?"}. — {c}
+                  {prenomEleve(e)} — {c}
                   {termineEnJuin(e, annee) && <span className="ml-1 text-xs text-gold">(dernière année)</span>}
                 </li>
               );

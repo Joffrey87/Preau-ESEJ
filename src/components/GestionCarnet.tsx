@@ -5,12 +5,6 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Modal, Field, FormFooter, inputCls } from "./GestionComptes";
 import { formatDate } from "@/lib/format";
-import { useCarnet } from "@/components/CarnetProvider";
-import {
-  useContactsDechiffres,
-  piiDepuisContact,
-  PII_VIDE,
-} from "@/lib/contactsChiffre";
 import {
   CATEGORIES,
   CATEGORIE_LABEL,
@@ -77,18 +71,10 @@ export default function GestionCarnet({
   rechercheInitiale?: string;
 }) {
   const router = useRouter();
-  const carnet = useCarnet();
-  const { contacts: hydrates, verrou } = useContactsDechiffres(contactsInit);
-  // Le tri par nom se fait ici : une fois chiffré, le nom n'est plus triable en base.
   const contacts = useMemo(
-    () => [...hydrates].sort((a, b) => nomAffiche(a).localeCompare(nomAffiche(b), "fr")),
-    [hydrates],
-  );
-  const enClair = useMemo(
-    () => contactsInit.filter((c) => !c.pii_chiffre && !c.supprime_le),
+    () => [...contactsInit].sort((a, b) => nomAffiche(a).localeCompare(nomAffiche(b), "fr")),
     [contactsInit],
   );
-  const [chiffrement, setChiffrement] = useState<string | null>(null);
   const [edit, setEdit] = useState<Contact | "nouveau" | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -160,29 +146,6 @@ export default function GestionCarnet({
     setEdit(c);
   }
 
-  /** Reprise : chiffre en une passe toutes les fiches encore en clair. */
-  async function chiffrerLeCarnet() {
-    if (!carnet.estOuvert) return setError("Déverrouillez le coffre du carnet.");
-    setChiffrement(`0 / ${enClair.length}`);
-    const supabase = createClient();
-    let n = 0;
-    for (const c of enClair) {
-      const pii_chiffre = await carnet.chiffrer(JSON.stringify(piiDepuisContact(c)));
-      const { error: err } = await supabase
-        .from("contacts")
-        .update({ ...PII_VIDE, pii_chiffre })
-        .eq("id", c.id);
-      if (err) {
-        setChiffrement(null);
-        setError("Chiffrement interrompu : " + err.message);
-        return;
-      }
-      setChiffrement(`${++n} / ${enClair.length}`);
-    }
-    setChiffrement(null);
-    router.refresh();
-  }
-
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -209,24 +172,10 @@ export default function GestionCarnet({
       updated_at: new Date().toISOString(),
     };
 
-    // Coffre du carnet ouvert → on range les coordonnées dans pii_chiffre et on
-    // laisse les colonnes en clair vides. Sinon on conserve l'ancien comportement.
-    let aEcrire: Record<string, unknown> = payload;
-    if (carnet.estOuvert) {
-      const pii = piiDepuisContact({ ...payload, pii_chiffre: null } as never);
-      aEcrire = {
-        est_personne_morale: payload.est_personne_morale,
-        categories: payload.categories,
-        updated_at: payload.updated_at,
-        ...PII_VIDE,
-        pii_chiffre: await carnet.chiffrer(JSON.stringify(pii)),
-      };
-    }
-
     const { error: err } =
       edit === "nouveau"
-        ? await supabase.from("contacts").insert(aEcrire)
-        : await supabase.from("contacts").update(aEcrire).eq("id", (edit as Contact).id);
+        ? await supabase.from("contacts").insert(payload)
+        : await supabase.from("contacts").update(payload).eq("id", (edit as Contact).id);
 
     if (err) {
       setError("Enregistrement impossible : " + err.message);
@@ -263,29 +212,6 @@ export default function GestionCarnet({
 
   return (
     <>
-      {verrou && (
-        <div className="mb-4 rounded-xl border border-gold/40 bg-gold-soft/40 px-4 py-3 text-sm text-gold">
-          🔒 Coffre du carnet verrouillé — les coordonnées sont illisibles. Déverrouillez-le depuis
-          Paramètres → Sécurité du carnet d&apos;adresses.
-        </div>
-      )}
-
-      {carnet.estOuvert && enClair.length > 0 && (
-        <div className="mb-4 flex flex-wrap items-center gap-3 rounded-xl border border-gold/40 bg-gold-soft/30 px-4 py-3 text-sm">
-          <span className="text-gold">
-            {enClair.length} fiche{enClair.length > 1 ? "s" : ""} encore en clair dans la base.
-          </span>
-          <button
-            type="button"
-            onClick={chiffrerLeCarnet}
-            disabled={chiffrement !== null}
-            className="rounded-lg bg-accent px-3 py-1.5 text-xs font-medium text-accent-fg hover:opacity-90 disabled:opacity-50"
-          >
-            {chiffrement ? `Chiffrement… ${chiffrement}` : "Chiffrer le carnet"}
-          </button>
-        </div>
-      )}
-
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <input
           type="search"

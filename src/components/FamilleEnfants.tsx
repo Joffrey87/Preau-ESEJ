@@ -1,12 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { useCarnet } from "@/components/CarnetProvider";
-import DeverrouillerCoffre from "@/components/DeverrouillerCoffre";
 import { inputCls } from "./GestionComptes";
-import { CLASSES, classeEn, depuis, termineEnJuin, type Classe, type Eleve } from "@/lib/eleves";
+import { CLASSES, classeEn, depuis, prenomEleve, termineEnJuin, type Classe, type Eleve } from "@/lib/eleves";
 
 export type FicheFamille = {
   id: string;
@@ -33,8 +31,7 @@ const CHAMPS_FICHE: { k: keyof FicheFamille; l: string }[] = [
 
 /**
  * Fiche de la famille et ses enfants, dans le détail de l'onglet Frais de
- * scolarité. La fiche est visible par la famille dans son espace ; le prénom
- * des enfants est chiffré avec le coffre du carnet (l'initiale reste en clair).
+ * scolarité. La fiche et les enfants sont visibles par la famille dans son espace.
  */
 export default function FamilleEnfants({
   famille,
@@ -46,8 +43,6 @@ export default function FamilleEnfants({
   annee: string;
 }) {
   const router = useRouter();
-  const carnet = useCarnet();
-  const [prenoms, setPrenoms] = useState<Record<string, string>>({});
   const [ficheOuverte, setFicheOuverte] = useState(false);
   const [fiche, setFiche] = useState<FicheFamille | null>(famille);
   const [eleveEdite, setEleveEdite] = useState<Eleve | "nouveau" | null>(null);
@@ -57,31 +52,9 @@ export default function FamilleEnfants({
   const [courrielCompte, setCourrielCompte] = useState("");
   const [messageCompte, setMessageCompte] = useState<string | null>(null);
 
-  // Prénoms déchiffrés, coffre du carnet ouvert.
-  const { estOuvert: carnetOuvert, dechiffrer } = carnet;
-  useEffect(() => {
-    if (!carnetOuvert) return;
-    let annule = false;
-    (async () => {
-      const m: Record<string, string> = {};
-      for (const e of eleves) {
-        if (!e.prenom_chiffre) continue;
-        try {
-          m[e.id] = await dechiffrer(e.prenom_chiffre);
-        } catch {
-          /* prénom illisible : on garde l'initiale */
-        }
-      }
-      if (!annule) setPrenoms(m);
-    })();
-    return () => {
-      annule = true;
-    };
-  }, [eleves, carnetOuvert, dechiffrer]);
-
   if (!famille) return <p className="text-xs text-muted">Famille non reliée : enregistrez-la à nouveau.</p>;
 
-  const nomEleve = (e: Eleve) => prenoms[e.id] ?? (e.initiale ? `${e.initiale}.` : "Enfant");
+  const nomEleve = prenomEleve;
 
   /** Rattache un compte (invité depuis Supabase) à cette famille : il n'accèdera qu'à son espace. */
   async function rattacherCompte() {
@@ -113,7 +86,7 @@ export default function FamilleEnfants({
       e === "nouveau"
         ? { prenom: "", classe_entree: "PS", annee_entree: annee, decalage: "0", sorti_le: "" }
         : {
-            prenom: prenoms[e.id] ?? "",
+            prenom: e.prenom ?? "",
             classe_entree: e.classe_entree,
             annee_entree: e.annee_entree,
             decalage: String(e.decalage ?? 0),
@@ -128,12 +101,11 @@ export default function FamilleEnfants({
     const prenom = f.prenom.trim();
     if (!prenom) return setErreur("Le prénom est obligatoire.");
     if (!/^\d{4}-\d{4}$/.test(f.annee_entree)) return setErreur("Année d'entrée au format 2024-2025.");
-    if (!carnet.estOuvert) return setErreur("Déverrouillez le coffre du carnet : le prénom est chiffré.");
     setBusy(true);
     setErreur(null);
     const ligne = {
       famille_id: famille!.id,
-      prenom_chiffre: await carnet.chiffrer(prenom),
+      prenom,
       initiale: prenom.charAt(0).toUpperCase(),
       classe_entree: f.classe_entree,
       annee_entree: f.annee_entree,
@@ -208,11 +180,6 @@ export default function FamilleEnfants({
             + Ajouter
           </button>
         </div>
-        {!carnet.estOuvert && eleves.length > 0 && (
-          <div className="mt-1 flex items-center gap-2 text-[11px] text-gold">
-            Prénoms chiffrés <DeverrouillerCoffre carnet label="🔓 Carnet" />
-          </div>
-        )}
         <ul className="mt-1 space-y-1 text-xs">
           {eleves.map((e) => {
             const classe = classeEn(e, annee);

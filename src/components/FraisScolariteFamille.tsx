@@ -78,35 +78,14 @@ function paiements(s: Situation): Paiement[] {
   return [...dates, ...classeur.reverse()];
 }
 
-function TablePaiements({
-  lignes,
-  famille,
-  association,
-  avecAnnee = false,
-}: {
-  lignes: Paiement[];
-  famille: string;
-  association: Association;
-  avecAnnee?: boolean;
-}) {
+function TablePaiements({ lignes, famille, association }: { lignes: Paiement[]; famille: string; association: Association }) {
   if (lignes.length === 0) return <p className="py-1 text-muted">Aucun paiement enregistré.</p>;
   return (
     <table className="w-full">
       <tbody>
         {lignes.map((p, k) => {
-          const nouvelleAnnee = avecAnnee && (k === 0 || lignes[k - 1].annee !== p.annee);
           return (
             <Fragment key={k}>
-              {nouvelleAnnee && (
-                <tr>
-                  <td colSpan={5} className={`pb-0.5 font-semibold ${k > 0 ? "pt-3" : ""}`}>
-                    Année scolaire {p.annee}
-                    <span className="ml-2 font-normal tabular-nums text-muted">
-                      {formatEuros(lignes.filter((x) => x.annee === p.annee).reduce((t, x) => t + x.montant, 0))}
-                    </span>
-                  </td>
-                </tr>
-              )}
               <tr className="border-b border-border/40 last:border-0">
                 <td className="w-[4.5rem] py-1 pr-2 tabular-nums text-muted">{p.date ? formatDate(p.date) : "—"}</td>
                 <td className="w-32 py-1 pr-2">
@@ -146,56 +125,11 @@ function TablePaiements({
   );
 }
 
-/** Détail d'une année scolaire, et le dossier complet de la famille à la demande. */
-function DetailAnnee({
-  lignes,
-  annees,
-  famille,
-  association,
-}: {
-  lignes: Paiement[];
-  annees: AnneeFamille[];
-  famille: string;
-  association: Association;
-}) {
-  const [complet, setComplet] = useState(false);
-  return (
-    <>
-      <TablePaiements lignes={lignes} famille={famille} association={association} />
-      <div className="mt-2">
-        <button
-          type="button"
-          onClick={() => setComplet((v) => !v)}
-          aria-expanded={complet}
-          className={`rounded-lg border px-2.5 py-1 font-medium ${
-            complet ? "border-accent bg-accent-soft text-accent" : "border-border bg-surface hover:bg-surface-2"
-          }`}
-        >
-          Dossier famille complet
-        </button>
-      </div>
-      {complet && (
-        <div className="mt-2 rounded-lg border border-border bg-surface p-3">
-          <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">
-            Dossier complet · frais de scolarité, toutes années scolaires
-          </h4>
-          <TablePaiements
-            lignes={[...annees].sort((a, b) => b.annee.localeCompare(a.annee)).flatMap((a) => paiements(a.s))}
-            famille={famille}
-            association={association}
-            avecAnnee
-          />
-        </div>
-      )}
-    </>
-  );
-}
-
 /**
  * Frais de scolarité d'une famille, présentés comme dans l'onglet du bureau :
- * la jauge d'avancement et la synthèse de l'année, puis une ligne par année
- * (total dû « mensuel ×10 », mois d'avance, frais de dossier, avancement,
- * réglé avec retard, reste) et, au clic, ses paiements avec les attestations.
+ * une ligne par année (total dû « mensuel ×10 », mois d'avance, frais de
+ * dossier, avancement, réglé avec retard, reste) et, au clic, ses paiements
+ * avec les attestations.
  */
 export default function FraisScolariteFamille({
   famille,
@@ -209,42 +143,10 @@ export default function FraisScolariteFamille({
   anneeOuverte: string | null;
 }) {
   const [ouverte, setOuverte] = useState<string | null>(anneeOuverte);
-  // La jauge suit l'année dépliée ; à défaut, l'année en cours.
-  const [anneeJauge, setAnneeJauge] = useState<string | null>(anneeOuverte);
-  const enTete = annees.find((a) => a.annee === anneeJauge) ?? annees[0];
-
-  const basculer = (annee: string) => {
-    const deroulee = ouverte === annee;
-    setOuverte(deroulee ? null : annee);
-    if (!deroulee) setAnneeJauge(annee);
-  };
+  const basculer = (annee: string) => setOuverte((o) => (o === annee ? null : annee));
 
   return (
     <>
-      {enTete && (
-        <>
-          <div className="mb-4 rounded-xl border border-border bg-surface px-4 py-4">
-            <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
-              <h2 className="text-sm font-semibold">Avancement des règlements · {enTete.annee}</h2>
-            </div>
-            <JaugeScolarite etat={etatJauge(enTete.s.mensuel, enTete.s.regle, enTete.annee)} anneeScolaire={enTete.annee} />
-          </div>
-
-          <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
-            {[
-              { l: "Total attendu", v: enTete.s.du, c: "" },
-              { l: "Total réglé", v: enTete.s.regle, c: "text-positive" },
-              { l: "Reste à régler", v: enTete.s.reste, c: enTete.s.retard > 0 ? "text-negative" : enTete.s.reste < -0.005 ? "text-positive" : "" },
-            ].map((t) => (
-              <div key={t.l} className="rounded-xl border border-border bg-surface px-4 py-3">
-                <div className="text-xs uppercase tracking-wider text-muted">{t.l}</div>
-                <div className={`mt-1 text-xl font-semibold tabular-nums ${t.c}`}>{formatEuros(t.v)}</div>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-
       <div className="rounded-xl border border-border bg-surface">
         <table className="w-full text-sm">
           <thead>
@@ -347,7 +249,8 @@ export default function FraisScolariteFamille({
                   {deroulee && (
                     <tr className="border-b border-border bg-surface-2/40">
                       <td colSpan={8} className="px-4 py-2 text-xs">
-                        <DetailAnnee lignes={lignes} annees={annees} famille={famille} association={association} />
+                        <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">Détails des paiements</h3>
+                        <TablePaiements lignes={lignes} famille={famille} association={association} />
                       </td>
                     </tr>
                   )}
@@ -358,5 +261,59 @@ export default function FraisScolariteFamille({
         </table>
       </div>
     </>
+  );
+}
+
+/**
+ * Dossier de la famille pour les années précédentes : pour chacune, un
+ * bandeau (dû, réglé, reste) puis ses paiements, avec les attestations.
+ */
+export function DossierAnneesPrecedentes({
+  famille,
+  annees,
+  association,
+}: {
+  famille: string;
+  annees: AnneeFamille[];
+  association: Association;
+}) {
+  const triees = [...annees].sort((a, b) => b.annee.localeCompare(a.annee));
+  return (
+    <section className="rounded-xl border border-border bg-surface p-4">
+      <h2 className="text-sm font-semibold">Dossier famille · années précédentes</h2>
+      {triees.length === 0 ? (
+        <p className="mt-2 text-sm text-muted">Aucune année précédente à l&apos;école.</p>
+      ) : (
+        <div className="mt-3 space-y-5">
+          {triees.map(({ annee, nbEnfants, s }) => (
+            <div key={annee}>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg bg-surface-2 px-3 py-2 text-xs">
+                <span className="rounded-full bg-accent px-2.5 py-0.5 text-[11px] font-semibold text-accent-fg">{annee}</span>
+                {nbEnfants != null && (
+                  <span className="text-muted">
+                    {nbEnfants} enfant{nbEnfants > 1 ? "s" : ""}
+                  </span>
+                )}
+                <span className="text-muted">
+                  Dû <span className="tabular-nums text-foreground">{formatEuros(s.du)}</span>
+                </span>
+                <span className="text-muted">
+                  Réglé <span className="tabular-nums text-foreground">{formatEuros(s.regle)}</span>
+                </span>
+                <span className="ml-auto text-muted">
+                  Reste{" "}
+                  <span className={`font-medium tabular-nums ${s.reste > 0.005 ? "text-negative" : s.reste < -0.005 ? "text-positive" : "text-foreground"}`}>
+                    {formatEuros(s.reste)}
+                  </span>
+                </span>
+              </div>
+              <div className="mt-1 px-1 text-xs">
+                <TablePaiements lignes={paiements(s)} famille={famille} association={association} />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
   );
 }

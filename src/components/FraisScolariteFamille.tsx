@@ -82,6 +82,15 @@ function TablePaiements({ lignes, famille, association }: { lignes: Paiement[]; 
   if (lignes.length === 0) return <p className="py-1 text-muted">Aucun paiement enregistré.</p>;
   return (
     <table className="w-full">
+      <thead>
+        <tr className="text-left text-[11px] text-muted">
+          <th className="border-b border-border pb-1 pr-2 font-medium">Date</th>
+          <th className="border-b border-border pb-1 pr-2 font-medium">Nature</th>
+          <th className="border-b border-border pb-1 pr-2 font-medium">Détail</th>
+          <th className="border-b border-border pb-1 text-right font-medium">Montant</th>
+          <th className="border-b border-border pb-1 text-right font-medium">Attestation</th>
+        </tr>
+      </thead>
       <tbody>
         {lignes.map((p, k) => {
           return (

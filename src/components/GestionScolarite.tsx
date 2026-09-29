@@ -747,6 +747,16 @@ function TablePaiements({ lignes, avecExercice = false }: { lignes: LigneVerseme
   if (lignes.length === 0) return <p className="text-muted">Aucun paiement enregistré.</p>;
   return (
     <table className="w-full">
+      <thead>
+        <tr className="text-left text-[11px] text-muted">
+          <th className="border-b border-border pb-1 pr-2 font-medium">Date</th>
+          <th className="border-b border-border pb-1 pr-2 font-medium">Nature</th>
+          <th className="border-b border-border pb-1 pr-2 font-medium">Libellé</th>
+          <th className="hidden border-b border-border pb-1 pr-2 font-medium sm:table-cell">Payeur</th>
+          <th className="border-b border-border pb-1 text-right font-medium">Montant</th>
+          <th className="border-b border-border pb-1 text-right font-medium" title="Attestation de paiement">Attest.</th>
+        </tr>
+      </thead>
       <tbody>
         {lignes.map((l, k) => {
           const nouvelExercice = avecExercice && (k === 0 || lignes[k - 1].exercice !== l.exercice);
@@ -769,7 +779,7 @@ function TablePaiements({ lignes, avecExercice = false }: { lignes: LigneVerseme
                     {NATURES_LIGNE[l.nature].l}
                   </span>
                 </td>
-                <td className="max-w-0 truncate py-1 pr-2" title={l.libelle}>{l.libelle}</td>
+                <td className="py-1 pr-2 break-words">{l.libelle}</td>
                 <td className="hidden py-1 pr-2 text-muted sm:table-cell">{l.origine ?? ""}</td>
                 <td className={`py-1 text-right tabular-nums whitespace-nowrap ${l.montant < 0 ? "text-negative" : ""}`}>
                   {formatEuros(l.montant)}

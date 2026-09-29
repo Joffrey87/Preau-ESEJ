@@ -83,7 +83,7 @@ export default function JaugeScolarite({
   anneeScolaire: string;
   compacte?: boolean;
 }) {
-  const { du, attendu, paye, retardMois, ton } = etat;
+  const { du, attendu, paye, ton } = etat;
   const pct = du > 0 ? Math.min(100, (paye / du) * 100) : 0;
   const pctAttendu = du > 0 ? Math.min(100, (attendu / du) * 100) : 0;
   const dus = moisDus(anneeScolaire);
@@ -135,26 +135,32 @@ export default function JaugeScolarite({
         )}
       </div>
 
-      {!compacte && (
-        <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-4 text-xs">
-          <span className="text-muted">
-            {formatEuros(paye)} réglés sur {formatEuros(du)} · {Math.round(pct)} %
-            {dus > 0 && (
-              <span className="ml-3 inline-flex items-center gap-1">
-                <span className="inline-block h-0 w-0 border-x-[4px] border-t-[5px] border-x-transparent border-t-gold align-middle" />
-                attendu à ce jour : {formatEuros(attendu)}
-              </span>
-            )}
-          </span>
-          <span className={ton === "rouge" ? "text-negative" : ton === "orange" ? "text-gold" : "text-muted"}>
-            {dus === 0
-              ? "Année non commencée"
-              : retardMois >= 1
-                ? `Retard de ${retardMois.toFixed(1).replace(".0", "")} mensualité${retardMois >= 2 ? "s" : ""} · ${formatEuros(attendu - paye)}`
-                : `À jour · ${dus} mensualité${dus > 1 ? "s" : ""} attendue${dus > 1 ? "s" : ""}`}
+      {!compacte && dus > 0 && (
+        <div className="mt-1.5 text-xs text-muted" title={`${formatEuros(paye)} réglés sur ${formatEuros(du)} ; attendu à ce jour : ${formatEuros(attendu)}`}>
+          <span className="inline-flex items-center gap-1">
+            <span className="inline-block h-0 w-0 border-x-[4px] border-t-[5px] border-x-transparent border-t-gold align-middle" />
+            attendu à ce jour
           </span>
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * « ? » placé après un montant réglé signalé : rouge pour un retard, ambre pour
+ * la mensualité du mois à régler avant sa fin. Le survol en donne le sens.
+ */
+export function AideReglement({ retard, finDeMois }: { retard: boolean; finDeMois: boolean }) {
+  if (!retard && !finDeMois) return null;
+  return (
+    <span
+      title={retard ? "En retard : mensualité due depuis la fin du mois dernier" : "À payer d'ici la fin du mois"}
+      className={`ml-1 inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border text-[10px] font-bold ${
+        retard ? "border-negative/50 text-negative" : "border-orange-500/50 text-orange-500"
+      }`}
+    >
+      ?
+    </span>
   );
 }

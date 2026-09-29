@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { formatEurosCourt as formatEuros, todayISO } from "@/lib/format";
 import { Modal, Field, FormFooter, inputCls } from "./GestionComptes";
-import JaugeScolarite, { etatJauge } from "@/components/JaugeScolarite";
+import JaugeScolarite, { AideReglement, etatJauge } from "@/components/JaugeScolarite";
 import FamilleEnfants, { type FicheFamille } from "@/components/FamilleEnfants";
 import { partJuinNonDue, type Eleve } from "@/lib/eleves";
 import { etatPaiement } from "@/lib/retardScolarite";
@@ -371,10 +371,6 @@ export default function GestionScolarite({
         <div className="mb-4 rounded-xl border border-border bg-surface px-4 py-4">
           <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
             <h2 className="text-sm font-semibold">Avancement des règlements · {annee}</h2>
-            <span className="text-xs text-muted">
-              Une graduation par mensualité, de septembre à juin. Le repère marque ce qui devrait être
-              perçu à ce jour.
-            </span>
           </div>
           <JaugeScolarite etat={etatGlobal} anneeScolaire={annee} />
         </div>
@@ -400,19 +396,23 @@ export default function GestionScolarite({
           <thead>
             <tr className="border-b border-border text-left text-muted">
               <th className="px-3 py-3 font-medium">Famille</th>
-              <th className="px-3 py-3 font-medium text-center">Enf.</th>
+              <th className="px-2 py-3 font-medium text-center">Enfants</th>
               <th className="px-3 py-3 font-medium text-right">Total dû</th>
               <th
-                className="px-4 py-3 font-medium text-center"
+                className="w-px px-2 py-3 text-center font-medium leading-tight"
                 title="Dépôt versé une fois par enfant, l'été précédant son entrée ; il éponge le dernier mois de sa scolarité à l'école. Alimenté par la Comptabilité (affectation « mois d'avance »)."
               >
-                Mois d&apos;avance
+                Mois
+                <br />
+                d&apos;avance
               </th>
               <th
-                className="px-4 py-3 font-medium text-center"
+                className="w-px px-2 py-3 text-center font-medium leading-tight"
                 title={`${FRAIS_DOSSIER_PAR_ENFANT} € par enfant entrant. Alimenté par la Comptabilité (affectation « frais de dossier »).`}
               >
-                Frais de dossier
+                Frais de
+                <br />
+                dossier
               </th>
               <th className="hidden px-3 py-3 font-medium lg:table-cell">Avancement</th>
               <th className="px-4 py-3 font-medium text-right">Réglé</th>
@@ -457,8 +457,8 @@ export default function GestionScolarite({
                         <span className="block text-[11px] text-muted">−{formatEuros(partJuin(i).montant)} juin</span>
                       )}
                     </td>
-                    <td className="px-3 py-3 text-center">{badgeDepot(i)}</td>
-                    <td className="px-3 py-3 text-center">{badgeFrais(i)}</td>
+                    <td className="px-2 py-3 text-center">{badgeDepot(i)}</td>
+                    <td className="px-2 py-3 text-center">{badgeFrais(i)}</td>
                     <td className="hidden px-3 py-3 lg:table-cell">
                       <JaugeScolarite
                         etat={etatJauge(Number(i.montant_mensuel), regle, annee)}
@@ -486,6 +486,7 @@ export default function GestionScolarite({
                         : paiement.aReglerFinDeMois > 0
                           ? `−${formatEuros(paiement.aReglerFinDeMois)}`
                           : formatEuros(regle)}
+                      <AideReglement retard={paiement.retard > 0} finDeMois={paiement.aReglerFinDeMois > 0} />
                     </td>
                     <td
                       className={`px-3 py-3 text-right tabular-nums whitespace-nowrap ${

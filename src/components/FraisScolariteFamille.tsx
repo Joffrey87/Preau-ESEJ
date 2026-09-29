@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useState } from "react";
-import JaugeScolarite, { etatJauge } from "@/components/JaugeScolarite";
+import JaugeScolarite, { AideReglement, etatJauge } from "@/components/JaugeScolarite";
 import { BoutonAttestation } from "@/components/EspaceClient";
 import { formatEurosCourt as formatEuros, formatDate } from "@/lib/format";
 import type { Association, Situation } from "@/lib/espaceFamille";
@@ -226,9 +226,6 @@ export default function FraisScolariteFamille({
           <div className="mb-4 rounded-xl border border-border bg-surface px-4 py-4">
             <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
               <h2 className="text-sm font-semibold">Avancement des règlements · {enTete.annee}</h2>
-              <span className="text-xs text-muted">
-                Une graduation par mensualité, de septembre à juin. Le repère marque ce qui devrait être réglé à ce jour.
-              </span>
             </div>
             <JaugeScolarite etat={etatJauge(enTete.s.mensuel, enTete.s.regle, enTete.annee)} anneeScolaire={enTete.annee} />
           </div>
@@ -253,12 +250,21 @@ export default function FraisScolariteFamille({
           <thead>
             <tr className="border-b border-border text-left text-muted">
               <th className="px-3 py-3 font-medium">Année scolaire</th>
-              <th className="px-3 py-3 text-center font-medium">Enf.</th>
+              <th className="px-2 py-3 text-center font-medium">Enfants</th>
               <th className="px-3 py-3 text-right font-medium">Total dû</th>
-              <th className="px-3 py-3 text-center font-medium" title="Dépôt versé une fois par enfant ; il couvre son dernier mois à l'école.">
-                Mois d&apos;avance
+              <th
+                className="w-px px-2 py-3 text-center font-medium leading-tight"
+                title="Dépôt versé une fois par enfant ; il couvre son dernier mois à l'école."
+              >
+                Mois
+                <br />
+                d&apos;avance
               </th>
-              <th className="px-3 py-3 text-center font-medium">Frais de dossier</th>
+              <th className="w-px px-2 py-3 text-center font-medium leading-tight">
+                Frais de
+                <br />
+                dossier
+              </th>
               <th className="hidden px-3 py-3 font-medium lg:table-cell">Avancement</th>
               <th className="px-3 py-3 text-right font-medium">Réglé</th>
               <th className="px-3 py-3 text-right font-medium">Reste</th>
@@ -293,10 +299,10 @@ export default function FraisScolariteFamille({
                       {formatEuros(s.mensuel)}×10
                       {s.partJuin.montant > 0 && <span className="block text-[11px] text-muted">−{formatEuros(s.partJuin.montant)} juin</span>}
                     </td>
-                    <td className="px-3 py-3 text-center">
+                    <td className="px-2 py-3 text-center">
                       <Etat ok={depot.couleur !== "jaune"} title={`Attendu ${formatEuros(depot.du)} · versé ${formatEuros(depot.detenu)}`} />
                     </td>
-                    <td className="px-3 py-3 text-center">
+                    <td className="px-2 py-3 text-center">
                       <Etat
                         ok={s.frais.couleur !== "jaune"}
                         title={
@@ -326,6 +332,7 @@ export default function FraisScolariteFamille({
                         : s.aReglerFinDeMois > 0
                           ? `−${formatEuros(s.aReglerFinDeMois)}`
                           : formatEuros(s.regle)}
+                      <AideReglement retard={s.retard > 0} finDeMois={s.aReglerFinDeMois > 0} />
                     </td>
                     <td
                       className={`px-3 py-3 text-right tabular-nums whitespace-nowrap ${

@@ -46,10 +46,6 @@ export default async function PaiementsFamille({ searchParams }: { searchParams:
             .map((i) => ({ annee: i.annee_scolaire, nbEnfants: i.nb_enfants, s: situation(espace, i.annee_scolaire, aujourdhui) }))
             .filter((x): x is AnneeFamille => x.s !== null)}
         />
-        <p className="mt-2 text-xs text-muted">
-          Cliquez sur une année pour le détail des versements et les attestations de paiement. Une mensualité se règle
-          avant la fin de son mois ; un montant en rouge est en retard, en orange à régler avant la fin du mois.
-        </p>
       </section>
 
       <section className="rounded-xl border border-border bg-surface p-4">

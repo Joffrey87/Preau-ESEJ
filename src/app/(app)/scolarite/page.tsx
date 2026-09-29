@@ -55,7 +55,9 @@ export default async function ScolaritePage({
   const [toutesRes, affRes] = await Promise.all([
     supabase
       .from("scolarite_inscriptions")
-      .select("id, annee_scolaire, famille_nom, nb_enfants, montant_mensuel, avance, avance_consommee, depot_anterieur"),
+      .select(
+        "id, annee_scolaire, famille_nom, famille_id, nb_enfants, montant_mensuel, avance, avance_consommee, depot_anterieur, m_sept, m_oct, m_nov, m_dec, m_jan, m_fev, m_mars, m_avr, m_mai, m_juin",
+      ),
     supabase.from("affectations_scolarite").select("inscription_id, operation_id, montant, nature"),
   ]);
   if (affRes.error) console.error("Lecture des affectations impossible :", affRes.error.message);
@@ -66,7 +68,7 @@ export default async function ScolaritePage({
     avance: i.avance == null ? null : Number(i.avance),
     avance_consommee: i.avance_consommee == null ? 0 : Number(i.avance_consommee),
     depot_anterieur: i.depot_anterieur == null ? 0 : Number(i.depot_anterieur),
-  })) as InscriptionDepot[];
+  })) as (InscriptionDepot & Partial<Inscription>)[];
 
   const brutes = (affRes.data ?? []) as {
     inscription_id: string;

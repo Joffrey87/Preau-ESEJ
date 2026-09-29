@@ -19,8 +19,6 @@ import {
   famillesParties,
   FRAIS_DOSSIER_PAR_ENFANT,
   type AffectationDetail,
-  type EtatDepot,
-  type EtatFraisDossier,
   type InscriptionDepot,
   type NatureAffectation,
 } from "@/lib/scolariteDepots";
@@ -89,25 +87,6 @@ export function totalRegle(i: Inscription): number {
   return cols.reduce((s, c) => s + (Number(i[c]) || 0), 0);
 }
 
-const COULEURS: Record<string, string> = {
-  vert: "bg-positive/10 text-positive",
-  jaune: "bg-gold-soft text-gold",
-  violet: "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300",
-  bleu: "bg-accent-soft text-accent",
-  gris: "bg-surface-2 text-muted",
-};
-
-function Pastille({ couleur, children, title }: { couleur: string; children: React.ReactNode; title?: string }) {
-  return (
-    <span
-      title={title}
-      className={`inline-flex cursor-help items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium tabular-nums ${COULEURS[couleur] ?? COULEURS.gris}`}
-    >
-      {children}
-    </span>
-  );
-}
-
 function detailsTexte(details: AffectationDetail[]): string {
   return details
     .map((d) => `${d.date_operation ? formatDateCourte(d.date_operation) + " · " : ""}${d.libelle} — ${d.type === "depense" ? "−" : ""}${formatEuros(d.montant)}`)
@@ -152,7 +131,7 @@ export default function GestionScolarite({
   /** Dons d'association et mensualités fléchés vers ces familles (comptés comme réglé). */
   affectations?: AffectationRecue[];
   /** Toutes les inscriptions, toutes années : le dépôt suit la famille. */
-  toutesInscriptions?: InscriptionDepot[];
+  toutesInscriptions?: (InscriptionDepot & Partial<Inscription>)[];
   /** Toutes les affectations, avec leur nature et l'opération d'origine. */
   affectationsDetail?: AffectationDetail[];
   /** Fiches familles et élèves (prénom chiffré), pour le détail et la part de juin. */
@@ -329,17 +308,13 @@ export default function GestionScolarite({
     if (e.departs > 0) lignes.push("", `${e.departs} enfant(s) parti(s) depuis l'année précédente.`);
     if (e.reportClasseur > 0) lignes.push("", `Report du classeur (colonne Avance) : ${formatEuros(e.reportClasseur)}`);
     if (e.couleur === "violet") lignes.push("", "Dépôt non rendu après un départ : restitution ou don de la famille à décider.");
-    const texte =
-      e.couleur === "vert" ? "Payé" : e.couleur === "violet" ? "Non rendu" : e.couleur === "jaune" ? "Incomplet" : "—";
+    // Comme les frais de dossier : coche verte si le dépôt est constitué, « ! » ambre sinon.
+    const enRegle = e.couleur !== "jaune";
     return (
-      <Pastille couleur={e.couleur} title={lignes.join("\n")}>
-        {texte}
-        {e.couleur !== "gris" && (
-          <span className="opacity-80">
-            {formatEuros(e.detenu)}/{formatEuros(e.du)}
-          </span>
-        )}
-      </Pastille>
+      <span title={lignes.join("\n")} className="inline-flex cursor-help items-baseline gap-0.5">
+        <span className={`text-base font-semibold ${enRegle ? "text-positive" : "text-gold"}`}>{enRegle ? "✓" : "!"}</span>
+        {e.couleur === "violet" && <span className="text-xs font-semibold text-violet-600 dark:text-violet-300">↩</span>}
+      </span>
     );
   };
 
@@ -371,7 +346,7 @@ export default function GestionScolarite({
     <>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <label className="text-sm text-muted">Année scolaire</label>
+          <label className="text-sm text-muted">Exercice</label>
           <select
             value={annee}
             onChange={(e) => changerAnnee(e.target.value)}
@@ -541,11 +516,9 @@ export default function GestionScolarite({
                         <DetailFamille
                           inscription={i}
                           affectations={affectationsDetail}
-                          depot={depotDe(i).depot}
-                          frais={depotDe(i).frais}
-                          du={du}
-                          regle={regle}
-                          juin={partJuin(i)}
+                          dossier={toutesInscriptions.filter((t) =>
+                            i.famille_id ? t.famille_id === i.famille_id : t.famille_nom === i.famille_nom,
+                          )}
                           famille={familles.find((x) => x.id === i.famille_id) ?? null}
                           eleves={elevesDe(i)}
                         />
@@ -563,9 +536,9 @@ export default function GestionScolarite({
       {/* Légende des deux colonnes alimentées par la Comptabilité */}
       <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted">
         <span className="font-medium text-foreground">Mois d&apos;avance et frais de dossier :</span>
-        <span><Pastille couleur="vert">vert</Pastille> réglé pour chaque enfant</span>
-        <span><Pastille couleur="jaune">jaune</Pastille> versé partiellement ou pas encore</span>
-        <span><Pastille couleur="violet">violet</Pastille> enfant parti, dépôt non rendu (restitution ou don à décider)</span>
+        <span><span className="font-semibold text-positive">✓</span> réglé pour chaque enfant</span>
+        <span><span className="font-semibold text-gold">!</span> versé partiellement ou pas encore</span>
+        <span><span className="font-semibold text-violet-600 dark:text-violet-300">↩</span> enfant parti, dépôt non rendu (restitution ou don à décider)</span>
         <span>· le détail des versements apparaît au survol ; ils se saisissent dans la Comptabilité, en affectant l&apos;écriture à la famille.</span>
       </div>
 
@@ -686,14 +659,33 @@ export default function GestionScolarite({
 // Détail d'une famille, déroulé sous sa ligne.
 // ---------------------------------------------------------------------------
 
+type Nature = "scolarite" | "dossier" | "depot";
+
+const NATURES_LIGNE: Record<Nature, { l: string; c: string }> = {
+  scolarite: { l: "Frais de scolarité", c: "bg-accent-soft text-accent" },
+  dossier: { l: "Frais de dossier", c: "bg-surface-2 text-foreground" },
+  depot: { l: "Mois d'avance", c: "bg-gold-soft text-gold" },
+};
+
+const NATURE_DE: Record<NatureAffectation, Nature> = {
+  mensualite: "scolarite",
+  don_association: "scolarite",
+  frais_dossier: "dossier",
+  mois_avance: "depot",
+};
+
 type LigneVersement = {
+  exercice: string;
   date: string | null;
+  nature: Nature;
   libelle: string;
   montant: number;
   origine?: string;
   /** Versement enregistré en comptabilité : une attestation de paiement peut être éditée. */
   attestation?: Attestation;
 };
+
+type InscriptionDossier = InscriptionDepot & Partial<Inscription>;
 
 /** Attestation de paiement, avec l'en-tête et la signature du modèle de reçu. */
 async function editerAttestation(a: Attestation) {
@@ -707,171 +699,179 @@ async function editerAttestation(a: Attestation) {
   });
 }
 
-function TableVersements({ lignes, vide }: { lignes: LigneVersement[]; vide: string }) {
-  if (lignes.length === 0) return <p className="text-xs text-muted">{vide}</p>;
-  const total = lignes.reduce((s, l) => s + l.montant, 0);
+/**
+ * Paiements d'une inscription (un exercice) : versements fléchés depuis la
+ * Comptabilité, du plus récent au plus ancien, puis les saisies du classeur,
+ * sans date (juin → septembre, puis le report).
+ */
+function paiementsExercice(insc: InscriptionDossier, affectations: AffectationDetail[]): LigneVersement[] {
+  const exercice = insc.annee_scolaire;
+  const compta: LigneVersement[] = affectations
+    .filter((a) => a.inscription_id === insc.id)
+    .map((d) => {
+      const origine = d.origine ?? (d.nature === "don_association" ? "Association (tiers)" : "Famille");
+      return {
+        exercice,
+        date: d.date_operation || null,
+        nature: NATURE_DE[d.nature] ?? "scolarite",
+        libelle: d.libelle,
+        montant: d.type === "depense" ? -Number(d.montant) : Number(d.montant),
+        origine,
+        attestation:
+          d.type === "recette" && d.date_operation
+            ? {
+                famille: insc.famille_nom,
+                annee_scolaire: exercice,
+                nature: d.nature,
+                montant: Number(d.montant),
+                date: d.date_operation,
+                origine: origine === "Association (tiers)" ? "Association" : origine,
+              }
+            : undefined,
+      };
+    })
+    .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""));
+  const classeur: LigneVersement[] = [];
+  for (const m of [...MOIS].reverse()) {
+    const v = Number(insc[m.k]);
+    if (v) classeur.push({ exercice, date: null, nature: "scolarite", libelle: `${m.l} (saisi au classeur)`, montant: v });
+  }
+  if (Number(insc.avance) > 0) {
+    classeur.push({ exercice, date: null, nature: "scolarite", libelle: "Report de l'exercice précédent", montant: Number(insc.avance) });
+  }
+  return [...compta, ...classeur];
+}
+
+function TablePaiements({ lignes, avecExercice = false }: { lignes: LigneVersement[]; avecExercice?: boolean }) {
+  if (lignes.length === 0) return <p className="text-muted">Aucun paiement enregistré.</p>;
   return (
-    <table className="w-full text-xs">
+    <table className="w-full">
       <tbody>
-        {lignes.map((l, k) => (
-          <tr key={k} className="border-b border-border/40 last:border-0">
-            <td className="w-20 py-1 pr-2 tabular-nums text-muted">{l.date ? formatDateCourte(l.date) : "—"}</td>
-            <td className="py-1 pr-2">{l.libelle}</td>
-            <td className="py-1 pr-2 text-muted">{l.origine ?? ""}</td>
-            <td className={`py-1 text-right tabular-nums ${l.montant < 0 ? "text-negative" : ""}`}>{formatEuros(l.montant)}</td>
-            <td className="w-20 py-1 text-right">
-              {l.attestation && (
-                <button
-                  type="button"
-                  onClick={() => editerAttestation(l.attestation!)}
-                  className="text-[11px] text-accent hover:underline"
-                  title="Attestation de paiement (PDF)"
-                >
-                  Attestation
-                </button>
+        {lignes.map((l, k) => {
+          const nouvelExercice = avecExercice && (k === 0 || lignes[k - 1].exercice !== l.exercice);
+          return (
+            <Fragment key={k}>
+              {nouvelExercice && (
+                <tr>
+                  <td colSpan={6} className={`pb-0.5 font-semibold ${k > 0 ? "pt-3" : ""}`}>
+                    Exercice {l.exercice}
+                    <span className="ml-2 font-normal tabular-nums text-muted">
+                      {formatEuros(lignes.filter((x) => x.exercice === l.exercice).reduce((s, x) => s + x.montant, 0))}
+                    </span>
+                  </td>
+                </tr>
               )}
-            </td>
-          </tr>
-        ))}
-        {lignes.length > 1 && (
-          <tr>
-            <td />
-            <td className="pt-1 font-semibold">Total</td>
-            <td />
-            <td className="pt-1 text-right font-semibold tabular-nums">{formatEuros(total)}</td>
-            <td />
-          </tr>
-        )}
+              <tr className="border-b border-border/40 last:border-0">
+                <td className="w-[4.5rem] py-1 pr-2 tabular-nums text-muted">{l.date ? formatDateCourte(l.date) : "—"}</td>
+                <td className="w-32 py-1 pr-2">
+                  <span className={`inline-block whitespace-nowrap rounded px-1.5 py-px text-[11px] font-medium ${NATURES_LIGNE[l.nature].c}`}>
+                    {NATURES_LIGNE[l.nature].l}
+                  </span>
+                </td>
+                <td className="max-w-0 truncate py-1 pr-2" title={l.libelle}>{l.libelle}</td>
+                <td className="hidden py-1 pr-2 text-muted sm:table-cell">{l.origine ?? ""}</td>
+                <td className={`py-1 text-right tabular-nums whitespace-nowrap ${l.montant < 0 ? "text-negative" : ""}`}>
+                  {formatEuros(l.montant)}
+                </td>
+                <td className="w-10 py-1 text-right">
+                  {l.attestation && (
+                    <button
+                      type="button"
+                      onClick={() => editerAttestation(l.attestation!)}
+                      className="text-[11px] text-accent hover:underline"
+                      title="Attestation de paiement (PDF)"
+                    >
+                      PDF
+                    </button>
+                  )}
+                </td>
+              </tr>
+            </Fragment>
+          );
+        })}
       </tbody>
     </table>
   );
 }
 
-const versementDepuis = (d: AffectationDetail, famille?: string, annee?: string): LigneVersement => {
-  const origine = d.origine ?? (d.nature === "don_association" ? "Association (tiers)" : "Famille");
-  return {
-    date: d.date_operation || null,
-    libelle: d.libelle,
-    montant: d.type === "depense" ? -Number(d.montant) : Number(d.montant),
-    origine,
-    attestation:
-      famille && annee && d.type === "recette" && d.date_operation
-        ? {
-            famille,
-            annee_scolaire: annee,
-            nature: d.nature,
-            montant: Number(d.montant),
-            date: d.date_operation,
-            origine: origine === "Association (tiers)" ? "Association" : origine,
-          }
-        : undefined,
-  };
-};
-
 /**
- * Tout ce que la ligne ne montre pas : le détail des versements par nature
- * (mensualités avec leur payeur — famille, Amitié Sainte-Anne… —, frais de
- * dossier, mois d'avance), et l'accès aux coordonnées de la famille.
+ * Détail compact d'une famille : ses paiements de l'exercice, un par ligne, du
+ * plus récent au plus ancien, avec leur nature (frais de scolarité, frais de
+ * dossier, mois d'avance). Rien de ce que montre déjà la ligne de la famille
+ * n'est répété. En dessous : sa fiche et ses enfants, et le dossier complet
+ * (tous ses paiements, tous exercices).
  */
 function DetailFamille({
   inscription,
   affectations,
-  depot,
-  frais,
-  du,
-  regle,
-  juin,
+  dossier,
   famille,
   eleves,
 }: {
   inscription: Inscription;
   affectations: AffectationDetail[];
-  depot: EtatDepot;
-  frais: EtatFraisDossier;
-  du: number;
-  regle: number;
-  juin: { montant: number; enfants: Eleve[] };
+  /** Toutes les inscriptions de la famille, tous exercices. */
+  dossier: InscriptionDossier[];
   famille: FicheFamille | null;
   eleves: Eleve[];
 }) {
-  // Mensualités : montants saisis mois par mois (classeur), report de l'année
-  // précédente, et versements rattachés depuis la Comptabilité.
-  const mensualites: LigneVersement[] = [];
-  if (Number(inscription.avance) > 0) {
-    mensualites.push({ date: null, libelle: "Report de l'année précédente (crédit)", montant: Number(inscription.avance), origine: "—" });
-  }
-  for (const m of MOIS) {
-    const v = Number(inscription[m.k]);
-    if (v) mensualites.push({ date: null, libelle: `${m.l} (saisi au classeur)`, montant: v, origine: "—" });
-  }
-  for (const a of affectations) {
-    if (a.inscription_id === inscription.id && (a.nature === "mensualite" || a.nature === "don_association")) {
-      mensualites.push(versementDepuis(a, inscription.famille_nom, inscription.annee_scolaire));
-    }
-  }
-  const parOrigine = new Map<string, number>();
-  for (const l of mensualites) {
-    if (!l.origine || l.origine === "—") continue;
-    parOrigine.set(l.origine, (parOrigine.get(l.origine) ?? 0) + l.montant);
-  }
+  const [volet, setVolet] = useState<"infos" | "dossier" | null>(null);
+  const nom = inscription.famille_nom;
+  const lignes = paiementsExercice(inscription as InscriptionDossier, affectations);
+  const complet = () =>
+    [...dossier]
+      .sort((a, b) => b.annee_scolaire.localeCompare(a.annee_scolaire))
+      .flatMap((i) => paiementsExercice(i, affectations));
+
+  const bouton = (v: "infos" | "dossier", libelle: string) => (
+    <button
+      type="button"
+      onClick={() => setVolet((x) => (x === v ? null : v))}
+      aria-expanded={volet === v}
+      className={`rounded-lg border px-2.5 py-1 font-medium ${
+        volet === v ? "border-accent bg-accent-soft text-accent" : "border-border bg-surface hover:bg-surface-2"
+      }`}
+    >
+      {libelle}
+    </button>
+  );
 
   return (
-    <div className="grid gap-4 py-2 lg:grid-cols-3">
-      <section className="rounded-lg border border-border bg-surface p-3 lg:col-span-2">
-        <h3 className="mb-1 text-sm font-semibold">Frais de scolarité · {inscription.annee_scolaire}</h3>
-        <p className="mb-2 text-xs text-muted">
-          Dû {formatEuros(du)} ({formatEuros(Number(inscription.montant_mensuel))} × 10
-          {juin.montant > 0 && ` − ${formatEuros(juin.montant)} de juin`}) · réglé {formatEuros(regle)} · reste{" "}
-          <span className={du - regle > 0 ? "text-negative" : "text-positive"}>{formatEuros(du - regle)}</span>
-          {parOrigine.size > 0 && (
-            <> · dont {[...parOrigine].map(([o, v]) => `${o} ${formatEuros(v)}`).join(", ")}</>
-          )}
-        </p>
-        {juin.montant > 0 && (
-          <p className="mb-2 rounded bg-gold-soft px-2 py-1 text-xs text-gold">
-            Fin de scolarité en juin pour {juin.enfants.length} enfant(s) en CM2 : {formatEuros(juin.montant)} de juin non dus,
-            couverts par le mois d&apos;avance.
-          </p>
-        )}
-        <TableVersements lignes={mensualites} vide="Aucun versement enregistré pour cette année." />
-      </section>
+    <div className="py-2 text-xs">
+      <TablePaiements lignes={lignes} />
 
-      <div className="space-y-4">
-        <section className="rounded-lg border border-border bg-surface p-3">
-          <h3 className="mb-1 text-sm font-semibold">Frais de dossier</h3>
-          <p className="mb-2 text-xs text-muted">
-            {frais.nouveaux > 0
-              ? `${frais.nouveaux} enfant(s) entrant(s) : ${formatEuros(frais.du)} attendus, ${formatEuros(frais.paye)} réglés.`
-              : "Aucun enfant entrant cette année."}
-          </p>
-          <TableVersements lignes={frais.details.map((d) => versementDepuis(d, inscription.famille_nom, inscription.annee_scolaire))} vide="Aucun versement." />
-        </section>
-
-        <section className="rounded-lg border border-border bg-surface p-3">
-          <h3 className="mb-1 text-sm font-semibold">Mois d&apos;avance (dépôt)</h3>
-          <p className="mb-2 text-xs text-muted">
-            Attendu {formatEuros(depot.du)} · détenu {formatEuros(depot.detenu)}
-            {depot.anterieur > 0 && ` (dont ${formatEuros(depot.anterieur)} antérieurs à la comptabilité)`}
-            {Number(inscription.avance_consommee) > 0 && ` · ${formatEuros(Number(inscription.avance_consommee))} utilisés cette année`}
-          </p>
-          <TableVersements lignes={depot.details.map((d) => versementDepuis(d, inscription.famille_nom, inscription.annee_scolaire))} vide="Aucun versement fléché." />
-        </section>
-
-        <section className="rounded-lg border border-border bg-surface p-3">
-          <h3 className="mb-1 text-sm font-semibold">Famille</h3>
-          {inscription.emails && <p className="text-xs text-muted">Courriels : {inscription.emails}</p>}
-          {inscription.notes && <p className="text-xs text-muted">Notes : {inscription.notes}</p>}
-          <div className="mt-2">
-            <FamilleEnfants famille={famille} eleves={eleves} annee={inscription.annee_scolaire} />
-          </div>
-          <Link
-            href={`/carnet?q=${encodeURIComponent(inscription.famille_nom.replace(/\s+[A-Z]$/, ""))}`}
-            className="mt-1 inline-block text-xs font-medium text-accent hover:underline"
-          >
-            Coordonnées dans le carnet d&apos;adresses →
-          </Link>
-        </section>
+      <div className="mt-2 flex flex-wrap gap-2">
+        {bouton("infos", "Informations famille")}
+        {bouton("dossier", "Dossier famille complet")}
+        <Link
+          href={`/carnet?q=${encodeURIComponent(nom.replace(/\s+[A-Z]$/, ""))}`}
+          className="rounded-lg border border-border bg-surface px-2.5 py-1 font-medium hover:bg-surface-2"
+        >
+          Carnet d&apos;adresses →
+        </Link>
       </div>
+
+      {volet === "infos" && (
+        <div className="mt-2 rounded-lg border border-border bg-surface p-3">
+          <FamilleEnfants famille={famille} eleves={eleves} annee={inscription.annee_scolaire} />
+          {(inscription.emails || inscription.notes) && (
+            <p className="mt-2 text-muted">
+              {inscription.emails && <>Courriels : {inscription.emails}</>}
+              {inscription.emails && inscription.notes && " · "}
+              {inscription.notes && <>Notes : {inscription.notes}</>}
+            </p>
+          )}
+        </div>
+      )}
+
+      {volet === "dossier" && (
+        <div className="mt-2 rounded-lg border border-border bg-surface p-3">
+          <h4 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">
+            Dossier complet · frais de scolarité, tous exercices
+          </h4>
+          <TablePaiements lignes={complet()} avecExercice />
+        </div>
+      )}
     </div>
   );
 }

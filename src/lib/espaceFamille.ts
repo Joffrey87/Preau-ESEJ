@@ -81,6 +81,8 @@ export const LIBELLE_MOIS = ["Septembre", "Octobre", "Novembre", "Décembre", "J
 
 export type Situation = {
   annee: string;
+  /** Inscription de l'année : borne le détail des versements à cette année scolaire. */
+  inscriptionId: string;
   mensuel: number;
   du: number;
   partJuin: { montant: number; enfants: Eleve[] };
@@ -152,6 +154,7 @@ export function situation(espace: EspaceFamille, annee: string, aujourdhui: stri
 
   return {
     annee,
+    inscriptionId: insc.id,
     mensuel,
     du,
     partJuin,

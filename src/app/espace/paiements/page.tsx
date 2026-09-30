@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { familleEnApercu } from "@/lib/apercuFamille";
 import { formatEurosCourt as formatEuros, formatDate, todayISO } from "@/lib/format";
 import { prenomEleve } from "@/lib/eleves";
+import { PastilleMaj } from "@/components/PageHeader";
 import { chargerEspace, situation, anneeCourante } from "@/lib/espaceFamille";
 import FraisScolariteFamille, { DossierAnneesPrecedentes, type AnneeFamille } from "@/components/FraisScolariteFamille";
 import { BoutonAttestation } from "@/components/EspaceClient";
@@ -39,7 +40,10 @@ export default async function PaiementsFamille({ searchParams }: { searchParams:
 
   return (
     <div className="space-y-6">
-      <h1 className="text-center text-lg font-semibold">Paiements</h1>
+      <div className="text-center">
+        <h1 className="text-lg font-semibold">Paiements</h1>
+        {espace.maj && <PastilleMaj maj={espace.maj} />}
+      </div>
 
       <section>
         <h2 className="mb-2 text-sm font-semibold">Frais de scolarité</h2>

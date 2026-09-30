@@ -2,6 +2,7 @@ import Link from "next/link";
 import Icon from "@/components/Icon";
 import { createClient } from "@/lib/supabase/server";
 import { formatEuros } from "@/lib/format";
+import { regleDesFamilles } from "@/lib/regleScolarite";
 import { sansLignesVentilees } from "@/lib/operations";
 import { roleByEmail } from "@/lib/roles";
 import { recuEnvoye, champsImportantsManquants, sansRecu } from "@/lib/statutDon";
@@ -26,20 +27,6 @@ type DonRow = {
   courriel: string | null;
   date_don: string;
   mode_paiement: string | null;
-};
-type ScoRow = {
-  montant_mensuel: number | null;
-  avance: number | null;
-  m_sept: number | null;
-  m_oct: number | null;
-  m_nov: number | null;
-  m_dec: number | null;
-  m_jan: number | null;
-  m_fev: number | null;
-  m_mars: number | null;
-  m_avr: number | null;
-  m_mai: number | null;
-  m_juin: number | null;
 };
 
 type Tone = "red" | "amber" | "blue" | "violet" | "green";
@@ -99,12 +86,7 @@ export default async function Home() {
   ]);
 
   const anneeSco = (scoAnneeRes.data as { annee_scolaire: string } | null)?.annee_scolaire ?? null;
-  const scoRes = anneeSco
-    ? await supabase
-        .from("scolarite_inscriptions")
-        .select("montant_mensuel, avance, m_sept, m_oct, m_nov, m_dec, m_jan, m_fev, m_mars, m_avr, m_mai, m_juin")
-        .eq("annee_scolaire", anneeSco)
-    : { data: [] as ScoRow[] };
+  const sco = anneeSco ? await regleDesFamilles(supabase, anneeSco) : [];
 
   // Finances
   const soldeInitial = (comptesRes.data ?? []).reduce((s, c) => s + Number(c.solde_initial), 0);
@@ -130,16 +112,8 @@ export default async function Home() {
   ).length;
   const totalDons = dons.length;
 
-  // Scolarité — reste à payer = montant_mensuel*10 − (avance + Σ mois)
-  const sco = (scoRes.data ?? []) as ScoRow[];
-  const n = (v: number | null | undefined) => Number(v ?? 0);
-  const resteFamille = (r: ScoRow) => {
-    const regle =
-      n(r.avance) +
-      n(r.m_sept) + n(r.m_oct) + n(r.m_nov) + n(r.m_dec) + n(r.m_jan) +
-      n(r.m_fev) + n(r.m_mars) + n(r.m_avr) + n(r.m_mai) + n(r.m_juin);
-    return n(r.montant_mensuel) * 10 - regle;
-  };
+  // Scolarité — reste à payer = dû − réglé (calcul commun : lib/regleScolarite)
+  const resteFamille = (r: (typeof sco)[number]) => r.du - r.regle;
   const famImpayees = sco.filter((r) => resteFamille(r) > 0.005);
   const resteTotal = famImpayees.reduce((s, r) => s + resteFamille(r), 0);
 

@@ -11,6 +11,7 @@ import {
   type InscriptionDepot,
   type NatureAffectation,
 } from "@/lib/scolariteDepots";
+import { lignesRegle, sourceDe, type SourcesScolarite } from "@/lib/regleScolarite";
 
 export type EspaceFamille = {
   famille: {
@@ -52,6 +53,10 @@ export type EspaceFamille = {
     paye_le: string | null;
   }[];
   bareme: { annee_scolaire: string; nb_enfants: number; montant_mensuel: number }[];
+  /** Source des règlements de chaque année (Comptabilité ou classeur). */
+  sources?: SourcesScolarite;
+  /** Date de la dernière écriture bancaire intégrée. */
+  maj?: string | null;
 };
 
 export type Association = {
@@ -77,7 +82,6 @@ export async function chargerEspace(
   };
 }
 
-const MOIS_COL = ["m_sept", "m_oct", "m_nov", "m_dec", "m_jan", "m_fev", "m_mars", "m_avr", "m_mai", "m_juin"];
 export const LIBELLE_MOIS = ["Septembre", "Octobre", "Novembre", "Décembre", "Janvier", "Février", "Mars", "Avril", "Mai", "Juin"];
 
 export type Situation = {
@@ -109,25 +113,17 @@ export function situation(espace: EspaceFamille, annee: string, aujourdhui: stri
   const partJuin = partJuinNonDue({ annee_scolaire: annee, montant_mensuel: mensuel, nb_enfants: insc.nb_enfants }, espace.eleves, bareme);
   const du = mensuel * 10 - partJuin.montant;
 
-  const lignes: Situation["lignes"] = [];
-  if (Number(insc.avance) > 0) {
-    lignes.push({ date: null, libelle: "Report de l'année précédente", montant: Number(insc.avance), origine: "—", nature: "classeur", mode: null });
-  }
-  MOIS_COL.forEach((c, k) => {
-    const v = Number(insc[c]);
-    if (v) lignes.push({ date: null, libelle: LIBELLE_MOIS[k], montant: v, origine: "Famille", nature: "classeur", mode: null });
-  });
-  for (const v of espace.versements) {
-    if (v.inscription_id !== insc.id || (v.nature !== "mensualite" && v.nature !== "don_association")) continue;
-    lignes.push({
-      date: v.date,
-      libelle: "Frais de scolarité",
-      montant: v.type === "depense" ? -Number(v.montant) : Number(v.montant),
-      origine: v.origine,
-      nature: v.nature,
-      mode: v.mode,
-    });
-  }
+  // Réglé : même calcul que l'onglet Frais de scolarité (une source par année,
+  // plus le report ; le mois d'avance n'y entre pas).
+  const lignes: Situation["lignes"] = lignesRegle(insc, sourceDe(annee, espace.sources), espace.versements).map((l) => ({
+    date: l.date,
+    libelle:
+      l.nature === "classeur" ? l.libelle.replace(" (classeur)", "") : l.nature === "report" ? l.libelle : "Frais de scolarité",
+    montant: l.montant,
+    origine: l.origine ?? (l.nature === "report" ? "—" : "Famille"),
+    nature: l.nature === "report" ? "classeur" : l.nature,
+    mode: l.mode ?? null,
+  }));
   const regle = lignes.reduce((s, l) => s + l.montant, 0);
   const paiement = etatPaiement(annee, mensuel, du, regle, aujourdhui, partJuin.montant);
 

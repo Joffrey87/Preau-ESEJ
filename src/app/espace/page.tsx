@@ -2,6 +2,7 @@ import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { familleEnApercu } from "@/lib/apercuFamille";
 import { formatEurosCourt as formatEuros, todayISO } from "@/lib/format";
+import { PastilleMaj } from "@/components/PageHeader";
 import { chargerEspace, situation, alertes, anneeCourante, classeEn } from "@/lib/espaceFamille";
 import { prenomEleve, termineEnJuin } from "@/lib/eleves";
 
@@ -30,7 +31,12 @@ export default async function TableauDeBordFamille() {
     <div className="space-y-6">
       <div>
         <h1 className="text-lg font-semibold">Bonjour, famille {espace.famille.nom}</h1>
-        {annee && <p className="text-sm text-muted">Année scolaire {annee}</p>}
+        {annee && (
+          <p className="flex flex-wrap items-center gap-2 text-sm text-muted">
+            Année scolaire {annee}
+            {espace.maj && <PastilleMaj maj={espace.maj} />}
+          </p>
+        )}
       </div>
 
       <section>

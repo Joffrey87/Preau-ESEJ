@@ -10,6 +10,7 @@ import {
   type Periode,
 } from "@/lib/bilan";
 import { sansLignesVentilees, toutesLesOperations } from "@/lib/operations";
+import { regleDesFamilles } from "@/lib/regleScolarite";
 
 type Op = {
   date_operation: string; montant: number; type: "recette" | "depense";
@@ -19,11 +20,6 @@ type Op = {
 type Exo = { id: string; libelle: string; date_debut: string; date_fin: string; actif: boolean };
 type Cat = { id: string; nom: string; type: "recette" | "depense" };
 type Bl = { categorie_id: string; montant_prevu: number };
-type Sco = {
-  montant_mensuel: number | null; avance: number | null;
-  m_sept: number | null; m_oct: number | null; m_nov: number | null; m_dec: number | null; m_jan: number | null;
-  m_fev: number | null; m_mars: number | null; m_avr: number | null; m_mai: number | null; m_juin: number | null;
-};
 type Ligne = { nom: string; type: "recette" | "depense"; periode: number; cumul: number; budget: number };
 
 // Palette « thème clair » figée (le document reste identique en clair/sombre et à l'impression).
@@ -144,18 +140,12 @@ export default async function BilanPage({
 
   // Scolarité
   const anneeSco = (scoAnneeRes.data as { annee_scolaire: string } | null)?.annee_scolaire ?? null;
-  const scoRes = anneeSco
-    ? await supabase.from("scolarite_inscriptions")
-        .select("montant_mensuel, avance, m_sept, m_oct, m_nov, m_dec, m_jan, m_fev, m_mars, m_avr, m_mai, m_juin")
-        .eq("annee_scolaire", anneeSco)
-    : { data: [] as Sco[] };
-  const sco = (scoRes.data ?? []) as Sco[];
-  const nb = (v: number | null | undefined) => Number(v ?? 0);
-  const regleFam = (r: Sco) => nb(r.avance) + nb(r.m_sept) + nb(r.m_oct) + nb(r.m_nov) + nb(r.m_dec) + nb(r.m_jan) + nb(r.m_fev) + nb(r.m_mars) + nb(r.m_avr) + nb(r.m_mai) + nb(r.m_juin);
-  const scoDu = sco.reduce((s, r) => s + nb(r.montant_mensuel) * 10, 0);
-  const scoRegle = sco.reduce((s, r) => s + regleFam(r), 0);
+  // Dû et réglé par famille : calcul commun (lib/regleScolarite).
+  const sco = anneeSco ? await regleDesFamilles(supabase, anneeSco) : [];
+  const scoDu = sco.reduce((s, r) => s + r.du, 0);
+  const scoRegle = sco.reduce((s, r) => s + r.regle, 0);
   const scoReste = scoDu - scoRegle;
-  const scoFamillesReste = sco.filter((r) => nb(r.montant_mensuel) * 10 - regleFam(r) > 0.005).length;
+  const scoFamillesReste = sco.filter((r) => r.du - r.regle > 0.005).length;
 
   // Dons
   const dons = (donsRes.data ?? []) as { montant: number; date_don: string }[];

@@ -98,7 +98,7 @@ export default async function ComptabilitePage({
       .sort((a, b) => b.date_operation.localeCompare(a.date_operation) || b.created_at.localeCompare(a.created_at));
   };
 
-  const [operationsExercice, catsRes, comptesRes, inscriptionsRes, affectationsRes] = await Promise.all([
+  const [operationsExercice, catsRes, comptesRes, inscriptionsRes, affectationsRes, majRes] = await Promise.all([
     chargerSelection(),
     supabase
       .from("categories")
@@ -113,6 +113,7 @@ export default async function ComptabilitePage({
       .order("annee_scolaire", { ascending: false })
       .order("famille_nom"),
     supabase.from("affectations_scolarite").select("id, operation_id, inscription_id, montant, notes, nature"),
+    supabase.rpc("date_maj_comptes"),
   ]);
 
   // Dons, pour la pastille des opérations « Don » : relié ou trouvé, et fiche
@@ -203,6 +204,7 @@ export default async function ComptabilitePage({
       <PageHeader
         title="Comptabilité"
         subtitle={libelleSelection ? `Recettes et dépenses · ${libelleSelection}` : "Recettes et dépenses de l'exercice."}
+        maj={(majRes.data as string | null) ?? null}
         action={
           exercice ? (
             <div className="flex flex-wrap items-center gap-2">

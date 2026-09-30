@@ -22,6 +22,15 @@ import {
   type InscriptionDepot,
   type NatureAffectation,
 } from "@/lib/scolariteDepots";
+import {
+  lignesRegle,
+  regleParSource,
+  sourceDe,
+  totalRegle,
+  type SourceScolarite,
+  type SourcesScolarite,
+  type VersementRegle,
+} from "@/lib/regleScolarite";
 
 export type Inscription = {
   id: string;
@@ -64,27 +73,21 @@ const MOIS: { k: keyof Inscription; l: string }[] = [
 
 const MOIS_PAR_AN = 10;
 
-/** Montant fléché vers une famille depuis la Comptabilité et compté comme réglé. */
-export type AffectationRecue = {
-  inscription_id: string;
-  montant: number;
-  libelle: string;
-  date_operation: string;
-  nature?: NatureAffectation;
-};
-
 export function totalDu(i: Pick<Inscription, "montant_mensuel">): number {
   return Number(i.montant_mensuel) * MOIS_PAR_AN;
 }
-/**
- * Réglé de l'année : le report (crédit venant de l'année précédente, colonne
- * « Avance » du classeur) plus les dix mensualités saisies. Le mois d'avance au
- * sens du DÉPÔT est une autre notion : il est suivi depuis la Comptabilité
- * (colonne « Mois d'avance ») et n'entre pas dans le réglé.
- */
-export function totalRegle(i: Inscription): number {
-  const cols = ["avance", ...MOIS.map((m) => m.k)] as (keyof Inscription)[];
-  return cols.reduce((s, c) => s + (Number(i[c]) || 0), 0);
+
+/** Affectations de la Comptabilité, au format du calcul du réglé. */
+function versementsDe(affectations: AffectationDetail[]): VersementRegle[] {
+  return affectations.map((a) => ({
+    inscription_id: a.inscription_id,
+    nature: a.nature,
+    montant: a.montant,
+    type: a.type,
+    date: a.date_operation || null,
+    libelle: a.libelle,
+    origine: a.origine,
+  }));
 }
 
 function detailsTexte(details: AffectationDetail[]): string {
@@ -117,7 +120,7 @@ export default function GestionScolarite({
   annees,
   inscriptions,
   bareme,
-  affectations = [],
+  sources = {},
   toutesInscriptions = [],
   affectationsDetail = [],
   familles = [],
@@ -128,8 +131,8 @@ export default function GestionScolarite({
   inscriptions: Inscription[];
   /** nb_enfants -> montant mensuel, pour l'année courante. */
   bareme: Record<number, number>;
-  /** Dons d'association et mensualités fléchés vers ces familles (comptés comme réglé). */
-  affectations?: AffectationRecue[];
+  /** Source des règlements de chaque année (Comptabilité ou classeur). */
+  sources?: SourcesScolarite;
   /** Toutes les inscriptions, toutes années : le dépôt suit la famille. */
   toutesInscriptions?: (InscriptionDepot & Partial<Inscription>)[];
   /** Toutes les affectations, avec leur nature et l'opération d'origine. */
@@ -250,16 +253,23 @@ export default function GestionScolarite({
     router.refresh();
   }
 
-  // Dons d'association fléchés, par famille. Ils comptent comme réglé : la
-  // somme a bien été perçue par l'école, simplement via un tiers.
-  const donParFamille = new Map<string, { montant: number; details: AffectationRecue[] }>();
-  for (const a of affectations) {
-    const e = donParFamille.get(a.inscription_id) ?? { montant: 0, details: [] };
-    e.montant += Number(a.montant);
-    e.details.push(a);
-    donParFamille.set(a.inscription_id, e);
+  // Réglé : une seule source par année (Comptabilité ou classeur), plus le
+  // report ; le mois d'avance n'y entre jamais. Voir `lib/regleScolarite`.
+  const source = sourceDe(annee, sources);
+  const versements = versementsDe(affectationsDetail);
+  const regleDe = (i: Inscription) => totalRegle(i, source, versements);
+  const [basculeEnCours, setBasculeEnCours] = useState(false);
+  async function changerSource(s: SourceScolarite) {
+    if (s === source) return;
+    setError(null);
+    setBasculeEnCours(true);
+    const { error: err } = await createClient()
+      .from("scolarite_annees")
+      .upsert({ annee_scolaire: annee, source: s, modifie_le: new Date().toISOString() });
+    setBasculeEnCours(false);
+    if (err) return setError("Changement de source impossible : " + err.message);
+    router.refresh();
   }
-  const donDe = (id: string) => donParFamille.get(id)?.montant ?? 0;
 
   // Enfants en CM2 : juin non dû pour leur part (couverte par le mois d'avance).
   const elevesDe = (i: Inscription) => eleves.filter((e) => e.famille_id && e.famille_id === i.famille_id);
@@ -271,9 +281,16 @@ export default function GestionScolarite({
 
   // Totaux de l'année
   const sumDu = inscriptions.reduce((s, i) => s + duDe(i), 0);
-  const sumDon = inscriptions.reduce((s, i) => s + donDe(i.id), 0);
-  const sumRegle = inscriptions.reduce((s, i) => s + totalRegle(i) + donDe(i.id), 0);
+  const sumRegle = inscriptions.reduce((s, i) => s + regleDe(i), 0);
   const sumReste = sumDu - sumRegle;
+  // Contrôle pendant la bascule : le réglé selon chacune des deux sources.
+  const sumParSource = inscriptions.reduce(
+    (acc, i) => {
+      const r = regleParSource(i, versements);
+      return { compta: acc.compta + r.compta, classeur: acc.classeur + r.classeur };
+    },
+    { compta: 0, classeur: 0 },
+  );
 
   const mensuelTotal = inscriptions.reduce((s, i) => s + Number(i.montant_mensuel), 0);
   const etatGlobal = etatJauge(mensuelTotal, sumRegle, annee);
@@ -311,6 +328,19 @@ export default function GestionScolarite({
   };
   const parties = famillesParties(annee, toutesInscriptions, affectationsDetail);
 
+  // Mois d'avance que l'école détient pour le compte des familles : à garder de
+  // côté en banque (il sera consommé au départ de chaque enfant, ou rendu).
+  const depotsDetenus = [
+    ...inscriptions.map((i) => ({ nom: i.famille_nom, detenu: depotDe(i).depot.detenu })),
+    ...parties.map((p) => ({ nom: `${p.famille_nom} (partie)`, detenu: p.detenu })),
+  ].filter((d) => Math.abs(d.detenu) > 0.005);
+  const moisAvanceBanque = depotsDetenus.reduce((s, d) => s + d.detenu, 0);
+  const aideMoisAvance = [
+    "Mois d'avance versés par les familles, ni consommés ni rendus : à conserver en banque.",
+    "",
+    ...depotsDetenus.map((d) => `${d.nom} : ${formatEuros(d.detenu)}`),
+  ].join("\n");
+
   // Taux de perception de l'année : mensualités + frais de dossier (hors mois
   // d'avance). Le perçu de chaque famille est plafonné à son dû, pour qu'un
   // trop-versé ne masque pas le retard d'une autre.
@@ -319,7 +349,7 @@ export default function GestionScolarite({
       const du = duDe(i);
       const f = depotDe(i).frais;
       acc.duMens += du;
-      acc.percuMens += Math.min(Math.max(totalRegle(i) + donDe(i.id), 0), du);
+      acc.percuMens += Math.min(Math.max(regleDe(i), 0), du);
       acc.duFrais += f.du;
       acc.percuFrais += Math.min(Math.max(f.paye, 0), f.du);
       return acc;
@@ -351,7 +381,6 @@ export default function GestionScolarite({
     if (e.details.length > 0) lignes.push("", "Versements (Comptabilité) :", detailsTexte(e.details));
     else lignes.push("", "Aucun versement fléché « mois d'avance » dans la Comptabilité.");
     if (e.departs > 0) lignes.push("", `${e.departs} enfant(s) parti(s) depuis l'année précédente.`);
-    if (e.reportClasseur > 0) lignes.push("", `Report du classeur (colonne Avance) : ${formatEuros(e.reportClasseur)}`);
     if (e.couleur === "violet") lignes.push("", "Dépôt non rendu après un départ : restitution ou don de la famille à décider.");
     // Comme les frais de dossier : coche verte si le dépôt est constitué, « ! » ambre sinon.
     const enRegle = e.couleur !== "jaune";
@@ -411,6 +440,46 @@ export default function GestionScolarite({
         </button>
       </div>
 
+      {/* Source des règlements de l'année */}
+      <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-border bg-surface px-4 py-2.5 text-sm">
+        <span className="text-muted">Règlements {annee} lus dans :</span>
+        <div className="inline-flex overflow-hidden rounded-lg border border-border">
+          {(
+            [
+              { v: "compta", l: "Comptabilité" },
+              { v: "classeur", l: "Classeur" },
+            ] as const
+          ).map((o) => (
+            <button
+              key={o.v}
+              type="button"
+              disabled={basculeEnCours}
+              onClick={() => changerSource(o.v)}
+              className={`px-3 py-1 text-xs font-medium ${
+                source === o.v ? "bg-accent text-accent-fg" : "hover:bg-surface-2"
+              }`}
+            >
+              {o.l}
+            </button>
+          ))}
+        </div>
+        <span
+          className="cursor-help text-xs tabular-nums text-muted"
+          title={
+            "Réglé de l'année selon chaque source (report compris, mois d'avance exclus).\n" +
+            "Comptabilité : écritures bancaires rattachées aux familles (mensualités, dons d'association fléchés).\n" +
+            "Classeur : les dix mois saisis à la main.\n" +
+            "Une fois tous les rattachements faits, les deux totaux doivent concorder : l'année peut alors passer en Comptabilité."
+          }
+        >
+          Comptabilité {formatEuros(sumParSource.compta)} · Classeur {formatEuros(sumParSource.classeur)}
+          {Math.abs(sumParSource.compta - sumParSource.classeur) > 0.005 && (
+            <span className="ml-1 text-gold">(écart {formatEuros(sumParSource.compta - sumParSource.classeur)})</span>
+          )}
+        </span>
+        {error && !edit && <span className="text-xs text-negative">{error}</span>}
+      </div>
+
       {/* Avancement des règlements */}
       {inscriptions.length > 0 && (
         <div className="mb-4 rounded-xl border border-border bg-surface px-4 py-4">
@@ -425,7 +494,6 @@ export default function GestionScolarite({
       <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {[
           { l: "Total attendu", v: sumDu, c: "" },
-          { l: "Dont rattachés depuis la compta", v: sumDon, c: sumDon > 0 ? "text-gold" : "text-muted" },
           {
             l: "Total réglé / Dû",
             v: sumRegle,
@@ -442,6 +510,14 @@ export default function GestionScolarite({
             l: "Reste à percevoir",
             v: sumReste,
             c: paiementGlobal.retard > 0 ? "text-negative" : paiementGlobal.aReglerFinDeMois > 0 ? "text-gold" : "",
+          },
+          {
+            l: "Mois d'avance en banque",
+            v: moisAvanceBanque,
+            c: "text-gold",
+            aide: aideMoisAvance,
+            sous: `${depotsDetenus.length} famille${depotsDetenus.length > 1 ? "s" : ""} · à garder de côté`,
+            aideSous: aideMoisAvance,
           },
         ].map((s: { l: string; v: number; c: string; apres?: number; aide?: string; sous?: string; aideSous?: string }) => (
           <div key={s.l} className="rounded-xl border border-border bg-surface px-4 py-3" title={s.aide}>
@@ -498,11 +574,12 @@ export default function GestionScolarite({
             ) : (
               inscriptions.map((i) => {
                 const du = duDe(i);
-                const don = donDe(i.id);
-                const regle = totalRegle(i) + don;
+                const regle = regleDe(i);
                 const reste = du - regle;
                 const paiement = etatPaiement(annee, Number(i.montant_mensuel), du, regle, aujourdhui, partJuin(i).montant);
-                const detailsDon = donParFamille.get(i.id)?.details ?? [];
+                const detailRegle = lignesRegle(i, source, versements)
+                  .map((l) => `${l.date ? formatDateCourte(l.date) + " · " : ""}${l.libelle} : ${formatEuros(l.montant)}`)
+                  .join("\n");
                 const deroulee = ouverte === i.id;
                 return (
                   <Fragment key={i.id}>
@@ -543,9 +620,8 @@ export default function GestionScolarite({
                           ? `En retard de ${formatEuros(paiement.retard)} (réglé : ${formatEuros(regle)})`
                           : paiement.aReglerFinDeMois > 0
                             ? `À régler avant la fin du mois (réglé : ${formatEuros(regle)})`
-                            : detailsDon.length > 0
-                              ? "Dont rattachés depuis la compta : " +
-                                detailsDon.map((d) => `${d.libelle} : ${formatEuros(Number(d.montant))}`).join(" · ")
+                            : detailRegle
+                              ? `Réglé (${source === "compta" ? "Comptabilité" : "classeur"}) :\n${detailRegle}`
                               : undefined
                       }
                     >
@@ -585,6 +661,7 @@ export default function GestionScolarite({
                         <DetailFamille
                           inscription={i}
                           affectations={affectationsDetail}
+                          sources={sources}
                           dossier={toutesInscriptions.filter((t) =>
                             i.famille_id ? t.famille_id === i.famille_id : t.famille_nom === i.famille_nom,
                           )}
@@ -662,7 +739,7 @@ export default function GestionScolarite({
                   onChange={(e) => set("avance", e.target.value)}
                   className={inputCls}
                   placeholder="0,00"
-                  title="Crédit reporté de l'année précédente (colonne « Avance » du classeur) : compte comme réglé. Le dépôt « mois d'avance » se suit, lui, depuis la Comptabilité."
+                  title="Report : crédit (ou dette, en négatif) reporté de l'année précédente, compté dans le réglé. À ne pas confondre avec le mois d'avance, suivi depuis la Comptabilité et jamais compté dans le réglé."
                 />
               </Field>
             </div>
@@ -694,8 +771,15 @@ export default function GestionScolarite({
               <input type="text" value={f.emails} onChange={(e) => set("emails", e.target.value)} className={inputCls} placeholder="parent1@… ; parent2@…" />
             </Field>
 
+            {source === "compta" ? (
+              <p className="rounded-lg bg-surface-2 px-3 py-2 text-xs text-muted">
+                Les paiements de {annee} sont lus dans la Comptabilité : ils se rattachent à la famille depuis
+                l&apos;écriture bancaire (onglet Comptabilité, mode modification). La grille mensuelle du classeur
+                n&apos;est plus utilisée pour cette année.
+              </p>
+            ) : (
             <div>
-              <div className="mb-1 text-sm font-medium">Paiements mensuels (€)</div>
+              <div className="mb-1 text-sm font-medium">Paiements mensuels (€) — classeur</div>
               <div className="grid grid-cols-5 gap-2">
                 {MOIS.map((m) => (
                   <label key={m.k} className="block">
@@ -711,6 +795,7 @@ export default function GestionScolarite({
                 ))}
               </div>
             </div>
+            )}
 
             <Field label="Notes / relance">
               <input type="text" value={f.notes} onChange={(e) => set("notes", e.target.value)} className={inputCls} />
@@ -752,6 +837,8 @@ type LigneVersement = {
   origine?: string;
   /** Versement enregistré en comptabilité : une attestation de paiement peut être éditée. */
   attestation?: Attestation;
+  /** Affiché pour mémoire, non compté (mensualité rattachée d'une année suivie au classeur). */
+  horsTotal?: boolean;
 };
 
 type InscriptionDossier = InscriptionDepot & Partial<Inscription>;
@@ -770,20 +857,28 @@ async function editerAttestation(a: Attestation) {
 
 /**
  * Paiements d'une inscription (un exercice) : versements fléchés depuis la
- * Comptabilité, du plus récent au plus ancien, puis les saisies du classeur,
- * sans date (juin → septembre, puis le report).
+ * Comptabilité, du plus récent au plus ancien, puis — si l'année est suivie au
+ * classeur — les saisies du classeur, sans date (juin → septembre), et le report.
+ * Une année au classeur ne compte pas les mensualités rattachées depuis la
+ * Comptabilité : elles restent affichées, signalées « non comptées ».
  */
-function paiementsExercice(insc: InscriptionDossier, affectations: AffectationDetail[]): LigneVersement[] {
+function paiementsExercice(
+  insc: InscriptionDossier,
+  affectations: AffectationDetail[],
+  source: SourceScolarite,
+): LigneVersement[] {
   const exercice = insc.annee_scolaire;
   const compta: LigneVersement[] = affectations
     .filter((a) => a.inscription_id === insc.id)
     .map((d) => {
       const origine = d.origine ?? (d.nature === "don_association" ? "Association (tiers)" : "Famille");
+      const nonComptee = source === "classeur" && (d.nature === "mensualite" || d.nature === "don_association");
       return {
         exercice,
         date: d.date_operation || null,
         nature: NATURE_DE[d.nature] ?? "scolarite",
-        libelle: d.libelle,
+        libelle: nonComptee ? `${d.libelle} — non compté (année suivie au classeur)` : d.libelle,
+        horsTotal: nonComptee,
         montant: d.type === "depense" ? -Number(d.montant) : Number(d.montant),
         origine,
         attestation:
@@ -801,11 +896,13 @@ function paiementsExercice(insc: InscriptionDossier, affectations: AffectationDe
     })
     .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""));
   const classeur: LigneVersement[] = [];
-  for (const m of [...MOIS].reverse()) {
-    const v = Number(insc[m.k]);
-    if (v) classeur.push({ exercice, date: null, nature: "scolarite", libelle: `${m.l} (saisi au classeur)`, montant: v });
+  if (source === "classeur") {
+    for (const m of [...MOIS].reverse()) {
+      const v = Number(insc[m.k]);
+      if (v) classeur.push({ exercice, date: null, nature: "scolarite", libelle: `${m.l} (saisi au classeur)`, montant: v });
+    }
   }
-  if (Number(insc.avance) > 0) {
+  if (Number(insc.avance)) {
     classeur.push({ exercice, date: null, nature: "scolarite", libelle: "Report de l'exercice précédent", montant: Number(insc.avance) });
   }
   return [...compta, ...classeur];
@@ -835,12 +932,12 @@ function TablePaiements({ lignes, avecExercice = false }: { lignes: LigneVerseme
                   <td colSpan={6} className={`pb-0.5 font-semibold ${k > 0 ? "pt-3" : ""}`}>
                     Exercice {l.exercice}
                     <span className="ml-2 font-normal tabular-nums text-muted">
-                      {formatEuros(lignes.filter((x) => x.exercice === l.exercice).reduce((s, x) => s + x.montant, 0))}
+                      {formatEuros(lignes.filter((x) => x.exercice === l.exercice && !x.horsTotal).reduce((s, x) => s + x.montant, 0))}
                     </span>
                   </td>
                 </tr>
               )}
-              <tr className="border-b border-border/40 last:border-0">
+              <tr className={`border-b border-border/40 last:border-0 ${l.horsTotal ? "text-muted/70" : ""}`}>
                 <td className="w-[4.5rem] py-1 pr-2 tabular-nums text-muted">{l.date ? formatDateCourte(l.date) : "—"}</td>
                 <td className="w-32 py-1 pr-2">
                   <span className={`inline-block whitespace-nowrap rounded px-1.5 py-px text-[11px] font-medium ${NATURES_LIGNE[l.nature].c}`}>
@@ -883,12 +980,14 @@ function TablePaiements({ lignes, avecExercice = false }: { lignes: LigneVerseme
 function DetailFamille({
   inscription,
   affectations,
+  sources,
   dossier,
   famille,
   eleves,
 }: {
   inscription: Inscription;
   affectations: AffectationDetail[];
+  sources: SourcesScolarite;
   /** Toutes les inscriptions de la famille, tous exercices. */
   dossier: InscriptionDossier[];
   famille: FicheFamille | null;
@@ -896,11 +995,15 @@ function DetailFamille({
 }) {
   const [volet, setVolet] = useState<"infos" | "dossier" | null>(null);
   const nom = inscription.famille_nom;
-  const lignes = paiementsExercice(inscription as InscriptionDossier, affectations);
+  const lignes = paiementsExercice(
+    inscription as InscriptionDossier,
+    affectations,
+    sourceDe(inscription.annee_scolaire, sources),
+  );
   const complet = () =>
     [...dossier]
       .sort((a, b) => b.annee_scolaire.localeCompare(a.annee_scolaire))
-      .flatMap((i) => paiementsExercice(i, affectations));
+      .flatMap((i) => paiementsExercice(i, affectations, sourceDe(i.annee_scolaire, sources)));
 
   const bouton = (v: "infos" | "dossier", libelle: string) => (
     <button

@@ -1,9 +1,7 @@
 import Link from "next/link";
 import PageHeader from "@/components/PageHeader";
-import GestionScolarite, {
-  type Inscription,
-  type AffectationRecue,
-} from "@/components/GestionScolarite";
+import GestionScolarite, { type Inscription } from "@/components/GestionScolarite";
+import type { SourceScolarite, SourcesScolarite } from "@/lib/regleScolarite";
 import { createClient } from "@/lib/supabase/server";
 import type { AffectationDetail, InscriptionDepot, NatureAffectation } from "@/lib/scolariteDepots";
 import { estAmitieSainteAnne } from "@/lib/importEnrichi";
@@ -52,14 +50,19 @@ export default async function ScolaritePage({
   // Deux requêtes plutôt qu'une jointure : PostgREST ne connaît une relation
   // qu'après rechargement de son cache de schéma, ce qui rend l'imbrication
   // fragile juste après une migration.
-  const [toutesRes, affRes] = await Promise.all([
+  const [toutesRes, affRes, sourcesRes, majRes] = await Promise.all([
     supabase
       .from("scolarite_inscriptions")
       .select(
         "id, annee_scolaire, famille_nom, famille_id, nb_enfants, montant_mensuel, avance, avance_consommee, depot_anterieur, m_sept, m_oct, m_nov, m_dec, m_jan, m_fev, m_mars, m_avr, m_mai, m_juin",
       ),
     supabase.from("affectations_scolarite").select("inscription_id, operation_id, montant, nature"),
+    supabase.from("scolarite_annees").select("annee_scolaire, source"),
+    supabase.rpc("date_maj_comptes"),
   ]);
+  const sources: SourcesScolarite = Object.fromEntries(
+    (sourcesRes.data ?? []).map((s) => [s.annee_scolaire, s.source as SourceScolarite]),
+  );
   if (affRes.error) console.error("Lecture des affectations impossible :", affRes.error.message);
 
   const toutes = (toutesRes.data ?? []).map((i) => ({
@@ -122,18 +125,6 @@ export default async function ScolaritePage({
     origine: parOperation.get(a.operation_id)?.origine,
   }));
 
-  // Ce qui compte comme réglé pour l'année consultée : dons fléchés et mensualités.
-  const idsInscriptions = new Set((inscriptionsRes.data ?? []).map((i) => (i as Inscription).id));
-  const affectations: AffectationRecue[] = affectationsDetail
-    .filter((a) => idsInscriptions.has(a.inscription_id) && (a.nature === "don_association" || a.nature === "mensualite"))
-    .map((a) => ({
-      inscription_id: a.inscription_id,
-      montant: a.type === "depense" ? -a.montant : a.montant,
-      libelle: a.libelle,
-      date_operation: a.date_operation,
-      nature: a.nature,
-    }));
-
   // Familles (fiche) et élèves (prénom chiffré), pour le détail d'une famille.
   const [famillesRes, elevesRes] = await Promise.all([
     supabase.from("familles").select("id, nom, parent1, parent2, adresse, cp_ville, telephone, courriels, notes"),
@@ -148,6 +139,7 @@ export default async function ScolaritePage({
       <PageHeader
         title="Frais de scolarité"
         subtitle="Suivi des paiements par famille : dû, réglé, reste à percevoir et mois d'avance."
+        maj={(majRes.data as string | null) ?? null}
         action={
           <div className="flex gap-2">
             <Link href="/scolarite/eleves" className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-surface-2">
@@ -172,7 +164,7 @@ export default async function ScolaritePage({
           annees={annees}
           inscriptions={(inscriptionsRes.data ?? []) as Inscription[]}
           bareme={bareme}
-          affectations={affectations}
+          sources={sources}
           toutesInscriptions={toutes}
           affectationsDetail={affectationsDetail}
           familles={(famillesRes.data ?? []) as FicheFamille[]}

@@ -12,6 +12,7 @@ import { useCoffre } from "@/components/CoffreProvider";
 import { LIBELLE_DON, chiffrerLibellesDon, dechiffrerLibellesDon, texteDonateur } from "@/lib/libelleDon";
 import { useDonsDechiffres } from "@/lib/donsChiffre";
 import { nomDonateur } from "@/lib/statutDon";
+import { estAmitieSainteAnne } from "@/lib/importEnrichi";
 import type { Rapprochement } from "@/lib/rapprochementDons";
 import { formatEuros, formatDate } from "@/lib/format";
 import VentilationOperation, { type OperationVentilable } from "@/components/VentilationOperation";
@@ -270,11 +271,18 @@ export default function ListeOperations({
     return concernee ? { complet, detail } : null;
   };
 
-  /** Question ouverte sur la ligne ou sur l'une de ses sous-écritures. */
+  /**
+   * Question ouverte sur la ligne ou sur l'une de ses sous-écritures. Un
+   * virement de l'Amitié Sainte-Anne porte d'office une alerte tant que tout
+   * son montant n'est pas réparti entre les familles aidées : elle disparaît
+   * d'elle-même au dernier rattachement.
+   */
   const questionDe = (op: OperationRow): string | null =>
     op.a_verifier ||
     (fillesDe.get(op.id) ?? []).map((fi) => fi.a_verifier).find((q): q is string => !!q) ||
-    null;
+    (estAmitieSainteAnne(`${op.libelle_origine ?? ""} ${op.libelle}`) && scolariteIncomplete(op)
+      ? "Virement groupé Amitié Sainte-Anne : à répartir entre les familles aidées"
+      : null);
   /** Rattachement à l'onglet Frais de scolarité incomplet : une information manque. */
   const scolariteIncomplete = (op: OperationRow) => etatScolarite(op)?.complet === false;
   /** Ligne à signaler en ambre : question ouverte ou scolarité à compléter. */

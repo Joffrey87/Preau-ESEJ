@@ -55,8 +55,8 @@ export default async function ComptabilitePage({
     liste[0] ||
     null;
 
-  // Sélection : plusieurs exercices, OU plusieurs années civiles (janvier →
-  // décembre, d'après la date de l'opération). Les deux lignes de boutons sont
+  // Sélection : UN exercice, OU plusieurs années civiles (janvier → décembre,
+  // d'après la date de l'opération). Les deux lignes de boutons sont
   // exclusives : choisir une année quitte le mode exercice, et inversement.
   const anneeCourante = Number(aujourdhui.slice(0, 4));
   const anneesProposees = [anneeCourante, anneeCourante - 1, anneeCourante - 2];
@@ -65,15 +65,8 @@ export default async function ComptabilitePage({
     .map(Number)
     .filter((a) => anneesProposees.includes(a))
     .sort((a, b) => b - a);
-  const idsDemandes = (exParam ?? "").split(",").filter(Boolean);
-  const exercicesChoisis =
-    annees.length > 0
-      ? []
-      : liste.filter((e) => idsDemandes.includes(e.id)).length > 0
-        ? liste.filter((e) => idsDemandes.includes(e.id))
-        : exerciceDuJour
-          ? [exerciceDuJour]
-          : [];
+  const exerciceDemande = liste.find((e) => e.id === exParam) ?? exerciceDuJour;
+  const exercicesChoisis = annees.length > 0 || !exerciceDemande ? [] : [exerciceDemande];
   const selection = { exercices: exercicesChoisis.map((e) => e.id), annees };
   // Exercice proposé par défaut à la saisie : le plus récent de la sélection,
   // ou celui du jour en mode année.
@@ -173,14 +166,11 @@ export default async function ComptabilitePage({
   const meres = new Set(operations.map((o) => o.parent_id).filter(Boolean) as string[]);
   const comptabilisees = operations.filter((o) => !meres.has(o.id) && !o.est_ventilee && estRetenue(o));
 
-  // Liens des boutons : un clic ajoute ou retire l'élément de la sélection. La
-  // dernière case ne se décoche pas (retirer la dernière année ramène au mode
-  // exercice, sur l'exercice du jour).
+  // Liens des boutons : un seul exercice à la fois ; les années, elles, se
+  // cumulent (un clic ajoute ou retire l'année ; retirer la dernière ramène au
+  // mode exercice, sur l'exercice du jour).
   const basculer = <T,>(liste: T[], v: T) => (liste.includes(v) ? liste.filter((x) => x !== v) : [...liste, v]);
-  const lienExercice = (id: string) => {
-    const ids = annees.length > 0 ? [id] : basculer(selection.exercices, id);
-    return ids.length > 0 ? `/comptabilite?exercice=${ids.join(",")}` : `/comptabilite?exercice=${id}`;
-  };
+  const lienExercice = (id: string) => `/comptabilite?exercice=${id}`;
   const lienAnnee = (a: number) => {
     const as = basculer(annees, a);
     return as.length > 0 ? `/comptabilite?annee=${as.join(",")}` : "/comptabilite";
@@ -244,7 +234,6 @@ export default async function ComptabilitePage({
               <Link
                 key={e.id}
                 href={lienExercice(e.id)}
-                title="Cliquer pour ajouter ou retirer cet exercice de l'affichage"
                 className={boutonCls(selection.exercices.includes(e.id))}
               >
                 {e.libelle.replace("Exercice ", "")}

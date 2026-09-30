@@ -5,6 +5,7 @@ import ListeOperations from "@/components/ListeOperations";
 import type { Affectation, Inscription } from "@/components/AffectationScolarite";
 import { createClient } from "@/lib/supabase/server";
 import { formatEuros } from "@/lib/format";
+import { toutesLesOperations } from "@/lib/operations";
 import { rapprocherDons, type Rapprochement } from "@/lib/rapprochementDons";
 import type { DonCompta } from "@/components/PastilleDon";
 
@@ -33,37 +34,72 @@ const COLONNES =
 export default async function ComptabilitePage({
   searchParams,
 }: {
-  searchParams: Promise<{ exercice?: string }>;
+  searchParams: Promise<{ exercice?: string; annee?: string }>;
 }) {
   const supabase = await createClient();
-  const { exercice: exParam } = await searchParams;
+  const { exercice: exParam, annee: anneeParam } = await searchParams;
 
-  // Tous les exercices (pour le sélecteur d'année). Par défaut : l'exercice qui
-  // couvre la date du jour (septembre → août), sinon celui marqué actif, sinon
-  // le plus récent. La date seule fait foi : l'onglet s'ouvre sur l'année en
-  // cours dès le 1er septembre, sans attendre qu'on bascule l'indicateur actif.
+  // Tous les exercices (pour le sélecteur). Par défaut : l'exercice qui couvre
+  // la date du jour (septembre → août), sinon celui marqué actif, sinon le plus
+  // récent. La date seule fait foi : l'onglet s'ouvre sur l'année en cours dès
+  // le 1er septembre, sans attendre qu'on bascule l'indicateur actif.
   const { data: exercices } = await supabase
     .from("exercices")
     .select("id, libelle, actif, date_debut, date_fin")
     .order("date_debut", { ascending: false });
   const liste = exercices ?? [];
   const aujourdhui = new Intl.DateTimeFormat("sv-SE", { timeZone: "Europe/Paris" }).format(new Date());
-  const exercice =
-    (exParam && liste.find((e) => e.id === exParam)) ||
+  const exerciceDuJour =
     liste.find((e) => e.date_debut <= aujourdhui && aujourdhui <= e.date_fin) ||
     liste.find((e) => e.actif) ||
     liste[0] ||
     null;
 
-  const [opsRes, catsRes, comptesRes, inscriptionsRes, affectationsRes] = await Promise.all([
-    exercice
-      ? supabase
-          .from("operations")
-          .select(COLONNES)
-          .eq("exercice_id", exercice.id)
-          .order("date_operation", { ascending: false })
-          .order("created_at", { ascending: false })
-      : Promise.resolve({ data: [] as OperationRow[] }),
+  // Sélection : plusieurs exercices, OU plusieurs années civiles (janvier →
+  // décembre, d'après la date de l'opération). Les deux lignes de boutons sont
+  // exclusives : choisir une année quitte le mode exercice, et inversement.
+  const anneeCourante = Number(aujourdhui.slice(0, 4));
+  const anneesProposees = [anneeCourante, anneeCourante - 1, anneeCourante - 2];
+  const annees = (anneeParam ?? "")
+    .split(",")
+    .map(Number)
+    .filter((a) => anneesProposees.includes(a))
+    .sort((a, b) => b - a);
+  const idsDemandes = (exParam ?? "").split(",").filter(Boolean);
+  const exercicesChoisis =
+    annees.length > 0
+      ? []
+      : liste.filter((e) => idsDemandes.includes(e.id)).length > 0
+        ? liste.filter((e) => idsDemandes.includes(e.id))
+        : exerciceDuJour
+          ? [exerciceDuJour]
+          : [];
+  const selection = { exercices: exercicesChoisis.map((e) => e.id), annees };
+  // Exercice proposé par défaut à la saisie : le plus récent de la sélection,
+  // ou celui du jour en mode année.
+  const exercice = exercicesChoisis[0] ?? exerciceDuJour;
+  const anneeDe = (o: { date_operation: string }) => Number(o.date_operation.slice(0, 4));
+  const estRetenue = (o: { exercice_id: string | null; date_operation: string }) =>
+    annees.length > 0 ? annees.includes(anneeDe(o)) : !!o.exercice_id && selection.exercices.includes(o.exercice_id);
+
+  const chargerSelection = async (): Promise<OperationRow[]> => {
+    if (annees.length === 0 && selection.exercices.length === 0) return [];
+    // Plusieurs exercices ou années peuvent dépasser le plafond de 1000 lignes : on pagine.
+    const lignes = await toutesLesOperations<OperationRow & { created_at: string }>(
+      supabase,
+      `${COLONNES}, created_at`,
+      (q) =>
+        annees.length > 0
+          ? q.gte("date_operation", `${Math.min(...annees)}-01-01`).lte("date_operation", `${Math.max(...annees)}-12-31`)
+          : q.in("exercice_id", selection.exercices),
+    );
+    return lignes
+      .filter(estRetenue)
+      .sort((a, b) => b.date_operation.localeCompare(a.date_operation) || b.created_at.localeCompare(a.created_at));
+  };
+
+  const [operationsExercice, catsRes, comptesRes, inscriptionsRes, affectationsRes] = await Promise.all([
+    chargerSelection(),
     supabase
       .from("categories")
       .select("id, nom, type")
@@ -88,8 +124,6 @@ export default async function ComptabilitePage({
     )
     .is("supprime_le", null);
   const dons = (donsData ?? []) as DonCompta[];
-
-  const operationsExercice = (opsRes.data ?? []) as unknown as OperationRow[];
 
   // Une ventilation doit TOUJOURS être chargée en entier, même si ses membres
   // relèvent d'exercices différents : un versement d'août peut couvrir la
@@ -136,9 +170,31 @@ export default async function ComptabilitePage({
   // Une ligne détaillée ne compte pas : ses sous-écritures portent les montants
   // et les catégories. La présence de filles fait foi, pas l'indicateur seul.
   const meres = new Set(operations.map((o) => o.parent_id).filter(Boolean) as string[]);
-  const comptabilisees = operations.filter(
-    (o) => !meres.has(o.id) && !o.est_ventilee && o.exercice_id === (exercice?.id ?? null),
-  );
+  const comptabilisees = operations.filter((o) => !meres.has(o.id) && !o.est_ventilee && estRetenue(o));
+
+  // Liens des boutons : un clic ajoute ou retire l'élément de la sélection. La
+  // dernière case ne se décoche pas (retirer la dernière année ramène au mode
+  // exercice, sur l'exercice du jour).
+  const basculer = <T,>(liste: T[], v: T) => (liste.includes(v) ? liste.filter((x) => x !== v) : [...liste, v]);
+  const lienExercice = (id: string) => {
+    const ids = annees.length > 0 ? [id] : basculer(selection.exercices, id);
+    return ids.length > 0 ? `/comptabilite?exercice=${ids.join(",")}` : `/comptabilite?exercice=${id}`;
+  };
+  const lienAnnee = (a: number) => {
+    const as = basculer(annees, a);
+    return as.length > 0 ? `/comptabilite?annee=${as.join(",")}` : "/comptabilite";
+  };
+  const libelleSelection =
+    annees.length > 0
+      ? `Année${annees.length > 1 ? "s" : ""} ${[...annees].sort().join(", ")}`
+      : exercicesChoisis
+          .map((e) => e.libelle)
+          .reverse()
+          .join(" + ");
+  const boutonCls = (actif: boolean) =>
+    `rounded-lg border px-3 py-1.5 text-sm ${
+      actif ? "border-accent bg-accent-soft font-medium text-accent" : "border-border hover:bg-surface-2"
+    }`;
   const recettes = comptabilisees.filter((o) => o.type === "recette").reduce((s, o) => s + Number(o.montant), 0);
   const depenses = comptabilisees.filter((o) => o.type === "depense").reduce((s, o) => s + Number(o.montant), 0);
 
@@ -146,11 +202,7 @@ export default async function ComptabilitePage({
     <div className="mx-auto max-w-6xl px-5 py-8 md:px-8">
       <PageHeader
         title="Comptabilité"
-        subtitle={
-          exercice
-            ? `Recettes et dépenses · ${exercice.libelle}`
-            : "Recettes et dépenses de l'exercice."
-        }
+        subtitle={libelleSelection ? `Recettes et dépenses · ${libelleSelection}` : "Recettes et dépenses de l'exercice."}
         action={
           exercice ? (
             <div className="flex flex-wrap items-center gap-2">
@@ -182,27 +234,39 @@ export default async function ComptabilitePage({
         }
       />
 
-      {liste.length > 1 && (
-        <div className="mb-4 flex flex-wrap items-center gap-1.5">
-          <span className="mr-1 text-sm text-muted">Exercice :</span>
-          {liste.map((e) => (
-            <Link
-              key={e.id}
-              href={`/comptabilite?exercice=${e.id}`}
-              className={`rounded-lg border px-3 py-1.5 text-sm ${
-                e.id === exercice?.id
-                  ? "border-accent bg-accent-soft font-medium text-accent"
-                  : "border-border hover:bg-surface-2"
-              }`}
-            >
-              {e.libelle.replace("Exercice ", "")}
-              {e.actif ? " •" : ""}
-            </Link>
-          ))}
+      {liste.length > 0 && (
+        <div className="mb-4 space-y-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="w-16 text-sm text-muted">Exercice</span>
+            {liste.map((e) => (
+              <Link
+                key={e.id}
+                href={lienExercice(e.id)}
+                title="Cliquer pour ajouter ou retirer cet exercice de l'affichage"
+                className={boutonCls(selection.exercices.includes(e.id))}
+              >
+                {e.libelle.replace("Exercice ", "")}
+                {e.actif ? " •" : ""}
+              </Link>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="w-16 text-sm text-muted">Année</span>
+            {anneesProposees.map((a) => (
+              <Link
+                key={a}
+                href={lienAnnee(a)}
+                title={`Opérations datées du 1er janvier au 31 décembre ${a} — cliquer pour ajouter ou retirer cette année`}
+                className={boutonCls(annees.includes(a))}
+              >
+                {a}
+              </Link>
+            ))}
+          </div>
         </div>
       )}
 
-      {exercice && operations.length > 0 && (
+      {operations.length > 0 && (
         <div className="mb-4 grid grid-cols-3 gap-3">
           <div className="rounded-xl border border-border bg-surface px-4 py-3">
             <div className="text-xs text-muted">Recettes · {comptabilisees.length} opérations</div>
@@ -226,6 +290,7 @@ export default async function ComptabilitePage({
         categories={catsRes.data ?? []}
         comptes={comptesRes.data ?? []}
         exerciceId={exercice?.id ?? null}
+        selection={selection}
         exercices={liste}
         donsRepertories={donsRepertories}
         rapprochementsDons={rapprochementsDons}

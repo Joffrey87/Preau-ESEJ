@@ -102,6 +102,7 @@ export default function ListeOperations({
   categories,
   comptes,
   exerciceId,
+  selection,
   exercices,
   donsRepertories,
   rapprochementsDons = {},
@@ -112,7 +113,10 @@ export default function ListeOperations({
   operations: OperationRow[];
   categories: Categorie[];
   comptes: Compte[];
+  /** Exercice proposé par défaut à la saisie. */
   exerciceId: string | null;
+  /** Ce qui est affiché : des exercices, ou des années civiles (d'après la date). */
+  selection: { exercices: string[]; annees: number[] };
   exercices: Exercice[];
   donsRepertories: string[];
   /** Don correspondant à chaque opération « Don » : relié, ou trouvé par montant et date. */
@@ -124,6 +128,12 @@ export default function ListeOperations({
 }) {
   const router = useRouter();
   const coffre = useCoffre();
+  /** L'écriture relève-t-elle de ce qui est affiché (exercices ou années choisis) ? */
+  const estRetenue = (o: { exercice_id: string | null; date_operation: string }) =>
+    selection.annees.length > 0
+      ? selection.annees.includes(Number(o.date_operation.slice(0, 4)))
+      : !!o.exercice_id && selection.exercices.includes(o.exercice_id);
+  const exerciceDeLOperation = (opId: string) => operations.find((o) => o.id === opId)?.exercice_id ?? exerciceId;
   const donsRepertoriesSet = new Set(donsRepertories);
   // Complétude des fiches donateur : jugée sur les dons déchiffrés.
   const { dons: donsClairs, verrou } = useDonsDechiffres(donsCompta);
@@ -133,7 +143,7 @@ export default function ListeOperations({
   const pastilleDon = (opId: string) => (
     <PastilleDon
       operationId={opId}
-      exerciceId={exerciceId}
+      exerciceId={exerciceDeLOperation(opId)}
       rapprochement={rapprochementsDons[opId]}
       don={donParId.get(rapprochementsDons[opId]?.donId ?? "")}
       verrou={verrou}
@@ -275,7 +285,7 @@ export default function ListeOperations({
   const aRegulariser = (o: OperationRow) =>
     o.categories?.nom === "Don" && !o.est_ventilee && !["complet", "relie_verrouille"].includes(etatDonDe(o.id));
   const donARegulariser = (op: OperationRow) =>
-    aRegulariser(op) || (fillesDe.get(op.id) ?? []).some((fi) => fi.exercice_id === exerciceId && aRegulariser(fi));
+    aRegulariser(op) || (fillesDe.get(op.id) ?? []).some((fi) => estRetenue(fi) && aRegulariser(fi));
   const nbDonsARegulariser = racines.filter(donARegulariser).length;
 
   const parCategorie =
@@ -348,19 +358,19 @@ export default function ListeOperations({
 
   const estVentilee = !!edit && ((fillesDe.get(edit.id) ?? []).length > 0 || edit.est_ventilee);
   /**
-   * La date sort-elle des bornes de l'exercice CONSULTÉ ? On compare à
-   * l'exercice affiché et non à celui de l'opération : c'est bien « cette date
-   * ne tombe pas dans l'exercice que je regarde » que l'on veut signaler, y
-   * compris sur une ligne ventilée.
+   * La date sort-elle des bornes des exercices CONSULTÉS ? On compare aux
+   * exercices affichés et non à celui de l'opération : c'est bien « cette date
+   * ne tombe pas dans ce que je regarde » que l'on veut signaler, y compris sur
+   * une ligne ventilée. En mode année, la date fait la sélection : rien à signaler.
    */
-  const exerciceCourant = exercices.find((e) => e.id === exerciceId) ?? null;
+  const exercicesAffiches = exercices.filter((e) => selection.exercices.includes(e.id));
   const dateHorsBornes = (op: OperationRow) =>
-    !!exerciceCourant &&
-    (op.date_operation < exerciceCourant.date_debut || op.date_operation > exerciceCourant.date_fin);
+    selection.annees.length === 0 &&
+    exercicesAffiches.length > 0 &&
+    !exercicesAffiches.some((e) => e.date_debut <= op.date_operation && op.date_operation <= e.date_fin);
 
-  /** Sous-écritures retenues dans l'exercice affiché. */
-  const fillesRetenues = (opId: string) =>
-    (fillesDe.get(opId) ?? []).filter((fi) => fi.exercice_id === exerciceId);
+  /** Sous-écritures retenues dans la sélection affichée. */
+  const fillesRetenues = (opId: string) => (fillesDe.get(opId) ?? []).filter(estRetenue);
 
   /** Sous-écritures « Don » de cette ligne qui ne sont pas encore dans l'onglet Dons. */
   const donsARattacher = (opId: string) =>
@@ -811,7 +821,7 @@ export default function ListeOperations({
                     filles={(fillesDe.get(op.id) ?? []) as unknown as OperationVentilable[]}
                     categories={categories}
                     exercices={exercices}
-                    exerciceAffiche={exerciceId}
+                    estRetenue={estRetenue}
                     modifiable={modeEdition}
                     donsRepertories={donsRepertories}
                     pastilleDon={pastilleDon}

@@ -2,17 +2,18 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 // Supabase/PostgREST plafonne une requête à 1000 lignes. La table `operations`
 // dépasse ce seuil → on pagine pour tout récupérer (Bilan, dédup d'import…).
+// `filtrer` restreint la requête (exercices, plage de dates…) sans perdre la pagination.
 export async function toutesLesOperations<T = unknown>(
   supabase: SupabaseClient,
   columns: string,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  filtrer: (q: any) => any = (q) => q,
 ): Promise<T[]> {
   const taille = 1000;
   let debut = 0;
   const tout: T[] = [];
   for (;;) {
-    const { data, error } = await supabase
-      .from("operations")
-      .select(columns)
+    const { data, error } = await filtrer(supabase.from("operations").select(columns))
       .order("id", { ascending: true }) // clé UNIQUE → pagination stable (pas de chevauchement)
       .range(debut, debut + taille - 1);
     if (error) break;

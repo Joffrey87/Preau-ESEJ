@@ -55,7 +55,7 @@ export default function VentilationOperation({
   filles,
   categories,
   exercices,
-  exerciceAffiche,
+  estRetenue,
   modifiable,
   donsRepertories = [],
   pastilleDon,
@@ -66,8 +66,8 @@ export default function VentilationOperation({
   filles: OperationVentilable[];
   categories: Categorie[];
   exercices: Exercice[];
-  /** Exercice consulté : les sous-écritures qui n'en relèvent pas sont écartées. */
-  exerciceAffiche: string | null;
+  /** Sélection consultée (exercices ou années) : les sous-écritures qui n'en relèvent pas sont écartées. */
+  estRetenue: (f: { exercice_id: string | null; date_operation: string }) => boolean;
   /** Hors mode modification, le volet est en lecture seule. */
   modifiable: boolean;
   /** Sous-écritures déjà présentes dans l'onglet Dons. */
@@ -98,8 +98,8 @@ export default function VentilationOperation({
   const nomExo = (id: string | null) =>
     exercices.find((e) => e.id === id)?.libelle.replace("Exercice ", "") ?? "aucun";
 
-  /** Une sous-écriture d'un autre exercice n'est pas comptée ici. */
-  const retenue = (f: OperationVentilable) => f.exercice_id === exerciceAffiche;
+  /** Une sous-écriture hors de la sélection affichée n'est pas comptée ici. */
+  const retenue = (f: OperationVentilable) => estRetenue(f);
 
   // Rattachement d'une sous-écriture de scolarité à une famille (mensualité,
   // mois d'avance, frais de dossier) : résumé en lecture, formulaire en mode

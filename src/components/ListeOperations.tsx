@@ -11,6 +11,7 @@ import ChiffrerLibellesDons from "@/components/ChiffrerLibellesDons";
 import { useCoffre } from "@/components/CoffreProvider";
 import { LIBELLE_DON, chiffrerLibellesDon, dechiffrerLibellesDon, texteDonateur } from "@/lib/libelleDon";
 import { useDonsDechiffres } from "@/lib/donsChiffre";
+import { nomDonateur } from "@/lib/statutDon";
 import type { Rapprochement } from "@/lib/rapprochementDons";
 import { formatEuros, formatDate } from "@/lib/format";
 import VentilationOperation, { type OperationVentilable } from "@/components/VentilationOperation";
@@ -290,9 +291,20 @@ export default function ListeOperations({
           return filtreCats.includes(op.categorie_id ?? "__sans__");
         });
   // Recherche : libellés (Préau, banque, donateur déchiffré), catégorie, mode,
-  // compte, date, question ouverte ; un mot en forme de montant vise aussi le
-  // montant exact de la ligne ou d'une sous-écriture.
+  // compte, date, question ouverte, et ce à quoi l'écriture est rattachée
+  // (familles de l'onglet Frais de scolarité, donateur du don relié) ; un mot
+  // en forme de montant vise aussi le montant exact de la ligne ou d'une
+  // sous-écriture.
   const motsRecherche = normaliser(recherche).split(/\s+/).filter(Boolean);
+  const rattachementsDe = (o: OperationRow): string[] => {
+    const textes = (affectationsDe.get(o.id) ?? []).flatMap((a) => [familleDe.get(a.inscription_id), a.notes]);
+    // Seul un lien enregistré compte : un don « probable » (même montant à
+    // ±3 jours) pourrait être celui d'un autre donateur.
+    const r = rapprochementsDons[o.id];
+    const don = r?.lien === "explicite" ? donParId.get(r.donId) : undefined;
+    if (don) textes.push(nomDonateur(don), don.raison_sociale);
+    return textes.filter((t): t is string => !!t);
+  };
   const texteDe = (o: OperationRow) =>
     normaliser(
       [
@@ -305,6 +317,7 @@ export default function ListeOperations({
         o.comptes?.nom,
         formatDate(o.date_operation),
         o.a_verifier,
+        ...rattachementsDe(o),
       ]
         .filter(Boolean)
         .join(" "),
@@ -469,7 +482,8 @@ export default function ListeOperations({
               onKeyDown={(e) => e.key === "Escape" && setRecherche("")}
               placeholder="Rechercher : libellé, famille, montant, date…"
               title={
-                "Tous les mots doivent figurer dans l'opération ou l'une de ses sous-écritures : libellé Préau ou bancaire, catégorie, mode, compte, date (jj/mm/aaaa)." +
+                "Tous les mots doivent figurer dans l'opération ou l'une de ses sous-écritures : libellé Préau ou bancaire, catégorie, mode, compte, date (jj/mm/aaaa)," +
+                " ou dans ses rattachements : famille de l'onglet Frais de scolarité, donateur du don relié." +
                 "\nUn nombre (« 60 », « 430,50 ») retrouve aussi le montant exact." +
                 (coffre.estOuvert ? "\nCoffre ouvert : les noms des donateurs sont aussi cherchés." : "\nCoffre verrouillé : les noms des donateurs ne sont pas cherchés.")
               }

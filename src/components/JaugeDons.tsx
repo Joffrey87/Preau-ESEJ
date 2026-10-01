@@ -11,7 +11,8 @@ import { formatDate, formatEuros } from "@/lib/format";
  * couleur de la MOYENNE ANNUELLE (dons cumulés ÷ mois écoulés) au jour où il
  * arrive, et la partie déjà tracée ne change plus. La couleur ne change qu'au
  * passage d'une tranche à l'autre, avec un fondu :
- *   rouge < 4 000 €/mois · orange < 5 000 · jaune < 6 000 (5 800 = équilibre budgétaire) · vert ≥ 6 000.
+ *   rouge < 4 000 €/mois · orange < 5 000 · jaune < 6 000 · vert ≥ 6 000.
+ * Repères : équilibre budgétaire ≈ 5 000 €/mois (chevron, pointillé du graphe) ; confort 5 800 €/mois.
  * Gris pendant les 15 premiers jours de l'exercice (moyenne pas encore parlante).
  * Le chevron marque où il faudrait en être au rythme de 5 800 €/mois.
  */
@@ -21,7 +22,11 @@ const ECHELLE_INITIALE = 70000;
 const PAS_ECHELLE = 30000;
 /** Objectif annuel : atteint = 🏆 ; puis une médaille 🥉 à 70 000 €, une autre à 100 000 €, etc. */
 const OBJECTIF_ANNUEL = 60000;
-const MINIMUM_VITAL = 5800;
+/** Équilibre budgétaire (≈ 5 000 €/mois) : chevron de la jauge et pointillé du graphe. */
+const EQUILIBRE = 5000;
+/** Rythme de confort, avec de la marge. */
+const CONFORT = 5800;
+const euroRond = (v: number) => `${Math.round(v).toLocaleString("fr-FR")} €`;
 
 const echelleDe = (total: number) =>
   total <= ECHELLE_INITIALE ? ECHELLE_INITIALE : ECHELLE_INITIALE + Math.ceil((total - ECHELLE_INITIALE) / PAS_ECHELLE) * PAS_ECHELLE;
@@ -78,7 +83,7 @@ export default function JaugeDons({ donnees, aujourdhui }: { donnees: DonsExerci
   const trJ = enRodage(donnees.debut, aujourdhui) ? null : tranche(moyJ);
   const echelle = echelleDe(total);
   const nbBlocs = echelle / 10000;
-  const attendu = Math.min(MINIMUM_VITAL * moisJ, echelle);
+  const attendu = Math.min(EQUILIBRE * moisJ, echelle);
   const medailles = medaillesDe(total);
 
   // Dégradé de la trace : couleur franche, fondu court au changement de couleur.
@@ -120,7 +125,7 @@ export default function JaugeDons({ donnees, aujourdhui }: { donnees: DonsExerci
             <span
               className="absolute -translate-x-1/2 text-[11px] leading-none text-muted"
               style={{ left: `${pct(attendu)}%` }}
-              title={`Au rythme de l'équilibre budgétaire (${formatEuros(MINIMUM_VITAL)}/mois) : ${formatEuros(attendu)} attendus au ${formatDate(aujourdhui)}`}
+              title={`Au rythme de l'équilibre budgétaire (≈ ${euroRond(EQUILIBRE)}/mois) : ${euroRond(attendu)} attendus au ${formatDate(aujourdhui)}`}
             >
               ▼
             </span>
@@ -151,13 +156,13 @@ export default function JaugeDons({ donnees, aujourdhui }: { donnees: DonsExerci
         </div>
       </div>
       <p className="mt-1 text-center text-[11px] text-muted">
-        <span aria-hidden="true">▼</span> <span aria-hidden="true">┄</span> Équilibre budgétaire · {formatEuros(MINIMUM_VITAL)}/mois
+        <span aria-hidden="true">▼</span> Équilibre budgétaire · ~{euroRond(EQUILIBRE)}/mois · Confort · {euroRond(CONFORT)}/mois
       </p>
       <div className="mt-1 flex flex-wrap items-center justify-between gap-2 text-sm">
         <span>
           Moyenne annuelle :{" "}
           {trJ ? (
-            <span className="font-semibold tabular-nums" style={{ color: trJ.couleur }}>{formatEuros(moyJ)}/mois</span>
+            <span className="font-semibold tabular-nums" style={{ color: trJ.couleur }}>{euroRond(moyJ)}/mois</span>
           ) : (
             <span className="text-muted">trop tôt pour la calculer (15 premiers jours)</span>
           )}
@@ -203,13 +208,13 @@ function GrapheMoyenne({
   const dernier = points[points.length - 1];
   return (
     <div className="mt-1.5">
-      <div className="relative h-12 overflow-hidden rounded-sm" title={`Moyenne au ${formatDate(aujourdhui)} : ${formatEuros(moyJ)}/mois`}>
+      <div className="relative h-12 overflow-hidden rounded-sm" title={`Moyenne au ${formatDate(aujourdhui)} : ${euroRond(moyJ)}/mois`}>
         <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="absolute inset-0 h-full w-full text-foreground" aria-hidden="true">
           {TRANCHES.map((t, k) => {
             const haut = Math.min(TRANCHES[k + 1]?.min ?? ymax, ymax);
             return <rect key={t.nom} x={0} width={W} y={yPct(haut)} height={Math.max(0, yPct(t.min) - yPct(haut))} fill={t.couleur} opacity={0.14} />;
           })}
-          <line x1={0} x2={W} y1={yPct(MINIMUM_VITAL)} y2={yPct(MINIMUM_VITAL)} stroke="currentColor" strokeDasharray="6 5" opacity={0.5} vectorEffect="non-scaling-stroke" />
+          <line x1={0} x2={W} y1={yPct(EQUILIBRE)} y2={yPct(EQUILIBRE)} stroke="currentColor" strokeDasharray="6 5" opacity={0.5} vectorEffect="non-scaling-stroke" />
           <polyline
             points={points.map((p) => `${(xPct(p.d) / 100) * W},${yPct(p.v)}`).join(" ")}
             fill="none"

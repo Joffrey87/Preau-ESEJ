@@ -54,22 +54,18 @@ export default function AxesRecherche({ idees, actions }: { idees: Idee[]; actio
   const { prenom } = usePrenom();
   const [filtrePilier, setFiltrePilier] = useState<Pilier | "">("");
   const [seulementNouvelles, setSeulementNouvelles] = useState(false);
-  const [recherche, setRecherche] = useState("");
   const [edit, setEdit] = useState<Idee | "nouvelle" | null>(null);
   const [f, setF] = useState<Form | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const actionDe = useMemo(() => new Map(actions.map((a) => [a.idee_id, a])), [actions]);
-  const norm = (t: string) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
   const visibles = idees.filter(
     (i) =>
       (!filtrePilier || i.pilier === filtrePilier) &&
-      (!seulementNouvelles || i.nouvelle) &&
-      (!recherche.trim() || norm(`${i.titre} ${i.description ?? ""}`).includes(norm(recherche.trim()))),
+      (!seulementNouvelles || i.nouvelle),
   );
-  const compte = (s: StatutIdee) => idees.filter((i) => i.statut === s).length;
 
   function ouvrir(i: Idee | "nouvelle") {
     setError(null);
@@ -169,14 +165,7 @@ export default function AxesRecherche({ idees, actions }: { idees: Idee[]; actio
 
   return (
     <>
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <input
-          type="search"
-          value={recherche}
-          onChange={(e) => setRecherche(e.target.value)}
-          placeholder="Rechercher une idée"
-          className={`${inputCls} max-w-xs`}
-        />
+      <div className="mb-4 flex flex-wrap items-center gap-2">
         <button type="button" onClick={() => setFiltrePilier("")} className={chip(!filtrePilier)}>Tous les piliers</button>
         {PILIERS.map((p) => (
           <button key={p.code} type="button" onClick={() => setFiltrePilier(filtrePilier === p.code ? "" : p.code)} className={chip(filtrePilier === p.code)} title={p.titre}>
@@ -194,15 +183,11 @@ export default function AxesRecherche({ idees, actions }: { idees: Idee[]; actio
         </div>
       </div>
 
-      <p className="mb-4 text-xs text-muted">
-        {idees.length} idées · {compte("retenue")} retenue{compte("retenue") > 1 ? "s" : ""} · {compte("en_reflexion")} en réflexion ·{" "}
-        {compte("a_etudier")} à étudier · {compte("non_retenue")} non retenue{compte("non_retenue") > 1 ? "s" : ""}. ★ = nouvelle piste du plan V3.2.
-      </p>
 
       <div className="grid gap-4 lg:grid-cols-2">
         {PILIERS.filter((p) => !filtrePilier || p.code === filtrePilier).map((p) => {
           const duPilier = visibles.filter((i) => i.pilier === p.code);
-          if (duPilier.length === 0 && (recherche.trim() || seulementNouvelles)) return null;
+          if (duPilier.length === 0 && seulementNouvelles) return null;
           return (
             <section key={p.code} className="overflow-hidden rounded-xl border border-border bg-surface">
               <header className="bg-[#14295c] px-4 py-2.5 text-white">

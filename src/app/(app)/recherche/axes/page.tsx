@@ -18,7 +18,6 @@ export default async function AxesRecherchePage() {
       <div className="mx-auto max-w-7xl px-5 py-8 md:px-8">
         <PageHeader
           title="Axes de recherche"
-          subtitle="Les pistes de financement du plan V3.2, à enrichir et à arbitrer ensemble."
           action={<BadgePrenom />}
         />
         <AxesRecherche idees={(ideesRes.data ?? []) as Idee[]} actions={(actionsRes.data ?? []) as Action[]} />

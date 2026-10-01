@@ -168,7 +168,7 @@ export default function JaugeDons({ donnees, aujourdhui }: { donnees: DonsExerci
           )}
         </span>
         <button type="button" onClick={() => setGraphe((v) => !v)} className="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-surface-2">
-          {graphe ? "Masquer le graphe" : "Graphe"}
+          {graphe ? "Masquer les détails" : "Détails"}
         </button>
       </div>
     </section>

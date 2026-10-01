@@ -269,6 +269,9 @@ export default function AideFlottante({
                   </div>
                 )}
 
+                {!recherche.trim() && !toutes && resultats.length > 0 && (
+                  <div className="px-2 pb-1 text-xs text-muted">Suggestions :</div>
+                )}
                 {resultats.length === 0 ? (
                   recherche.trim() ? <p className="px-2 py-3 text-muted">Aucune fiche de cet onglet ne correspond.</p> : null
                 ) : (

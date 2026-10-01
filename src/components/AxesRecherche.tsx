@@ -254,61 +254,47 @@ export default function AxesRecherche({ idees, actions }: { idees: Idee[]; actio
         </button>
       </div>
 
-      {/* Idées retenues, classées par glisser-déposer : les trois premières en avant. */}
-      <section className="mb-5 rounded-xl border border-border bg-surface p-4">
+      {/* Idées retenues, empilées et classées par glisser-déposer : les trois premières en avant. */}
+      <section className="mb-5 max-w-2xl rounded-xl border border-border bg-surface p-4">
         <h2 className="mb-3 text-sm font-semibold">Idées retenues ({retenues.length})</h2>
         {retenues.length === 0 ? (
           <p className="text-sm text-muted">Aucune idée retenue pour l&apos;instant.</p>
         ) : (
-          <>
-            <div className="grid gap-3 md:grid-cols-3">
-              {retenues.slice(0, 3).map((i, k) => (
-                <div
+          <ol className="space-y-1.5">
+            {retenues.map((i, k) => {
+              const top = k < 3;
+              const cible = survol === i.id && glisse !== i.id;
+              return (
+                <li
                   key={i.id}
                   {...glissable(i)}
                   onClick={() => ouvrir(i)}
-                  className={`cursor-grab rounded-xl border-2 bg-[#14295c] p-3 text-white transition active:cursor-grabbing ${
-                    survol === i.id && glisse !== i.id ? "border-[#c8952f] ring-2 ring-[#c8952f]/50" : "border-[#c8952f]/70"
-                  } ${glisse === i.id ? "opacity-40" : ""}`}
+                  className={`flex cursor-grab items-center gap-3 rounded-lg border px-3 transition active:cursor-grabbing ${
+                    top
+                      ? "border-positive/60 bg-positive/10 py-2.5"
+                      : "border-border py-1.5 hover:bg-surface-2"
+                  } ${k === 3 ? "mt-3" : ""} ${cible ? "ring-2 ring-positive/60" : ""} ${glisse === i.id ? "opacity-40" : ""}`}
                 >
-                  <div className="flex items-start justify-between gap-2">
-                    <span className="text-2xl font-semibold leading-none text-[#c8952f]">{k + 1}</span>
-                    <span className="rounded bg-white/10 px-1.5 text-[11px] font-semibold text-[#c8952f]">{i.pilier}</span>
-                  </div>
-                  <div className="mt-2 text-sm font-semibold">
+                  <span
+                    className={`flex shrink-0 items-center justify-center rounded-full font-semibold tabular-nums ${
+                      top ? "h-7 w-7 bg-positive text-sm text-white" : "h-5 w-5 text-xs text-muted"
+                    }`}
+                  >
+                    {k + 1}
+                  </span>
+                  <span className={`min-w-0 flex-1 ${top ? "text-[15px] font-semibold" : "text-sm"}`}>
                     {i.nouvelle && <span className="mr-1 text-[#c8952f]">★</span>}
                     {i.titre}
-                  </div>
-                  <div className="mt-1 text-xs text-[#c3cee6]">
+                  </span>
+                  <span className="hidden shrink-0 text-xs text-muted sm:inline">
                     {[i.responsable, formatCible(i.cible_valeur, i.cible_unite)].filter(Boolean).join(" · ")}
-                  </div>
-                </div>
-              ))}
-            </div>
-            {retenues.length > 3 && (
-              <ol className="mt-3 divide-y divide-border rounded-lg border border-border">
-                {retenues.slice(3).map((i, k) => (
-                  <li
-                    key={i.id}
-                    {...glissable(i)}
-                    onClick={() => ouvrir(i)}
-                    className={`flex cursor-grab items-center gap-3 px-3 py-2 text-sm hover:bg-surface-2 active:cursor-grabbing ${
-                      survol === i.id && glisse !== i.id ? "bg-accent-soft" : ""
-                    } ${glisse === i.id ? "opacity-40" : ""}`}
-                  >
-                    <span className="w-5 text-right tabular-nums text-muted">{k + 4}</span>
-                    <span className="text-muted">⋮⋮</span>
-                    <span className="flex-1">
-                      {i.nouvelle && <span className="mr-1 text-[#c8952f]">★</span>}
-                      {i.titre}
-                    </span>
-                    <span className="text-xs text-muted">{[i.responsable, formatCible(i.cible_valeur, i.cible_unite)].filter(Boolean).join(" · ")}</span>
-                    <span className="rounded bg-[#14295c] px-1.5 text-[11px] font-semibold text-[#c8952f]">{i.pilier}</span>
-                  </li>
-                ))}
-              </ol>
-            )}
-          </>
+                  </span>
+                  <span className="shrink-0 rounded bg-[#14295c] px-1.5 text-[11px] font-semibold text-[#c8952f]">{i.pilier}</span>
+                  <span className="shrink-0 text-muted" aria-hidden="true">⋮⋮</span>
+                </li>
+              );
+            })}
+          </ol>
         )}
       </section>
 

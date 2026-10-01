@@ -7,7 +7,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 /** Membres du groupe de recherche de fonds (profil partagé), par ordre alphabétique. */
-export const MEMBRES = ["Alexis", "Axel", "Baptiste", "Pierre-Emmanuel", "Pierre-Louis"];
+export const MEMBRES = ["Alexis", "Axel", "Baptiste", "Joffrey", "Pierre-Emmanuel", "Pierre-Louis"];
 
 /** Rôles qui accèdent aux onglets de recherche de fonds. */
 export const ROLES_RECHERCHE = ["president", "tresorier", "recherche-fonds"];

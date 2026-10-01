@@ -5,7 +5,7 @@
 export const PARAMS = {
   seuilGrandDonateur: 1000, // cumul annuel (€) à partir duquel = grand donateur
   nouveauMois: 3, // 1er don de moins de N mois = nouveau
-  sommeilMois: 12, // aucun don depuis N mois = en sommeil
+  sommeilMois: 18, // aucun don depuis N mois = en sommeil (18 mois : décision du 02/10/2026)
   perduMois: 24, // aucun don depuis N mois = perdu
   fideleAnnees: 2, // a donné sur ≥ N années civiles = fidèle
   concentrationTop5Max: 25, // part des 5 premiers donateurs à ne pas dépasser (%)

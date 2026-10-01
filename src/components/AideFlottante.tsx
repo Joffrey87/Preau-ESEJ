@@ -20,11 +20,14 @@ import {
   type FicheAide,
 } from "@/lib/fichesAide";
 
-/** Ampoule (contour), dessinée comme les autres icônes de Préau. */
+/** Ampoule éclairée : globe teinté et rayons, dessinée comme les autres icônes de Préau. */
 export function IconeAmpoule({ className = "h-6 w-6" }: { className?: string }) {
+  const globe = "M12 6.5a5 5 0 0 0-3.2 8.8c.5.4.8 1.1.8 1.8v.4h4.8v-.4c0-.7.3-1.4.8-1.8A5 5 0 0 0 12 6.5Z";
   return (
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={className}>
-      <path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.8 10.6c.6.5 1 1.3 1 2.1V16h5.6v-.3c0-.8.4-1.6 1-2.1A6 6 0 0 0 12 3Z" />
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={className}>
+      <path d={globe} fill="currentColor" fillOpacity={0.25} />
+      <path d="M9.6 20h4.8M10.6 22.3h2.8" />
+      <path d="M12 1.6v2.1M4.7 4.6l1.5 1.5M19.3 4.6l-1.5 1.5M2.2 11.7h2.1M19.7 11.7h2.1" />
     </svg>
   );
 }
@@ -98,9 +101,8 @@ export default function AideFlottante({
   // Fiches de l'onglet (y compris celles partagées avec d'autres onglets).
   const duProfil = useMemo(() => fiches.filter((f) => pourProfil(f, profil)), [fiches, profil]);
   const deLOnglet = useMemo(() => duProfil.filter((f) => f.onglets.includes(onglet)), [duProfil, onglet]);
-  const resultats = recherche.trim()
-    ? rechercherFiches(deLOnglet, recherche)
-    : [...deLOnglet].sort((a, b) => a.titre.localeCompare(b.titre, "fr"));
+  // Aucune liste d'office : les fiches n'apparaissent qu'une fois des mots-clés saisis.
+  const resultats = recherche.trim() ? rechercherFiches(deLOnglet, recherche) : [];
   const ailleurs = recherche.trim() ? rechercherFiches(duProfil.filter((f) => !f.onglets.includes(onglet)), recherche) : [];
   const activeesIci = activees.filter((a) => activeSurOnglet(a, onglet));
 
@@ -256,12 +258,8 @@ export default function AideFlottante({
                   </div>
                 )}
 
-                {resultats.length === 0 ? (
-                  <p className="px-2 py-3 text-muted">
-                    {recherche.trim()
-                      ? "Aucune fiche de cet onglet ne correspond."
-                      : "Aucune fiche d'aide pour cet onglet pour l'instant."}
-                  </p>
+                {!recherche.trim() ? null : resultats.length === 0 ? (
+                  <p className="px-2 py-3 text-muted">Aucune fiche de cet onglet ne correspond.</p>
                 ) : (
                   <ul>
                     {resultats.map((f) => (
@@ -329,7 +327,6 @@ function LigneFiche({ fiche, onClick }: { fiche: FicheAide; onClick: () => void 
     <li>
       <button type="button" onClick={onClick} className="w-full rounded-lg px-2 py-1.5 text-left hover:bg-surface-2">
         <div className="font-medium">{fiche.titre}</div>
-        {fiche.tags.length > 0 && <div className="truncate text-xs text-muted">{fiche.tags.join(" · ")}</div>}
       </button>
     </li>
   );

@@ -62,6 +62,7 @@ export default function AideFlottante({
   const [fenetres, setFenetres] = useState<string[]>([]);
   const [suggestion, setSuggestion] = useState<{ titre: string; texte: string } | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  const [toutes, setToutes] = useState(false);
   const [occupe, setOccupe] = useState(false);
   const champ = useRef<HTMLInputElement>(null);
 
@@ -101,8 +102,21 @@ export default function AideFlottante({
   // Fiches de l'onglet (y compris celles partagées avec d'autres onglets).
   const duProfil = useMemo(() => fiches.filter((f) => pourProfil(f, profil)), [fiches, profil]);
   const deLOnglet = useMemo(() => duProfil.filter((f) => f.onglets.includes(onglet)), [duProfil, onglet]);
-  // Aucune liste d'office : les fiches n'apparaissent qu'une fois des mots-clés saisis.
-  const resultats = recherche.trim() ? rechercherFiches(deLOnglet, recherche) : [];
+  // Sans mots-clés : trois suggestions (échéance la plus proche d'abord, puis
+  // les fiches périodiques), ou toutes les fiches de l'onglet sur demande.
+  const aujourdhui = new Date().toISOString().slice(0, 10);
+  const parPertinence = [...deLOnglet].sort((a, b) => {
+    const ea = a.date_echeance && a.date_echeance >= aujourdhui ? a.date_echeance : "9999";
+    const eb = b.date_echeance && b.date_echeance >= aujourdhui ? b.date_echeance : "9999";
+    const pa = a.periodicite && a.periodicite !== "ponctuelle" ? 0 : 1;
+    const pb = b.periodicite && b.periodicite !== "ponctuelle" ? 0 : 1;
+    return ea.localeCompare(eb) || pa - pb || a.titre.localeCompare(b.titre, "fr");
+  });
+  const resultats = recherche.trim()
+    ? rechercherFiches(deLOnglet, recherche)
+    : toutes
+      ? [...deLOnglet].sort((a, b) => a.titre.localeCompare(b.titre, "fr"))
+      : parPertinence.slice(0, 3);
   const ailleurs = recherche.trim() ? rechercherFiches(duProfil.filter((f) => !f.onglets.includes(onglet)), recherche) : [];
   const activeesIci = activees.filter((a) => activeSurOnglet(a, onglet));
 
@@ -258,8 +272,11 @@ export default function AideFlottante({
                   </div>
                 )}
 
-                {!recherche.trim() ? null : resultats.length === 0 ? (
-                  <p className="px-2 py-3 text-muted">Aucune fiche de cet onglet ne correspond.</p>
+                {!recherche.trim() && resultats.length > 0 && (
+                  <div className="px-2 pb-1 text-xs text-muted">{toutes ? "Toutes les fiches de l'onglet" : "Suggestions"}</div>
+                )}
+                {resultats.length === 0 ? (
+                  recherche.trim() ? <p className="px-2 py-3 text-muted">Aucune fiche de cet onglet ne correspond.</p> : null
                 ) : (
                   <ul>
                     {resultats.map((f) => (
@@ -282,17 +299,26 @@ export default function AideFlottante({
               </div>
 
               <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border px-4 py-2 text-xs">
-                {peutGerer ? (
-                  <Link href={recherche.trim() ? `/processus?q=${encodeURIComponent(recherche.trim())}` : "/processus"} onClick={() => setOuvert(false)} className="text-accent hover:underline">
-                    Toutes les fiches (onglet Processus)
-                  </Link>
-                ) : familleId ? (
-                  <button type="button" onClick={() => setSuggestion({ titre: "", texte: "" })} className="text-accent hover:underline">
-                    Suggérer une fiche d&apos;aide
+                {deLOnglet.length > 3 && !recherche.trim() ? (
+                  <button type="button" onClick={() => setToutes((v) => !v)} className="rounded-lg border border-border px-2.5 py-1 font-medium hover:bg-surface-2">
+                    {toutes ? "Afficher les suggestions" : `Afficher toutes (${deLOnglet.length})`}
                   </button>
                 ) : (
                   <span />
                 )}
+                {peutGerer ? (
+                  <Link
+                    href={`/processus?onglet=${encodeURIComponent(onglet)}`}
+                    onClick={() => setOuvert(false)}
+                    className="rounded-lg border border-border px-2.5 py-1 font-medium hover:bg-surface-2"
+                  >
+                    Modifier les fiches
+                  </Link>
+                ) : familleId ? (
+                  <button type="button" onClick={() => setSuggestion({ titre: "", texte: "" })} className="rounded-lg border border-border px-2.5 py-1 font-medium hover:bg-surface-2">
+                    Suggérer une fiche d&apos;aide
+                  </button>
+                ) : null}
               </div>
             </div>
           )}
@@ -305,6 +331,7 @@ export default function AideFlottante({
           setOuvert((v) => !v);
           setVue(null);
           setMessage(null);
+          setToutes(false);
         }}
         title="Aide Processus"
         aria-label="Aide Processus"

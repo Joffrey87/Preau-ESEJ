@@ -101,6 +101,7 @@ export default function GestionFichesAide({
   profil,
   rechercheInitiale,
   ficheInitiale,
+  ongletInitial = "",
 }: {
   fiches: FicheAide[];
   activees: FicheActivee[];
@@ -108,10 +109,12 @@ export default function GestionFichesAide({
   profil: string;
   rechercheInitiale: string;
   ficheInitiale: string | null;
+  /** « Modifier les fiches » depuis l'ampoule : liste filtrée sur l'onglet d'origine. */
+  ongletInitial?: string;
 }) {
   const router = useRouter();
   const [recherche, setRecherche] = useState(rechercheInitiale);
-  const [filtreOnglet, setFiltreOnglet] = useState("");
+  const [filtreOnglet, setFiltreOnglet] = useState(ongletInitial);
   const [filtreProfil, setFiltreProfil] = useState("");
   const [filtrePeriodicite, setFiltrePeriodicite] = useState("");
   const [corbeille, setCorbeille] = useState(false);

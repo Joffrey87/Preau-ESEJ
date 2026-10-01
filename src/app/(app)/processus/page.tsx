@@ -7,9 +7,9 @@ import { COLONNES_ACTIVEE, COLONNES_FICHE, ficheDepuisBase, type FicheActivee } 
 export default async function ProcessusPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; fiche?: string }>;
+  searchParams: Promise<{ q?: string; fiche?: string; onglet?: string }>;
 }) {
-  const { q, fiche } = await searchParams;
+  const { q, fiche, onglet } = await searchParams;
   const supabase = await createClient();
   const [{ data: { user } }, fichesRes, activeesRes, famillesRes] = await Promise.all([
     supabase.auth.getUser(),
@@ -31,6 +31,7 @@ export default async function ProcessusPage({
         profil={roleByEmail(user?.email)?.slug ?? ""}
         rechercheInitiale={q ?? ""}
         ficheInitiale={fiche ?? null}
+        ongletInitial={onglet ?? ""}
       />
     </div>
   );

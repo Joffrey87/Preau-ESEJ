@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
@@ -52,26 +52,124 @@ const versForm = (i: Idee): Form => ({
 export default function AxesRecherche({ idees, actions }: { idees: Idee[]; actions: Action[] }) {
   const router = useRouter();
   const { prenom } = usePrenom();
-  const [filtrePilier, setFiltrePilier] = useState<Pilier | "">("");
-  const [seulementNouvelles, setSeulementNouvelles] = useState(false);
+  // Classement des retenues par glisser-déposer : ordre affiché en attendant le rechargement.
+  const [ordreLocal, setOrdreLocal] = useState<string[] | null>(null);
+  const [glisse, setGlisse] = useState<string | null>(null);
+  const [survol, setSurvol] = useState<string | null>(null);
   const [edit, setEdit] = useState<Idee | "nouvelle" | null>(null);
   const [f, setF] = useState<Form | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Menu de la pastille de statut ouvert (id de l'idée).
+  const [menu, setMenu] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!menu) return;
+    const fermer = () => setMenu(null);
+    document.addEventListener("click", fermer);
+    return () => document.removeEventListener("click", fermer);
+  }, [menu]);
 
   const actionDe = useMemo(() => new Map(actions.map((a) => [a.idee_id, a])), [actions]);
 
-  const visibles = idees.filter(
-    (i) =>
-      (!filtrePilier || i.pilier === filtrePilier) &&
-      (!seulementNouvelles || i.nouvelle),
-  );
+  // (Les idées non retenues depuis plus de trois semaines sont écartées par la page.)
+  const visibles = idees;
+
+  // Idées retenues, dans l'ordre du classement (les non classées à la suite).
+  const retenuesBase = idees
+    .filter((i) => i.statut === "retenue")
+    .sort((a, b) => (a.priorite ?? 9999) - (b.priorite ?? 9999) || a.statut_le.localeCompare(b.statut_le));
+  const retenues = ordreLocal
+    ? [
+        ...ordreLocal.map((id) => retenuesBase.find((i) => i.id === id)).filter((i): i is Idee => !!i),
+        ...retenuesBase.filter((i) => !ordreLocal.includes(i.id)),
+      ]
+    : retenuesBase;
+
+  async function deposer(cibleId: string) {
+    const source = glisse;
+    setGlisse(null);
+    setSurvol(null);
+    if (!source || source === cibleId) return;
+    const ids = retenues.map((i) => i.id).filter((id) => id !== source);
+    ids.splice(ids.indexOf(cibleId), 0, source);
+    setOrdreLocal(ids);
+    const supabase = createClient();
+    await Promise.all(ids.map((id, k) => supabase.from("recherche_idees").update({ priorite: k + 1 }).eq("id", id)));
+    const deplacee = retenues.find((i) => i.id === source);
+    if (deplacee) {
+      await tracer(supabase, { prenom, objet: "idee", objet_id: source, titre: deplacee.titre, evenement: `classée n° ${ids.indexOf(source) + 1}` });
+    }
+    router.refresh();
+  }
+
+  const glissable = (i: Idee) => ({
+    draggable: true,
+    onDragStart: () => setGlisse(i.id),
+    onDragEnd: () => {
+      setGlisse(null);
+      setSurvol(null);
+    },
+    onDragOver: (e: React.DragEvent) => {
+      e.preventDefault();
+      if (survol !== i.id) setSurvol(i.id);
+    },
+    onDrop: (e: React.DragEvent) => {
+      e.preventDefault();
+      void deposer(i.id);
+    },
+  });
+  const rang = (s: StatutIdee) => STATUTS_IDEE.findIndex((x) => x.v === s);
+
+  /** Idée retenue : sa fiche de suivi est créée (une seule par idée). */
+  async function assurerAction(
+    supabase: ReturnType<typeof createClient>,
+    idee: Pick<Idee, "id" | "titre" | "responsable" | "cible_valeur" | "cible_unite">,
+  ) {
+    if (actionDe.get(idee.id)) return;
+    const { data: action } = await supabase
+      .from("recherche_actions")
+      .insert({
+        idee_id: idee.id,
+        titre: idee.titre,
+        porteur: idee.responsable,
+        objectif_valeur: idee.cible_valeur,
+        objectif_unite: idee.cible_unite,
+      })
+      .select("id")
+      .single();
+    if (action) await tracer(supabase, { prenom, objet: "action", objet_id: action.id, titre: idee.titre, evenement: "fiche de suivi créée" });
+  }
+
+  /** Changement de décision depuis la pastille. */
+  async function changerStatut(i: Idee, statut: StatutIdee) {
+    setMenu(null);
+    if (i.statut === statut) return;
+    const supabase = createClient();
+    const maintenant = new Date().toISOString();
+    const { error: err } = await supabase
+      .from("recherche_idees")
+      .update({ statut, statut_le: maintenant, modifie_le: maintenant })
+      .eq("id", i.id);
+    if (err) return window.alert("Changement impossible : " + err.message);
+    await tracer(supabase, { prenom, objet: "idee", objet_id: i.id, titre: i.titre, evenement: `→ ${libelleStatutIdee(statut)}` });
+    if (statut === "retenue") await assurerAction(supabase, i);
+    router.refresh();
+  }
+
+  /** Croix d'une idée non retenue : suppression (tracée dans l'historique). */
+  async function retirer(i: Idee) {
+    const supabase = createClient();
+    await supabase.from("recherche_idees").update({ supprime_le: new Date().toISOString() }).eq("id", i.id);
+    await tracer(supabase, { prenom, objet: "idee", objet_id: i.id, titre: i.titre, evenement: "supprimée" });
+    router.refresh();
+  }
 
   function ouvrir(i: Idee | "nouvelle") {
     setError(null);
     setF(
       i === "nouvelle"
-        ? { titre: "", pilier: filtrePilier || "E", description: "", cible_valeur: "", cible_unite: "€", periode: "", responsable: "", statut: "a_etudier" }
+        ? { titre: "", pilier: "E", description: "", cible_valeur: "", cible_unite: "€", periode: "", responsable: "", statut: "a_etudier" }
         : versForm(i),
     );
     setEdit(i);
@@ -96,6 +194,7 @@ export default function AxesRecherche({ idees, actions }: { idees: Idee[]; actio
       responsable: f.responsable.trim() || null,
       statut: f.statut,
       modifie_le: new Date().toISOString(),
+      ...(edit === "nouvelle" || edit.statut !== f.statut ? { statut_le: new Date().toISOString() } : {}),
     };
     let idee: Idee | null = null;
     if (edit === "nouvelle") {
@@ -130,21 +229,7 @@ export default function AxesRecherche({ idees, actions }: { idees: Idee[]; actio
         });
       }
     }
-    // Idée retenue : sa fiche de suivi est créée (une seule par idée).
-    if (idee.statut === "retenue" && !actionDe.get(idee.id)) {
-      const { data: action } = await supabase
-        .from("recherche_actions")
-        .insert({
-          idee_id: idee.id,
-          titre: idee.titre,
-          porteur: idee.responsable,
-          objectif_valeur: idee.cible_valeur,
-          objectif_unite: idee.cible_unite,
-        })
-        .select("id")
-        .single();
-      if (action) await tracer(supabase, { prenom, objet: "action", objet_id: action.id, titre: idee.titre, evenement: "fiche de suivi créée" });
-    }
+    if (idee.statut === "retenue") await assurerAction(supabase, idee);
     setSaving(false);
     setEdit(null);
     router.refresh();
@@ -160,34 +245,76 @@ export default function AxesRecherche({ idees, actions }: { idees: Idee[]; actio
     router.refresh();
   }
 
-  const chip = (actif: boolean) =>
-    `rounded-full px-3 py-1 text-xs font-medium ${actif ? "bg-accent text-accent-fg" : "border border-border text-muted hover:bg-surface-2"}`;
-
   return (
     <>
-      <div className="mb-4 flex flex-wrap items-center gap-2">
-        <button type="button" onClick={() => setFiltrePilier("")} className={chip(!filtrePilier)}>Tous les piliers</button>
-        {PILIERS.map((p) => (
-          <button key={p.code} type="button" onClick={() => setFiltrePilier(filtrePilier === p.code ? "" : p.code)} className={chip(filtrePilier === p.code)} title={p.titre}>
-            {p.code} · {p.titre}
-          </button>
-        ))}
-        <button type="button" onClick={() => setSeulementNouvelles((v) => !v)} className={chip(seulementNouvelles)}>
-          ★ Nouvelles pistes
+      <div className="mb-4 flex flex-wrap items-center justify-end gap-2">
+        <HistoriqueRecherche />
+        <button type="button" onClick={() => ouvrir("nouvelle")} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-fg hover:opacity-90">
+          + Nouvelle idée
         </button>
-        <div className="ml-auto flex gap-2">
-          <HistoriqueRecherche />
-          <button type="button" onClick={() => ouvrir("nouvelle")} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-fg hover:opacity-90">
-            + Nouvelle idée
-          </button>
-        </div>
       </div>
 
+      {/* Idées retenues, classées par glisser-déposer : les trois premières en avant. */}
+      <section className="mb-5 rounded-xl border border-border bg-surface p-4">
+        <h2 className="mb-3 text-sm font-semibold">Idées retenues ({retenues.length})</h2>
+        {retenues.length === 0 ? (
+          <p className="text-sm text-muted">Aucune idée retenue pour l&apos;instant.</p>
+        ) : (
+          <>
+            <div className="grid gap-3 md:grid-cols-3">
+              {retenues.slice(0, 3).map((i, k) => (
+                <div
+                  key={i.id}
+                  {...glissable(i)}
+                  onClick={() => ouvrir(i)}
+                  className={`cursor-grab rounded-xl border-2 bg-[#14295c] p-3 text-white transition active:cursor-grabbing ${
+                    survol === i.id && glisse !== i.id ? "border-[#c8952f] ring-2 ring-[#c8952f]/50" : "border-[#c8952f]/70"
+                  } ${glisse === i.id ? "opacity-40" : ""}`}
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <span className="text-2xl font-semibold leading-none text-[#c8952f]">{k + 1}</span>
+                    <span className="rounded bg-white/10 px-1.5 text-[11px] font-semibold text-[#c8952f]">{i.pilier}</span>
+                  </div>
+                  <div className="mt-2 text-sm font-semibold">
+                    {i.nouvelle && <span className="mr-1 text-[#c8952f]">★</span>}
+                    {i.titre}
+                  </div>
+                  <div className="mt-1 text-xs text-[#c3cee6]">
+                    {[i.responsable, formatCible(i.cible_valeur, i.cible_unite)].filter(Boolean).join(" · ")}
+                  </div>
+                </div>
+              ))}
+            </div>
+            {retenues.length > 3 && (
+              <ol className="mt-3 divide-y divide-border rounded-lg border border-border">
+                {retenues.slice(3).map((i, k) => (
+                  <li
+                    key={i.id}
+                    {...glissable(i)}
+                    onClick={() => ouvrir(i)}
+                    className={`flex cursor-grab items-center gap-3 px-3 py-2 text-sm hover:bg-surface-2 active:cursor-grabbing ${
+                      survol === i.id && glisse !== i.id ? "bg-accent-soft" : ""
+                    } ${glisse === i.id ? "opacity-40" : ""}`}
+                  >
+                    <span className="w-5 text-right tabular-nums text-muted">{k + 4}</span>
+                    <span className="text-muted">⋮⋮</span>
+                    <span className="flex-1">
+                      {i.nouvelle && <span className="mr-1 text-[#c8952f]">★</span>}
+                      {i.titre}
+                    </span>
+                    <span className="text-xs text-muted">{[i.responsable, formatCible(i.cible_valeur, i.cible_unite)].filter(Boolean).join(" · ")}</span>
+                    <span className="rounded bg-[#14295c] px-1.5 text-[11px] font-semibold text-[#c8952f]">{i.pilier}</span>
+                  </li>
+                ))}
+              </ol>
+            )}
+          </>
+        )}
+      </section>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        {PILIERS.filter((p) => !filtrePilier || p.code === filtrePilier).map((p) => {
+        {PILIERS.map((p) => {
           const duPilier = visibles.filter((i) => i.pilier === p.code);
-          if (duPilier.length === 0 && seulementNouvelles) return null;
           return (
             <section key={p.code} className="overflow-hidden rounded-xl border border-border bg-surface">
               <header className="bg-[#14295c] px-4 py-2.5 text-white">
@@ -197,37 +324,74 @@ export default function AxesRecherche({ idees, actions }: { idees: Idee[]; actio
                 </div>
                 <div className="text-xs text-[#c3cee6]">Cible : {p.cible}</div>
               </header>
-              {STATUTS_IDEE.map((s) => {
-                const lot = duPilier.filter((i) => i.statut === s.v).sort((a, b) => a.ordre - b.ordre || a.titre.localeCompare(b.titre, "fr"));
-                if (lot.length === 0) return null;
-                return (
-                  <div key={s.v} className="border-t border-border first:border-t-0">
-                    <div className="px-4 pt-2 text-[11px] font-semibold uppercase tracking-wider text-muted">
-                      {s.l} ({lot.length})
-                    </div>
-                    <ul className="px-2 pb-2">
-                      {lot.map((i) => (
-                        <li key={i.id}>
+              <ul className="px-2 py-2">
+                {[...duPilier]
+                  .sort((x, y) => rang(x.statut) - rang(y.statut) || x.ordre - y.ordre || x.titre.localeCompare(y.titre, "fr"))
+                  .map((i) => {
+                    const st = STATUTS_IDEE.find((x) => x.v === i.statut)!;
+                    const non = i.statut === "non_retenue";
+                    return (
+                      <li key={i.id} className="relative flex items-start gap-2 rounded-lg px-1 hover:bg-surface-2">
+                        {/* Pastille de décision : clic → choix du statut */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMenu(menu === i.id ? null : i.id);
+                          }}
+                          title={`${st.l} — cliquer pour changer`}
+                          aria-label={`Statut : ${st.l}. Changer`}
+                          aria-expanded={menu === i.id}
+                          className="mt-1.5 inline-flex shrink-0 items-center gap-0.5 rounded-full border border-border bg-surface py-0.5 pl-1 pr-1.5 hover:border-accent/60"
+                        >
+                          <span className="h-3 w-3 rounded-full" style={{ background: st.pastille }} />
+                          <span className="text-[9px] leading-none text-muted">▾</span>
+                        </button>
+                        {menu === i.id && (
+                          <div
+                            onClick={(e) => e.stopPropagation()}
+                            className="absolute left-1 top-8 z-20 min-w-40 rounded-lg border border-border bg-surface p-1 shadow-lg"
+                          >
+                            {STATUTS_IDEE.map((x) => (
+                              <button
+                                key={x.v}
+                                type="button"
+                                onClick={() => changerStatut(i, x.v)}
+                                className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-surface-2 ${x.v === i.statut ? "font-semibold" : ""}`}
+                              >
+                                <span className="h-2.5 w-2.5 rounded-full" style={{ background: x.pastille }} />
+                                <span className={x.v === "non_retenue" ? "line-through" : ""}>{x.l}</span>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => ouvrir(i)}
+                          className={`flex min-w-0 flex-1 items-start justify-between gap-3 py-1.5 text-left text-sm ${non ? "text-muted" : ""}`}
+                        >
+                          <span className="min-w-0">
+                            {i.nouvelle && <span className="mr-1 text-[#c8952f]">★</span>}
+                            <span className={non ? "line-through" : i.statut === "retenue" ? "font-medium" : ""}>{i.titre}</span>
+                            {i.responsable && <span className="ml-1.5 text-xs text-muted">· {i.responsable}</span>}
+                          </span>
+                          <span className="shrink-0 text-xs tabular-nums text-muted">{formatCible(i.cible_valeur, i.cible_unite) ?? ""}</span>
+                        </button>
+                        {non && (
                           <button
                             type="button"
-                            onClick={() => ouvrir(i)}
-                            className={`flex w-full items-start justify-between gap-3 rounded-lg px-2 py-1.5 text-left text-sm hover:bg-surface-2 ${
-                              s.v === "non_retenue" ? "text-muted" : ""
-                            }`}
+                            onClick={() => retirer(i)}
+                            title="Supprimer cette idée (sinon elle disparaît d'elle-même trois semaines après la décision)"
+                            aria-label="Supprimer l'idée"
+                            className="mt-1 shrink-0 rounded p-1 text-xs text-muted hover:text-negative"
                           >
-                            <span className="min-w-0">
-                              {i.nouvelle && <span className="mr-1 text-[#c8952f]">★</span>}
-                              <span className={s.v === "retenue" ? "font-medium" : ""}>{i.titre}</span>
-                              {i.responsable && <span className="ml-1.5 text-xs text-muted">· {i.responsable}</span>}
-                            </span>
-                            <span className="shrink-0 text-xs tabular-nums text-muted">{formatCible(i.cible_valeur, i.cible_unite) ?? ""}</span>
+                            ✕
                           </button>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                );
-              })}
+                        )}
+                      </li>
+                    );
+                  })}
+              </ul>
             </section>
           );
         })}

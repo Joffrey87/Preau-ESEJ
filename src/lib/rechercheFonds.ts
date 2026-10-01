@@ -25,12 +25,20 @@ export const titrePilier = (p: string) => PILIERS.find((x) => x.code === p)?.tit
 
 export type StatutIdee = "retenue" | "en_reflexion" | "a_etudier" | "non_retenue";
 /** Ordre d'affichage dans chaque pilier : retenues, en réflexion, à étudier, non retenues. */
-export const STATUTS_IDEE: { v: StatutIdee; l: string; cls: string }[] = [
-  { v: "retenue", l: "Retenue", cls: "border-positive/50 bg-positive/10 text-positive" },
-  { v: "en_reflexion", l: "En réflexion", cls: "border-amber-500/50 bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300" },
-  { v: "a_etudier", l: "À étudier", cls: "border-border bg-surface-2 text-muted" },
-  { v: "non_retenue", l: "Non retenue", cls: "border-border bg-surface-2 text-muted/70 line-through" },
+export const STATUTS_IDEE: { v: StatutIdee; l: string; cls: string; pastille: string }[] = [
+  { v: "retenue", l: "Retenue", cls: "border-positive/50 bg-positive/10 text-positive", pastille: "#639922" },
+  { v: "en_reflexion", l: "En réflexion", cls: "border-amber-500/50 bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300", pastille: "#EF9F27" },
+  { v: "a_etudier", l: "À étudier", cls: "border-border bg-surface-2 text-muted", pastille: "#B4B2A9" },
+  { v: "non_retenue", l: "Non retenue", cls: "border-border bg-surface-2 text-muted/70 line-through", pastille: "#B4B2A9" },
 ];
+
+/** Une idée non retenue disparaît de l'onglet Axes trois semaines après la décision. */
+export const DELAI_NON_RETENUE_JOURS = 21;
+
+export function nonRetenueExpiree(i: { statut: string; statut_le: string }): boolean {
+  if (i.statut !== "non_retenue") return false;
+  return Date.now() - new Date(i.statut_le).getTime() > DELAI_NON_RETENUE_JOURS * 86400000;
+}
 export const libelleStatutIdee = (s: string) => STATUTS_IDEE.find((x) => x.v === s)?.l ?? s;
 
 export type StatutAction = "en_cours" | "a_lancer" | "en_pause" | "terminee" | "abandonnee";
@@ -53,6 +61,10 @@ export type Idee = {
   cible_unite: string | null;
   periode: string | null;
   statut: StatutIdee;
+  /** Date du dernier changement de décision. */
+  statut_le: string;
+  /** Classement des idées retenues (1 = la plus prometteuse). */
+  priorite: number | null;
   auteur: string | null;
   responsable: string | null;
   source: string | null;

@@ -327,8 +327,8 @@ export default function AideFlottante({
           setMessage(null);
           setToutes(false);
         }}
-        title="Aide Processus"
-        aria-label="Aide Processus"
+        title="Fiches d'aide"
+        aria-label="Fiches d'aide"
         aria-expanded={ouvert}
         className="no-print fixed bottom-5 right-5 z-50 flex h-12 w-12 items-center justify-center rounded-full border-2 border-[#c8952f] bg-surface text-[#c8952f] shadow-md shadow-black/15 transition-transform hover:scale-105"
       >

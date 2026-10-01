@@ -311,7 +311,7 @@ export default function AideFlottante({
         title="Aide Processus"
         aria-label="Aide Processus"
         aria-expanded={ouvert}
-        className="no-print fixed bottom-5 right-5 z-50 flex h-12 w-12 items-center justify-center rounded-full bg-[#021d51] text-[#c8952f] shadow-lg shadow-black/25 transition-transform hover:scale-105"
+        className="no-print fixed bottom-5 right-5 z-50 flex h-12 w-12 items-center justify-center rounded-full border-2 border-[#c8952f] bg-surface text-[#c8952f] shadow-md shadow-black/15 transition-transform hover:scale-105"
       >
         <IconeAmpoule className="h-7 w-7" />
         {activeesIci.length > 0 && (

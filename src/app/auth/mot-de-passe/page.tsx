@@ -48,7 +48,7 @@ export default function ChoixMotDePasse() {
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logo.webp" alt="" className="mb-4 h-28 w-28 rounded-full object-contain" />
           <h1 className="text-xl font-semibold">Choisir votre mot de passe</h1>
-          <p className="mt-1 text-sm text-muted">École du Saint-Enfant-Jésus · Espace familles</p>
+          <p className="mt-1 text-sm text-muted">École du Saint-Enfant-Jésus · Espace famille</p>
         </div>
         {pret === null ? (
           <p className="text-center text-sm text-muted">Vérification du lien…</p>

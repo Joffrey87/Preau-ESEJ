@@ -1,6 +1,6 @@
 /**
  * Réglé d'une famille pour une année scolaire — calcul UNIQUE, partagé par
- * l'onglet Frais de scolarité, l'Espace familles, l'accueil et le bilan.
+ * l'onglet Frais de scolarité, l'Espace famille, l'accueil et le bilan.
  *
  * Chaque année a UNE source (table `scolarite_annees`) :
  *  - « compta » : les écritures de la Comptabilité rattachées à la famille

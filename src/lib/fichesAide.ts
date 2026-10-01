@@ -79,9 +79,9 @@ export const ONGLETS: { href: string; label: string; famille?: boolean }[] = [
   { href: "/ca", label: "Conseil d'administration" },
   { href: "/parametres", label: "Paramètres" },
   { href: "/processus", label: "Processus" },
-  { href: "/espace", label: "Espace familles · Tableau de bord", famille: true },
-  { href: "/espace/paiements", label: "Espace familles · Paiements", famille: true },
-  { href: "/espace/famille", label: "Espace familles · Ma famille", famille: true },
+  { href: "/espace", label: "Espace famille · Tableau de bord", famille: true },
+  { href: "/espace/paiements", label: "Espace famille · Paiements", famille: true },
+  { href: "/espace/famille", label: "Espace famille · Ma famille", famille: true },
 ];
 
 export const PROFILS: { slug: string; label: string }[] = [

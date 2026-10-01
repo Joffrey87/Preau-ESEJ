@@ -65,7 +65,7 @@ export default function LoginPage() {
                 }}
                 className={`rounded-md px-3 py-1.5 font-medium ${espace === e ? "bg-surface shadow-sm" : "text-muted"}`}
               >
-                {e === "bureau" ? "Bureau" : "Espace familles"}
+                {e === "bureau" ? "Bureau" : "Espace famille"}
               </button>
             ))}
           </div>

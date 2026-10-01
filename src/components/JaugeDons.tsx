@@ -11,7 +11,7 @@ import { formatDate, formatEuros } from "@/lib/format";
  * couleur de la MOYENNE ANNUELLE (dons cumulés ÷ mois écoulés) au jour où il
  * arrive, et la partie déjà tracée ne change plus. La couleur ne change qu'au
  * passage d'une tranche à l'autre, avec un fondu :
- *   rouge < 4 000 €/mois · orange < 5 000 · jaune < 6 000 (5 800 = minimum vital) · vert ≥ 6 000.
+ *   rouge < 4 000 €/mois · orange < 5 000 · jaune < 6 000 (5 800 = équilibre budgétaire) · vert ≥ 6 000.
  * Gris pendant les 15 premiers jours de l'exercice (moyenne pas encore parlante).
  * Le chevron marque où il faudrait en être au rythme de 5 800 €/mois.
  */
@@ -120,7 +120,7 @@ export default function JaugeDons({ donnees, aujourdhui }: { donnees: DonsExerci
             <span
               className="absolute -translate-x-1/2 text-[11px] leading-none text-muted"
               style={{ left: `${pct(attendu)}%` }}
-              title={`Au rythme minimum vital de ${formatEuros(MINIMUM_VITAL)}/mois : ${formatEuros(attendu)} attendus au ${formatDate(aujourdhui)}`}
+              title={`Au rythme de l'équilibre budgétaire (${formatEuros(MINIMUM_VITAL)}/mois) : ${formatEuros(attendu)} attendus au ${formatDate(aujourdhui)}`}
             >
               ▼
             </span>
@@ -155,7 +155,7 @@ export default function JaugeDons({ donnees, aujourdhui }: { donnees: DonsExerci
           ) : (
             <span className="text-muted">trop tôt pour la calculer (15 premiers jours)</span>
           )}
-          <span className="text-muted"> · minimum vital {formatEuros(MINIMUM_VITAL)}/mois</span>
+          <span className="text-muted"> · équilibre budgétaire {formatEuros(MINIMUM_VITAL)}/mois</span>
         </span>
         <button type="button" onClick={() => setGraphe((v) => !v)} className="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-surface-2">
           {graphe ? "Masquer le graphe" : "Graphe"}
@@ -189,9 +189,9 @@ function GrapheMoyenne({
   echelle: number;
 }) {
   const W = 640;
-  const H = 160;
+  const H = 112;
   const g = 40;
-  const b = 20;
+  const b = 16;
   const rythmeEchelle = echelle / 12;
   const ymax = Math.max(rythmeEchelle * 1.3, ...segments.map((s) => s.moy), moyJ) * 1.02;
   const duree = jours(debut, fin);
@@ -199,21 +199,32 @@ function GrapheMoyenne({
   const y = (v: number) => H - b - (Math.min(v, ymax) / ymax) * (H - b - 8);
   const points = [...segments.map((s) => ({ d: s.date, v: s.moy, c: s.couleur })), { d: aujourdhui, v: moyJ, c: "currentColor" }];
   const MOIS = ["S", "O", "N", "D", "J", "F", "M", "A", "M", "J", "J", "A"];
-  const repere = (v: number, libelle: string) => (
+  // Deux repères souvent très proches : l'un légendé à droite au-dessus de sa
+  // ligne, l'autre à gauche en dessous, pour que les textes ne se chevauchent pas.
+  const repere = (v: number, libelle: string, cote: "droite" | "gauche") => (
     <g key={libelle}>
       <line x1={g} x2={W - 10} y1={y(v)} y2={y(v)} stroke="currentColor" strokeDasharray="3 3" opacity={0.45} />
-      <text x={W - 12} y={y(v) - 3} textAnchor="end" fontSize={10} fill="currentColor" opacity={0.6}>{libelle}</text>
+      <text
+        x={cote === "droite" ? W - 12 : g + 4}
+        y={cote === "droite" ? y(v) - 3 : y(v) + 10}
+        textAnchor={cote === "droite" ? "end" : "start"}
+        fontSize={9.5}
+        fill="currentColor"
+        opacity={0.65}
+      >
+        {libelle}
+      </text>
     </g>
   );
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="mt-3 w-full text-foreground" role="img" aria-label="Vitesse de croisière des dons (moyenne mensuelle) sur l'exercice">
+    <svg viewBox={`0 0 ${W} ${H}`} className="mt-2 w-full text-foreground" role="img" aria-label="Vitesse de croisière des dons (moyenne mensuelle) sur l'exercice">
       {TRANCHES.map((t, k) => {
         const haut = TRANCHES[k + 1]?.min ?? ymax;
         return <rect key={t.nom} x={g} width={W - g - 10} y={y(Math.min(haut, ymax))} height={Math.max(0, y(t.min) - y(Math.min(haut, ymax)))} fill={t.couleur} opacity={0.13} />;
       })}
-      {repere(MINIMUM_VITAL, "5 800 minimum vital")}
-      {repere(rythmeEchelle, `${Math.round(rythmeEchelle).toLocaleString("fr-FR")} = ${(echelle / 1000).toLocaleString("fr-FR")} k€ sur 12 mois`)}
-      {[0, 4000, 5000, 6000].map((v) => (
+      {repere(MINIMUM_VITAL, "Équilibre budgétaire · 5 800", "droite")}
+      {repere(rythmeEchelle, `${Math.round(rythmeEchelle).toLocaleString("fr-FR")} €/mois = ${(echelle / 1000).toLocaleString("fr-FR")} k€ sur 12 mois`, "gauche")}
+      {[0, 4000, 6000].map((v) => (
         <text key={v} x={g - 4} y={y(v) + 3} textAnchor="end" fontSize={10} fill="currentColor" opacity={0.6}>{v / 1000}k</text>
       ))}
       {MOIS.map((m, k) => (

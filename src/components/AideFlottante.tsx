@@ -12,7 +12,6 @@ import {
   PERIODICITES,
   activeSurOnglet,
   ficheDepuisBase,
-  libelleOnglet,
   ongletDe,
   pourProfil,
   rechercherFiches,
@@ -186,13 +185,13 @@ export default function AideFlottante({
       {ouvert && (
         <div
           role="dialog"
-          aria-label="Aide Processus"
+          aria-label="Fiches d'aide"
           className="fixed bottom-24 right-5 z-50 flex max-h-[70vh] w-[min(26rem,calc(100vw-2.5rem))] flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-xl shadow-black/20"
         >
           <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-2.5">
             <div className="flex items-center gap-2 text-sm font-semibold">
               <IconeAmpoule className="h-5 w-5 text-[#c8952f]" />
-              Aide Processus
+              Fiches d&apos;aide
             </div>
             <button type="button" onClick={() => setOuvert(false)} aria-label="Fermer" className="rounded p-1 text-muted hover:bg-surface-2">
               ✕
@@ -229,9 +228,6 @@ export default function AideFlottante({
           ) : (
             <div className="flex min-h-0 flex-col">
               <div className="px-4 pt-3">
-                <label htmlFor="aide-recherche" className="mb-1 block text-xs text-muted">
-                  Tapez des mots-clés pour retrouver une fiche d&apos;aide · {libelleOnglet(onglet)}
-                </label>
                 <input
                   id="aide-recherche"
                   ref={champ}
@@ -239,7 +235,8 @@ export default function AideFlottante({
                   value={recherche}
                   onChange={(e) => setRecherche(e.target.value)}
                   onKeyDown={(e) => e.key === "Escape" && (recherche ? setRecherche("") : setOuvert(false))}
-                  placeholder="relevé, mois d'avance, reçu…"
+                  placeholder="Tapez des mots-clés"
+                  aria-label="Tapez des mots-clés"
                   className="w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent"
                 />
               </div>
@@ -272,9 +269,6 @@ export default function AideFlottante({
                   </div>
                 )}
 
-                {!recherche.trim() && resultats.length > 0 && (
-                  <div className="px-2 pb-1 text-xs text-muted">{toutes ? "Toutes les fiches de l'onglet" : "Suggestions"}</div>
-                )}
                 {resultats.length === 0 ? (
                   recherche.trim() ? <p className="px-2 py-3 text-muted">Aucune fiche de cet onglet ne correspond.</p> : null
                 ) : (

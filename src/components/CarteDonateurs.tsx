@@ -36,7 +36,9 @@ const ETATS = {
   sommeil: { couleur: "#EF9F27", libelle: "En sommeil" },
   perdu: { couleur: "#E24B4A", libelle: "Perdu" },
 } as const;
-const etatDe = (p: ProfilDonateur): keyof typeof ETATS => (p.estGrand ? "grand" : p.etat === "actif" ? "actif" : p.etat === "sommeil" ? "sommeil" : "perdu");
+// Un donateur perdu reste « perdu », même s'il a été grand donateur.
+const etatDe = (p: ProfilDonateur): keyof typeof ETATS =>
+  p.etat === "perdu" ? "perdu" : p.estGrand ? "grand" : p.etat === "actif" ? "actif" : "sommeil";
 
 // Villes repères, pour se situer (aucune donnée de donateur).
 const REPERES: { nom: string; lat: number; lon: number }[] = [

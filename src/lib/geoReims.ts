@@ -8,7 +8,7 @@
 import COMMUNES from "./communesProches.json";
 
 export const REIMS = { lat: 49.2583, lon: 4.0317 };
-const communes = COMMUNES as Record<string, [number, number]>;
+const communes = COMMUNES as unknown as Record<string, [number, number]>;
 
 /** Rayon retenu pour le filtre « Alentours Reims ». */
 export const RAYON_ALENTOURS_KM = 200;

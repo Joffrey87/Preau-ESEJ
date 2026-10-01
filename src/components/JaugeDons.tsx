@@ -26,6 +26,8 @@ const OBJECTIF_ANNUEL = 60000;
 const EQUILIBRE = 5000;
 /** Rythme de confort, avec de la marge. */
 const CONFORT = 5800;
+/** « 5,7k » : montant en milliers, une décimale. */
+const kilo = (v: number) => `${(v / 1000).toLocaleString("fr-FR", { maximumFractionDigits: 1 })}k`;
 const euroRond = (v: number) => `${Math.round(v).toLocaleString("fr-FR")} €`;
 
 const echelleDe = (total: number) =>
@@ -140,6 +142,15 @@ export default function JaugeDons({ donnees, aujourdhui }: { donnees: DonsExerci
           title={`Au rythme de l'équilibre budgétaire (≈ ${euroRond(EQUILIBRE)}/mois) : ${euroRond(attendu)} attendus au ${formatDate(aujourdhui)}`}
         >
           ▼
+        </span>
+        {/* Somme à avoir reçue pour être au niveau du chevron (ex. « 5,7k »), à sa droite
+            — ou à sa gauche quand le chevron approche du bout de la jauge. */}
+        <span
+          className="absolute text-[10px] leading-none tabular-nums text-muted"
+          style={pct(attendu) > 92 ? { right: `${100 - pct(attendu) + 1}%` } : { left: `calc(${pct(attendu)}% + 7px)` }}
+          aria-hidden="true"
+        >
+          {kilo(attendu)}
         </span>
       </div>
       <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${nbBlocs}, minmax(0, 1fr))` }}>

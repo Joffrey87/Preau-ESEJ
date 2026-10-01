@@ -56,6 +56,8 @@ export default function AxesRecherche({ idees, actions }: { idees: Idee[]; actio
   const [ordreLocal, setOrdreLocal] = useState<string[] | null>(null);
   const [glisse, setGlisse] = useState<string | null>(null);
   const [survol, setSurvol] = useState<string | null>(null);
+  // Au-delà de 7 idées retenues, les suivantes sont repliées sous « Autres ».
+  const [voirAutres, setVoirAutres] = useState(false);
   const [edit, setEdit] = useState<Idee | "nouvelle" | null>(null);
   const [f, setF] = useState<Form | null>(null);
   const [saving, setSaving] = useState(false);
@@ -255,13 +257,13 @@ export default function AxesRecherche({ idees, actions }: { idees: Idee[]; actio
       </div>
 
       {/* Idées retenues, empilées et classées par glisser-déposer : les trois premières en avant. */}
-      <section className="mb-5 max-w-2xl rounded-xl border border-border bg-surface p-4">
+      <section className="mx-auto mb-5 max-w-2xl rounded-xl border border-border bg-surface p-4">
         <h2 className="mb-3 text-sm font-semibold">Idées retenues ({retenues.length})</h2>
         {retenues.length === 0 ? (
           <p className="text-sm text-muted">Aucune idée retenue pour l&apos;instant.</p>
         ) : (
           <ol className="space-y-1.5">
-            {retenues.map((i, k) => {
+            {retenues.slice(0, voirAutres ? undefined : 7).map((i, k) => {
               const top = k < 3;
               const cible = survol === i.id && glisse !== i.id;
               return (
@@ -270,9 +272,7 @@ export default function AxesRecherche({ idees, actions }: { idees: Idee[]; actio
                   {...glissable(i)}
                   onClick={() => ouvrir(i)}
                   className={`flex cursor-grab items-center gap-3 rounded-lg border px-3 transition active:cursor-grabbing ${
-                    top
-                      ? "border-positive/60 bg-positive/10 py-2.5"
-                      : "border-border py-1.5 hover:bg-surface-2"
+                    top ? "border-border py-2.5 hover:bg-surface-2" : "border-border py-1.5 hover:bg-surface-2"
                   } ${k === 3 ? "mt-3" : ""} ${cible ? "ring-2 ring-positive/60" : ""} ${glisse === i.id ? "opacity-40" : ""}`}
                 >
                   <span
@@ -295,6 +295,11 @@ export default function AxesRecherche({ idees, actions }: { idees: Idee[]; actio
               );
             })}
           </ol>
+        )}
+        {retenues.length > 7 && (
+          <button type="button" onClick={() => setVoirAutres((v) => !v)} className="mt-2 text-sm text-accent hover:underline">
+            {voirAutres ? "Masquer les autres" : `Autres (${retenues.length - 7})`}
+          </button>
         )}
       </section>
 

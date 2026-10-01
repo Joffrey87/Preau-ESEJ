@@ -6,39 +6,44 @@ import DonateursPipeline from "@/components/DonateursPipeline";
 import type { Prospect } from "@/lib/pipeline";
 import type { Don } from "@/components/GestionDons";
 
-export default function PipelineTabs({
-  prospects,
-  dons,
-}: {
-  prospects: Prospect[];
-  dons: Don[];
-}) {
-  const [vue, setVue] = useState<"donateurs" | "suivi">("donateurs");
+type Volet = "fichier" | "prospections" | "campagnes";
+
+const VOLETS: { v: Volet; l: string }[] = [
+  { v: "fichier", l: "Fichier donateurs" },
+  { v: "prospections", l: "Prospections" },
+  { v: "campagnes", l: "Campagnes de collecte" },
+];
+
+/**
+ * Relations donateurs, en trois volets : le fichier des donateurs (qualifiés
+ * depuis les dons, filtres), les prospections (suivi relationnel) et les
+ * campagnes de collecte (objectif, relances, actions suggérées).
+ */
+export default function PipelineTabs({ prospects, dons }: { prospects: Prospect[]; dons: Don[] }) {
+  const [vue, setVue] = useState<Volet>("fichier");
 
   return (
     <div className="space-y-4">
-      <div className="inline-flex rounded-lg border border-border bg-surface p-0.5">
-        <button
-          type="button"
-          onClick={() => setVue("donateurs")}
-          className={`rounded-md px-4 py-1.5 text-sm font-medium transition ${
-            vue === "donateurs" ? "bg-accent text-accent-fg" : "text-muted hover:text-foreground"
-          }`}
-        >
-          Donateurs (depuis les dons)
-        </button>
-        <button
-          type="button"
-          onClick={() => setVue("suivi")}
-          className={`rounded-md px-4 py-1.5 text-sm font-medium transition ${
-            vue === "suivi" ? "bg-accent text-accent-fg" : "text-muted hover:text-foreground"
-          }`}
-        >
-          Suivi manuel
-        </button>
+      <div className="inline-flex flex-wrap rounded-lg border border-border bg-surface p-0.5">
+        {VOLETS.map((o) => (
+          <button
+            key={o.v}
+            type="button"
+            onClick={() => setVue(o.v)}
+            className={`rounded-md px-4 py-1.5 text-sm font-medium transition ${
+              vue === o.v ? "bg-accent text-accent-fg" : "text-muted hover:text-foreground"
+            }`}
+          >
+            {o.l}
+          </button>
+        ))}
       </div>
 
-      {vue === "donateurs" ? <DonateursPipeline donsInit={dons} /> : <GestionPipeline prospects={prospects} />}
+      {vue === "prospections" ? (
+        <GestionPipeline prospects={prospects} />
+      ) : (
+        <DonateursPipeline donsInit={dons} volet={vue} />
+      )}
     </div>
   );
 }

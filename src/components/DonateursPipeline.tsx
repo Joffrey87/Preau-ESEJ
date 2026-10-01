@@ -19,9 +19,10 @@ import FicheDonateur from "@/components/FicheDonateur";
 import DeverrouillerCoffre from "@/components/DeverrouillerCoffre";
 import { PARAMS } from "@/lib/segments";
 import { nomCliquableCls } from "@/lib/ui";
+import { RAYON_ALENTOURS_KM, distanceReims } from "@/lib/geoReims";
 import type { Don } from "@/components/GestionDons";
 
-type SegFiltre = "tous" | "grand" | "actif" | "sommeil" | "perdu" | "nouveau" | "fidele";
+type SegFiltre = "tous" | "grand" | "actif" | "sommeil" | "perdu" | "nouveau" | "fidele" | "alentours";
 
 const FILTRES: { key: SegFiltre; label: string }[] = [
   { key: "tous", label: "Tous" },
@@ -31,6 +32,7 @@ const FILTRES: { key: SegFiltre; label: string }[] = [
   { key: "perdu", label: "Perdus" },
   { key: "nouveau", label: "Nouveaux" },
   { key: "fidele", label: "Fidèles" },
+  { key: "alentours", label: "Alentours Reims" },
 ];
 
 const correspond = (p: ProfilDonateur, f: SegFiltre) =>
@@ -42,7 +44,12 @@ const correspond = (p: ProfilDonateur, f: SegFiltre) =>
   (f === "nouveau" && p.estNouveau) ||
   (f === "fidele" && p.estFidele);
 
-export default function DonateursPipeline({ donsInit }: { donsInit: Don[] }) {
+/**
+ * Donateurs qualifiés depuis les dons (coffre ouvert), en deux volets :
+ * « fichier » (synthèse, filtres, tableau) et « campagnes » (campagne de
+ * collecte, relances, prochaines actions suggérées).
+ */
+export default function DonateursPipeline({ donsInit, volet }: { donsInit: Don[]; volet: "fichier" | "campagnes" }) {
   const coffre = useCoffre();
   const { dons, verrou } = useDonsDechiffres(donsInit);
   const today = todayISO();
@@ -78,7 +85,18 @@ export default function DonateursPipeline({ donsInit }: { donsInit: Don[] }) {
     return { total: profils.length, grands, actifs, sommeil, perdus, collecte12 };
   }, [profils, dons, today]);
 
-  const affiches = profils.filter((p) => correspond(p, filtre));
+  // Distance à Reims d'après le code postal (le plus récent renseigné).
+  const distanceDe = (cle: string) => {
+    const cp = [...(donsParCle.get(cle) ?? [])].reverse().map((d) => d.cp_ville).find(Boolean);
+    return distanceReims(cp);
+  };
+  const affiches =
+    filtre === "alentours"
+      ? profils.filter((p) => {
+          const d = distanceDe(p.cle);
+          return d != null && d <= RAYON_ALENTOURS_KM;
+        })
+      : profils.filter((p) => correspond(p, filtre));
 
   if (verrou) {
     return (
@@ -101,6 +119,8 @@ export default function DonateursPipeline({ donsInit }: { donsInit: Don[] }) {
 
   return (
     <div className="space-y-5">
+      {volet === "fichier" && (
+      <>
       {/* Synthèse */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-5">
         <Tuile label="Donateurs" valeur={String(stats.total)} />
@@ -119,6 +139,11 @@ export default function DonateursPipeline({ donsInit }: { donsInit: Don[] }) {
         <span><span className={`mr-1 inline-block rounded-full px-1.5 py-0.5 font-medium ${TONE_CLASSES.violet}`}>Grand donateur</span>≥ {PARAMS.seuilGrandDonateur.toLocaleString("fr-FR")} €/an</span>
       </div>
 
+      </>
+      )}
+
+      {volet === "campagnes" && (
+      <>
       {/* Campagne « objectif » — trouver X € avant une échéance */}
       <CampagneCollecte profils={profils} today={today} onOuvrirFiche={setFicheCle} donsParCle={donsParCle} />
 
@@ -147,6 +172,11 @@ export default function DonateursPipeline({ donsInit }: { donsInit: Don[] }) {
         )}
       </section>
 
+      </>
+      )}
+
+      {volet === "fichier" && (
+      <>
       {/* Filtres segment */}
       <div className="flex flex-wrap gap-1.5">
         {FILTRES.map((f) => (
@@ -187,6 +217,7 @@ export default function DonateursPipeline({ donsInit }: { donsInit: Don[] }) {
                       {p.nom}
                     </button>
                     {p.courriel && <div className="text-xs text-muted">{p.courriel}</div>}
+                    {filtre === "alentours" && <div className="text-xs text-muted">≈ {distanceDe(p.cle)} km de Reims</div>}
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap gap-1">
@@ -212,6 +243,9 @@ export default function DonateursPipeline({ donsInit }: { donsInit: Don[] }) {
           </tbody>
         </table>
       </div>
+
+      </>
+      )}
 
       {ficheCle && profilParCle.get(ficheCle) && (
         <FicheDonateur

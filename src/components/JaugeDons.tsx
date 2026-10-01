@@ -145,8 +145,14 @@ export default function JaugeDons({ donnees, aujourdhui }: { donnees: DonsExerci
               </span>
             ))}
           </div>
+          {graphe && (
+            <GrapheMoyenne segments={segments} debut={donnees.debut} fin={donnees.fin} aujourdhui={aujourdhui} moyJ={moyJ} echelle={echelle} />
+          )}
         </div>
       </div>
+      <p className="mt-1 text-center text-[11px] text-muted">
+        <span aria-hidden="true">▼</span> <span aria-hidden="true">┄</span> Équilibre budgétaire · {formatEuros(MINIMUM_VITAL)}/mois
+      </p>
       <div className="mt-1 flex flex-wrap items-center justify-between gap-2 text-sm">
         <span>
           Moyenne annuelle :{" "}
@@ -155,23 +161,22 @@ export default function JaugeDons({ donnees, aujourdhui }: { donnees: DonsExerci
           ) : (
             <span className="text-muted">trop tôt pour la calculer (15 premiers jours)</span>
           )}
-          <span className="text-muted"> · équilibre budgétaire {formatEuros(MINIMUM_VITAL)}/mois</span>
         </span>
         <button type="button" onClick={() => setGraphe((v) => !v)} className="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-surface-2">
           {graphe ? "Masquer le graphe" : "Graphe"}
         </button>
       </div>
-      {graphe && (
-        <GrapheMoyenne segments={segments} debut={donnees.debut} fin={donnees.fin} aujourdhui={aujourdhui} moyJ={moyJ} echelle={echelle} />
-      )}
     </section>
   );
 }
 
+const MOIS_COURTS = ["Sept", "Oct", "Nov", "Déc", "Janv", "Févr", "Mars", "Avr", "Mai", "Juin", "Juil", "Août"];
+
 /**
- * Vitesse de croisière : moyenne annuelle (€/mois) sur les 12 mois de
- * l'exercice. L'échelle suit celle de la jauge (palier ÷ 12 : 70 000 € → 5 833
- * €/mois, 100 000 € → 8 333 €/mois…), sur fond des tranches de couleur.
+ * Vitesse de croisière : moyenne mensuelle des dons au fil des 12 mois de
+ * l'exercice, alignée sous la jauge. Bandes de couleur pâles (tranches),
+ * équilibre budgétaire en pointillé ; l'échelle verticale suit le palier de la
+ * jauge (palier ÷ 12 × 1,3). Pas d'axe chiffré : valeur au survol.
  */
 function GrapheMoyenne({
   segments,
@@ -188,53 +193,43 @@ function GrapheMoyenne({
   moyJ: number;
   echelle: number;
 }) {
-  const W = 640;
-  const H = 112;
-  const g = 40;
-  const b = 16;
-  const rythmeEchelle = echelle / 12;
-  const ymax = Math.max(rythmeEchelle * 1.3, ...segments.map((s) => s.moy), moyJ) * 1.02;
+  const W = 1000;
+  const H = 100;
+  const ymax = Math.max((echelle / 12) * 1.3, ...segments.map((s) => s.moy), moyJ) * 1.02;
   const duree = jours(debut, fin);
-  const x = (d: string) => g + ((jours(debut, d) - 1) / Math.max(duree - 1, 1)) * (W - g - 10);
-  const y = (v: number) => H - b - (Math.min(v, ymax) / ymax) * (H - b - 8);
-  const points = [...segments.map((s) => ({ d: s.date, v: s.moy, c: s.couleur })), { d: aujourdhui, v: moyJ, c: "currentColor" }];
-  const MOIS = ["S", "O", "N", "D", "J", "F", "M", "A", "M", "J", "J", "A"];
-  // Deux repères souvent très proches : l'un légendé à droite au-dessus de sa
-  // ligne, l'autre à gauche en dessous, pour que les textes ne se chevauchent pas.
-  const repere = (v: number, libelle: string, cote: "droite" | "gauche") => (
-    <g key={libelle}>
-      <line x1={g} x2={W - 10} y1={y(v)} y2={y(v)} stroke="currentColor" strokeDasharray="3 3" opacity={0.45} />
-      <text
-        x={cote === "droite" ? W - 12 : g + 4}
-        y={cote === "droite" ? y(v) - 3 : y(v) + 10}
-        textAnchor={cote === "droite" ? "end" : "start"}
-        fontSize={9.5}
-        fill="currentColor"
-        opacity={0.65}
-      >
-        {libelle}
-      </text>
-    </g>
-  );
+  const xPct = (d: string) => ((jours(debut, d) - 0.5) / duree) * 100;
+  const yPct = (v: number) => 100 - (Math.min(v, ymax) / ymax) * 96 - 2;
+  const points = [...segments.map((s) => ({ d: s.date, v: s.moy, c: s.couleur })), { d: aujourdhui, v: moyJ, c: tranche(moyJ).couleur }];
+  const dernier = points[points.length - 1];
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="mt-2 w-full text-foreground" role="img" aria-label="Vitesse de croisière des dons (moyenne mensuelle) sur l'exercice">
-      {TRANCHES.map((t, k) => {
-        const haut = TRANCHES[k + 1]?.min ?? ymax;
-        return <rect key={t.nom} x={g} width={W - g - 10} y={y(Math.min(haut, ymax))} height={Math.max(0, y(t.min) - y(Math.min(haut, ymax)))} fill={t.couleur} opacity={0.13} />;
-      })}
-      {repere(MINIMUM_VITAL, "Équilibre budgétaire · 5 800", "droite")}
-      {repere(rythmeEchelle, `${Math.round(rythmeEchelle).toLocaleString("fr-FR")} €/mois = ${(echelle / 1000).toLocaleString("fr-FR")} k€ sur 12 mois`, "gauche")}
-      {[0, 4000, 6000].map((v) => (
-        <text key={v} x={g - 4} y={y(v) + 3} textAnchor="end" fontSize={10} fill="currentColor" opacity={0.6}>{v / 1000}k</text>
-      ))}
-      {MOIS.map((m, k) => (
-        <text key={k} x={g + ((k + 0.5) / 12) * (W - g - 10)} y={H - 4} textAnchor="middle" fontSize={10} fill="currentColor" opacity={0.6}>{m}</text>
-      ))}
-      <line x1={x(aujourdhui)} x2={x(aujourdhui)} y1={8} y2={H - b} stroke="currentColor" opacity={0.25} />
-      <polyline points={points.map((p) => `${x(p.d)},${y(p.v)}`).join(" ")} fill="none" stroke="currentColor" strokeWidth={1.5} opacity={0.6} />
-      {points.map((p, k) => (
-        <circle key={k} cx={x(p.d)} cy={y(p.v)} r={3} fill={p.c} />
-      ))}
-    </svg>
+    <div className="mt-1.5">
+      <div className="relative h-12 overflow-hidden rounded-sm" title={`Moyenne au ${formatDate(aujourdhui)} : ${formatEuros(moyJ)}/mois`}>
+        <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="absolute inset-0 h-full w-full text-foreground" aria-hidden="true">
+          {TRANCHES.map((t, k) => {
+            const haut = Math.min(TRANCHES[k + 1]?.min ?? ymax, ymax);
+            return <rect key={t.nom} x={0} width={W} y={yPct(haut)} height={Math.max(0, yPct(t.min) - yPct(haut))} fill={t.couleur} opacity={0.14} />;
+          })}
+          <line x1={0} x2={W} y1={yPct(MINIMUM_VITAL)} y2={yPct(MINIMUM_VITAL)} stroke="currentColor" strokeDasharray="6 5" opacity={0.5} vectorEffect="non-scaling-stroke" />
+          <polyline
+            points={points.map((p) => `${(xPct(p.d) / 100) * W},${yPct(p.v)}`).join(" ")}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={1.5}
+            opacity={0.7}
+            vectorEffect="non-scaling-stroke"
+          />
+        </svg>
+        {/* Point du jour, dans la couleur de sa tranche (hors du SVG étiré : reste rond). */}
+        <span
+          className="absolute h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-surface"
+          style={{ left: `${xPct(dernier.d)}%`, top: `${yPct(dernier.v)}%`, background: dernier.c }}
+        />
+      </div>
+      <div className="mt-0.5 grid grid-cols-12 text-center text-[9px] leading-tight text-muted">
+        {MOIS_COURTS.map((m) => (
+          <span key={m}>{m}</span>
+        ))}
+      </div>
+    </div>
   );
 }

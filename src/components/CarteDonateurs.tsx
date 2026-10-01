@@ -265,11 +265,9 @@ export default function CarteDonateurs({
                   strokeDasharray={l.precis ? "0" : "2 2"}
                   vectorEffect="non-scaling-stroke"
                 />
-                {l.donateurs.length > 1 && (
-                  <text x={p.x} y={p.y + 3 / k} textAnchor="middle" fontSize={8.5 / k} fontWeight={600} fill={montant > 1500 ? "white" : "#14295c"} pointerEvents="none">
-                    {l.donateurs.length}
-                  </text>
-                )}
+                <text x={p.x} y={p.y + 3 / k} textAnchor="middle" fontSize={8.5 / k} fontWeight={600} fill={montant > 1500 ? "white" : "#14295c"} pointerEvents="none">
+                  {l.donateurs.length}
+                </text>
               </g>
             );
           })}

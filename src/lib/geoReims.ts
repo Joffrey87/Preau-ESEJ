@@ -1,10 +1,14 @@
 /**
- * Distance approximative à Reims d'après le code postal : on prend la
- * préfecture du département (deux premiers chiffres). Précision de l'ordre de
- * quelques dizaines de kilomètres, suffisante pour « Alentours de Reims ».
+ * Position et distance à Reims d'après le code postal : centre de la commune
+ * quand le code postal figure dans `communesProches.json` (communes à moins de
+ * ~200 km, données publiques intégrées à Préau — aucune adresse n'est envoyée à
+ * l'extérieur), sinon préfecture du département (deux premiers chiffres).
  */
 
-const REIMS = { lat: 49.2583, lon: 4.0317 };
+import COMMUNES from "./communesProches.json";
+
+export const REIMS = { lat: 49.2583, lon: 4.0317 };
+const communes = COMMUNES as Record<string, [number, number]>;
 
 /** Rayon retenu pour le filtre « Alentours Reims ». */
 export const RAYON_ALENTOURS_KM = 200;
@@ -31,10 +35,22 @@ function km(a: { lat: number; lon: number }, b: { lat: number; lon: number }): n
   return 2 * 6371 * Math.asin(Math.sqrt(h));
 }
 
+export const codePostal = (cpVille: string | null | undefined) => (cpVille ?? "").match(/\b(\d{5})\b/)?.[1] ?? null;
+
+/** Coordonnées du code postal : commune si connue, sinon préfecture ; `precis` = commune. */
+export function coordonneesCp(cp: string): { lat: number; lon: number; precis: boolean } | null {
+  const c = communes[cp];
+  if (c) return { lat: c[0], lon: c[1], precis: true };
+  const pr = PREFECTURES[cp.slice(0, 2)];
+  return pr ? { lat: pr[0], lon: pr[1], precis: false } : null;
+}
+
 /** Distance à Reims en km (arrondie), ou null si le code postal est absent ou inconnu. */
 export function distanceReims(cpVille: string | null | undefined): number | null {
-  const cp = (cpVille ?? "").match(/\b(\d{5})\b/)?.[1];
+  const cp = codePostal(cpVille);
   if (!cp) return null;
+  const c = communes[cp];
+  if (c) return Math.round(km(REIMS, { lat: c[0], lon: c[1] }));
   const pref = PREFECTURES[cp.slice(0, 2)];
   if (!pref) return cp.startsWith("97") || cp.startsWith("20") ? 9999 : 999;
   // Dans la Marne, on compte depuis Reims même (Reims, Tinqueux, Bétheny… : ≈ 0 km).

@@ -16,6 +16,7 @@ import {
 } from "@/lib/donateurs";
 import CampagneCollecte from "@/components/CampagneCollecte";
 import FicheDonateur from "@/components/FicheDonateur";
+import CarteDonateurs from "@/components/CarteDonateurs";
 import DeverrouillerCoffre from "@/components/DeverrouillerCoffre";
 import { PARAMS } from "@/lib/segments";
 import { nomCliquableCls } from "@/lib/ui";
@@ -55,6 +56,8 @@ export default function DonateursPipeline({ donsInit, volet }: { donsInit: Don[]
   const today = todayISO();
   const [filtre, setFiltre] = useState<SegFiltre>("tous");
   const [ficheCle, setFicheCle] = useState<string | null>(null);
+  // Filtre « Alentours Reims » : tableau ou carte.
+  const [carte, setCarte] = useState(false);
 
   const profils = useMemo(
     () => agregerDonateurs(dons as unknown as DonAgg[], today),
@@ -86,10 +89,8 @@ export default function DonateursPipeline({ donsInit, volet }: { donsInit: Don[]
   }, [profils, dons, today]);
 
   // Distance à Reims d'après le code postal (le plus récent renseigné).
-  const distanceDe = (cle: string) => {
-    const cp = [...(donsParCle.get(cle) ?? [])].reverse().map((d) => d.cp_ville).find(Boolean);
-    return distanceReims(cp);
-  };
+  const cpVilleDe = (cle: string) => [...(donsParCle.get(cle) ?? [])].reverse().map((d) => d.cp_ville).find(Boolean) ?? null;
+  const distanceDe = (cle: string) => distanceReims(cpVilleDe(cle));
   const affiches =
     filtre === "alentours"
       ? profils.filter((p) => {
@@ -191,9 +192,28 @@ export default function DonateursPipeline({ donsInit, volet }: { donsInit: Don[]
             {f.label}
           </button>
         ))}
+        {filtre === "alentours" && (
+          <div className="ml-auto inline-flex rounded-lg border border-border bg-surface p-0.5 text-sm">
+            {[
+              { v: false, l: "Tableau" },
+              { v: true, l: "Carte" },
+            ].map((o) => (
+              <button
+                key={o.l}
+                type="button"
+                onClick={() => setCarte(o.v)}
+                className={`rounded-md px-3 py-1 font-medium ${carte === o.v ? "bg-accent text-accent-fg" : "text-muted hover:text-foreground"}`}
+              >
+                {o.l}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* Table des donateurs qualifiés */}
+      {filtre === "alentours" && carte ? (
+        <CarteDonateurs profils={affiches} cpVilleDe={cpVilleDe} onOuvrirFiche={setFicheCle} />
+      ) : (
       <div className="overflow-x-auto rounded-xl border border-border bg-surface">
         <table className="w-full text-sm">
           <thead>
@@ -243,6 +263,7 @@ export default function DonateursPipeline({ donsInit, volet }: { donsInit: Don[]
           </tbody>
         </table>
       </div>
+      )}
 
       </>
       )}

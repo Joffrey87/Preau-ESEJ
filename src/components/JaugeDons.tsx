@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { formatDate, formatEuros } from "@/lib/format";
+import { formatDate } from "@/lib/format";
 
 /**
  * Jauge des dons de l'exercice (Relations donateurs) : blocs de 10 000 €, 7 au départ
@@ -100,77 +100,77 @@ export default function JaugeDons({ donnees, aujourdhui }: { donnees: DonsExerci
 
   return (
     <section className="mb-5 rounded-xl border border-border bg-surface px-4 py-3">
-      <div className="flex flex-wrap items-start gap-x-5 gap-y-2">
-        <div>
-          <div className="text-xs text-muted">Dons reçus · {donnees.exercice.replace("Exercice ", "")}</div>
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-semibold tabular-nums">{formatEuros(total)}</span>
-            {total >= OBJECTIF_ANNUEL && (
-              <span className="text-xl" title={`Objectif de ${formatEuros(OBJECTIF_ANNUEL)} atteint`} aria-label="Objectif atteint">🏆</span>
-            )}
-            {medailles > 0 && (
-              <span
-                className="text-xl"
-                title={`${medailles} palier${medailles > 1 ? "s" : ""} franchi${medailles > 1 ? "s" : ""} au-delà de l'objectif (70 000 €${medailles > 1 ? ", puis tous les 30 000 €" : ""})`}
-                aria-label={`${medailles} médaille${medailles > 1 ? "s" : ""}`}
-              >
-                {"🥉".repeat(medailles)}
-              </span>
-            )}
-          </div>
-        </div>
-        <div className="min-w-[260px] flex-1">
-          {/* Chevron : où en être au rythme de 5 800 €/mois */}
-          <div className="relative h-3">
-            <span
-              className="absolute -translate-x-1/2 text-[11px] leading-none text-muted"
-              style={{ left: `${pct(attendu)}%` }}
-              title={`Au rythme de l'équilibre budgétaire (≈ ${euroRond(EQUILIBRE)}/mois) : ${euroRond(attendu)} attendus au ${formatDate(aujourdhui)}`}
-            >
-              ▼
-            </span>
-          </div>
-          <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${nbBlocs}, minmax(0, 1fr))` }}>
-            {Array.from({ length: nbBlocs }, (_, k) => {
-              const part = Math.max(0, Math.min(1, (total - k * 10000) / 10000));
-              return (
-                <div key={k} className="relative h-5 overflow-hidden rounded border border-border bg-surface-2">
-                  <div className="absolute inset-y-0 left-0 overflow-hidden" style={{ width: `${part * 100}%` }}>
-                    <div className="absolute inset-y-0" style={{ left: `-${k * 100}%`, width: `${nbBlocs * 100}%`, background: degrade }} />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-          <div className="mt-0.5 grid gap-1 text-[10px] text-muted" style={{ gridTemplateColumns: `repeat(${nbBlocs}, minmax(0, 1fr))` }}>
-            {Array.from({ length: nbBlocs }, (_, k) => (
-              <span key={k} className="text-right">
-                {(k + 1) * 10 === OBJECTIF_ANNUEL / 1000 && <span title="Objectif annuel">🏆 </span>}
-                {(k + 1) * 10} k
-              </span>
-            ))}
-          </div>
-          {graphe && (
-            <GrapheMoyenne segments={segments} debut={donnees.debut} fin={donnees.fin} aujourdhui={aujourdhui} moyJ={moyJ} echelle={echelle} />
+      {/* Ligne de tête : libellé à gauche, montant centré, moyenne à droite. */}
+      <div className="grid grid-cols-[1fr_auto_1fr] items-baseline gap-3">
+        <span className="text-sm text-muted">Dons reçus · {donnees.exercice.replace("Exercice ", "")}</span>
+        <span className="flex items-baseline gap-2">
+          <span className="text-2xl font-semibold tabular-nums">{euroRond(total)}</span>
+          {total >= OBJECTIF_ANNUEL && (
+            <span className="text-xl" title={`Objectif de ${euroRond(OBJECTIF_ANNUEL)} atteint`} aria-label="Objectif atteint">🏆</span>
           )}
-        </div>
-      </div>
-      <p className="mt-1 text-center text-[11px] text-muted">
-        <span aria-hidden="true">▼</span> Équilibre budgétaire · ~{euroRond(EQUILIBRE)}/mois · Confort · {euroRond(CONFORT)}/mois
-      </p>
-      <div className="mt-1 flex flex-wrap items-center justify-between gap-2 text-sm">
-        <span>
+          {medailles > 0 && (
+            <span
+              className="text-xl"
+              title={`${medailles} palier${medailles > 1 ? "s" : ""} franchi${medailles > 1 ? "s" : ""} au-delà de l'objectif (70 000 €${medailles > 1 ? ", puis tous les 30 000 €" : ""})`}
+              aria-label={`${medailles} médaille${medailles > 1 ? "s" : ""}`}
+            >
+              {"🥉".repeat(medailles)}
+            </span>
+          )}
+        </span>
+        <span className="text-right text-sm">
           Moyenne annuelle :{" "}
           {trJ ? (
             <span className="font-semibold tabular-nums" style={{ color: trJ.couleur }}>{euroRond(moyJ)}/mois</span>
           ) : (
-            <span className="text-muted">trop tôt pour la calculer (15 premiers jours)</span>
+            <span className="text-muted">trop tôt (15 premiers jours)</span>
           )}
+        </span>
+      </div>
+
+      {/* Jauge sur toute la largeur ; chevron : où en être à l'équilibre budgétaire. */}
+      <div className="relative mt-1.5 h-3">
+        <span
+          className="absolute -translate-x-1/2 text-[11px] leading-none text-muted"
+          style={{ left: `${pct(attendu)}%` }}
+          title={`Au rythme de l'équilibre budgétaire (≈ ${euroRond(EQUILIBRE)}/mois) : ${euroRond(attendu)} attendus au ${formatDate(aujourdhui)}`}
+        >
+          ▼
+        </span>
+      </div>
+      <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${nbBlocs}, minmax(0, 1fr))` }}>
+        {Array.from({ length: nbBlocs }, (_, k) => {
+          const part = Math.max(0, Math.min(1, (total - k * 10000) / 10000));
+          return (
+            <div key={k} className="relative h-5 overflow-hidden rounded border border-border bg-surface-2">
+              <div className="absolute inset-y-0 left-0 overflow-hidden" style={{ width: `${part * 100}%` }}>
+                <div className="absolute inset-y-0" style={{ left: `-${k * 100}%`, width: `${nbBlocs * 100}%`, background: degrade }} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="mt-0.5 grid gap-1 text-[10px] text-muted" style={{ gridTemplateColumns: `repeat(${nbBlocs}, minmax(0, 1fr))` }}>
+        {Array.from({ length: nbBlocs }, (_, k) => (
+          <span key={k} className="text-right">
+            {(k + 1) * 10 === OBJECTIF_ANNUEL / 1000 && <span title="Objectif annuel">🏆 </span>}
+            {(k + 1) * 10} k
+          </span>
+        ))}
+      </div>
+
+      {/* Légende et bouton : fixes, le graphe s'ouvre en dessous. */}
+      <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2">
+        <span className="text-[11px] text-muted">
+          <span aria-hidden="true">▼</span> Équilibre budgétaire · ~{euroRond(EQUILIBRE)}/mois · Confort · {euroRond(CONFORT)}/mois
         </span>
         <button type="button" onClick={() => setGraphe((v) => !v)} className="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-surface-2">
           {graphe ? "Masquer les détails" : "Détails"}
         </button>
       </div>
+      {graphe && (
+        <GrapheMoyenne segments={segments} debut={donnees.debut} fin={donnees.fin} aujourdhui={aujourdhui} moyJ={moyJ} echelle={echelle} />
+      )}
     </section>
   );
 }

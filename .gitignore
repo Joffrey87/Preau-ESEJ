@@ -55,6 +55,7 @@ _parse_*
 # Documents internes sensibles (jamais versionnés)
 /Financement/
 /Reçus fiscaux/
+/financement-site/
 
 # Espace de travail Claude (local)
 .claude/worktrees/

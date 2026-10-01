@@ -26,7 +26,7 @@ export default async function PipelinePage() {
   return (
     <div className="mx-auto max-w-6xl px-5 py-8 md:px-8">
       <PageHeader
-        title="Pipeline grands donateurs & prospects"
+        title="Relations donateurs"
         subtitle="Donateurs qualifiés depuis les dons + suivi relationnel manuel."
         action={
           pagesAutorisees(user?.email) ? undefined : <Link href="/mecenat/strategie" className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-surface-2">

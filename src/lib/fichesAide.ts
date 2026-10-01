@@ -70,7 +70,7 @@ export const ONGLETS: { href: string; label: string; famille?: boolean }[] = [
   { href: "/dons/import", label: "Dons · Import" },
   { href: "/dons/depuis-compta", label: "Dons · Depuis la Comptabilité" },
   { href: "/mecenat", label: "Mécénat" },
-  { href: "/mecenat/pipeline", label: "Pipeline donateurs" },
+  { href: "/mecenat/pipeline", label: "Relations donateurs" },
   { href: "/recus-fiscaux", label: "Reçus fiscaux" },
   { href: "/mails", label: "Mails" },
   { href: "/carnet", label: "Carnet d'adresses" },

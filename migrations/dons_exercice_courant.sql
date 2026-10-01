@@ -1,0 +1,5 @@
+-- Appliquée en base le 01/10/2026 : fonction public.dons_exercice_courant()
+-- (security definer) qui renvoie, pour les profils autorisés sur Relations
+-- donateurs (peut_voir_pipeline), l'exercice en cours et la liste date/montant
+-- des opérations « Don » reçues (sous-écritures comprises), sans libellé ni nom.
+-- Sert la jauge des dons (components/JaugeDons.tsx). Définition complète en base.

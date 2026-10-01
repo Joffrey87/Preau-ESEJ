@@ -5,10 +5,12 @@ import { createClient } from "@/lib/supabase/server";
 import type { Prospect } from "@/lib/pipeline";
 import type { Don } from "@/components/GestionDons";
 import { pagesAutorisees } from "@/lib/roles";
+import JaugeDons, { type DonsExercice } from "@/components/JaugeDons";
+import { todayISO } from "@/lib/format";
 
 export default async function PipelinePage() {
   const supabase = await createClient();
-  const [{ data: { user } }, { data: prospectsData }, { data: donsData }] = await Promise.all([
+  const [{ data: { user } }, { data: prospectsData }, { data: donsData }, jaugeRes] = await Promise.all([
     supabase.auth.getUser(),
     supabase
       .from("prospects")
@@ -21,6 +23,7 @@ export default async function PipelinePage() {
         "id, exercice_id, origine, categorie_donateur, est_personne_morale, donateur_titre, donateur_nom, donateur_prenom, raison_sociale, adresse, cp_ville, courriel, pii_chiffre, montant, date_don, mode_paiement, recu_numero, recu_etat, recu_emis_le, observations",
       )
       .is("supprime_le", null),
+    supabase.rpc("dons_exercice_courant"),
   ]);
 
   return (
@@ -34,6 +37,7 @@ export default async function PipelinePage() {
           </Link>
         }
       />
+      <JaugeDons donnees={(jaugeRes.data as DonsExercice) ?? null} aujourdhui={todayISO()} />
       <PipelineTabs prospects={(prospectsData ?? []) as Prospect[]} dons={(donsData ?? []) as Don[]} />
     </div>
   );

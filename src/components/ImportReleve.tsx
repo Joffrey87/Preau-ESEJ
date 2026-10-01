@@ -1829,7 +1829,7 @@ export default function ImportReleve({
           <div className="h-20" aria-hidden />
 
           {demandeCoffre && !coffre.estOuvert && (
-            <div className="fixed bottom-24 right-6 z-40 max-w-md rounded-xl border border-gold/50 bg-surface p-4 text-sm shadow-lg shadow-black/20">
+            <div className="fixed bottom-24 right-24 z-40 max-w-md rounded-xl border border-gold/50 bg-surface p-4 text-sm shadow-lg shadow-black/20">
               <p className="font-semibold text-gold">🔒 Coffre à déverrouiller</p>
               <p className="mt-1 text-xs text-muted">
                 {nbDonsEnAttenteCoffre} don(s) seront créés dans l&apos;onglet Dons. Déverrouillez le coffre pour les
@@ -1857,7 +1857,7 @@ export default function ImportReleve({
             type="button"
             onClick={() => importer()}
             disabled={importing || retenues.length === 0}
-            className="fixed bottom-6 right-6 z-40 rounded-full bg-accent px-5 py-3 text-sm font-semibold text-accent-fg shadow-lg shadow-black/20 hover:opacity-90 disabled:opacity-50"
+            className="fixed bottom-6 right-24 z-40 rounded-full bg-accent px-5 py-3 text-sm font-semibold text-accent-fg shadow-lg shadow-black/20 hover:opacity-90 disabled:opacity-50"
           >
             {importing ? "Import…" : `Importer ${retenues.length} opération(s)`}
           </button>

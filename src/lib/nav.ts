@@ -52,7 +52,7 @@ export const NAV: NavSection[] = [
     title: "Support",
     items: [
       { href: "/parametres", label: "Paramètres", icon: "settings", ready: true },
-      { href: "/documentation", label: "Documentation", icon: "book", ready: false },
+      { href: "/processus", label: "Processus", icon: "ampoule", ready: true },
     ],
   },
 ];

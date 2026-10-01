@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { Deconnexion } from "@/components/EspaceClient";
 import { familleEnApercu } from "@/lib/apercuFamille";
+import AideFlottante from "@/components/AideFlottante";
 
 const NAV = [
   { href: "/espace", label: "Tableau de bord" },
@@ -23,8 +24,8 @@ export default async function EspaceLayout({ children }: { children: React.React
   if (!estFamille && !apercu) redirect("/");
 
   const { data: famille } = apercu
-    ? await supabase.from("familles").select("nom").eq("id", apercu).maybeSingle()
-    : await supabase.from("familles").select("nom").maybeSingle();
+    ? await supabase.from("familles").select("id, nom").eq("id", apercu).maybeSingle()
+    : await supabase.from("familles").select("id, nom").maybeSingle();
 
   return (
     <div className="min-h-full bg-background">
@@ -59,6 +60,8 @@ export default async function EspaceLayout({ children }: { children: React.React
         </div>
       </header>
       <main className="mx-auto max-w-5xl px-5 py-6">{children}</main>
+      {/* Fiches d'aide « Famille » ; en aperçu, le bureau les voit sans pouvoir suggérer. */}
+      <AideFlottante profil="famille" familleId={apercu ? null : (famille?.id ?? null)} />
     </div>
   );
 }

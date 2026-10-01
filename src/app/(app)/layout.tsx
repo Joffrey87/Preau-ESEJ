@@ -2,6 +2,8 @@ import { redirect } from "next/navigation";
 import Sidebar from "@/components/Sidebar";
 import CoffreProvider from "@/components/CoffreProvider";
 import { createClient } from "@/lib/supabase/server";
+import AideFlottante from "@/components/AideFlottante";
+import { roleByEmail } from "@/lib/roles";
 
 export default async function AppLayout({
   children,
@@ -26,6 +28,7 @@ export default async function AppLayout({
         <Sidebar userEmail={user.email ?? ""} userName={userName} />
         <main className="flex-1 min-w-0">{children}</main>
       </div>
+      <AideFlottante profil={roleByEmail(user.email)?.slug ?? ""} peutGerer />
     </CoffreProvider>
   );
 }

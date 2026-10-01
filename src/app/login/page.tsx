@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { COOKIE_PRENOM, ROLES, ROLES_PRENOM_A_L_ACCES } from "@/lib/roles";
 import { MEMBRES } from "@/lib/rechercheFonds";
+
+const DERNIER_PRENOM = "recherche.dernierPrenom";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -14,6 +16,14 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   // Profil partagé (Recherche de fonds) : chacun indique son prénom à l'accès.
   const [prenom, setPrenom] = useState("");
+  // Le dernier prénom utilisé sur cet appareil est proposé d'office.
+  useEffect(() => {
+    try {
+      const p = localStorage.getItem(DERNIER_PRENOM);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      if (p && MEMBRES.includes(p)) setPrenom(p);
+    } catch {}
+  }, []);
   const avecPrenom = espace === "bureau" && ROLES_PRENOM_A_L_ACCES.includes(ROLES.find((r) => r.email === email)?.slug ?? "");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -33,6 +43,11 @@ export default function LoginPage() {
       return;
     }
 
+    if (avecPrenom) {
+      try {
+        localStorage.setItem(DERNIER_PRENOM, prenom);
+      } catch {}
+    }
     // Prénom de la visite : cookie de session (sans durée), effacé à la fermeture du navigateur.
     document.cookie = avecPrenom
       ? `${COOKIE_PRENOM}=${encodeURIComponent(prenom)}; path=/; SameSite=Lax`

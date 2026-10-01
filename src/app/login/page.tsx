@@ -133,11 +133,11 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <p className="mt-4 text-center text-xs text-muted">
-          {espace === "bureau"
-            ? "Accès réservé au bureau de l'ARIL."
-            : "Première connexion : utilisez le lien reçu par courriel pour choisir votre mot de passe."}
-        </p>
+        {espace !== "bureau" && (
+          <p className="mt-4 text-center text-xs text-muted">
+            Première connexion : utilisez le lien reçu par courriel pour choisir votre mot de passe.
+          </p>
+        )}
       </div>
     </div>
   );

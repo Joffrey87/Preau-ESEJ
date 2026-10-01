@@ -56,7 +56,9 @@ export function agregerDonateurs(dons: DonAgg[], todayISO: string): ProfilDonate
   for (const d of dons) {
     if (!d.date_don) continue;
     const cle = cleDonateur(d);
-    if (!cle) continue;
+    // Don sans donateur identifié (ni nom, ni prénom, ni raison sociale) : il ne
+    // forme pas un « donateur » (sinon tous ces dons s'additionnent en un seul).
+    if (!cle.replace("|", "").trim()) continue;
     (groupes.get(cle) ?? groupes.set(cle, []).get(cle)!).push(d);
   }
 

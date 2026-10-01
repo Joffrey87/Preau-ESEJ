@@ -316,8 +316,8 @@ export default function AxesRecherche({ idees, actions }: { idees: Idee[]; actio
         {PILIERS.map((p) => {
           const duPilier = visibles.filter((i) => i.pilier === p.code);
           return (
-            <section key={p.code} className="overflow-hidden rounded-xl border border-border bg-surface">
-              <header className="bg-[#14295c] px-4 py-2.5 text-white">
+            <section key={p.code} className="rounded-xl border border-border bg-surface">
+              <header className="rounded-t-xl bg-[#14295c] px-4 py-2.5 text-white">
                 <div className="text-sm font-semibold">
                   <span className="mr-1.5 text-[#c8952f]">PILIER {p.code}</span>
                   {p.titre}
@@ -350,7 +350,7 @@ export default function AxesRecherche({ idees, actions }: { idees: Idee[]; actio
                         {menu === i.id && (
                           <div
                             onClick={(e) => e.stopPropagation()}
-                            className="absolute left-1 top-8 z-20 min-w-40 rounded-lg border border-border bg-surface p-1 shadow-lg"
+                            className="absolute left-1 top-8 z-50 min-w-40 rounded-lg border border-border bg-surface p-1 shadow-lg"
                           >
                             {STATUTS_IDEE.map((x) => (
                               <button

@@ -95,7 +95,7 @@ export default function JaugeDons({ donnees, aujourdhui }: { donnees: DonsExerci
 
   return (
     <section className="mb-5 rounded-xl border border-border bg-surface px-4 py-3">
-      <div className="flex flex-wrap items-end gap-x-5 gap-y-2">
+      <div className="flex flex-wrap items-start gap-x-5 gap-y-2">
         <div>
           <div className="text-xs text-muted">Dons reçus · {donnees.exercice.replace("Exercice ", "")}</div>
           <div className="flex items-baseline gap-2">

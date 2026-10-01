@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { formatEurosCourt as formatEuros } from "@/lib/format";
 import { REIMS, RAYON_ALENTOURS_KM, codePostal, coordonneesCp } from "@/lib/geoReims";
 import type { ProfilDonateur } from "@/lib/donateurs";
@@ -89,6 +89,68 @@ export default function CarteDonateurs({
 }) {
   const [choisi, setChoisi] = useState<string | null>(null);
 
+  // Zoom et déplacement : la fenêtre visible (viewBox carrée) ; k = facteur de zoom.
+  const [vue, setVue] = useState({ x: 0, y: 0, w: T });
+  const svgRef = useRef<SVGSVGElement>(null);
+  const pointeurs = useRef(new Map<number, { x: number; y: number }>());
+  const k = T / vue.w;
+  const borner = (v: { x: number; y: number; w: number }) => {
+    const w = Math.min(T, Math.max(T / 8, v.w));
+    return { w, x: Math.min(T - w, Math.max(0, v.x)), y: Math.min(T - w, Math.max(0, v.y)) };
+  };
+  /** Zoom de `facteur` autour d'un point de l'écran (coordonnées client), ou du centre. */
+  const zoomer = (facteur: number, client?: { x: number; y: number }) => {
+    const svg = svgRef.current;
+    setVue((v) => {
+      const rect = svg?.getBoundingClientRect();
+      const fx = rect && client ? (client.x - rect.left) / rect.width : 0.5;
+      const fy = rect && client ? (client.y - rect.top) / rect.height : 0.5;
+      const w = v.w / facteur;
+      return borner({ w, x: v.x + (v.w - w) * fx, y: v.y + (v.w - w) * fy });
+    });
+  };
+  // Molette (PC) : écouteur non passif pour empêcher le défilement de la page.
+  useEffect(() => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const molette = (e: WheelEvent) => {
+      e.preventDefault();
+      zoomer(e.deltaY < 0 ? 1.2 : 1 / 1.2, { x: e.clientX, y: e.clientY });
+    };
+    svg.addEventListener("wheel", molette, { passive: false });
+    return () => svg.removeEventListener("wheel", molette);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // Glisser (un doigt / souris) et pincer (deux doigts).
+  const surPointeur = (e: React.PointerEvent<SVGSVGElement>) => {
+    const pts = pointeurs.current;
+    const avant = pts.get(e.pointerId);
+    if (e.type === "pointerdown") {
+      pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      return;
+    }
+    if (e.type === "pointerup" || e.type === "pointercancel" || e.type === "pointerleave") {
+      pts.delete(e.pointerId);
+      return;
+    }
+    if (!avant) return;
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    if (pts.size === 1) {
+      const dx = ((e.clientX - avant.x) / rect.width) * vue.w;
+      const dy = ((e.clientY - avant.y) / rect.height) * vue.w;
+      if (dx || dy) setVue((v) => borner({ ...v, x: v.x - dx, y: v.y - dy }));
+    } else if (pts.size === 2) {
+      const autre = [...pts.entries()].find(([id]) => id !== e.pointerId)?.[1];
+      if (autre) {
+        const d0 = Math.hypot(avant.x - autre.x, avant.y - autre.y);
+        const d1 = Math.hypot(e.clientX - autre.x, e.clientY - autre.y);
+        if (d0 > 0) zoomer(d1 / d0, { x: (e.clientX + autre.x) / 2, y: (e.clientY + autre.y) / 2 });
+      }
+    }
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+  };
+
   const lieux = useMemo(() => {
     // 1. Une position par commune (code postal) ; sinon, le chef-lieu du département.
     const m = new Map<string, Lieu>();
@@ -133,12 +195,25 @@ export default function CarteDonateurs({
   /** Somme des dons moyens annuels des donateurs de la bulle. */
   const montantLieu = (l: Lieu) => l.donateurs.reduce((t, { p }) => t + moyenneAnnuelle(p), 0);
   const rayon = (n: number) => Math.min(5 + 2.6 * Math.sqrt(n - 1), 13);
+  const ORDRE_ETAT = { grand: 0, actif: 1, sommeil: 2, perdu: 3 } as const;
   const approximatifs = lieux.filter((l) => !l.precis).length;
 
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
       <div className="rounded-xl border border-border bg-surface p-3">
-        <svg viewBox={`0 0 ${T} ${T}`} className="mx-auto block w-full max-w-[560px]" role="img" aria-label="Carte des donateurs autour de Reims">
+        <div className="relative mx-auto w-full max-w-[560px]">
+        <svg
+          ref={svgRef}
+          viewBox={`${vue.x} ${vue.y} ${vue.w} ${vue.w}`}
+          className="block w-full touch-none select-none"
+          role="img"
+          aria-label="Carte des donateurs autour de Reims"
+          onPointerDown={surPointeur}
+          onPointerMove={surPointeur}
+          onPointerUp={surPointeur}
+          onPointerCancel={surPointeur}
+          onPointerLeave={surPointeur}
+        >
           <defs>
             <clipPath id="carte-cadre">
               <rect width={T} height={T} rx={10} />
@@ -147,29 +222,29 @@ export default function CarteDonateurs({
           <g clipPath="url(#carte-cadre)">
             <rect width={T} height={T} fill="#EEF2F6" />
             {DEPARTEMENTS.map((dep, k) => (
-              <path key={dep.code} d={dep.d} fill={dep.code === "51" ? OR_MARNE : TEINTES_PAYSAGE[k % TEINTES_PAYSAGE.length]} stroke="#ffffff" strokeWidth={1}>
+              <path key={dep.code} d={dep.d} fill={dep.code === "51" ? OR_MARNE : TEINTES_PAYSAGE[k % TEINTES_PAYSAGE.length]} stroke="#ffffff" strokeWidth={1} vectorEffect="non-scaling-stroke">
                 <title>{`${dep.nom} (${dep.code})`}</title>
               </path>
             ))}
             {[RAYON_ALENTOURS_KM, 100, 50].map((r) => (
               <g key={r}>
-                <circle cx={T / 2} cy={T / 2} r={r * ECHELLE} fill="none" stroke="#14295c" strokeOpacity={r === RAYON_ALENTOURS_KM ? 0.35 : 0.22} strokeDasharray={r === RAYON_ALENTOURS_KM ? "0" : "3 4"} />
-                <text x={T / 2 + 3} y={T / 2 - r * ECHELLE + 10} fontSize={8} fill="#14295c" opacity={0.55}>{r} km</text>
+                <circle cx={T / 2} cy={T / 2} r={r * ECHELLE} fill="none" stroke="#14295c" strokeOpacity={r === RAYON_ALENTOURS_KM ? 0.35 : 0.22} strokeDasharray={r === RAYON_ALENTOURS_KM ? "0" : "3 4"} vectorEffect="non-scaling-stroke" />
+                <text x={T / 2 + 3 / k} y={T / 2 - r * ECHELLE + 10 / k} fontSize={8 / k} fill="#14295c" opacity={0.55}>{r} km</text>
               </g>
             ))}
             {REPERES.map((v) => {
               const p = projeter(v.lat, v.lon);
               return (
                 <g key={v.nom} opacity={0.7}>
-                  <circle cx={p.x} cy={p.y} r={1.6} fill="#3b4250" />
-                  <text x={p.x + 4} y={p.y + 3} fontSize={8.5} fill="#3b4250">{v.nom}</text>
+                  <circle cx={p.x} cy={p.y} r={1.6 / k} fill="#3b4250" />
+                  <text x={p.x + 4 / k} y={p.y + 3 / k} fontSize={8.5 / k} fill="#3b4250">{v.nom}</text>
                 </g>
               );
             })}
           {/* Reims */}
           <g>
-            <circle cx={T / 2} cy={T / 2} r={3.5} fill="#14295c" />
-            <text x={T / 2 + 6} y={T / 2 + 3.5} fontSize={10} fontWeight={600} fill="#14295c">Reims</text>
+            <circle cx={T / 2} cy={T / 2} r={3.5 / k} fill="#14295c" />
+            <text x={T / 2 + 6 / k} y={T / 2 + 3.5 / k} fontSize={10 / k} fontWeight={600} fill="#14295c">Reims</text>
           </g>
           {/* Bulles (les plus grosses dessous). */}
           {lieux.map((l) => {
@@ -182,15 +257,16 @@ export default function CarteDonateurs({
                 <circle
                   cx={p.x}
                   cy={p.y}
-                  r={rayon(l.donateurs.length)}
+                  r={rayon(l.donateurs.length) / k}
                   fill={orSelonMontant(montant)}
                   fillOpacity={actif ? 1 : 0.92}
                   stroke={actif ? "#14295c" : "white"}
                   strokeWidth={actif ? 2 : 1}
                   strokeDasharray={l.precis ? "0" : "2 2"}
+                  vectorEffect="non-scaling-stroke"
                 />
                 {l.donateurs.length > 1 && (
-                  <text x={p.x} y={p.y + 3} textAnchor="middle" fontSize={8.5} fontWeight={600} fill={montant > 1500 ? "white" : "#14295c"} pointerEvents="none">
+                  <text x={p.x} y={p.y + 3 / k} textAnchor="middle" fontSize={8.5 / k} fontWeight={600} fill={montant > 1500 ? "white" : "#14295c"} pointerEvents="none">
                     {l.donateurs.length}
                   </text>
                 )}
@@ -199,6 +275,13 @@ export default function CarteDonateurs({
           })}
           </g>
         </svg>
+          {/* Boutons de zoom */}
+          <div className="absolute right-2 top-2 flex flex-col overflow-hidden rounded-lg border border-black/10 bg-white/90 text-sm text-[#14295c] shadow-sm">
+            <button type="button" onClick={() => zoomer(1.5)} aria-label="Zoomer" className="px-2.5 py-1 hover:bg-black/5">+</button>
+            <button type="button" onClick={() => zoomer(1 / 1.5)} aria-label="Dézoomer" className="border-t border-black/10 px-2.5 py-1 hover:bg-black/5">−</button>
+            <button type="button" onClick={() => setVue({ x: 0, y: 0, w: T })} aria-label="Vue d'ensemble" title="Vue d'ensemble" className="border-t border-black/10 px-2.5 py-1 text-xs hover:bg-black/5">⟲</button>
+          </div>
+        </div>
         <div className="mt-2 flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] text-muted">
           <span>Dons moyens annuels cumulés :</span>
           {[
@@ -231,9 +314,17 @@ export default function CarteDonateurs({
               <h3 className="font-semibold" title={lieu.communes.join(", ")}>{lieu.nom}</h3>
               <button type="button" onClick={() => setChoisi(null)} aria-label="Fermer" className="text-xs text-muted hover:underline">✕</button>
             </div>
+            <div className="mb-2 flex flex-wrap gap-x-3 gap-y-1 border-b border-border pb-2 text-[11px] text-muted">
+              {Object.values(ETATS).map((e) => (
+                <span key={e.libelle} className="inline-flex items-center gap-1">
+                  <span className="h-2 w-2 rounded-full" style={{ background: e.couleur }} />
+                  {e.libelle}
+                </span>
+              ))}
+            </div>
             <ul className="space-y-1">
               {[...lieu.donateurs]
-                .sort((a, b) => moyenneAnnuelle(b.p) - moyenneAnnuelle(a.p))
+                .sort((a, b) => ORDRE_ETAT[etatDe(a.p)] - ORDRE_ETAT[etatDe(b.p)] || moyenneAnnuelle(b.p) - moyenneAnnuelle(a.p))
                 .map(({ p: d, commune }) => (
                   <li key={d.cle} className="flex items-center gap-2">
                     <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: ETATS[etatDe(d)].couleur }} title={ETATS[etatDe(d)].libelle} />
@@ -247,14 +338,7 @@ export default function CarteDonateurs({
                   </li>
                 ))}
             </ul>
-            <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 border-t border-border pt-2 text-[11px] text-muted">
-              {Object.values(ETATS).map((e) => (
-                <span key={e.libelle} className="inline-flex items-center gap-1">
-                  <span className="h-2 w-2 rounded-full" style={{ background: e.couleur }} />
-                  {e.libelle}
-                </span>
-              ))}
-            </div>
+
           </>
         )}
       </div>

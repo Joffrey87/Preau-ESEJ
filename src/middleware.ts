@@ -1,5 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { pagesAutorisees } from "@/lib/roles";
 
 // Rafraîchit la session et protège toutes les routes : sans session,
 // on redirige vers /login (sauf la page /login elle-même).
@@ -47,10 +48,24 @@ export async function middleware(request: NextRequest) {
   const estFamille = (user?.app_metadata as { espace?: string } | undefined)?.espace === "famille";
   const versEspace = request.nextUrl.pathname.startsWith("/espace");
 
+  // Profil restreint (ex. Recherche de fonds) : ses seules pages.
+  const pages = user ? pagesAutorisees(user.email) : null;
+
   if (user && isAuthRoute) {
     const url = request.nextUrl.clone();
-    url.pathname = estFamille ? "/espace" : "/";
+    url.pathname = estFamille ? "/espace" : (pages?.[0] ?? "/");
     return NextResponse.redirect(url);
+  }
+
+  if (pages) {
+    const chemin = request.nextUrl.pathname;
+    const autorise = pages.some((p) => chemin === p || chemin.startsWith(p + "/"));
+    if (!autorise) {
+      const url = request.nextUrl.clone();
+      url.pathname = pages[0];
+      url.search = "";
+      return NextResponse.redirect(url);
+    }
   }
 
   if (user && estFamille && !versEspace) {

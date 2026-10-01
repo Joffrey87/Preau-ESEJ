@@ -4,10 +4,12 @@ import PipelineTabs from "@/components/PipelineTabs";
 import { createClient } from "@/lib/supabase/server";
 import type { Prospect } from "@/lib/pipeline";
 import type { Don } from "@/components/GestionDons";
+import { pagesAutorisees } from "@/lib/roles";
 
 export default async function PipelinePage() {
   const supabase = await createClient();
-  const [{ data: prospectsData }, { data: donsData }] = await Promise.all([
+  const [{ data: { user } }, { data: prospectsData }, { data: donsData }] = await Promise.all([
+    supabase.auth.getUser(),
     supabase
       .from("prospects")
       .select("*")
@@ -27,7 +29,7 @@ export default async function PipelinePage() {
         title="Pipeline grands donateurs & prospects"
         subtitle="Donateurs qualifiés depuis les dons + suivi relationnel manuel."
         action={
-          <Link href="/mecenat/strategie" className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-surface-2">
+          pagesAutorisees(user?.email) ? undefined : <Link href="/mecenat/strategie" className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-surface-2">
             Stratégie & règles
           </Link>
         }

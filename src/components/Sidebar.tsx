@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { NAV } from "@/lib/nav";
-import { roleByEmail } from "@/lib/roles";
+import { pagesAutorisees, roleByEmail } from "@/lib/roles";
 import { createClient } from "@/lib/supabase/client";
 import Icon from "./Icon";
 
@@ -35,7 +35,7 @@ export default function Sidebar({ userEmail, userName }: { userEmail?: string; u
       </Link>
 
       <nav className="flex-1 px-2 py-2">
-        {NAV.map((section, i) => (
+        {navDe(userEmail).map((section, i) => (
           <div key={section.title} className={i === 0 ? "" : "mt-2 border-t border-border/70 pt-2"}>
             <div className="px-2 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted/70">
               {section.title}
@@ -109,4 +109,11 @@ export default function Sidebar({ userEmail, userName }: { userEmail?: string; u
       )}
     </aside>
   );
+}
+
+/** Menu du compte : un profil restreint ne voit que ses pages. */
+function navDe(email?: string) {
+  const pages = pagesAutorisees(email);
+  if (!pages) return NAV;
+  return NAV.map((s) => ({ ...s, items: s.items.filter((i) => pages.includes(i.href)) })).filter((s) => s.items.length > 0);
 }

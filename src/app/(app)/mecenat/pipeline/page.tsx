@@ -4,7 +4,7 @@ import PipelineTabs from "@/components/PipelineTabs";
 import { createClient } from "@/lib/supabase/server";
 import type { Prospect } from "@/lib/pipeline";
 import type { Don } from "@/components/GestionDons";
-import { pagesAutorisees } from "@/lib/roles";
+import { pagesAutorisees, roleByEmail } from "@/lib/roles";
 import JaugeDons, { type DonsExercice } from "@/components/JaugeDons";
 import { todayISO } from "@/lib/format";
 
@@ -37,7 +37,10 @@ export default async function PipelinePage() {
           </Link>
         }
       />
-      <JaugeDons donnees={(jaugeRes.data as DonsExercice) ?? null} aujourdhui={todayISO()} />
+      {/* Recherche de fonds : la jauge est déjà en haut de chaque onglet (layout). */}
+      {roleByEmail(user?.email)?.slug !== "recherche-fonds" && (
+        <JaugeDons donnees={(jaugeRes.data as DonsExercice) ?? null} aujourdhui={todayISO()} />
+      )}
       <PipelineTabs prospects={(prospectsData ?? []) as Prospect[]} dons={(donsData ?? []) as Don[]} />
     </div>
   );

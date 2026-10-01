@@ -33,11 +33,12 @@ const echelleDe = (total: number) =>
 const medaillesDe = (total: number) =>
   total < ECHELLE_INITIALE ? 0 : 1 + Math.floor((total - ECHELLE_INITIALE) / PAS_ECHELLE);
 const GRIS = "#B4B2A9";
-const TRANCHES: { min: number; couleur: string; nom: string }[] = [
-  { min: 0, couleur: "#E24B4A", nom: "rouge" },
-  { min: 4000, couleur: "#EF7E27", nom: "orange" },
-  { min: 5000, couleur: "#EFC327", nom: "jaune" },
-  { min: 6000, couleur: "#639922", nom: "vert" },
+/** `clair` : teinte lisible sur le médaillon marine de l'en-tête. */
+const TRANCHES: { min: number; couleur: string; clair: string; nom: string }[] = [
+  { min: 0, couleur: "#E24B4A", clair: "#F7A8A7", nom: "rouge" },
+  { min: 4000, couleur: "#EF7E27", clair: "#F8B97F", nom: "orange" },
+  { min: 5000, couleur: "#EFC327", clair: "#F6D86E", nom: "jaune" },
+  { min: 6000, couleur: "#639922", clair: "#B5DA86", nom: "vert" },
 ];
 const tranche = (moy: number) => [...TRANCHES].reverse().find((t) => moy >= t.min) ?? TRANCHES[0];
 
@@ -100,32 +101,35 @@ export default function JaugeDons({ donnees, aujourdhui }: { donnees: DonsExerci
 
   return (
     <section className="mb-5 rounded-xl border border-border bg-surface px-4 py-3">
-      {/* Ligne de tête : libellé à gauche, montant centré, moyenne à droite. */}
-      <div className="grid grid-cols-[1fr_auto_1fr] items-baseline gap-3">
-        <span className="text-sm text-muted">Dons reçus · {donnees.exercice.replace("Exercice ", "")}</span>
-        <span className="flex items-baseline gap-2">
-          <span className="text-2xl font-semibold tabular-nums">{euroRond(total)}</span>
-          {total >= OBJECTIF_ANNUEL && (
-            <span className="text-xl" title={`Objectif de ${euroRond(OBJECTIF_ANNUEL)} atteint`} aria-label="Objectif atteint">🏆</span>
-          )}
-          {medailles > 0 && (
-            <span
-              className="text-xl"
-              title={`${medailles} palier${medailles > 1 ? "s" : ""} franchi${medailles > 1 ? "s" : ""} au-delà de l'objectif (70 000 €${medailles > 1 ? ", puis tous les 30 000 €" : ""})`}
-              aria-label={`${medailles} médaille${medailles > 1 ? "s" : ""}`}
-            >
-              {"🥉".repeat(medailles)}
-            </span>
-          )}
-        </span>
-        <span className="text-right text-sm">
-          Moyenne annuelle :{" "}
-          {trJ ? (
-            <span className="font-semibold tabular-nums" style={{ color: trJ.couleur }}>{euroRond(moyJ)}/mois</span>
-          ) : (
-            <span className="text-muted">trop tôt (15 premiers jours)</span>
-          )}
-        </span>
+      {/* En-tête : médaillon marine centré — exercice, total, moyenne annuelle. */}
+      <div className="flex justify-center">
+        <div className="inline-flex flex-wrap items-center justify-center gap-x-3.5 gap-y-1 rounded-full bg-[#14295c] px-5 py-1.5 text-white">
+          <span className="text-[11px] text-[#c3cee6]">{donnees.exercice.replace("Exercice ", "")}</span>
+          <span className="flex items-baseline gap-1.5">
+            <span className="text-xl font-semibold tabular-nums">{euroRond(total)}</span>
+            {total >= OBJECTIF_ANNUEL && (
+              <span className="text-lg" title={`Objectif de ${euroRond(OBJECTIF_ANNUEL)} atteint`} aria-label="Objectif atteint">🏆</span>
+            )}
+            {medailles > 0 && (
+              <span
+                className="text-lg"
+                title={`${medailles} palier${medailles > 1 ? "s" : ""} franchi${medailles > 1 ? "s" : ""} au-delà de l'objectif (70 000 €${medailles > 1 ? ", puis tous les 30 000 €" : ""})`}
+                aria-label={`${medailles} médaille${medailles > 1 ? "s" : ""}`}
+              >
+                {"🥉".repeat(medailles)}
+              </span>
+            )}
+          </span>
+          <span className="text-[#c8952f]" aria-hidden="true">●</span>
+          <span className="text-sm">
+            moyenne{" "}
+            {trJ ? (
+              <span className="font-semibold tabular-nums" style={{ color: trJ.clair }}>{euroRond(moyJ)}/mois</span>
+            ) : (
+              <span className="text-[#c3cee6]">trop tôt (15 premiers jours)</span>
+            )}
+          </span>
+        </div>
       </div>
 
       {/* Jauge sur toute la largeur ; chevron : où en être à l'équilibre budgétaire. */}

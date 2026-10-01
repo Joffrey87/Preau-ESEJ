@@ -114,6 +114,8 @@ export default function Sidebar({ userEmail, userName }: { userEmail?: string; u
 /** Menu du compte : un profil restreint ne voit que ses pages. */
 function navDe(email?: string) {
   const pages = pagesAutorisees(email);
-  if (!pages) return NAV;
-  return NAV.map((s) => ({ ...s, items: s.items.filter((i) => pages.includes(i.href)) })).filter((s) => s.items.length > 0);
+  const slug = roleByEmail(email)?.slug ?? "";
+  const visible = (i: (typeof NAV)[number]["items"][number]) =>
+    pages ? pages.includes(i.href) : !i.roles || i.roles.includes(slug);
+  return NAV.map((s) => ({ ...s, items: s.items.filter(visible) })).filter((s) => s.items.length > 0);
 }

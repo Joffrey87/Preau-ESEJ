@@ -72,6 +72,8 @@ export const ONGLETS: { href: string; label: string; famille?: boolean }[] = [
   { href: "/mecenat", label: "Mécénat" },
   { href: "/mecenat/pipeline", label: "Relations donateurs" },
   { href: "/recus-fiscaux", label: "Reçus fiscaux" },
+  { href: "/recherche/axes", label: "Axes de recherche" },
+  { href: "/recherche/suivi", label: "Suivi des actions" },
   { href: "/mails", label: "Mails" },
   { href: "/carnet", label: "Carnet d'adresses" },
   { href: "/ca", label: "Conseil d'administration" },

@@ -3,6 +3,8 @@ export type NavItem = {
   label: string;
   icon: string;
   ready: boolean;
+  /** Réservé à ces rôles (slugs) ; absent = tout le bureau. */
+  roles?: string[];
 };
 
 export type NavSection = {
@@ -46,6 +48,13 @@ export const NAV: NavSection[] = [
       { href: "/taches", label: "Tâches", icon: "check", ready: false },
       { href: "/ca", label: "Conseil d'administration", icon: "users", ready: true },
       { href: "/evenements", label: "Événements", icon: "calendar", ready: false },
+    ],
+  },
+  {
+    title: "Recherche de fonds",
+    items: [
+      { href: "/recherche/axes", label: "Axes de recherche", icon: "target", ready: true, roles: ["president", "tresorier", "recherche-fonds"] },
+      { href: "/recherche/suivi", label: "Suivi des actions", icon: "check", ready: true, roles: ["president", "tresorier", "recherche-fonds"] },
     ],
   },
   {

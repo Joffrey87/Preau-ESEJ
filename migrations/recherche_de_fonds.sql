@@ -1,0 +1,13 @@
+-- Appliquée en base le 01/10/2026 (migration « recherche_de_fonds »), puis
+-- alimentée avec les 51 pistes du plan de financement V3.2 (recherche_idees,
+-- auteur « Plan V3.2 »).
+--
+-- Tables : recherche_idees (onglet Axes de recherche), recherche_actions (une
+-- par idée retenue, onglet Suivi des actions), recherche_etapes (prochaines
+-- étapes à cocher), recherche_journal (notes signées), recherche_operations
+-- (écritures de Comptabilité liées, avec copie date/libellé/montant),
+-- recherche_historique (décisions importantes, datées et signées).
+-- Accès : public.peut_rechercher() = mon_role() in ('president','tresorier','recherche-fonds'),
+-- politique « for all » sur chacune des six tables.
+-- Les membres du profil partagé agissent sous leur prénom (colonnes texte).
+-- Voir la définition complète en base (information_schema / pg_policies).

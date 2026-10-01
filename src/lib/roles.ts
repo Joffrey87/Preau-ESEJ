@@ -26,8 +26,20 @@ export const ROLES: Role[] = [
  * première. (La base restreint aussi leurs lectures : voir les politiques RLS.)
  */
 export const PAGES_RESTREINTES: Record<string, string[]> = {
-  "recherche-fonds": ["/mecenat/pipeline"],
+  "recherche-fonds": ["/recherche/axes", "/recherche/suivi", "/mecenat/pipeline"],
 };
+
+/** Pages réservées à certains rôles (les autres sont renvoyés à l'accueil). */
+export const PAGES_RESERVEES: { prefixe: string; roles: string[] }[] = [
+  { prefixe: "/recherche", roles: ["president", "tresorier", "recherche-fonds"] },
+];
+
+export function pageReserveeInterdite(email: string | null | undefined, chemin: string): boolean {
+  const slug = roleByEmail(email)?.slug ?? "";
+  return PAGES_RESERVEES.some(
+    (r) => (chemin === r.prefixe || chemin.startsWith(r.prefixe + "/")) && !r.roles.includes(slug),
+  );
+}
 
 /** Pages autorisées pour ce compte ; null = pas de restriction. */
 export function pagesAutorisees(email?: string | null): string[] | null {

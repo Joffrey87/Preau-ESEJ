@@ -29,6 +29,15 @@ export const PAGES_RESTREINTES: Record<string, string[]> = {
   "recherche-fonds": ["/recherche/axes", "/recherche/suivi", "/mecenat/pipeline"],
 };
 
+/**
+ * Profil partagé « Recherche de fonds » : le prénom est choisi sur l'écran
+ * d'accueil et gardé dans un cookie de session (effacé à la fermeture du
+ * navigateur). Sans lui, la session est fermée : chaque nouvelle visite repasse
+ * par l'écran d'accueil (ces membres peuvent aussi vouloir leur Espace famille).
+ */
+export const COOKIE_PRENOM = "recherche_prenom";
+export const ROLES_PRENOM_A_L_ACCES = ["recherche-fonds"];
+
 /** Pages réservées à certains rôles (les autres sont renvoyés à l'accueil). */
 export const PAGES_RESERVEES: { prefixe: string; roles: string[] }[] = [
   { prefixe: "/recherche", roles: ["president", "tresorier", "recherche-fonds"] },

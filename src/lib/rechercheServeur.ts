@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { roleByEmail } from "@/lib/roles";
+import { cookies } from "next/headers";
+import { COOKIE_PRENOM, roleByEmail } from "@/lib/roles";
 
 /**
  * Qui agit dans les onglets de recherche de fonds : le profil partagé choisit
@@ -12,9 +13,12 @@ export async function contexteRecherche(supabase: SupabaseClient) {
   } = await supabase.auth.getUser();
   const role = roleByEmail(user?.email);
   const meta = (user?.user_metadata ?? {}) as { prenom?: string };
+  const partage = role?.slug === "recherche-fonds";
+  const cookie = (await cookies()).get(COOKIE_PRENOM)?.value;
   return {
-    partage: role?.slug === "recherche-fonds",
-    prenomProfil: meta.prenom?.trim() || role?.label || null,
+    partage,
+    // Profil partagé : le prénom choisi à l'accès (non modifiable ensuite).
+    prenomProfil: partage ? (cookie ? decodeURIComponent(cookie) : null) : meta.prenom?.trim() || role?.label || null,
     estTresorerie: role?.slug === "president" || role?.slug === "tresorier",
   };
 }

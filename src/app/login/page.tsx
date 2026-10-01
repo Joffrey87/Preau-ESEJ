@@ -3,7 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { ROLES } from "@/lib/roles";
+import { COOKIE_PRENOM, ROLES, ROLES_PRENOM_A_L_ACCES } from "@/lib/roles";
+import { MEMBRES } from "@/lib/rechercheFonds";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -11,12 +12,16 @@ export default function LoginPage() {
   const [espace, setEspace] = useState<"bureau" | "famille">("bureau");
   const [email, setEmail] = useState(ROLES[1].email); // Trésorier par défaut
   const [password, setPassword] = useState("");
+  // Profil partagé (Recherche de fonds) : chacun indique son prénom à l'accès.
+  const [prenom, setPrenom] = useState("");
+  const avecPrenom = espace === "bureau" && ROLES_PRENOM_A_L_ACCES.includes(ROLES.find((r) => r.email === email)?.slug ?? "");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    if (avecPrenom && !prenom) return setError("Choisissez votre prénom.");
     setLoading(true);
 
     const supabase = createClient();
@@ -27,6 +32,11 @@ export default function LoginPage() {
       setLoading(false);
       return;
     }
+
+    // Prénom de la visite : cookie de session (sans durée), effacé à la fermeture du navigateur.
+    document.cookie = avecPrenom
+      ? `${COOKIE_PRENOM}=${encodeURIComponent(prenom)}; path=/; SameSite=Lax`
+      : `${COOKIE_PRENOM}=; path=/; max-age=0; SameSite=Lax`;
 
     // Le middleware oriente chaque compte vers son espace.
     router.push(espace === "famille" ? "/espace" : "/");
@@ -87,6 +97,27 @@ export default function LoginPage() {
                   </option>
                 ))}
               </select>
+              {avecPrenom && (
+                <>
+                  <label className="mb-1 block text-sm font-medium" htmlFor="prenom">
+                    Prénom
+                  </label>
+                  <select
+                    id="prenom"
+                    required
+                    value={prenom}
+                    onChange={(e) => setPrenom(e.target.value)}
+                    className="mb-4 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent"
+                  >
+                    <option value="">— Choisir —</option>
+                    {MEMBRES.map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              )}
             </>
           ) : (
             <>
@@ -129,7 +160,7 @@ export default function LoginPage() {
             disabled={loading}
             className="w-full rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-accent-fg transition-opacity hover:opacity-90 disabled:opacity-50"
           >
-            {loading ? "Connexion…" : "Se connecter"}
+            {loading ? "Accès…" : "Accéder"}
           </button>
         </form>
 

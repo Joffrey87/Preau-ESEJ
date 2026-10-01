@@ -16,6 +16,7 @@ export default function Sidebar({ userEmail, userName }: { userEmail?: string; u
   async function handleLogout() {
     const supabase = createClient();
     await supabase.auth.signOut();
+    document.cookie = "recherche_prenom=; path=/; max-age=0; SameSite=Lax";
     router.push("/login");
     router.refresh();
   }

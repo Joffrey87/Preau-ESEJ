@@ -1,6 +1,6 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { pageReserveeInterdite, pagesAutorisees } from "@/lib/roles";
+import { COOKIE_PRENOM, ROLES_PRENOM_A_L_ACCES, pageReserveeInterdite, pagesAutorisees, roleByEmail } from "@/lib/roles";
 
 // Rafraîchit la session et protège toutes les routes : sans session,
 // on redirige vers /login (sauf la page /login elle-même).
@@ -47,6 +47,20 @@ export async function middleware(request: NextRequest) {
   // (La base le garantit aussi : un compte famille ne lit que sa famille.)
   const estFamille = (user?.app_metadata as { espace?: string } | undefined)?.espace === "famille";
   const versEspace = request.nextUrl.pathname.startsWith("/espace");
+
+  // Profil partagé sans prénom choisi pour cette visite : la session est fermée
+  // et l'on repasse par l'écran d'accueil.
+  const sansPrenom =
+    !!user &&
+    ROLES_PRENOM_A_L_ACCES.includes(roleByEmail(user.email)?.slug ?? "") &&
+    !request.cookies.get(COOKIE_PRENOM)?.value;
+  if (sansPrenom) {
+    const sortie = isAuthRoute
+      ? NextResponse.next({ request })
+      : NextResponse.redirect(Object.assign(request.nextUrl.clone(), { pathname: "/login", search: "" }));
+    for (const c of request.cookies.getAll()) if (c.name.startsWith("sb-")) sortie.cookies.delete(c.name);
+    return sortie;
+  }
 
   // Profil restreint (ex. Recherche de fonds) : ses seules pages.
   const pages = user ? pagesAutorisees(user.email) : null;

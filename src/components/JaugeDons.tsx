@@ -1,49 +1,11 @@
 "use client";
 
-import { useState } from "react";
-import { formatDate } from "@/lib/format";
+import { useMemo } from "react";
+import JaugeDonsVue from "./jauge-dons/JaugeDonsVue";
+import { EQUILIBRE_MENSUEL } from "./jauge-dons/config";
+import { preparerJaugeDons } from "./jauge-dons/preparerJaugeDons";
 
-/**
- * Jauge des dons de l'exercice (Relations donateurs) : blocs de 10 000 €, 7 au départ
- * (70 000 €), puis 3 de plus à chaque dépassement (100 000, 130 000…).
- *
- * La « trace » garde la mémoire de l'année : chaque don remplit la jauge dans la
- * couleur de la MOYENNE ANNUELLE (dons cumulés ÷ mois écoulés) au jour où il
- * arrive, et la partie déjà tracée ne change plus. La couleur ne change qu'au
- * passage d'une tranche à l'autre, avec un fondu :
- *   rouge < 4 000 €/mois · orange < 5 000 · jaune < 6 000 · vert ≥ 6 000.
- * Repères : équilibre budgétaire ≈ 5 000 €/mois (chevron, pointillé du graphe) ; confort 5 800 €/mois.
- * Gris pendant les 15 premiers jours de l'exercice (moyenne pas encore parlante).
- * Le chevron marque où il faudrait en être au rythme de 5 800 €/mois.
- */
-
-/** Échelle de départ ; au-delà, on ajoute 3 blocs de 10 000 € (100 000, 130 000…). */
-const ECHELLE_INITIALE = 70000;
-const PAS_ECHELLE = 30000;
-/** Objectif annuel : atteint = 🏆 ; puis une médaille 🥉 à 70 000 €, une autre à 100 000 €, etc. */
-const OBJECTIF_ANNUEL = 60000;
-/** Équilibre budgétaire (≈ 5 000 €/mois) : chevron de la jauge et pointillé du graphe. */
-const EQUILIBRE = 5000;
-/** Rythme de confort, avec de la marge. */
-const CONFORT = 5800;
-/** « 5,7k » : montant en milliers, une décimale. */
-const kilo = (v: number) => `${(v / 1000).toLocaleString("fr-FR", { maximumFractionDigits: 1 })}k`;
-const euroRond = (v: number) => `${Math.round(v).toLocaleString("fr-FR")} €`;
-
-const echelleDe = (total: number) =>
-  total <= ECHELLE_INITIALE ? ECHELLE_INITIALE : ECHELLE_INITIALE + Math.ceil((total - ECHELLE_INITIALE) / PAS_ECHELLE) * PAS_ECHELLE;
-const medaillesDe = (total: number) =>
-  total < ECHELLE_INITIALE ? 0 : 1 + Math.floor((total - ECHELLE_INITIALE) / PAS_ECHELLE);
-const GRIS = "#B4B2A9";
-/** `clair` : teinte lisible sur le médaillon marine de l'en-tête. */
-const TRANCHES: { min: number; couleur: string; clair: string; nom: string }[] = [
-  { min: 0, couleur: "#E24B4A", clair: "#F7A8A7", nom: "rouge" },
-  { min: 4000, couleur: "#EF7E27", clair: "#F8B97F", nom: "orange" },
-  { min: 5000, couleur: "#EFC327", clair: "#F6D86E", nom: "jaune" },
-  { min: 6000, couleur: "#639922", clair: "#B5DA86", nom: "vert" },
-];
-const tranche = (moy: number) => [...TRANCHES].reverse().find((t) => moy >= t.min) ?? TRANCHES[0];
-
+/** Dons de l'exercice courant, tels que renvoyés par la RPC `dons_exercice_courant`. */
 export type DonsExercice = {
   exercice: string;
   debut: string;
@@ -51,205 +13,27 @@ export type DonsExercice = {
   dons: { date: string; montant: number }[];
 } | null;
 
-const JOUR = 86400000;
-const MOIS_MOYEN = 365.25 / 12;
-const jours = (de: string, a: string) => (new Date(a + "T12:00:00").getTime() - new Date(de + "T12:00:00").getTime()) / JOUR + 1;
-
-const moisEcoules = (debut: string, d: string) => Math.max(jours(debut, d), 1) / MOIS_MOYEN;
-const enRodage = (debut: string, d: string) => jours(debut, d) <= 15;
-
-type Segment = { a0: number; a1: number; date: string; moy: number; couleur: string };
-
-/** Segments de la trace : un par don, coloré selon la moyenne annuelle à sa date. */
-function trace(dons: { date: string; montant: number }[], debut: string): Segment[] {
-  const out: Segment[] = [];
-  let cumul = 0;
-  for (const d of dons) {
-    const m = Number(d.montant);
-    if (!(m > 0)) continue;
-    const a0 = cumul;
-    cumul += m;
-    const moy = cumul / moisEcoules(debut, d.date);
-    out.push({ a0, a1: cumul, date: d.date, moy, couleur: enRodage(debut, d.date) ? GRIS : tranche(moy).couleur });
-  }
-  return out;
-}
-
+/** Jauge des dons (design « Échelle des tranches ») : calcule les données puis affiche la vue. */
 export default function JaugeDons({ donnees, aujourdhui }: { donnees: DonsExercice; aujourdhui: string }) {
-  const [graphe, setGraphe] = useState(false);
-  if (!donnees) return null;
-
-  const segments = trace(donnees.dons, donnees.debut);
-  const total = segments.at(-1)?.a1 ?? 0;
-  const moisJ = moisEcoules(donnees.debut, aujourdhui);
-  const moyJ = total / moisJ;
-  const trJ = enRodage(donnees.debut, aujourdhui) ? null : tranche(moyJ);
-  const echelle = echelleDe(total);
-  const nbBlocs = echelle / 10000;
-  const attendu = Math.min(EQUILIBRE * moisJ, echelle);
-  const medailles = medaillesDe(total);
-
-  // Dégradé de la trace : couleur franche, fondu court au changement de couleur.
-  const pct = (v: number) => (Math.min(v, echelle) / echelle) * 100;
-  const arrets: string[] = [];
-  segments.forEach((s, k) => {
-    const prec = segments[k - 1];
-    const fondu = prec && prec.couleur !== s.couleur ? Math.min(1.5, (pct(s.a1) - pct(s.a0)) / 2) : 0;
-    if (fondu) arrets.push(`${s.couleur} ${(pct(s.a0) + fondu).toFixed(2)}%`);
-    else arrets.push(`${s.couleur} ${pct(s.a0).toFixed(2)}%`);
-    arrets.push(`${s.couleur} ${pct(s.a1).toFixed(2)}%`);
-  });
-  const degrade = arrets.length ? `linear-gradient(90deg, ${arrets.join(", ")})` : "none";
-
-  return (
-    <section className="mb-5 rounded-xl border border-border bg-surface px-4 py-3">
-      {/* En-tête : médaillon marine centré — exercice, total, moyenne annuelle. */}
-      <div className="flex justify-center">
-        <div className="inline-flex flex-wrap items-center justify-center gap-x-3.5 gap-y-1 rounded-full bg-[#14295c] px-5 py-1.5 text-white">
-          <span className="text-[11px] text-[#c3cee6]">{donnees.exercice.replace("Exercice ", "")}</span>
-          <span className="flex items-baseline gap-1.5">
-            <span className="text-xl font-semibold tabular-nums">{euroRond(total)}</span>
-            {total >= OBJECTIF_ANNUEL && (
-              <span className="text-lg" title={`Objectif de ${euroRond(OBJECTIF_ANNUEL)} atteint`} aria-label="Objectif atteint">🏆</span>
-            )}
-            {medailles > 0 && (
-              <span
-                className="text-lg"
-                title={`${medailles} palier${medailles > 1 ? "s" : ""} franchi${medailles > 1 ? "s" : ""} au-delà de l'objectif (70 000 €${medailles > 1 ? ", puis tous les 30 000 €" : ""})`}
-                aria-label={`${medailles} médaille${medailles > 1 ? "s" : ""}`}
-              >
-                {"🥉".repeat(medailles)}
-              </span>
-            )}
-          </span>
-          <span className="text-[#c8952f]" aria-hidden="true">●</span>
-          <span className="text-sm">
-            moyenne{" "}
-            {trJ ? (
-              <span className="font-semibold tabular-nums" style={{ color: trJ.clair }}>{euroRond(moyJ)}/mois</span>
-            ) : (
-              <span className="text-[#c3cee6]">trop tôt (15 premiers jours)</span>
-            )}
-          </span>
-        </div>
-      </div>
-
-      {/* Jauge sur toute la largeur ; chevron : où en être à l'équilibre budgétaire. */}
-      <div className="relative mt-1.5 h-3">
-        <span
-          className="absolute -translate-x-1/2 text-[11px] leading-none text-muted"
-          style={{ left: `${pct(attendu)}%` }}
-          title={`Au rythme de l'équilibre budgétaire (≈ ${euroRond(EQUILIBRE)}/mois) : ${euroRond(attendu)} attendus au ${formatDate(aujourdhui)}`}
-        >
-          ▼
-        </span>
-        {/* Somme à avoir reçue pour être au niveau du chevron (ex. « 5,7k »), à sa droite
-            — ou à sa gauche quand le chevron approche du bout de la jauge. */}
-        <span
-          className="absolute text-[10px] leading-none tabular-nums text-muted"
-          style={pct(attendu) > 92 ? { right: `${100 - pct(attendu) + 1}%` } : { left: `calc(${pct(attendu)}% + 7px)` }}
-          aria-hidden="true"
-        >
-          {kilo(attendu)}
-        </span>
-      </div>
-      <div className="grid gap-1" style={{ gridTemplateColumns: `repeat(${nbBlocs}, minmax(0, 1fr))` }}>
-        {Array.from({ length: nbBlocs }, (_, k) => {
-          const part = Math.max(0, Math.min(1, (total - k * 10000) / 10000));
-          return (
-            <div key={k} className="relative h-5 overflow-hidden rounded border border-border bg-surface-2">
-              <div className="absolute inset-y-0 left-0 overflow-hidden" style={{ width: `${part * 100}%` }}>
-                <div className="absolute inset-y-0" style={{ left: `-${k * 100}%`, width: `${nbBlocs * 100}%`, background: degrade }} />
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      <div className="mt-0.5 grid gap-1 text-[10px] text-muted" style={{ gridTemplateColumns: `repeat(${nbBlocs}, minmax(0, 1fr))` }}>
-        {Array.from({ length: nbBlocs }, (_, k) => (
-          <span key={k} className="text-right">
-            {(k + 1) * 10 === OBJECTIF_ANNUEL / 1000 && <span title="Objectif annuel">🏆 </span>}
-            {(k + 1) * 10} k
-          </span>
-        ))}
-      </div>
-
-      {/* Légende et bouton : fixes, le graphe s'ouvre en dessous. */}
-      <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2">
-        <span className="text-[11px] text-muted">
-          <span aria-hidden="true">▼</span> Équilibre budgétaire · ~{euroRond(EQUILIBRE)}/mois · Confort · {euroRond(CONFORT)}/mois
-        </span>
-        <button type="button" onClick={() => setGraphe((v) => !v)} className="rounded-lg border border-border px-2.5 py-1 text-xs hover:bg-surface-2">
-          {graphe ? "Masquer les détails" : "Détails"}
-        </button>
-      </div>
-      {graphe && (
-        <GrapheMoyenne segments={segments} debut={donnees.debut} fin={donnees.fin} aujourdhui={aujourdhui} moyJ={moyJ} echelle={echelle} />
-      )}
-    </section>
+  const calcul = useMemo(
+    () =>
+      donnees
+        ? preparerJaugeDons(
+            donnees.dons.map((d) => ({ date: d.date, montant: Number(d.montant) || 0 })),
+            donnees.debut,
+            aujourdhui,
+          )
+        : null,
+    [donnees, aujourdhui],
   );
-}
+  if (!donnees || !calcul) return null;
 
-const MOIS_COURTS = ["Sept", "Oct", "Nov", "Déc", "Janv", "Févr", "Mars", "Avr", "Mai", "Juin", "Juil", "Août"];
-
-/**
- * Vitesse de croisière : moyenne mensuelle des dons au fil des 12 mois de
- * l'exercice, alignée sous la jauge. Bandes de couleur pâles (tranches),
- * équilibre budgétaire en pointillé ; l'échelle verticale suit le palier de la
- * jauge (palier ÷ 12 × 1,3). Pas d'axe chiffré : valeur au survol.
- */
-function GrapheMoyenne({
-  segments,
-  debut,
-  fin,
-  aujourdhui,
-  moyJ,
-  echelle,
-}: {
-  segments: { date: string; moy: number; couleur: string }[];
-  debut: string;
-  fin: string;
-  aujourdhui: string;
-  moyJ: number;
-  echelle: number;
-}) {
-  const W = 1000;
-  const H = 100;
-  const ymax = Math.max((echelle / 12) * 1.3, ...segments.map((s) => s.moy), moyJ) * 1.02;
-  const duree = jours(debut, fin);
-  const xPct = (d: string) => ((jours(debut, d) - 0.5) / duree) * 100;
-  const yPct = (v: number) => 100 - (Math.min(v, ymax) / ymax) * 96 - 2;
-  const points = [...segments.map((s) => ({ d: s.date, v: s.moy, c: s.couleur })), { d: aujourdhui, v: moyJ, c: tranche(moyJ).couleur }];
-  const dernier = points[points.length - 1];
-  return (
-    <div className="mt-1.5">
-      <div className="relative h-12 overflow-hidden rounded-sm" title={`Moyenne au ${formatDate(aujourdhui)} : ${euroRond(moyJ)}/mois`}>
-        <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="absolute inset-0 h-full w-full text-foreground" aria-hidden="true">
-          {TRANCHES.map((t, k) => {
-            const haut = Math.min(TRANCHES[k + 1]?.min ?? ymax, ymax);
-            return <rect key={t.nom} x={0} width={W} y={yPct(haut)} height={Math.max(0, yPct(t.min) - yPct(haut))} fill={t.couleur} opacity={0.14} />;
-          })}
-          <line x1={0} x2={W} y1={yPct(EQUILIBRE)} y2={yPct(EQUILIBRE)} stroke="currentColor" strokeDasharray="6 5" opacity={0.5} vectorEffect="non-scaling-stroke" />
-          <polyline
-            points={points.map((p) => `${(xPct(p.d) / 100) * W},${yPct(p.v)}`).join(" ")}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={1.5}
-            opacity={0.7}
-            vectorEffect="non-scaling-stroke"
-          />
-        </svg>
-        {/* Point du jour, dans la couleur de sa tranche (hors du SVG étiré : reste rond). */}
-        <span
-          className="absolute h-2 w-2 -translate-x-1/2 -translate-y-1/2 rounded-full ring-2 ring-surface"
-          style={{ left: `${xPct(dernier.d)}%`, top: `${yPct(dernier.v)}%`, background: dernier.c }}
-        />
-      </div>
-      <div className="mt-0.5 grid grid-cols-12 text-center text-[9px] leading-tight text-muted">
-        {MOIS_COURTS.map((m) => (
-          <span key={m}>{m}</span>
-        ))}
-      </div>
-    </div>
+  // Cumul attendu aujourd'hui au rythme de l'équilibre précaire : mois écoulés = jours (inclus) ÷ 30,4375.
+  const joursEcoules = Math.max(
+    (Date.parse(`${aujourdhui.slice(0, 10)}T12:00:00Z`) - Date.parse(`${donnees.debut.slice(0, 10)}T12:00:00Z`)) / 86_400_000 + 1,
+    0,
   );
+  const attendu = EQUILIBRE_MENSUEL * (joursEcoules / (365.25 / 12));
+
+  return <JaugeDonsVue exercice={donnees.exercice.replace("Exercice ", "")} {...calcul} attendu={attendu} />;
 }

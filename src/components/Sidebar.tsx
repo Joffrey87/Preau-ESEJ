@@ -35,8 +35,8 @@ export default function Sidebar({ userEmail, userName }: { userEmail?: string; u
         </div>
       </Link>
 
-      {/* Menu défilant à la molette s'il dépasse la hauteur de l'écran ; marge en bas pour que le dernier item ne colle pas au bord. */}
-      <nav className="flex-1 overscroll-contain px-2 pt-2 pb-8 md:min-h-0 md:overflow-y-auto">
+      {/* Menu défilant à la molette s'il dépasse la hauteur de l'écran, sans barre de défilement visible ; marge en bas pour que le dernier item ne colle pas au bord. */}
+      <nav className="flex-1 overscroll-contain px-2 pt-2 pb-8 md:min-h-0 md:overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {navDe(userEmail).map((section, i) => (
           <div key={section.title} className={i === 0 ? "" : "mt-2 border-t border-border/70 pt-2"}>
             <div className="px-2 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted/70">

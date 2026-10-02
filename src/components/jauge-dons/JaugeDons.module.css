@@ -1,0 +1,323 @@
+/* Jauge des dons — Préau
+   Ligne de tête : variante « Échelle des tranches », repère en chevron. */
+
+.racine {
+  /* Thème clair (charte Préau) */
+  --carte: #fffdf9;
+  --carte-bord: rgba(2, 29, 81, 0.09);
+  --encre: #021d51;
+  --texte: #5b6472;
+  --discret: #858c97;
+  --pale: #b4b8bf;
+  --piste: rgba(2, 29, 81, 0.07);
+  --filet: rgba(2, 29, 81, 0.15);
+  --or: #c8952f;
+  --courbe: #021d51;
+  --bandes-opacite: 0.15;
+  --survol: rgba(2, 29, 81, 0.05);
+  /* Texte de la moyenne : teinte foncée de la tranche, lisible sur crème */
+  --encre-rouge: #c23938;
+  --encre-orange: #b25813;
+  --encre-jaune: #8c6a00;
+  --encre-vert: #4d7a16;
+
+  container: jauge-dons / inline-size;
+  background: var(--carte);
+  border: 1px solid var(--carte-bord);
+  border-radius: 12px;
+  padding: 18px 20px 14px;
+  color: var(--texte);
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Thème sombre : Préau pose data-theme="dark" sur <html> (choix explicite), ou suit le
+   système tant que data-theme n'est pas "light". Les deux blocs restent identiques. */
+:global([data-theme="dark"]) .racine {
+  --carte: #14213d;
+  --carte-bord: rgba(247, 243, 234, 0.08);
+  --encre: #f4efe4;
+  --texte: #aeb6c4;
+  --discret: #8089a0;
+  --pale: #56617a;
+  --piste: rgba(247, 243, 234, 0.09);
+  --filet: rgba(247, 243, 234, 0.17);
+  --or: #d6a547;
+  --courbe: #f4efe4;
+  --bandes-opacite: 0.2;
+  --survol: rgba(247, 243, 234, 0.06);
+  --encre-rouge: #f27675;
+  --encre-orange: #f59a55;
+  --encre-jaune: #f1cb45;
+  --encre-vert: #8dc24b;
+}
+@media (prefers-color-scheme: dark) {
+  :global(:root:not([data-theme="light"])) .racine {
+    --carte: #14213d;
+    --carte-bord: rgba(247, 243, 234, 0.08);
+    --encre: #f4efe4;
+    --texte: #aeb6c4;
+    --discret: #8089a0;
+    --pale: #56617a;
+    --piste: rgba(247, 243, 234, 0.09);
+    --filet: rgba(247, 243, 234, 0.17);
+    --or: #d6a547;
+    --courbe: #f4efe4;
+    --bandes-opacite: 0.2;
+    --survol: rgba(247, 243, 234, 0.06);
+    --encre-rouge: #f27675;
+    --encre-orange: #f59a55;
+    --encre-jaune: #f1cb45;
+    --encre-vert: #8dc24b;
+  }
+}
+
+/* Tranches : --t = couleur pure (trace, échelle, points), --t-encre = texte */
+.rouge  { --t: #e24b4a; --t-encre: var(--encre-rouge); }
+.orange { --t: #ef7e27; --t-encre: var(--encre-orange); }
+.jaune  { --t: #efc327; --t-encre: var(--encre-jaune); }
+.vert   { --t: #639922; --t-encre: var(--encre-vert); }
+
+.insecable { white-space: nowrap; }
+
+/* ---------- 1. Ligne de tête ---------- */
+.tete {
+  display: grid;
+  /* 3e colonne vide : le groupe central reste exactement centré */
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: 16px;
+  row-gap: 10px;
+  margin-bottom: 16px;
+}
+.libelle {
+  justify-self: start;
+  padding-left: 10px;
+  border-left: 2px solid var(--or);
+  color: var(--encre);
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.25;
+}
+.centre { justify-self: center; min-width: 0; text-align: center; }
+.total {
+  position: relative;
+  display: inline-block;
+  color: var(--encre);
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+/* Hors flux : l'apparition des récompenses ne décentre pas le total */
+.recompenses {
+  position: absolute;
+  top: 50%;
+  left: 100%;
+  margin-left: 8px;
+  transform: translateY(-50%);
+  font-size: 16px;
+  line-height: 1;
+  letter-spacing: 2px;
+  white-space: nowrap;
+}
+.moyenne {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px 10px;
+  margin-top: 6px;
+  font-size: 12px;
+  font-weight: 500;
+}
+.valeur { color: var(--t-encre); font-weight: 600; white-space: nowrap; }
+
+.echelle { position: relative; display: inline-flex; gap: 2px; padding-top: 7px; }
+.echelleSeg {
+  display: block;
+  width: 15px; /* = LARGEUR_SEG dans JaugeDons.tsx */
+  height: 4px;
+  border-radius: 2px;
+  background: var(--t);
+  opacity: 0.25;
+}
+.echelleSegActif { opacity: 1; }
+.echelleChevron {
+  position: absolute;
+  top: 0;
+  display: block;
+  transform: translateX(-50%);
+  color: var(--encre);
+}
+
+@container jauge-dons (max-width: 560px) {
+  .tete { grid-template-columns: minmax(0, 1fr); }
+  .colonneFantome { display: none; }
+}
+
+/* ---------- 2. Jauge ---------- */
+.jauge { --espace: 3px; }
+.rangee {
+  display: grid;
+  grid-template-columns: repeat(var(--nb, 8), minmax(0, 1fr));
+  column-gap: var(--espace);
+}
+.reperes { height: 9px; margin-bottom: 3px; }
+.cellule { position: relative; }
+.chevronJour {
+  position: absolute;
+  bottom: 0;
+  display: block;
+  transform: translateX(-50%);
+  color: var(--t);
+}
+.etiquetteJour {
+  position: absolute;
+  bottom: 0;
+  transform: translateX(8px);
+  color: var(--t-encre);
+  font-size: 9.5px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+}
+.etiquetteJourGauche { transform: translateX(calc(-100% - 8px)); }
+.bloc {
+  position: relative;
+  height: 12px;
+  border-radius: 3px;
+  background: var(--piste);
+  overflow: hidden;
+}
+.remplissage { position: absolute; top: 0; bottom: 0; background: var(--t); }
+.pointe { min-width: 3px; }
+.graduations { margin-top: 6px; }
+.graduations > span {
+  color: var(--discret);
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.2;
+  text-align: right;
+  white-space: nowrap;
+}
+.graduations > span.atteint { color: var(--texte); font-weight: 600; }
+.trophee { margin-right: 2px; }
+
+/* ---------- 3. Ligne fixe : légende + Détails ---------- */
+.pied {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+}
+.legende {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  color: var(--texte);
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+.item { white-space: nowrap; }
+.legendeChevron {
+  display: inline-block;
+  margin-right: 5px;
+  vertical-align: 1px;
+  color: var(--t);
+}
+.separateur { margin: 0 0.55em; color: var(--pale); }
+@container jauge-dons (max-width: 460px) {
+  .item { white-space: normal; }
+}
+.bouton {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px 6px 11px;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--encre);
+  background: transparent;
+  border: 1px solid var(--filet);
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+.bouton:hover { background: var(--survol); }
+.bouton:focus-visible { outline: 2px solid var(--or); outline-offset: 2px; }
+.caret { transition: transform 0.25s ease; }
+.bouton[aria-expanded="true"] .caret { transform: rotate(180deg); }
+
+/* ---------- 4. Graphe ---------- */
+.details {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.28s ease;
+}
+.ouvert { grid-template-rows: 1fr; }
+.details > div { min-height: 0; overflow: hidden; }
+.graphe { padding-top: 14px; }
+.zone { position: relative; height: 48px; }
+.bandes { position: absolute; inset: 0; border-radius: 4px; overflow: hidden; }
+.bande { position: absolute; left: 0; right: 0; background: var(--t); opacity: var(--bandes-opacite); }
+.equilibre {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 0;
+  border-top: 1px dashed var(--encre);
+  opacity: 0.5;
+}
+.equilibreLibelle {
+  position: absolute;
+  left: 4px;
+  margin-top: -12px;
+  color: var(--texte);
+  font-size: 8.5px;
+  font-weight: 600;
+  line-height: 1;
+}
+.courbe { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.courbe polyline {
+  fill: none;
+  stroke: var(--courbe);
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+.point {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--t);
+  box-shadow: 0 0 0 1.5px var(--carte);
+  transform: translate(-50%, -50%);
+}
+.pointDernier { width: 8px; height: 8px; box-shadow: 0 0 0 2px var(--carte); }
+.mois { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); margin-top: 7px; }
+.mois > span {
+  color: var(--pale);
+  font-size: 9.5px;
+  font-weight: 500;
+  line-height: 1;
+  text-align: center;
+}
+.mois > span.moisEcoule { color: var(--texte); }
+@container jauge-dons (max-width: 380px) {
+  .mois > span { font-size: 8.5px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .details, .bouton, .caret { transition: none; }
+}

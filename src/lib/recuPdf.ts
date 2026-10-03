@@ -320,7 +320,7 @@ export async function construireRecuPdf(don: DonPourRecu, options: OptionsRecu =
 
   // Colonne gauche : le bénéficiaire.
   let g = 471;
-  texte("Bénéficiaire du versement :", 54.5, g, semi, LBL);
+  texte("Bénéficiaire du versement", 54.5, g, semi, LBL);
   texte(ASSOCIATION_NOM, 54.5, (g += pas), regular, VAL);
   texte(modele.adresseRue, 54.5, (g += pas), regular, VAL);
   texte(modele.adresseCpVille, 54.5, (g += pas), regular, VAL);
@@ -334,7 +334,7 @@ export async function construireRecuPdf(don: DonPourRecu, options: OptionsRecu =
   // Particulier : nom et prénom. Personne morale : raison sociale, et le
   // contact à qui le reçu est adressé.
   let d = 471.5;
-  texte("Donateur :", 314.5, d, semi, LBL);
+  texte("Donateur", 314.5, d, semi, LBL);
   if (pm) {
     champ("Raison sociale :", raison ?? "", (d += pas));
     if (identite) champ("À l'attention de :", identite, (d += pas));

@@ -36,7 +36,7 @@ export const MODELE_DEFAUT: ModeleRecu = {
   tresorierNom: "Joffrey Lenoble",
   adresseRue: "6 rue du Colonel Charbonneaux",
   adresseCpVille: "51100 Reims",
-  courrielContact: "ecole@saint-enfant-jesus.fr",
+  courrielContact: "tresorier@saint-enfant-jesus.fr",
   signaturePresident: null,
   signatureTresorier: null,
 };

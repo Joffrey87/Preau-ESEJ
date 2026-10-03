@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import DeverrouillerCoffre from "@/components/DeverrouillerCoffre";
 import { Modal } from "./GestionComptes";
 import { createClient } from "@/lib/supabase/client";
@@ -131,9 +131,12 @@ function donPourRecu(r: DonRow, dons: DonRow[], numero: string, dateEdition: str
 
 export default function ListeRecus({ dons }: { dons: DonRow[] }) {
   const router = useRouter();
+  const params = useSearchParams();
   const { dons: hydrates, verrou } = useDonsDechiffres(dons);
   const [annee, setAnnee] = useState<number | "toutes">("toutes");
   const [statut, setStatut] = useState<StatutRecu | "tous">("tous");
+  // Reçus dont la fiche donateur est incomplète (retour depuis l'onglet Dons : `?incomplets=1`).
+  const [incompletsSeuls, setIncompletsSeuls] = useState(params.get("incomplets") === "1");
   const [etablir, setEtablir] = useState<Groupe | null>(null);
   const [message, setMessage] = useState<{ ok: boolean; t: string } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -165,11 +168,20 @@ export default function ListeRecus({ dons }: { dons: DonRow[] }) {
 
   // Le tableau de bord porte sur l'année choisie, la liste sur année + statut.
   const deLAnnee = tous.filter((x) => annee === "toutes" || x.g.annee === annee);
-  const affiches = deLAnnee.filter((x) => statut === "tous" || x.statut === statut);
+  const estIncomplet = (x: (typeof tous)[number]) => x.statut !== "envoye" && x.manquants.length > 0;
+  const affiches = deLAnnee.filter(
+    (x) => (statut === "tous" || x.statut === statut) && (!incompletsSeuls || estIncomplet(x)),
+  );
 
   const compte = (s: StatutRecu) => deLAnnee.filter((x) => x.statut === s).length;
   const somme = (s: StatutRecu) => deLAnnee.filter((x) => x.statut === s).reduce((t, x) => t + x.g.total, 0);
-  const incomplets = deLAnnee.filter((x) => x.statut !== "envoye" && x.manquants.length > 0).length;
+  const incomplets = deLAnnee.filter(estIncomplet).length;
+
+  /** Ouvre le don du reçu dans l'onglet Dons, champs manquants surlignés ; retour ici ensuite. */
+  function completer(g: Groupe) {
+    const retour = encodeURIComponent("/recus-fiscaux?incomplets=1");
+    router.push(`/dons?modifier=${g.representant.id}&signaler=1&retour=${retour}`);
+  }
 
   const tuiles: { cle: StatutRecu; libelle: string; ton: string }[] = [
     { cle: "a_faire", libelle: "À établir", ton: "text-negative" },
@@ -253,9 +265,21 @@ export default function ListeRecus({ dons }: { dons: DonRow[] }) {
       </div>
 
       {incomplets > 0 && (
-        <p className="mb-4 rounded-xl border border-negative/30 bg-negative/5 px-4 py-2.5 text-sm text-negative">
-          {incomplets} reçu{incomplets > 1 ? "s" : ""} à compléter : adresse, code postal ou courriel manquant (⚠).
-        </p>
+        <button
+          type="button"
+          onClick={() => setIncompletsSeuls((v) => !v)}
+          aria-pressed={incompletsSeuls}
+          className={`mb-4 flex w-full flex-wrap items-center justify-between gap-2 rounded-xl border px-4 py-2.5 text-left text-sm text-negative transition-colors ${
+            incompletsSeuls ? "border-negative bg-negative/10" : "border-negative/30 bg-negative/5 hover:bg-negative/10"
+          }`}
+        >
+          <span>
+            {incomplets} reçu{incomplets > 1 ? "s" : ""} à compléter : adresse, code postal ou courriel manquant (⚠).
+          </span>
+          <span className="text-xs font-medium underline">
+            {incompletsSeuls ? "Afficher tous les reçus" : "Voir les reçus concernés"}
+          </span>
+        </button>
       )}
 
       {/* Filtres */}
@@ -275,6 +299,11 @@ export default function ListeRecus({ dons }: { dons: DonRow[] }) {
             </button>
           ))}
         </div>
+        {incompletsSeuls && (
+          <span className="text-sm text-negative">
+            Reçus incomplets uniquement{verrou ? "" : " — cliquez sur une ligne pour compléter la fiche"}
+          </span>
+        )}
         {statut !== "tous" && (
           <button type="button" onClick={() => setStatut("tous")} className="text-sm text-accent hover:underline">
             Afficher tous les statuts
@@ -304,10 +333,20 @@ export default function ListeRecus({ dons }: { dons: DonRow[] }) {
                 <td colSpan={7} className="px-4 py-12 text-center text-muted">Aucun reçu pour ce filtre.</td>
               </tr>
             ) : (
-              affiches.map(({ g, statut: st, manquants }) => (
-                <tr key={g.cle} className="border-b border-border last:border-0">
+              affiches.map(({ g, statut: st, manquants }) => {
+                const aCompleter = st !== "envoye" && manquants.length > 0 && !verrou;
+                return (
+                <tr
+                  key={g.cle}
+                  onClick={aCompleter ? (e) => { if (!(e.target as HTMLElement).closest("button, a")) completer(g); } : undefined}
+                  title={aCompleter ? "Cliquer pour compléter la fiche du donateur : " + manquants.join(", ") : undefined}
+                  className={`border-b border-border last:border-0 ${aCompleter ? "cursor-pointer hover:bg-surface-2" : ""}`}
+                >
                   <td className="px-4 py-3 tabular-nums">{g.annee}</td>
-                  <td className="px-4 py-3">{nomAffiche(g.representant)}</td>
+                  <td className="px-4 py-3">
+                    {nomAffiche(g.representant)}
+                    {aCompleter && <div className="text-xs text-negative">Manque : {manquants.join(", ")}</div>}
+                  </td>
                   <td className="px-4 py-3 text-right font-medium tabular-nums">{formatEuros(g.total)}</td>
                   <td className="px-4 py-3 text-center tabular-nums text-muted">{g.dons.length}</td>
                   <td className="px-4 py-3 text-xs tabular-nums">{g.numero ?? "—"}</td>
@@ -351,7 +390,8 @@ export default function ListeRecus({ dons }: { dons: DonRow[] }) {
                     )}
                   </td>
                 </tr>
-              ))
+                );
+              })
             )}
           </tbody>
         </table>

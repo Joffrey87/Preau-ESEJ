@@ -8,7 +8,7 @@ import {
 } from "@/lib/categoriesDonateur";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { formatEuros, formatDate, todayISO } from "@/lib/format";
 import { genererRecuPdf, dateEditionDuNumero } from "@/lib/recu";
@@ -16,7 +16,7 @@ import { Modal, Field, FormFooter, inputCls } from "./GestionComptes";
 import ChoixDonateur, { type IdentiteSaisie } from "@/components/ChoixDonateur";
 import { useCoffre } from "@/components/CoffreProvider";
 import DeverrouillerCoffre from "@/components/DeverrouillerCoffre";
-import { useDonsDechiffres, piiDepuis } from "@/lib/donsChiffre";
+import { useDonsDechiffres, piiDepuis, VERROU } from "@/lib/donsChiffre";
 import {
   statutsDon,
   donateursRecurrents,
@@ -141,6 +141,7 @@ export default function GestionDons({
   relations?: string[];
 }) {
   const router = useRouter();
+  const params = useSearchParams();
   const coffre = useCoffre();
   // Dons hydratés : PII déchiffré si le coffre est ouvert, 🔒 sinon.
   const { dons: donsHydrates, verrou } = useDonsDechiffres(donsInit);
@@ -356,6 +357,32 @@ export default function GestionDons({
     setEdit(d);
   }
 
+  // Arrivée depuis un autre onglet (ex. Reçus fiscaux) : `?modifier=<id>` ouvre
+  // directement ce don (champs manquants surlignés avec `&signaler=1`) ; à la
+  // fermeture ou à l'enregistrement, on retourne à `retour` (chemin interne).
+  const modifierId = params.get("modifier");
+  const retourBrut = params.get("retour");
+  const retour = retourBrut && retourBrut.startsWith("/") && !retourBrut.startsWith("//") ? retourBrut : null;
+  const [ouvertParLien, setOuvertParLien] = useState(false);
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    if (!modifierId || ouvertParLien) return;
+    const brut = donsInit.find((x) => x.id === modifierId);
+    const d = donsHydrates.find((x) => x.id === modifierId);
+    if (!brut || !d) return;
+    // Attendre le déchiffrement (sinon le formulaire s'ouvrirait vide ou verrouillé).
+    if (d.donateur_nom === VERROU || d.raison_sociale === VERROU) return;
+    if (brut.pii_chiffre && d === brut) return;
+    setOuvertParLien(true);
+    ouvrir(d, params.get("signaler") === "1");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modifierId, ouvertParLien, donsInit, donsHydrates]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+  function fermerFormulaire() {
+    setEdit(null);
+    if (ouvertParLien && retour) router.push(retour);
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -508,7 +535,8 @@ export default function GestionDons({
 
     setSaving(false);
     setEdit(null);
-    router.refresh();
+    if (ouvertParLien && retour) router.push(retour);
+    else router.refresh();
   }
 
   // Chiffre les dons encore en clair (migration ponctuelle, coffre ouvert).
@@ -948,7 +976,7 @@ export default function GestionDons({
       {edit && (
         <Modal
           title={edit === "nouveau" ? "Nouveau don" : "Modifier le don"}
-          onClose={() => setEdit(null)}
+          onClose={fermerFormulaire}
         >
           <form onSubmit={handleSubmit} className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
             {signaler && (
@@ -1140,7 +1168,7 @@ export default function GestionDons({
               <input type="text" value={f.observations} onChange={(e) => set("observations", e.target.value)} className={inputCls} />
             </Field>
 
-            <FormFooter saving={saving} error={error} onCancel={() => setEdit(null)} />
+            <FormFooter saving={saving} error={error} onCancel={fermerFormulaire} />
           </form>
         </Modal>
       )}

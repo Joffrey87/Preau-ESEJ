@@ -451,8 +451,10 @@ export async function construireRecuPdf(don: DonPourRecu, options: OptionsRecu =
  * « RE_000228_20260604 » → « 0228 » ; « RE_00025_20241114 » → « 0025 ».
  */
 export function numeroCourt(recuNumero: string | null): string | null {
-  const m = (recuNumero ?? "").match(/^RE_(\d+)/);
-  return m ? m[1].slice(-4).padStart(4, "0") : null;
+  const m = (recuNumero ?? "").match(/^RE_(\d+)(?:_|$)/);
+  if (m) return m[1].slice(-4).padStart(4, "0");
+  // Numéro saisi à la main hors format (ex. « RE_20260324-0604 ») : repris tel quel.
+  return recuNumero?.startsWith("RE_") ? recuNumero.slice(3) : null;
 }
 
 /** Nom de fichier : « Reçu fiscal N°0228 - Nom Prénom.pdf » (raison sociale pour une entreprise). */

@@ -8,7 +8,7 @@ export default async function RecusFiscauxPage() {
   const { data } = await supabase
     .from("dons")
     .select(
-      "id, date_don, donateur_titre, donateur_nom, donateur_prenom, raison_sociale, est_personne_morale, adresse, cp_ville, courriel, pii_chiffre, montant, mode_paiement, recu_numero, recu_etat",
+      "id, date_don, donateur_titre, donateur_nom, donateur_prenom, raison_sociale, est_personne_morale, adresse, cp_ville, courriel, pii_chiffre, montant, mode_paiement, recu_numero, recu_etat, recu_emis_le",
     )
     .is("supprime_le", null)
     .order("date_don", { ascending: false });

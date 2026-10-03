@@ -27,6 +27,7 @@ export type DonRow = {
   mode_paiement: string | null;
   recu_numero: string | null;
   recu_etat: string | null;
+  recu_emis_le: string | null;
 };
 
 /**
@@ -46,6 +47,10 @@ type Groupe = {
   dons: DonRow[];
   representant: DonRow;
 };
+
+/** Date d'édition : celle enregistrée sur les dons, sinon celle que porte le numéro, sinon aujourd'hui. */
+const dateEditionDuRecu = (g: Groupe) =>
+  g.dons.find((d) => d.recu_emis_le)?.recu_emis_le ?? dateEditionDuNumero(g.numero) ?? todayISO();
 
 const numeroValide = (n: string | null) => !!n && /^RE_\d+/.test(n);
 
@@ -196,7 +201,7 @@ export default function ListeRecus({ dons }: { dons: DonRow[] }) {
     setBusy(g.cle);
     try {
       await genererRecuPdf(
-        donPourRecu(g.representant, g.dons, g.numero, dateEditionDuNumero(g.numero) ?? todayISO()),
+        donPourRecu(g.representant, g.dons, g.numero, dateEditionDuRecu(g)),
         { ouvrir: true },
       );
     } catch (e) {

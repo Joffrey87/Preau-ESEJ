@@ -47,6 +47,11 @@ type Groupe = {
 const dateEditionDuRecu = (g: Groupe) =>
   g.dons.find((d) => d.recu_emis_le)?.recu_emis_le ?? dateEditionDuNumero(g.numero) ?? todayISO();
 
+/** Minuscules sans accents, pour une recherche tolérante. */
+const sansAccents = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+type ColTri = "annee" | "donateur" | "total" | "dons" | "numero" | "statut";
+
 const numeroValide = (n: string | null) => !!n && /^RE_\d+/.test(n);
 
 function grouper(dons: DonRow[], coffreOuvert: boolean): Groupe[] {
@@ -150,6 +155,9 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
   const [statut, setStatut] = useState<StatutRecu | "tous">("tous");
   // Reçus dont la fiche donateur est incomplète (alarme en haut de page).
   const [incompletsSeuls, setIncompletsSeuls] = useState(false);
+  const [recherche, setRecherche] = useState("");
+  // Tri par colonne (clic sur l'en-tête : croissant, puis décroissant, puis ordre d'origine : le plus récent d'abord).
+  const [tri, setTri] = useState<{ col: ColTri; dir: "asc" | "desc" } | null>(null);
   // Fiche donateur ouverte en fenêtre (même formulaire que l'onglet Dons).
   const [ficheId, setFicheId] = useState<{ id: string; signaler: boolean } | null>(null);
   const [envoi, setEnvoi] = useState<Groupe | null>(null);
@@ -186,8 +194,52 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
   // Le tableau de bord porte sur l'année choisie, la liste sur année + statut.
   const deLAnnee = tous.filter((x) => annee === "toutes" || x.g.annee === annee);
   const estIncomplet = (x: (typeof tous)[number]) => x.statut !== "envoye" && x.manquants.length > 0;
-  const affiches = deLAnnee.filter(
-    (x) => (statut === "tous" || x.statut === statut) && (!incompletsSeuls || estIncomplet(x)),
+  // Recherche : chaque mot saisi doit se retrouver (sans accents ni majuscules) dans le
+  // nom, l'adresse, le courriel, le n° de reçu, le montant ou la date d'un don du reçu.
+  const mots = sansAccents(recherche).split(/\s+/).filter(Boolean);
+  const correspond = (g: Groupe) => {
+    if (mots.length === 0) return true;
+    const r = g.representant;
+    const texte = sansAccents(
+      [
+        nomAffiche(r), r.donateur_nom, r.donateur_prenom, r.raison_sociale, r.adresse, r.cp_ville, r.courriel,
+        g.numero, g.annee, String(g.total).replace(".", ","), formatEuros(g.total),
+        ...g.dons.flatMap((d) => [formatDate(d.date_don), String(d.montant).replace(".", ",")]),
+      ].join(" "),
+    );
+    return mots.every((m) => texte.includes(m));
+  };
+  const filtres = deLAnnee.filter(
+    (x) => (statut === "tous" || x.statut === statut) && (!incompletsSeuls || estIncomplet(x)) && correspond(x.g),
+  );
+  const affiches = !tri
+    ? filtres
+    : [...filtres].sort((a, b) => {
+        const cle = (x: (typeof filtres)[number]): string | number =>
+          tri.col === "annee" ? x.g.annee
+          : tri.col === "donateur" ? sansAccents(nomAffiche(x.g.representant))
+          : tri.col === "total" ? x.g.total
+          : tri.col === "dons" ? x.g.dons.length
+          : tri.col === "numero" ? x.g.numero ?? ""
+          : LIBELLE[x.statut];
+        const ka = cle(a), kb = cle(b);
+        const c = typeof ka === "number" && typeof kb === "number" ? ka - kb : String(ka).localeCompare(String(kb), "fr");
+        return tri.dir === "asc" ? c : -c;
+      });
+  const trierPar = (col: ColTri) =>
+    setTri((t) => (!t || t.col !== col ? { col, dir: "asc" } : t.dir === "asc" ? { col, dir: "desc" } : null));
+  const enteteTri = (col: ColTri, libelle: string, alignement = "") => (
+    <th
+      className={`px-4 py-3 font-medium ${alignement}`}
+      aria-sort={tri?.col === col ? (tri.dir === "asc" ? "ascending" : "descending") : "none"}
+    >
+      <button type="button" onClick={() => trierPar(col)} className="inline-flex items-center gap-1 hover:text-foreground" title="Trier par cette colonne">
+        {libelle}
+        <span aria-hidden="true" className={tri?.col === col ? "text-accent" : "text-muted/50"}>
+          {tri?.col === col ? (tri.dir === "asc" ? "▲" : "▼") : "↕"}
+        </span>
+      </button>
+    </th>
   );
 
   const compte = (s: StatutRecu) => deLAnnee.filter((x) => x.statut === s).length;
@@ -286,7 +338,22 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
         </button>
       )}
 
-      {/* Filtres */}
+      {/* Recherche et filtres */}
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <input
+          type="search"
+          value={recherche}
+          onChange={(e) => setRecherche(e.target.value)}
+          placeholder="Rechercher un donateur, un n° de reçu, une ville, un montant…"
+          aria-label="Rechercher dans les reçus fiscaux"
+          className={`${inputCls} max-w-md flex-1`}
+        />
+        {recherche && (
+          <button type="button" onClick={() => setRecherche("")} className="text-xs text-muted underline hover:text-foreground">
+            Effacer
+          </button>
+        )}
+      </div>
       <div className="mb-4 flex flex-wrap items-center gap-x-6 gap-y-2">
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="mr-1 text-sm text-muted">Année</span>
@@ -322,12 +389,12 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border text-left text-muted">
-              <th className="px-4 py-3 font-medium">Année</th>
-              <th className="px-4 py-3 font-medium">Donateur</th>
-              <th className="px-4 py-3 text-right font-medium">Total</th>
-              <th className="px-4 py-3 text-center font-medium">Dons</th>
-              <th className="px-4 py-3 font-medium">N° reçu</th>
-              <th className="px-4 py-3 font-medium">Statut</th>
+              {enteteTri("annee", "Année")}
+              {enteteTri("donateur", "Donateur")}
+              {enteteTri("total", "Total", "text-right")}
+              {enteteTri("dons", "Dons", "text-center")}
+              {enteteTri("numero", "N° reçu")}
+              {enteteTri("statut", "Statut")}
               <th className="px-4 py-3 text-right font-medium">Action</th>
             </tr>
           </thead>

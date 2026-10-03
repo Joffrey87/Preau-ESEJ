@@ -5,7 +5,11 @@
 export const PREFERENCES_ENVOI = [
   { v: "courriel", l: "Courriel" },
   { v: "courrier", l: "Courrier postal" },
+  { v: "aucun", l: "Aucun : ne veut pas de reçu fiscal" },
 ] as const;
+
+/** Valeur écrite en base : « courriel » (défaut) reste vide. */
+export const prefereEnBase = (v: string | null | undefined) => (v === "courrier" || v === "aucun" ? v : null);
 
 /** Moyens d'envoi possibles, enregistrés sur le reçu au moment de l'envoi. */
 export const MOYENS_ENVOI = [

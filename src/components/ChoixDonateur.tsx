@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { prefereEnBase } from "@/lib/envoiRecu";
 import { createClient } from "@/lib/supabase/client";
 import { inputCls } from "./GestionComptes";
 import { formatEuros } from "@/lib/format";
@@ -154,7 +155,7 @@ export default function ChoixDonateur({
         pii_chiffre: blob,
         est_personne_morale: v.est_personne_morale,
         categorie_donateur: v.categorie_donateur || null,
-        ...(v.envoi_prefere !== undefined ? { envoi_prefere: v.envoi_prefere === "courrier" ? "courrier" : null } : {}),
+        ...(v.envoi_prefere !== undefined ? { envoi_prefere: prefereEnBase(v.envoi_prefere) } : {}),
         donateur_titre: null,
         donateur_nom: null,
         donateur_prenom: null,

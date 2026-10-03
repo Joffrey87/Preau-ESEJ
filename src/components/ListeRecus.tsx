@@ -42,6 +42,8 @@ type Groupe = {
   representant: DonRow;
   /** Le même numéro figure sur plusieurs années civiles : à scinder (un reçu = une année). */
   aScinder: boolean;
+  /** Le donateur ne veut pas de reçu fiscal pour ces dons. */
+  sans: boolean;
 };
 
 /** Date d'édition : celle enregistrée sur les dons, sinon celle que porte le numéro, sinon aujourd'hui. */
@@ -58,12 +60,16 @@ const numeroValide = (n: string | null) => !!n && /^RE_\d+/.test(n);
 function grouper(dons: DonRow[], coffreOuvert: boolean): Groupe[] {
   const map = new Map<string, DonRow[]>();
   for (const d of dons) {
-    if (sansRecu(d)) continue; // le donateur n'a pas demandé de reçu
     const annee = d.date_don.slice(0, 4);
+    const sans = sansRecu(d); // le donateur ne veut pas de reçu : groupe à part, rétablissable
     // Sans le coffre, les noms sont illisibles : on ne regroupe pas à l'aveugle.
     // Un numéro couvrant plusieurs années forme un groupe par année : « reçu fiscal AAAA » ne
     // contient que les dons de l'année AAAA.
-    const cle = numeroValide(d.recu_numero)
+    const cle = sans
+      ? coffreOuvert
+        ? `s|${cleDonateur(d)}|${annee}`
+        : `s|${d.id}`
+      : numeroValide(d.recu_numero)
       ? `n|${d.recu_numero}|${annee}`
       : coffreOuvert
         ? `a|${cleDonateur(d)}|${annee}`
@@ -78,6 +84,7 @@ function grouper(dons: DonRow[], coffreOuvert: boolean): Groupe[] {
       cle,
       numero: cle.startsWith("n|") ? representant.recu_numero : null,
       aScinder: false,
+      sans: cle.startsWith("s|"),
       annee: Number(representant.date_don.slice(0, 4)),
       total: rows.reduce((s, d) => s + Number(d.montant), 0),
       dons: tri,
@@ -90,13 +97,14 @@ function grouper(dons: DonRow[], coffreOuvert: boolean): Groupe[] {
   return groupes.sort((a, b) => b.representant.date_don.localeCompare(a.representant.date_don));
 }
 
-export type StatutRecu = "envoye" | "edite" | "attente" | "a_faire";
+export type StatutRecu = "envoye" | "edite" | "attente" | "a_faire" | "sans";
 
 const LIBELLE: Record<StatutRecu, string> = {
   envoye: "Envoyé",
   edite: "Établi, à envoyer",
   attente: "Attente fin d'année",
   a_faire: "À établir",
+  sans: "Sans reçu fiscal",
 };
 
 const TON: Record<StatutRecu, string> = {
@@ -104,6 +112,7 @@ const TON: Record<StatutRecu, string> = {
   edite: "bg-accent-soft text-accent",
   attente: "bg-gold-soft text-gold",
   a_faire: "bg-negative/10 text-negative",
+  sans: "bg-surface-2 text-muted",
 };
 
 /**
@@ -112,6 +121,7 @@ const TON: Record<StatutRecu, string> = {
  * reste possible à sa demande.
  */
 function statutRecu(g: Groupe, recurrents: Set<string>, anneeEnCours: number): StatutRecu {
+  if (g.sans) return "sans";
   if (g.numero) return g.dons.every(recuEnvoye) ? "envoye" : "edite";
   const regulier = g.dons.length > 1 || recurrents.has(cleDonateur(g.representant));
   return regulier && g.annee >= anneeEnCours ? "attente" : "a_faire";
@@ -195,7 +205,7 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
       grouper(hydrates, !verrou).map((g) => ({
         g,
         statut: statutRecu(g, recurrents, anneeEnCours),
-        manquants: champsImportantsManquants(g.representant),
+        manquants: g.sans ? [] : champsImportantsManquants(g.representant),
       })),
     [hydrates, verrou, recurrents, anneeEnCours],
   );
@@ -265,6 +275,7 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
     { cle: "attente", libelle: "Attente fin d'année", ton: "text-gold" },
     { cle: "edite", libelle: "Établis, à envoyer", ton: "text-accent" },
     { cle: "envoye", libelle: "Envoyés", ton: "text-positive" },
+    { cle: "sans", libelle: "Sans reçu fiscal", ton: "text-muted" },
   ];
 
   async function telecharger(g: Groupe) {
@@ -280,6 +291,49 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
       setMessage({ ok: false, t: e instanceof Error ? e.message : "Génération impossible." });
     }
     setBusy(null);
+  }
+
+  /** Tous les dons (non supprimés) du même donateur que ce groupe. */
+  const donsDuDonateur = (g: Groupe) => {
+    const cle = cleDonateur(g.representant);
+    return !verrou && cle && cle !== "|" ? hydrates.filter((d) => cleDonateur(d) === cle) : g.dons;
+  };
+
+  async function refuserRecu(g: Groupe) {
+    const nom = nomAffiche(g.representant);
+    if (!window.confirm(`${nom} ne souhaite pas de reçu fiscal ?\n\nSes dons sans reçu établi ne seront plus « à établir » (rubrique « Sans reçu fiscal »). Réversible : « Rétablir le reçu ».`)) return;
+    setBusy(g.cle);
+    const { error } = await createClient()
+      .from("dons")
+      .update({ envoi_prefere: "aucun" })
+      .in("id", donsDuDonateur(g).map((d) => d.id));
+    setBusy(null);
+    setMessage(error ? { ok: false, t: error.message } : { ok: true, t: `${nom} : pas de reçu fiscal (réversible depuis la rubrique « Sans reçu fiscal »).` });
+    router.refresh();
+  }
+
+  /** Annule « ne veut pas de reçu » : préférence de la fiche et anciennes mentions libres. */
+  async function retablirRecu(g: Groupe) {
+    const nom = nomAffiche(g.representant);
+    setBusy(g.cle);
+    const supabase = createClient();
+    const motif = /pas de re[çc]u|sans re[çc]u|ne veut pas|non demand/i;
+    const resultats = await Promise.all(
+      donsDuDonateur(g).map((d) =>
+        supabase
+          .from("dons")
+          .update({
+            ...(d.envoi_prefere === "aucun" ? { envoi_prefere: null } : {}),
+            ...(motif.test(d.recu_etat ?? "") ? { recu_etat: null } : {}),
+            ...(motif.test(d.recu_numero ?? "") ? { recu_numero: null } : {}),
+          })
+          .eq("id", d.id),
+      ),
+    );
+    setBusy(null);
+    const erreur = resultats.find((x) => x.error)?.error;
+    setMessage(erreur ? { ok: false, t: erreur.message } : { ok: true, t: `${nom} : le reçu fiscal est rétabli, ses dons redeviennent « à établir ».` });
+    router.refresh();
   }
 
   async function annuler(g: Groupe) {
@@ -314,7 +368,7 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
       )}
 
       {/* Tableau de bord */}
-      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-5">
         {tuiles.map((t) => (
           <button
             key={t.cle}
@@ -421,9 +475,9 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
                 return (
                 <Fragment key={g.cle}>
                 <tr
-                  onClick={(e) => { if (!(e.target as HTMLElement).closest("button, a")) basculer(g.cle); }}
-                  title={ouverts.has(g.cle) ? "Cliquer pour replier les dons" : "Cliquer pour voir les dons de ce reçu"}
-                  className={`cursor-pointer hover:bg-surface-2 ${ouverts.has(g.cle) ? "" : "border-b border-border last:border-0"}`}
+                  onClick={verrou ? undefined : (e) => { if (!(e.target as HTMLElement).closest("button, a")) ouvrirFiche(g.representant, aCompleter); }}
+                  title={verrou ? undefined : aCompleter ? "Cliquer pour ouvrir la fiche du donateur et compléter : " + manquants.join(", ") : "Cliquer pour ouvrir la fiche du donateur"}
+                  className={`${verrou ? "" : "cursor-pointer hover:bg-surface-2"} ${ouverts.has(g.cle) ? "" : "border-b border-border last:border-0"}`}
                 >
                   <td className="px-4 py-3 tabular-nums">
                     <button
@@ -431,7 +485,8 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
                       onClick={() => basculer(g.cle)}
                       aria-expanded={ouverts.has(g.cle)}
                       aria-label={ouverts.has(g.cle) ? "Replier les dons" : "Voir les dons"}
-                      className="mr-1.5 inline-block w-3 text-muted"
+                      title={ouverts.has(g.cle) ? "Replier les dons" : "Voir les dons de ce reçu"}
+                      className="-ml-1 mr-1 inline-block w-5 rounded text-muted hover:bg-surface-2 hover:text-foreground"
                     >
                       {ouverts.has(g.cle) ? "▾" : "▸"}
                     </button>
@@ -485,14 +540,23 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
                           </button>
                         )}
                       </span>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={() => setEtablir(g)}
-                        className="rounded-lg bg-accent px-3 py-1 text-xs font-medium text-accent-fg hover:opacity-90"
-                      >
-                        {st === "attente" ? "Reçu intermédiaire" : "Établir le reçu"}
+                    ) : g.sans ? (
+                      <button type="button" onClick={() => retablirRecu(g)} disabled={busy === g.cle} className="text-xs text-accent hover:underline disabled:opacity-50">
+                        Rétablir le reçu
                       </button>
+                    ) : (
+                      <span className="inline-flex items-center gap-3">
+                        <button type="button" onClick={() => refuserRecu(g)} disabled={busy === g.cle} className="text-xs text-muted hover:text-foreground hover:underline disabled:opacity-50" title="Ce donateur ne souhaite pas de reçu fiscal">
+                          Ne veut pas de reçu
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEtablir(g)}
+                          className="rounded-lg bg-accent px-3 py-1 text-xs font-medium text-accent-fg hover:opacity-90"
+                        >
+                          {st === "attente" ? "Reçu intermédiaire" : "Établir le reçu"}
+                        </button>
+                      </span>
                     )}
                   </td>
                 </tr>

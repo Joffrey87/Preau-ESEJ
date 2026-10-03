@@ -74,9 +74,11 @@ export function recuEnvoye(d: Don): boolean {
  * « Reçu – état » (« Pas de reçu demandé »…) ; l'ancien usage qui l'écrivait
  * à la place du numéro (« ne veut pas de reçu fiscal ») est aussi reconnu.
  */
-export function sansRecu(d: Pick<Don, "recu_etat" | "recu_numero">): boolean {
+export function sansRecu(d: Pick<Don, "recu_etat" | "recu_numero" | "envoi_prefere">): boolean {
   const t = `${d.recu_etat ?? ""} ${d.recu_numero ?? ""}`.toLowerCase();
-  return /pas de re[çc]u|sans re[çc]u|ne veut pas|non demand/.test(t);
+  if (/pas de re[çc]u|sans re[çc]u|ne veut pas|non demand/.test(t)) return true;
+  // Préférence de la fiche donateur : ne concerne que les dons sans reçu établi.
+  return d.envoi_prefere === "aucun" && !/^RE_\d/.test(d.recu_numero ?? "");
 }
 
 /** Champs importants manquants : bloquent un reçu CERFA valide ou son envoi. */

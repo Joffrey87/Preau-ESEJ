@@ -16,6 +16,7 @@ type Op = {
   est_ventilee: boolean;
 };
 type DonRow = {
+  envoi_prefere?: string | null;
   recu_etat: string | null;
   recu_numero: string | null;
   est_personne_morale: boolean;
@@ -75,7 +76,7 @@ export default async function Home() {
     supabase
       .from("dons")
       .select(
-        "recu_etat, recu_numero, est_personne_morale, donateur_nom, donateur_prenom, raison_sociale, adresse, cp_ville, courriel, date_don, mode_paiement",
+        "recu_etat, recu_numero, envoi_prefere, est_personne_morale, donateur_nom, donateur_prenom, raison_sociale, adresse, cp_ville, courriel, date_don, mode_paiement",
       ),
     supabase
       .from("scolarite_inscriptions")

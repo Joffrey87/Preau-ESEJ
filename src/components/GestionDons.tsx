@@ -12,7 +12,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { formatEuros, formatDate, todayISO } from "@/lib/format";
 import { genererRecuPdf, dateEditionDuNumero } from "@/lib/recu";
-import { PREFERENCES_ENVOI } from "@/lib/envoiRecu";
+import { PREFERENCES_ENVOI, prefereEnBase } from "@/lib/envoiRecu";
 import { Modal, Field, FormFooter, inputCls } from "./GestionComptes";
 import ChoixDonateur, { type IdentiteSaisie } from "@/components/ChoixDonateur";
 import { useCoffre } from "@/components/CoffreProvider";
@@ -422,7 +422,7 @@ export default function GestionDons({
       origine: f.origine.trim() || null,
       categorie_donateur: f.categorie_donateur || null,
       est_personne_morale: f.est_personne_morale,
-      envoi_prefere: f.envoi_prefere === "courrier" ? "courrier" : null,
+      envoi_prefere: prefereEnBase(f.envoi_prefere),
       montant: montantNum,
       date_don: f.date_don,
       mode_paiement: f.mode_paiement || null,
@@ -1126,14 +1126,14 @@ export default function GestionDons({
             )}
 
             <Field label="Adresse">
-              <input type="text" value={f.adresse} onChange={(e) => set("adresse", e.target.value)} className={inputCls + ringManque(!f.adresse.trim())} placeholder="N° et rue" />
+              <input type="text" value={f.adresse} onChange={(e) => set("adresse", e.target.value)} className={inputCls + ringManque(f.envoi_prefere !== "aucun" && !f.adresse.trim())} placeholder="N° et rue" />
             </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="CP et ville">
-                <input type="text" value={f.cp_ville} onChange={(e) => set("cp_ville", e.target.value)} className={inputCls + ringManque(!f.cp_ville.trim())} placeholder="51100 Reims" />
+                <input type="text" value={f.cp_ville} onChange={(e) => set("cp_ville", e.target.value)} className={inputCls + ringManque(f.envoi_prefere !== "aucun" && !f.cp_ville.trim())} placeholder="51100 Reims" />
               </Field>
               <Field label="Courriel">
-                <input type="email" value={f.courriel} onChange={(e) => set("courriel", e.target.value)} className={inputCls + ringManque(f.envoi_prefere !== "courrier" && !f.courriel.trim())} />
+                <input type="email" value={f.courriel} onChange={(e) => set("courriel", e.target.value)} className={inputCls + ringManque(f.envoi_prefere === "courriel" && !f.courriel.trim())} />
               </Field>
             </div>
             <Field label="Reçus fiscaux envoyés par">
@@ -1143,9 +1143,11 @@ export default function GestionDons({
                 ))}
               </select>
               <span className="mt-1 block text-xs text-muted">
-                {f.envoi_prefere === "courrier"
-                  ? "Courrier postal : l'adresse et le code postal sont nécessaires ; le courriel est facultatif."
-                  : "Courriel : l'adresse électronique est nécessaire. À modifier si le donateur change de mode de réception."}
+                {f.envoi_prefere === "aucun"
+                  ? "Ce donateur ne veut pas de reçu fiscal : ses dons sans reçu établi n'apparaissent plus « à établir »."
+                  : f.envoi_prefere === "courrier"
+                    ? "Courrier postal : l'adresse et le code postal sont nécessaires ; le courriel est facultatif."
+                    : "Courriel : l'adresse électronique est nécessaire. À modifier si le donateur change de mode de réception."}
               </span>
             </Field>
 

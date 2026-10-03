@@ -7,7 +7,7 @@ import type { NatureAffectation } from "@/lib/scolariteDepots";
 
 export const CAT_SCOLARITE = "Frais de scolarité : Mensualités";
 export const CAT_MOIS_AVANCE = "Frais de scolarité : Mois d'avance";
-export const CAT_FRAIS_DOSSIER = "Frais de scolarité : Frais de dossier";
+export const CAT_FRAIS_DOSSIER = "Frais de scolarité : Dossier";
 export const CAT_DON_ASSOCIATION = "Don d'Association";
 
 /**
@@ -18,6 +18,7 @@ const ANCIENS_NOMS: Record<string, string> = {
   "Paiement frais de scolarité": CAT_SCOLARITE,
   "Mois d'avance (dépôts)": CAT_MOIS_AVANCE,
   "Frais de dossier": CAT_FRAIS_DOSSIER,
+  "Frais de scolarité : Frais de dossier": CAT_FRAIS_DOSSIER,
 };
 
 /** Nom canonique d'une catégorie (ancien nom de scolarité → nouveau). */

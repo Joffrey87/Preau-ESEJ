@@ -17,7 +17,7 @@ update exercices set actif = (libelle = 'Exercice 2026-2027');
 
 update categories set nom = 'Frais de scolarité : Mensualités'   where nom = 'Paiement frais de scolarité';
 update categories set nom = 'Frais de scolarité : Mois d''avance' where nom = 'Mois d''avance (dépôts)';
-update categories set nom = 'Frais de scolarité : Frais de dossier' where nom = 'Frais de dossier';
+update categories set nom = 'Frais de scolarité : Dossier' where nom = 'Frais de dossier';
 
 update correspondances
    set categorie_id = (select id from categories where nom = 'Frais de scolarité : Mensualités'),
@@ -42,7 +42,7 @@ commit;
 -- update exercices set actif = (libelle = 'Exercice 2025-2026');
 -- update categories set nom = 'Paiement frais de scolarité' where nom = 'Frais de scolarité : Mensualités';
 -- update categories set nom = 'Mois d''avance (dépôts)'      where nom = 'Frais de scolarité : Mois d''avance';
--- update categories set nom = 'Frais de dossier'              where nom = 'Frais de scolarité : Frais de dossier';
+-- update categories set nom = 'Frais de dossier'              where nom = 'Frais de scolarité : Dossier';
 -- update correspondances set categorie_id = (select id from categories where nom = 'Don d''Association'),
 --   libelle_modele = 'Don Amitié Sainte Anne — {mois} {annee}',
 --   alerte_message = 'ASA : don d''association. Une part peut être affectée aux frais de scolarité d''une famille lors de la ventilation.',

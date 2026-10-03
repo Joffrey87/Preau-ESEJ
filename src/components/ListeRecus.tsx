@@ -197,6 +197,7 @@ export default function ListeRecus({ dons }: { dons: DonRow[] }) {
     try {
       await genererRecuPdf(
         donPourRecu(g.representant, g.dons, g.numero, dateEditionDuNumero(g.numero) ?? todayISO()),
+        { ouvrir: true },
       );
     } catch (e) {
       setMessage({ ok: false, t: e instanceof Error ? e.message : "Génération impossible." });

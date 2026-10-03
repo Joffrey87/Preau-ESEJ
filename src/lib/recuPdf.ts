@@ -193,6 +193,8 @@ export type OptionsRecu = {
   dateEdition?: string;
   /** Signataires, adresse, contact ; par défaut le modèle ESEJ livré. */
   modele?: ModeleRecu;
+  /** Ouvrir le PDF dans un nouvel onglet du navigateur au lieu de le télécharger. */
+  ouvrir?: boolean;
 };
 
 export async function construireRecuPdf(don: DonPourRecu, options: OptionsRecu = {}): Promise<Uint8Array> {
@@ -464,12 +466,28 @@ export function nomFichierRecu(don: DonPourRecu): string {
   return `Reçu fiscal ${num ? `N°${num}` : "sans numéro"} - ${qui || "donateur"}.pdf`;
 }
 
-/** Construit le PDF et déclenche son téléchargement. */
+/**
+ * Construit le PDF puis le télécharge — ou, avec `ouvrir`, l'affiche dans un
+ * nouvel onglet. L'onglet est ouvert tout de suite (dans le geste de l'utilisateur,
+ * sinon le navigateur bloque la fenêtre) puis dirigé vers le PDF une fois prêt ;
+ * s'il est bloqué, on retombe sur le téléchargement.
+ */
 export async function genererRecuPdf(don: DonPourRecu, options: OptionsRecu = {}): Promise<void> {
-  const modele = options.modele ?? (await modeleRecuEnCache(createClient()));
-  const octets = await construireRecuPdf(don, { ...options, modele });
-  const blob = new Blob([octets as BlobPart], { type: "application/pdf" });
-  const url = URL.createObjectURL(blob);
+  const onglet = options.ouvrir ? window.open("", "_blank") : null;
+  let url: string;
+  try {
+    const modele = options.modele ?? (await modeleRecuEnCache(createClient()));
+    const octets = await construireRecuPdf(don, { ...options, modele });
+    url = URL.createObjectURL(new Blob([octets as BlobPart], { type: "application/pdf" }));
+  } catch (e) {
+    onglet?.close();
+    throw e;
+  }
+  if (onglet) {
+    onglet.location.href = url;
+    setTimeout(() => URL.revokeObjectURL(url), 5 * 60_000);
+    return;
+  }
   const a = document.createElement("a");
   a.href = url;
   a.download = nomFichierRecu(don);

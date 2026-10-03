@@ -602,7 +602,7 @@ export default function GestionDons({
         montant: couverts.reduce((s, x) => s + Number(x.montant), 0),
         versements: couverts.map((x) => ({ date: x.date_don, montant: Number(x.montant), mode: x.mode_paiement })),
         date_edition: dateEditionDuNumero(d.recu_numero) ?? undefined,
-      });
+      }, { ouvrir: true });
     } catch (e) {
       setGenErreur(e instanceof Error ? e.message : "Génération impossible.");
     }

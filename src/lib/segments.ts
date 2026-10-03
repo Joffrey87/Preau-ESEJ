@@ -10,7 +10,7 @@ export const PARAMS = {
   fideleAnnees: 2, // a donné sur ≥ N années civiles = fidèle
   concentrationTop5Max: 25, // part des 5 premiers donateurs à ne pas dépasser (%)
   retentionCible: 45, // taux de rétention visé (%)
-  collecteCible: 60000, // collecte annuelle visée (€)
+  collecteCible: 66000, // collecte annuelle visée (€)
 } as const;
 
 export type SegmentDef = {

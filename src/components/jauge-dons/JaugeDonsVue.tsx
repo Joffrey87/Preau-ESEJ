@@ -298,7 +298,7 @@ export default function JaugeDons({
               {nombre(EQUILIBRE_MENSUEL)}
               {NBSP}€/mois
             </span>{" "}
-            (soit {nombre(attendu)}
+            (soit {nombre(Math.round(attendu / 100) * 100)}
             {NBSP}€ à ce jour)
           </span>
           <span className={styles.separateur} aria-hidden="true">

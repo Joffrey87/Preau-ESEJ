@@ -22,7 +22,7 @@ export type MecenatStats = {
 
 // Cibles issues du plan V3 (tableau de bord palier 1).
 export const CIBLES = {
-  collecteDons: 60000, // ≥ 60 k€/an
+  collecteDons: 66000, // ≥ 66 k€/an
   partDonsMax: 47, // dépendance aux dons à ramener vers ~47 %
   margeVentes: 10000, // marge nette ventes + événements + périscolaire ≥ 10 k€
   partTop5Max: 25, // part des 5 premiers donateurs < 25 %

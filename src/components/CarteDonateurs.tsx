@@ -76,6 +76,8 @@ type Lieu = {
 
 /** Communes plus proches que ce rayon : regroupées en une seule bulle (lisible à l'échelle de 200 km). */
 const REGROUPEMENT_KM = 10;
+/** Rayon de regroupement selon le zoom : les bulles se dégroupent à mesure que l'on s'approche. */
+const regroupementSelonZoom = (k: number) => (k < 2 ? REGROUPEMENT_KM : k < 4 ? 5 : k < 7 ? 2 : 0);
 const kmEntre = (a: { lat: number; lon: number }, b: { lat: number; lon: number }) =>
   Math.hypot((a.lon - b.lon) * 111.32 * Math.cos((REIMS.lat * Math.PI) / 180), (a.lat - b.lat) * 110.57);
 
@@ -96,6 +98,7 @@ export default function CarteDonateurs({
   const svgRef = useRef<SVGSVGElement>(null);
   const pointeurs = useRef(new Map<number, { x: number; y: number }>());
   const k = T / vue.w;
+  const regroupementKm = regroupementSelonZoom(k);
   const borner = (v: { x: number; y: number; w: number }) => {
     const w = Math.min(T, Math.max(T / 8, v.w));
     return { w, x: Math.min(T - w, Math.max(0, v.x)), y: Math.min(T - w, Math.max(0, v.y)) };
@@ -173,7 +176,7 @@ export default function CarteDonateurs({
     // fournie donne son nom et attire les autres ; position = barycentre.
     const groupes: Lieu[] = [];
     for (const l of [...m.values()].sort((a, b) => b.donateurs.length - a.donateurs.length)) {
-      const g = groupes.find((x) => kmEntre(x, l) <= REGROUPEMENT_KM);
+      const g = groupes.find((x) => kmEntre(x, l) <= regroupementKm);
       if (!g) {
         groupes.push({ ...l, communes: [...l.communes], donateurs: [...l.donateurs] });
         continue;
@@ -190,7 +193,7 @@ export default function CarteDonateurs({
       if (g.communes.length > 1) g.nom = `${g.communes[0]} et alentours`;
     }
     return groupes.sort((a, b) => b.donateurs.length - a.donateurs.length);
-  }, [profils, cpVilleDe]);
+  }, [profils, cpVilleDe, regroupementKm]);
 
   const lieu = lieux.find((l) => l.cle === choisi) ?? null;
   const moyenneAnnuelle = (p: ProfilDonateur) => p.cumul / Math.max(p.nbAnnees, 1);

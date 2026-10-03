@@ -51,8 +51,11 @@ export default function ReattribuerDon({
   const cleActuelle = cleDonateur(don);
   const fiches = useMemo(() => fichesDonateurs(dons).filter((f) => f.cle !== cleActuelle), [dons, cleActuelle]);
   const filtrees = useMemo(() => {
-    const q = recherche.trim().toLowerCase();
-    return (q ? fiches.filter((f) => f.nom.toLowerCase().includes(q)) : fiches).slice(0, 40);
+    // Chaque mot saisi doit se retrouver dans le nom, quel que soit l'ordre (« de Boisgelin George »
+    // comme « George de Boisgelin »), sans tenir compte des accents ni des majuscules.
+    const plat = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    const mots = plat(recherche).split(/\s+/).filter(Boolean);
+    return (mots.length ? fiches.filter((f) => mots.every((m) => plat(`${f.nom} ${f.exemple.donateur_nom ?? ""} ${f.exemple.donateur_prenom ?? ""} ${f.exemple.cp_ville ?? ""}`).includes(m))) : fiches).slice(0, 40);
   }, [fiches, recherche]);
   const ficheChoisie = fiches.find((f) => f.cle === choisie) ?? null;
   const numero = don.recu_numero && /^RE_/.test(don.recu_numero) ? don.recu_numero : null;

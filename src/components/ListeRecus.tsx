@@ -1,10 +1,11 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import DeverrouillerCoffre from "@/components/DeverrouillerCoffre";
 import { Modal, Field, inputCls } from "./GestionComptes";
 import GestionDons, { type Don } from "./GestionDons";
+import ReattribuerDon from "./ReattribuerDon";
 import { createClient } from "@/lib/supabase/client";
 import { formatEuros, formatDate, todayISO } from "@/lib/format";
 import { useDonsDechiffres } from "@/lib/donsChiffre";
@@ -161,6 +162,16 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
   // Fiche donateur ouverte en fenêtre (même formulaire que l'onglet Dons).
   const [ficheId, setFicheId] = useState<{ id: string; signaler: boolean } | null>(null);
   const [envoi, setEnvoi] = useState<Groupe | null>(null);
+  // Lignes dépliées (leurs dons s'affichent en « lignes filles ») et don en cours de réattribution.
+  const [ouverts, setOuverts] = useState<Set<string>>(new Set());
+  const [reattribuer, setReattribuer] = useState<{ don: DonRow; statut: "envoye" | "edite" | null } | null>(null);
+  const basculer = (cle: string) =>
+    setOuverts((p) => {
+      const n = new Set(p);
+      if (n.has(cle)) n.delete(cle);
+      else n.add(cle);
+      return n;
+    });
   const suivi = useMemo(() => new Map(recus.map((x) => [x.recu_numero, x])), [recus]);
   const [etablir, setEtablir] = useState<Groupe | null>(null);
   const [message, setMessage] = useState<{ ok: boolean; t: string } | null>(null);
@@ -246,8 +257,8 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
   const somme = (s: StatutRecu) => deLAnnee.filter((x) => x.statut === s).reduce((t, x) => t + x.g.total, 0);
   const incomplets = deLAnnee.filter(estIncomplet).length;
 
-  /** Ouvre la fiche du donateur (don le plus récent du reçu) ; les manques sont surlignés. */
-  const ouvrirFiche = (g: Groupe, signaler: boolean) => setFicheId({ id: g.representant.id, signaler });
+  /** Ouvre la fiche d'un don (formulaire de l'onglet Dons) ; les manques sont surlignés. */
+  const ouvrirFiche = (d: DonRow, signaler: boolean) => setFicheId({ id: d.id, signaler });
 
   const tuiles: { cle: StatutRecu; libelle: string; ton: string }[] = [
     { cle: "a_faire", libelle: "À établir", ton: "text-negative" },
@@ -408,13 +419,24 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
                 const aCompleter = st !== "envoye" && manquants.length > 0 && !verrou;
                 const detail = detailEnvoi(g, st, suivi.get(g.numero ?? ""));
                 return (
+                <Fragment key={g.cle}>
                 <tr
-                  key={g.cle}
-                  onClick={verrou ? undefined : (e) => { if (!(e.target as HTMLElement).closest("button, a")) ouvrirFiche(g, aCompleter); }}
-                  title={verrou ? undefined : aCompleter ? "Cliquer pour ouvrir la fiche du donateur et compléter : " + manquants.join(", ") : "Cliquer pour ouvrir la fiche du donateur"}
-                  className={`border-b border-border last:border-0 ${verrou ? "" : "cursor-pointer hover:bg-surface-2"}`}
+                  onClick={(e) => { if (!(e.target as HTMLElement).closest("button, a")) basculer(g.cle); }}
+                  title={ouverts.has(g.cle) ? "Cliquer pour replier les dons" : "Cliquer pour voir les dons de ce reçu"}
+                  className={`cursor-pointer hover:bg-surface-2 ${ouverts.has(g.cle) ? "" : "border-b border-border last:border-0"}`}
                 >
-                  <td className="px-4 py-3 tabular-nums">{g.annee}</td>
+                  <td className="px-4 py-3 tabular-nums">
+                    <button
+                      type="button"
+                      onClick={() => basculer(g.cle)}
+                      aria-expanded={ouverts.has(g.cle)}
+                      aria-label={ouverts.has(g.cle) ? "Replier les dons" : "Voir les dons"}
+                      className="mr-1.5 inline-block w-3 text-muted"
+                    >
+                      {ouverts.has(g.cle) ? "▾" : "▸"}
+                    </button>
+                    {g.annee}
+                  </td>
                   <td className="px-4 py-3">
                     {nomAffiche(g.representant)}
                     {prefereCourrier(g.representant) && <span className="ml-1.5 rounded-full bg-surface-2 px-1.5 py-0.5 text-[10px] text-muted">courrier postal</span>}
@@ -474,6 +496,57 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
                     )}
                   </td>
                 </tr>
+                {ouverts.has(g.cle) && (
+                  <tr className="border-b border-border bg-surface-2/40 last:border-0">
+                    <td colSpan={7} className="px-4 py-2 pl-10">
+                      <ul className="divide-y divide-border/60">
+                        {g.dons.map((d) => {
+                          const manque = st !== "envoye" ? champsImportantsManquants(d) : [];
+                          return (
+                            <li
+                              key={d.id}
+                              onClick={(e) => { if (!verrou && !(e.target as HTMLElement).closest("button, a")) ouvrirFiche(d, manque.length > 0); }}
+                              title={verrou ? undefined : "Cliquer pour ouvrir la fiche de ce don"}
+                              className={`flex flex-wrap items-center gap-x-4 gap-y-1 py-1.5 text-sm ${verrou ? "" : "cursor-pointer hover:bg-surface-2"}`}
+                            >
+                              <span className="w-24 tabular-nums">{formatDate(d.date_don)}</span>
+                              <span className="w-24 text-right font-medium tabular-nums">{formatEuros(Number(d.montant))}</span>
+                              <span className="w-28 text-muted">{d.mode_paiement ?? "—"}</span>
+                              {d.operation_id ? (
+                                <span
+                                  className="rounded-full bg-positive/15 px-2 py-0.5 text-xs text-positive"
+                                  title={d.operation?.date_operation ? `Relié à la comptabilité (encaissé le ${formatDate(d.operation.date_operation)})` : "Relié à la comptabilité"}
+                                >
+                                  compta{d.operation?.date_operation ? ` · ${formatDate(d.operation.date_operation)}` : ""}
+                                </span>
+                              ) : (
+                                <span className="rounded-full bg-surface-2 px-2 py-0.5 text-xs text-muted" title="Don saisi à la main, sans écriture de comptabilité reliée">
+                                  hors compta
+                                </span>
+                              )}
+                              {manque.length > 0 && <span className="text-xs text-negative">⚠ manque : {manque.join(", ")}</span>}
+                              {!verrou && (
+                                <span className="ml-auto inline-flex items-center gap-3 text-xs">
+                                  <button type="button" onClick={() => ouvrirFiche(d, manque.length > 0)} className="text-accent hover:underline">
+                                    Fiche
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => setReattribuer({ don: d, statut: g.numero ? (st === "envoye" ? "envoye" : "edite") : null })}
+                                    className="text-muted hover:text-foreground hover:underline"
+                                  >
+                                    Réattribuer
+                                  </button>
+                                </span>
+                              )}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
                 );
               })
             )}
@@ -494,7 +567,21 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
         />
       )}
 
-      {/* Fiche du donateur : le formulaire de l'onglet Dons, ouvert ici en fenêtre. */}
+      {reattribuer && (
+        <ReattribuerDon
+          don={reattribuer.don}
+          dons={hydrates}
+          statutRecu={reattribuer.statut}
+          onFermer={() => setReattribuer(null)}
+          onFait={(t) => {
+            setReattribuer(null);
+            setMessage({ ok: true, t });
+            router.refresh();
+          }}
+        />
+      )}
+
+      {/* Fiche d'un don : le formulaire de l'onglet Dons, ouvert ici en fenêtre. */}
       {ficheId && (
         <GestionDons
           dons={dons}

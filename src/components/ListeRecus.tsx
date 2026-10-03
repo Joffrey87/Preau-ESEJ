@@ -1,33 +1,26 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import DeverrouillerCoffre from "@/components/DeverrouillerCoffre";
-import { Modal } from "./GestionComptes";
+import { Modal, Field, inputCls } from "./GestionComptes";
+import GestionDons, { type Don } from "./GestionDons";
 import { createClient } from "@/lib/supabase/client";
 import { formatEuros, formatDate, todayISO } from "@/lib/format";
 import { useDonsDechiffres } from "@/lib/donsChiffre";
 import { cleDonateur, champsImportantsManquants, recuEnvoye, sansRecu } from "@/lib/statutDon";
+import { MOYENS_ENVOI, etatEnvoye, libelleMoyen, prefereCourrier } from "@/lib/envoiRecu";
 import { genererRecuPdf, dateEditionDuNumero, type DonPourRecu } from "@/lib/recu";
 import { syntheseVersements } from "@/lib/recuVersements";
 
-export type DonRow = {
-  id: string;
-  date_don: string;
-  donateur_titre: string | null;
-  donateur_nom: string | null;
-  donateur_prenom: string | null;
-  raison_sociale: string | null;
-  est_personne_morale: boolean;
-  adresse: string | null;
-  cp_ville: string | null;
-  courriel: string | null;
-  pii_chiffre: string | null;
-  montant: number;
-  mode_paiement: string | null;
-  recu_numero: string | null;
-  recu_etat: string | null;
-  recu_emis_le: string | null;
+/** Un don, tel que lu par la page (mêmes colonnes que l'onglet Dons : la fiche s'ouvre ici). */
+export type DonRow = Don;
+
+/** Suivi d'un reçu émis, tenu dans le registre `recus`. */
+export type RecuInfo = {
+  recu_numero: string;
+  envoye_le: string | null;
+  envoi_mode: string | null;
 };
 
 /**
@@ -46,6 +39,8 @@ type Groupe = {
   total: number;
   dons: DonRow[];
   representant: DonRow;
+  /** Le même numéro figure sur plusieurs années civiles : à scinder (un reçu = une année). */
+  aScinder: boolean;
 };
 
 /** Date d'édition : celle enregistrée sur les dons, sinon celle que porte le numéro, sinon aujourd'hui. */
@@ -60,8 +55,10 @@ function grouper(dons: DonRow[], coffreOuvert: boolean): Groupe[] {
     if (sansRecu(d)) continue; // le donateur n'a pas demandé de reçu
     const annee = d.date_don.slice(0, 4);
     // Sans le coffre, les noms sont illisibles : on ne regroupe pas à l'aveugle.
+    // Un numéro couvrant plusieurs années forme un groupe par année : « reçu fiscal AAAA » ne
+    // contient que les dons de l'année AAAA.
     const cle = numeroValide(d.recu_numero)
-      ? `n|${d.recu_numero}`
+      ? `n|${d.recu_numero}|${annee}`
       : coffreOuvert
         ? `a|${cleDonateur(d)}|${annee}`
         : `a|${d.id}`;
@@ -74,12 +71,16 @@ function grouper(dons: DonRow[], coffreOuvert: boolean): Groupe[] {
     groupes.push({
       cle,
       numero: cle.startsWith("n|") ? representant.recu_numero : null,
+      aScinder: false,
       annee: Number(representant.date_don.slice(0, 4)),
       total: rows.reduce((s, d) => s + Number(d.montant), 0),
       dons: tri,
       representant,
     });
   }
+  const anneesParNumero = new Map<string, number>();
+  for (const g of groupes) if (g.numero) anneesParNumero.set(g.numero, (anneesParNumero.get(g.numero) ?? 0) + 1);
+  for (const g of groupes) g.aScinder = !!g.numero && (anneesParNumero.get(g.numero) ?? 0) > 1;
   return groupes.sort((a, b) => b.representant.date_don.localeCompare(a.representant.date_don));
 }
 
@@ -134,14 +135,25 @@ function donPourRecu(r: DonRow, dons: DonRow[], numero: string, dateEdition: str
   };
 }
 
-export default function ListeRecus({ dons }: { dons: DonRow[] }) {
+/** Ligne de détail sous le statut : date et moyen d'envoi (registre), sinon l'ancien texte libre du don. */
+function detailEnvoi(g: Groupe, st: StatutRecu, suivi: RecuInfo | undefined): string | null {
+  if (st !== "envoye") return null;
+  if (suivi?.envoye_le) return `${formatDate(suivi.envoye_le)}${libelleMoyen(suivi.envoi_mode) ? ` · ${libelleMoyen(suivi.envoi_mode)}` : ""}`;
+  const texte = g.dons.map((d) => d.recu_etat?.trim()).find(Boolean);
+  return texte || null;
+}
+
+export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: RecuInfo[] }) {
   const router = useRouter();
-  const params = useSearchParams();
   const { dons: hydrates, verrou } = useDonsDechiffres(dons);
   const [annee, setAnnee] = useState<number | "toutes">("toutes");
   const [statut, setStatut] = useState<StatutRecu | "tous">("tous");
-  // Reçus dont la fiche donateur est incomplète (retour depuis l'onglet Dons : `?incomplets=1`).
-  const [incompletsSeuls, setIncompletsSeuls] = useState(params.get("incomplets") === "1");
+  // Reçus dont la fiche donateur est incomplète (alarme en haut de page).
+  const [incompletsSeuls, setIncompletsSeuls] = useState(false);
+  // Fiche donateur ouverte en fenêtre (même formulaire que l'onglet Dons).
+  const [ficheId, setFicheId] = useState<{ id: string; signaler: boolean } | null>(null);
+  const [envoi, setEnvoi] = useState<Groupe | null>(null);
+  const suivi = useMemo(() => new Map(recus.map((x) => [x.recu_numero, x])), [recus]);
   const [etablir, setEtablir] = useState<Groupe | null>(null);
   const [message, setMessage] = useState<{ ok: boolean; t: string } | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -182,11 +194,8 @@ export default function ListeRecus({ dons }: { dons: DonRow[] }) {
   const somme = (s: StatutRecu) => deLAnnee.filter((x) => x.statut === s).reduce((t, x) => t + x.g.total, 0);
   const incomplets = deLAnnee.filter(estIncomplet).length;
 
-  /** Ouvre le don du reçu dans l'onglet Dons, champs manquants surlignés ; retour ici ensuite. */
-  function completer(g: Groupe) {
-    const retour = encodeURIComponent("/recus-fiscaux?incomplets=1");
-    router.push(`/dons?modifier=${g.representant.id}&signaler=1&retour=${retour}`);
-  }
+  /** Ouvre la fiche du donateur (don le plus récent du reçu) ; les manques sont surlignés. */
+  const ouvrirFiche = (g: Groupe, signaler: boolean) => setFicheId({ id: g.representant.id, signaler });
 
   const tuiles: { cle: StatutRecu; libelle: string; ton: string }[] = [
     { cle: "a_faire", libelle: "À établir", ton: "text-negative" },
@@ -217,17 +226,6 @@ export default function ListeRecus({ dons }: { dons: DonRow[] }) {
     const { error } = await createClient().rpc("annuler_recu", { p_recu: g.numero });
     setBusy(null);
     setMessage(error ? { ok: false, t: error.message } : { ok: true, t: `Reçu ${g.numero} annulé.` });
-    router.refresh();
-  }
-
-  async function marquerEnvoye(g: Groupe) {
-    setBusy(g.cle);
-    const { error } = await createClient()
-      .from("dons")
-      .update({ recu_etat: `Envoyé le ${formatDate(todayISO())}` })
-      .in("id", g.dons.map((d) => d.id));
-    setBusy(null);
-    setMessage(error ? { ok: false, t: error.message } : { ok: true, t: `Reçu ${g.numero} marqué envoyé.` });
     router.refresh();
   }
 
@@ -341,16 +339,18 @@ export default function ListeRecus({ dons }: { dons: DonRow[] }) {
             ) : (
               affiches.map(({ g, statut: st, manquants }) => {
                 const aCompleter = st !== "envoye" && manquants.length > 0 && !verrou;
+                const detail = detailEnvoi(g, st, suivi.get(g.numero ?? ""));
                 return (
                 <tr
                   key={g.cle}
-                  onClick={aCompleter ? (e) => { if (!(e.target as HTMLElement).closest("button, a")) completer(g); } : undefined}
-                  title={aCompleter ? "Cliquer pour compléter la fiche du donateur : " + manquants.join(", ") : undefined}
-                  className={`border-b border-border last:border-0 ${aCompleter ? "cursor-pointer hover:bg-surface-2" : ""}`}
+                  onClick={verrou ? undefined : (e) => { if (!(e.target as HTMLElement).closest("button, a")) ouvrirFiche(g, aCompleter); }}
+                  title={verrou ? undefined : aCompleter ? "Cliquer pour ouvrir la fiche du donateur et compléter : " + manquants.join(", ") : "Cliquer pour ouvrir la fiche du donateur"}
+                  className={`border-b border-border last:border-0 ${verrou ? "" : "cursor-pointer hover:bg-surface-2"}`}
                 >
                   <td className="px-4 py-3 tabular-nums">{g.annee}</td>
                   <td className="px-4 py-3">
                     {nomAffiche(g.representant)}
+                    {prefereCourrier(g.representant) && <span className="ml-1.5 rounded-full bg-surface-2 px-1.5 py-0.5 text-[10px] text-muted">courrier postal</span>}
                     {aCompleter && <div className="text-xs text-negative">Manque : {manquants.join(", ")}</div>}
                   </td>
                   <td className="px-4 py-3 text-right font-medium tabular-nums">{formatEuros(g.total)}</td>
@@ -365,6 +365,12 @@ export default function ListeRecus({ dons }: { dons: DonRow[] }) {
                         ⚠
                       </span>
                     )}
+                    {g.aScinder && (
+                      <span className="ml-1.5 rounded-full bg-gold-soft px-2 py-0.5 text-xs font-medium text-gold" title="Ce numéro couvre plusieurs années civiles : un reçu ne doit couvrir qu'une année. À scinder.">
+                        à scinder
+                      </span>
+                    )}
+                    {detail && <div className="mt-0.5 text-xs text-muted">{detail}</div>}
                   </td>
                   <td className="px-4 py-3 text-right whitespace-nowrap">
                     {verrou ? (
@@ -376,13 +382,18 @@ export default function ListeRecus({ dons }: { dons: DonRow[] }) {
                         </button>
                         {st === "edite" && (
                           <>
-                            <button type="button" onClick={() => marquerEnvoye(g)} disabled={busy === g.cle} className="text-positive hover:underline disabled:opacity-50">
+                            <button type="button" onClick={() => setEnvoi(g)} disabled={busy === g.cle} className="text-positive hover:underline disabled:opacity-50">
                               Marquer envoyé
                             </button>
                             <button type="button" onClick={() => annuler(g)} disabled={busy === g.cle} className="text-muted hover:text-negative disabled:opacity-50">
                               Annuler
                             </button>
                           </>
+                        )}
+                        {st === "envoye" && (
+                          <button type="button" onClick={() => setEnvoi(g)} className="text-muted hover:text-foreground hover:underline">
+                            Modifier l&apos;envoi
+                          </button>
                         )}
                       </span>
                     ) : (
@@ -402,6 +413,29 @@ export default function ListeRecus({ dons }: { dons: DonRow[] }) {
           </tbody>
         </table>
       </div>
+
+      {envoi && (
+        <EnvoiRecu
+          groupe={envoi}
+          suivi={suivi.get(envoi.numero ?? "")}
+          onFermer={() => setEnvoi(null)}
+          onFait={(t) => {
+            setEnvoi(null);
+            setMessage({ ok: true, t });
+            router.refresh();
+          }}
+        />
+      )}
+
+      {/* Fiche du donateur : le formulaire de l'onglet Dons, ouvert ici en fenêtre. */}
+      {ficheId && (
+        <GestionDons
+          dons={dons}
+          ouvrirId={ficheId.id}
+          signalerManques={ficheId.signaler}
+          onFermer={() => setFicheId(null)}
+        />
+      )}
 
       {etablir && (
         <EtablirRecu
@@ -543,6 +577,92 @@ function EtablirRecu({
           >
             {busy ? "Établissement…" : `Établir le reçu (${formatEuros(total)})`}
           </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * Envoi d'un reçu : date et moyen réellement utilisé. Le moyen proposé est la
+ * préférence de la fiche du donateur ; il peut différer d'un envoi à l'autre.
+ */
+function EnvoiRecu({
+  groupe,
+  suivi,
+  onFermer,
+  onFait,
+}: {
+  groupe: Groupe;
+  suivi: RecuInfo | undefined;
+  onFermer: () => void;
+  onFait: (message: string) => void;
+}) {
+  const dejaEnvoye = groupe.dons.every(recuEnvoye);
+  const [moyen, setMoyen] = useState<string>(suivi?.envoi_mode ?? (prefereCourrier(groupe.representant) ? "courrier" : "courriel"));
+  const [date, setDate] = useState(suivi?.envoye_le ?? todayISO());
+  const [busy, setBusy] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
+
+  async function enregistrer(annulerEnvoi: boolean) {
+    if (!groupe.numero) return;
+    setBusy(true);
+    setErreur(null);
+    const supabase = createClient();
+    const { data, error } = await supabase
+      .from("recus")
+      .update(annulerEnvoi ? { envoye_le: null, envoi_mode: null } : { envoye_le: date, envoi_mode: moyen })
+      .eq("recu_numero", groupe.numero)
+      .select("recu_numero");
+    if (error || !data || data.length === 0) {
+      setBusy(false);
+      return setErreur("Enregistrement impossible : " + (error?.message ?? "reçu absent du registre"));
+    }
+    const { error: errDons } = await supabase
+      .from("dons")
+      .update({ recu_etat: annulerEnvoi ? null : etatEnvoye(formatDate(date), moyen) })
+      .in("id", groupe.dons.map((d) => d.id));
+    setBusy(false);
+    if (errDons) return setErreur("Reçu enregistré, mais l'état des dons n'a pas pu être mis à jour : " + errDons.message);
+    onFait(annulerEnvoi ? `Envoi du reçu ${groupe.numero} annulé.` : `Reçu ${groupe.numero} marqué envoyé le ${formatDate(date)} (${libelleMoyen(moyen)}).`);
+  }
+
+  return (
+    <Modal title={`${dejaEnvoye ? "Envoi du reçu" : "Marquer le reçu envoyé"} ${groupe.numero ?? ""}`} onClose={onFermer}>
+      <div className="space-y-4 text-sm">
+        <p className="text-muted">
+          {nomAffiche(groupe.representant)} — {formatEuros(groupe.total)} ({groupe.dons.length} don{groupe.dons.length > 1 ? "s" : ""}, {groupe.annee}).
+          {prefereCourrier(groupe.representant) ? " Ce donateur préfère le courrier postal." : ""}
+        </p>
+        <div className="grid grid-cols-2 gap-3">
+          <Field label="Envoyé par">
+            <select value={moyen} onChange={(e) => setMoyen(e.target.value)} className={inputCls}>
+              {MOYENS_ENVOI.map((m) => (
+                <option key={m.v} value={m.v}>{m.l}</option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Date d'envoi">
+            <input type="date" value={date} max={todayISO()} onChange={(e) => setDate(e.target.value)} className={inputCls} />
+          </Field>
+        </div>
+        {erreur && <p className="rounded-lg bg-negative/10 px-3 py-2 text-sm text-negative">{erreur}</p>}
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          {dejaEnvoye ? (
+            <button type="button" onClick={() => enregistrer(true)} disabled={busy} className="text-xs text-muted hover:text-negative disabled:opacity-50">
+              Annuler l&apos;envoi
+            </button>
+          ) : (
+            <span />
+          )}
+          <span className="flex gap-2">
+            <button type="button" onClick={onFermer} className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-surface-2">
+              Fermer
+            </button>
+            <button type="button" onClick={() => enregistrer(false)} disabled={busy || !date} className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-fg hover:opacity-90 disabled:opacity-50">
+              {busy ? "Enregistrement…" : "Enregistrer"}
+            </button>
+          </span>
         </div>
       </div>
     </Modal>

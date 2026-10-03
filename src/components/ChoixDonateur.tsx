@@ -19,6 +19,8 @@ export type IdentiteSaisie = {
   cp_ville: string;
   courriel: string;
   categorie_donateur: string;
+  /** Mode d'envoi des reçus (« courrier » ou « courriel ») ; absent des écrans qui ne le gèrent pas. */
+  envoi_prefere?: string;
 };
 
 export function identiteDepuisDon(d: Don): IdentiteSaisie {
@@ -31,6 +33,7 @@ export function identiteDepuisDon(d: Don): IdentiteSaisie {
     adresse: d.adresse ?? "",
     cp_ville: d.cp_ville ?? "",
     courriel: d.courriel ?? "",
+    envoi_prefere: d.envoi_prefere ?? "courriel",
     categorie_donateur:
       normaliserCategorieDonateur(d.categorie_donateur) ?? (d.est_personne_morale ? "Association" : "Particulier"),
   };
@@ -151,6 +154,7 @@ export default function ChoixDonateur({
         pii_chiffre: blob,
         est_personne_morale: v.est_personne_morale,
         categorie_donateur: v.categorie_donateur || null,
+        ...(v.envoi_prefere !== undefined ? { envoi_prefere: v.envoi_prefere === "courrier" ? "courrier" : null } : {}),
         donateur_titre: null,
         donateur_nom: null,
         donateur_prenom: null,

@@ -18,7 +18,7 @@ export default async function DonsPage() {
   const { data: dons } = await supabase
     .from("dons")
     .select(
-      "id, exercice_id, origine, categorie_donateur, est_personne_morale, donateur_titre, donateur_nom, donateur_prenom, raison_sociale, adresse, cp_ville, courriel, pii_chiffre, montant, date_don, mode_paiement, recu_numero, recu_etat, recu_emis_le, observations, supprime_le, supprime_par, operation_id, operation:operations!dons_operation_id_fkey(date_operation)",
+      "id, exercice_id, origine, categorie_donateur, est_personne_morale, donateur_titre, donateur_nom, donateur_prenom, raison_sociale, adresse, cp_ville, courriel, pii_chiffre, montant, date_don, mode_paiement, recu_numero, recu_etat, recu_emis_le, envoi_prefere, observations, supprime_le, supprime_par, operation_id, operation:operations!dons_operation_id_fkey(date_operation)",
     )
     .order("date_don", { ascending: false });
 

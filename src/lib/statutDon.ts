@@ -15,6 +15,8 @@ export type Don = {
   mode_paiement: string | null;
   recu_numero: string | null;
   recu_etat: string | null;
+  /** Préférence d'envoi des reçus : « courrier » (postal) ou, par défaut, courriel. */
+  envoi_prefere?: string | null;
 };
 
 export type Tone = "red" | "amber" | "green" | "blue" | "violet" | "gray";
@@ -83,7 +85,8 @@ export function champsImportantsManquants(d: Don): string[] {
   if (vide(nomDonateur(d))) m.push(d.est_personne_morale ? "raison sociale" : "nom");
   if (vide(d.adresse)) m.push("adresse");
   if (vide(d.cp_ville)) m.push("CP/ville");
-  if (vide(d.courriel)) m.push("courriel");
+  // Le courriel n'est exigé que si le donateur reçoit ses reçus par courriel.
+  if (d.envoi_prefere !== "courrier" && vide(d.courriel)) m.push("courriel");
   return m;
 }
 

@@ -8,10 +8,11 @@ import {
 } from "@/lib/categoriesDonateur";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { formatEuros, formatDate, todayISO } from "@/lib/format";
 import { genererRecuPdf, dateEditionDuNumero } from "@/lib/recu";
+import { PREFERENCES_ENVOI } from "@/lib/envoiRecu";
 import { Modal, Field, FormFooter, inputCls } from "./GestionComptes";
 import ChoixDonateur, { type IdentiteSaisie } from "@/components/ChoixDonateur";
 import { useCoffre } from "@/components/CoffreProvider";
@@ -47,6 +48,8 @@ export type Don = {
   recu_numero: string | null;
   recu_etat: string | null;
   recu_emis_le: string | null;
+  /** Préférence d'envoi des reçus (fiche donateur) : « courrier » (postal) ou, par défaut, courriel. */
+  envoi_prefere?: string | null;
   observations: string | null;
   /** Opération comptable reliée : elle fait foi pour le montant et la date d'encaissement. */
   operation_id?: string | null;
@@ -101,6 +104,7 @@ type FormState = {
   adresse: string;
   cp_ville: string;
   courriel: string;
+  envoi_prefere: string;
   montant: string;
   date_don: string;
   mode_paiement: string;
@@ -121,6 +125,7 @@ function vide(): FormState {
     adresse: "",
     cp_ville: "",
     courriel: "",
+    envoi_prefere: "courriel",
     montant: "",
     date_don: todayISO(),
     mode_paiement: "Virement",
@@ -134,14 +139,26 @@ export default function GestionDons({
   dons: donsInit,
   roleSlug = null,
   relations = [],
+  ouvrirId = null,
+  signalerManques = false,
+  onFermer,
 }: {
   dons: Don[];
   roleSlug?: string | null;
   /** Relations déjà employées, proposées en suggestion pour éviter les doublons. */
   relations?: string[];
+  /**
+   * Mode « fenêtre seule » (ex. depuis Reçus fiscaux) : seule la fiche de ce don
+   * est affichée, sans le tableau ; `onFermer` est appelé à la fermeture ou après
+   * l'enregistrement.
+   */
+  ouvrirId?: string | null;
+  /** En mode fenêtre seule : surligner les informations manquantes. */
+  signalerManques?: boolean;
+  onFermer?: () => void;
 }) {
   const router = useRouter();
-  const params = useSearchParams();
+  const seule = ouvrirId !== null;
   const coffre = useCoffre();
   // Dons hydratés : PII déchiffré si le coffre est ouvert, 🔒 sinon.
   const { dons: donsHydrates, verrou } = useDonsDechiffres(donsInit);
@@ -346,6 +363,7 @@ export default function GestionDons({
         adresse: d.adresse ?? "",
         cp_ville: d.cp_ville ?? "",
         courriel: d.courriel ?? "",
+        envoi_prefere: d.envoi_prefere ?? "courriel",
         montant: String(d.montant).replace(".", ","),
         date_don: d.date_don,
         mode_paiement: d.mode_paiement ?? "",
@@ -357,30 +375,25 @@ export default function GestionDons({
     setEdit(d);
   }
 
-  // Arrivée depuis un autre onglet (ex. Reçus fiscaux) : `?modifier=<id>` ouvre
-  // directement ce don (champs manquants surlignés avec `&signaler=1`) ; à la
-  // fermeture ou à l'enregistrement, on retourne à `retour` (chemin interne).
-  const modifierId = params.get("modifier");
-  const retourBrut = params.get("retour");
-  const retour = retourBrut && retourBrut.startsWith("/") && !retourBrut.startsWith("//") ? retourBrut : null;
-  const [ouvertParLien, setOuvertParLien] = useState(false);
+  // Mode « fenêtre seule » : ouvre le don demandé dès que ses données sont lisibles
+  // (déchiffrées), sans quoi le formulaire s'ouvrirait vide ou verrouillé.
+  const [ouvertSeule, setOuvertSeule] = useState<string | null>(null);
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
-    if (!modifierId || ouvertParLien) return;
-    const brut = donsInit.find((x) => x.id === modifierId);
-    const d = donsHydrates.find((x) => x.id === modifierId);
+    if (!ouvrirId || ouvertSeule === ouvrirId) return;
+    const brut = donsInit.find((x) => x.id === ouvrirId);
+    const d = donsHydrates.find((x) => x.id === ouvrirId);
     if (!brut || !d) return;
-    // Attendre le déchiffrement (sinon le formulaire s'ouvrirait vide ou verrouillé).
     if (d.donateur_nom === VERROU || d.raison_sociale === VERROU) return;
     if (brut.pii_chiffre && d === brut) return;
-    setOuvertParLien(true);
-    ouvrir(d, params.get("signaler") === "1");
+    setOuvertSeule(ouvrirId);
+    ouvrir(d, signalerManques);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [modifierId, ouvertParLien, donsInit, donsHydrates]);
+  }, [ouvrirId, ouvertSeule, donsInit, donsHydrates]);
   /* eslint-enable react-hooks/set-state-in-effect */
   function fermerFormulaire() {
     setEdit(null);
-    if (ouvertParLien && retour) router.push(retour);
+    if (seule) onFermer?.();
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -409,6 +422,7 @@ export default function GestionDons({
       origine: f.origine.trim() || null,
       categorie_donateur: f.categorie_donateur || null,
       est_personne_morale: f.est_personne_morale,
+      envoi_prefere: f.envoi_prefere === "courrier" ? "courrier" : null,
       montant: montantNum,
       date_don: f.date_don,
       mode_paiement: f.mode_paiement || null,
@@ -514,6 +528,7 @@ export default function GestionDons({
           .update({
             est_personne_morale: payload.est_personne_morale,
             categorie_donateur: payload.categorie_donateur,
+            envoi_prefere: payload.envoi_prefere,
             pii_chiffre: payload.pii_chiffre,
             donateur_titre: payload.donateur_titre,
             donateur_nom: payload.donateur_nom,
@@ -535,8 +550,8 @@ export default function GestionDons({
 
     setSaving(false);
     setEdit(null);
-    if (ouvertParLien && retour) router.push(retour);
-    else router.refresh();
+    router.refresh();
+    if (seule) onFermer?.();
   }
 
   // Chiffre les dons encore en clair (migration ponctuelle, coffre ouvert).
@@ -618,6 +633,8 @@ export default function GestionDons({
 
   return (
     <>
+      {!seule && (
+      <>
       {/* Coffre verrouillé : les noms sont masqués */}
       {verrou && (
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-gold/40 bg-gold-soft/40 px-4 py-3 text-sm">
@@ -973,6 +990,9 @@ export default function GestionDons({
         </table>
       </div>
 
+      </>
+      )}
+
       {edit && (
         <Modal
           title={edit === "nouveau" ? "Nouveau don" : "Modifier le don"}
@@ -996,6 +1016,7 @@ export default function GestionDons({
                 cp_ville: f.cp_ville,
                 courriel: f.courriel,
                 categorie_donateur: f.categorie_donateur,
+                envoi_prefere: f.envoi_prefere,
               }}
               onChoisir={(i: IdentiteSaisie) => setF((p) => ({ ...p, ...i }))}
               chiffrer={coffre.chiffrer}
@@ -1112,9 +1133,21 @@ export default function GestionDons({
                 <input type="text" value={f.cp_ville} onChange={(e) => set("cp_ville", e.target.value)} className={inputCls + ringManque(!f.cp_ville.trim())} placeholder="51100 Reims" />
               </Field>
               <Field label="Courriel">
-                <input type="email" value={f.courriel} onChange={(e) => set("courriel", e.target.value)} className={inputCls + ringManque(!f.courriel.trim())} />
+                <input type="email" value={f.courriel} onChange={(e) => set("courriel", e.target.value)} className={inputCls + ringManque(f.envoi_prefere !== "courrier" && !f.courriel.trim())} />
               </Field>
             </div>
+            <Field label="Reçus fiscaux envoyés par">
+              <select value={f.envoi_prefere} onChange={(e) => set("envoi_prefere", e.target.value)} className={inputCls}>
+                {PREFERENCES_ENVOI.map((o) => (
+                  <option key={o.v} value={o.v}>{o.l}</option>
+                ))}
+              </select>
+              <span className="mt-1 block text-xs text-muted">
+                {f.envoi_prefere === "courrier"
+                  ? "Courrier postal : l'adresse et le code postal sont nécessaires ; le courriel est facultatif."
+                  : "Courriel : l'adresse électronique est nécessaire. À modifier si le donateur change de mode de réception."}
+              </span>
+            </Field>
 
             <div className="grid grid-cols-2 gap-3">
               <Field label="Mode de paiement">
@@ -1160,7 +1193,15 @@ export default function GestionDons({
                 />
               </Field>
               <Field label="État du reçu">
-                <input type="text" value={f.recu_etat} onChange={(e) => set("recu_etat", e.target.value)} className={inputCls} placeholder="Envoyé - Courriel…" />
+                {/* Géré depuis la page Reçus fiscaux (établi, envoyé, moyen, date). */}
+                <input
+                  type="text"
+                  value={f.recu_etat}
+                  readOnly
+                  className={`${inputCls} cursor-not-allowed bg-surface-2 text-muted`}
+                  placeholder="géré dans Reçus fiscaux"
+                  title="L'état du reçu (établi, envoyé, moyen et date d'envoi) se gère depuis la page Reçus fiscaux"
+                />
               </Field>
             </div>
 

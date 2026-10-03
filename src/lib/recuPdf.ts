@@ -62,7 +62,7 @@ const MENTION_PERSONNE_MORALE =
   "Le bénéficiaire certifie sur l'honneur que les dons et versements qu'il reçoit ouvrent droit à la réduction d'impôt prévue à l'article 238 bis du CGI (impôt sur les sociétés ou impôt sur le revenu des entreprises).";
 
 /** Forme et nature du don, mentions du modèle CERFA n° 11580. */
-const FORME_NATURE = "Forme : déclaration de don manuel · Nature : numéraire";
+const FORME_NATURE = "Forme du don : déclaration de don manuel · Nature du don : numéraire";
 
 // ---------------------------------------------------------------------------
 // Ressources (polices, images), chargées une fois par session.
@@ -245,7 +245,12 @@ export async function construireRecuPdf(don: DonPourRecu, options: OptionsRecu =
 
   // ---- Valeurs du don ------------------------------------------------------
   const montant = Number(don.montant);
-  const annee = options.annee ?? new Date(don.date_don).getFullYear();
+  // « Reçu fiscal AAAA » ne couvre que les dons de l'année AAAA.
+  const anneesDons = [...new Set((don.versements?.length ? don.versements.map((v) => v.date) : [don.date_don]).map((d) => d.slice(0, 4)))];
+  if (anneesDons.length > 1) {
+    throw new Error(`Un reçu fiscal ne peut couvrir qu'une seule année civile (ici ${anneesDons.sort().join(" et ")}) : scindez-le.`);
+  }
+  const annee = options.annee ?? Number(anneesDons[0]);
   const numero = (don.recu_numero ?? "").replace(/^RE_/, "");
   const pm = don.est_personne_morale;
   const identite = [don.donateur_titre, don.donateur_nom, don.donateur_prenom].filter(Boolean).join(" ");
@@ -374,12 +379,11 @@ export async function construireRecuPdf(don: DonPourRecu, options: OptionsRecu =
   const enAnnexe = nbAffichables > MAX_LIGNES;
   const lignesCadre = enAnnexe ? lignesVersements.slice(0, MAX_LIGNES - 2) : lignesVersements;
   const nbLignesCadre = lignesCadre.length + (enAnnexe ? 1 : 0) + (avecTotal ? 1 : 0);
-  const hauteurCadre = 20 + nbLignesCadre * LIGNE + 4;
+  // Une ligne de plus en pied de cadre : forme et nature du don.
+  const hauteurCadre = 20 + nbLignesCadre * LIGNE + 4 + (LIGNE + 4);
   rect(53.5, 611, 486, hauteurCadre);
 
   texte(lignesVersements.length > 1 ? "Versements :" : "Versement :", 57.5, 623.6, semi, LBL, NOIR);
-  const libForme = FORME_NATURE;
-  texte(libForme, 535.5 - largeur(libForme, regular, 7.4), 623.6, regular, 7.4, NOIR);
   let v = 623.6;
   for (const l of lignesCadre) {
     v += LIGNE;
@@ -398,6 +402,17 @@ export async function construireRecuPdf(don: DonPourRecu, options: OptionsRecu =
     texte("Total", 64, v, semi, VAL, NOIR);
     texte(t, 532 - largeur(t, semi, VAL), v, semi, VAL, NOIR);
   }
+  // Pied du cadre : un filet fin puis forme et nature du don, à la taille des valeurs.
+  v += 4;
+  page.drawLine({
+    start: { x: 57.5, y: depuisLeHaut(v) },
+    end: { x: 535.5, y: depuisLeHaut(v) },
+    thickness: 0.5,
+    color: NAVY,
+    opacity: 0.35,
+  });
+  v += LIGNE;
+  texte(FORME_NATURE, 64, v, regular, VAL, NOIR);
 
   // Le pied descend d'autant que le cadre dépasse la hauteur du modèle (69 pt).
   const decalage = Math.max(0, 611 + hauteurCadre - 680);

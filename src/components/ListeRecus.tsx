@@ -42,7 +42,7 @@ type Groupe = {
   representant: DonRow;
   /** Le même numéro figure sur plusieurs années civiles : à scinder (un reçu = une année). */
   aScinder: boolean;
-  /** Le donateur ne veut pas de reçu fiscal pour ces dons. */
+  /** Le donateur ne demande pas de reçu fiscal pour ces dons. */
   sans: boolean;
 };
 
@@ -61,7 +61,7 @@ function grouper(dons: DonRow[], coffreOuvert: boolean): Groupe[] {
   const map = new Map<string, DonRow[]>();
   for (const d of dons) {
     const annee = d.date_don.slice(0, 4);
-    const sans = sansRecu(d); // le donateur ne veut pas de reçu : groupe à part, rétablissable
+    const sans = sansRecu(d); // reçu non demandé : groupe à part, rétablissable
     // Sans le coffre, les noms sont illisibles : on ne regroupe pas à l'aveugle.
     // Un numéro couvrant plusieurs années forme un groupe par année : « reçu fiscal AAAA » ne
     // contient que les dons de l'année AAAA.
@@ -104,7 +104,7 @@ const LIBELLE: Record<StatutRecu, string> = {
   edite: "Établi, à envoyer",
   attente: "Attente fin d'année",
   a_faire: "À établir",
-  sans: "Sans reçu fiscal",
+  sans: "Reçu non demandé",
 };
 
 const TON: Record<StatutRecu, string> = {
@@ -275,7 +275,7 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
     { cle: "attente", libelle: "Attente fin d'année", ton: "text-gold" },
     { cle: "edite", libelle: "Établis, à envoyer", ton: "text-accent" },
     { cle: "envoye", libelle: "Envoyés", ton: "text-positive" },
-    { cle: "sans", libelle: "Sans reçu fiscal", ton: "text-muted" },
+    { cle: "sans", libelle: "Reçu non demandé", ton: "text-muted" },
   ];
 
   async function telecharger(g: Groupe) {
@@ -301,18 +301,18 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
 
   async function refuserRecu(g: Groupe) {
     const nom = nomAffiche(g.representant);
-    if (!window.confirm(`${nom} ne souhaite pas de reçu fiscal ?\n\nSes dons sans reçu établi ne seront plus « à établir » (rubrique « Sans reçu fiscal »). Réversible : « Rétablir le reçu ».`)) return;
+    if (!window.confirm(`${nom} ne demande pas de reçu fiscal ?\n\nSes dons sans reçu établi ne seront plus « à établir » (rubrique « Reçu non demandé »). Réversible : « Rétablir le reçu ».`)) return;
     setBusy(g.cle);
     const { error } = await createClient()
       .from("dons")
       .update({ envoi_prefere: "aucun" })
       .in("id", donsDuDonateur(g).map((d) => d.id));
     setBusy(null);
-    setMessage(error ? { ok: false, t: error.message } : { ok: true, t: `${nom} : pas de reçu fiscal (réversible depuis la rubrique « Sans reçu fiscal »).` });
+    setMessage(error ? { ok: false, t: error.message } : { ok: true, t: `${nom} : reçu non demandé (réversible depuis la rubrique « Reçu non demandé »).` });
     router.refresh();
   }
 
-  /** Annule « ne veut pas de reçu » : préférence de la fiche et anciennes mentions libres. */
+  /** Annule « reçu non demandé » : préférence de la fiche et anciennes mentions libres. */
   async function retablirRecu(g: Groupe) {
     const nom = nomAffiche(g.representant);
     setBusy(g.cle);
@@ -546,8 +546,8 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
                       </button>
                     ) : (
                       <span className="inline-flex items-center gap-3">
-                        <button type="button" onClick={() => refuserRecu(g)} disabled={busy === g.cle} className="text-xs text-muted hover:text-foreground hover:underline disabled:opacity-50" title="Ce donateur ne souhaite pas de reçu fiscal">
-                          Ne veut pas de reçu
+                        <button type="button" onClick={() => refuserRecu(g)} disabled={busy === g.cle} className="text-xs text-muted hover:text-foreground hover:underline disabled:opacity-50" title="Ce donateur ne demande pas de reçu fiscal">
+                          Reçu non demandé
                         </button>
                         <button
                           type="button"

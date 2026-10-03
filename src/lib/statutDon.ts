@@ -108,7 +108,7 @@ export function statutsDon(d: Don, recurrents: Set<string>): Chip[] {
   // Axe workflow du reçu (une seule pastille).
   const sans = sansRecu(d);
   if (sans) {
-    chips.push({ key: "sans", label: "Sans reçu fiscal", tone: "gray", detail: "Le donateur ne demande pas de reçu" });
+    chips.push({ key: "sans", label: "Reçu non demandé", tone: "gray", detail: "Le donateur ne demande pas de reçu" });
   } else if (recuEnvoye(d)) {
     chips.push({ key: "envoye", label: "Reçu envoyé", tone: "green" });
   } else if (vide(d.recu_numero)) {
@@ -163,5 +163,5 @@ export const FILTRES: { key: StatutKey; label: string; tone: Tone }[] = [
   { key: "annuel", label: "Reçu annuel en attente", tone: "violet" },
   { key: "envoyer", label: "Reçu à envoyer", tone: "blue" },
   { key: "envoye", label: "Reçu envoyé", tone: "green" },
-  { key: "sans", label: "Sans reçu fiscal", tone: "gray" },
+  { key: "sans", label: "Reçu non demandé", tone: "gray" },
 ];

@@ -1144,7 +1144,7 @@ export default function GestionDons({
               </select>
               <span className="mt-1 block text-xs text-muted">
                 {f.envoi_prefere === "aucun"
-                  ? "Ce donateur ne veut pas de reçu fiscal : ses dons sans reçu établi n'apparaissent plus « à établir »."
+                  ? "Ce donateur ne demande pas de reçu fiscal : ses dons sans reçu établi n'apparaissent plus « à établir »."
                   : f.envoi_prefere === "courrier"
                     ? "Courrier postal : l'adresse et le code postal sont nécessaires ; le courriel est facultatif."
                     : "Courriel : l'adresse électronique est nécessaire. À modifier si le donateur change de mode de réception."}

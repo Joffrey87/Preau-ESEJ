@@ -109,7 +109,7 @@ export default async function Home() {
   const recusAEnvoyer = dons.filter((d) => !recuEnvoye(d) && !sansRecu(d)).length;
   // Sans reçu demandé, seule l'identité du donateur compte (adresse et courriel ne servent qu'au reçu).
   const donsIncomplets = dons.filter((d) =>
-    champsImportantsManquants(d).some((c) => !sansRecu(d) || c === "nom" || c === "raison sociale"),
+    champsImportantsManquants(d).some((c) => !sansRecu(d) || c === "nom" || c === "nom de l'organisme"),
   ).length;
   const totalDons = dons.length;
 

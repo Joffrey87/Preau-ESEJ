@@ -103,7 +103,7 @@ export default function FicheRecuDonateur({
     setErreur(null);
     if (!coffre.estOuvert) return setErreur("Coffre verrouillé : déverrouillez-le (Paramètres → Sécurité) pour modifier la fiche.");
     if (form.est_personne_morale ? !form.raison_sociale.trim() : !form.donateur_nom.trim())
-      return setErreur(form.est_personne_morale ? "La raison sociale est obligatoire." : "Le nom est obligatoire.");
+      return setErreur(form.est_personne_morale ? "Le nom de l'organisme est obligatoire." : "Le nom est obligatoire.");
     setBusy(true);
     const pii = {
       titre: form.donateur_titre.trim() || null,
@@ -229,7 +229,7 @@ export default function FicheRecuDonateur({
             {form.est_personne_morale ? (
               <div className="grid gap-3 sm:grid-cols-4">
                 <div className="sm:col-span-2">
-                  <Field label="Raison sociale">
+                  <Field label="Nom de l'organisme">
                     <input type="text" value={form.raison_sociale} onChange={(e) => set("raison_sociale", e.target.value)} className={inputCls} />
                   </Field>
                 </div>

@@ -180,7 +180,7 @@ export default function ReconciliationCompta({
     if (!edit) return;
     setError(null);
     if (!ficheValide(f)) {
-      setError(f.est_personne_morale ? "La raison sociale est obligatoire." : "Le nom est obligatoire.");
+      setError(f.est_personne_morale ? "Le nom de l'organisme est obligatoire." : "Le nom est obligatoire.");
       return;
     }
     setFiches((p) => ({ ...p, [edit.id]: f }));

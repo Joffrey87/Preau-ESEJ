@@ -922,7 +922,7 @@ export default function ImportReleve({
     ev.preventDefault();
     if (!cibleDon) return;
     if (!ficheDonateurValide(fDon)) {
-      setErreurDon(fDon.est_personne_morale ? "La raison sociale est obligatoire." : "Le nom est obligatoire.");
+      setErreurDon(fDon.est_personne_morale ? "Le nom de l'organisme est obligatoire." : "Le nom est obligatoire.");
       return;
     }
     majEcriture(cibleDon.i, cibleDon.cle, { donateur: fDon, donLie: "" });

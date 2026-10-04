@@ -72,6 +72,6 @@ export function incoherenceCategorie(d: {
   const pm = estCategoriePersonneMorale(d.categorie_donateur);
   if (pm === d.est_personne_morale) return null;
   return pm
-    ? `Catégorie « ${d.categorie_donateur} » mais saisi comme particulier : renseigner la raison sociale.`
+    ? `Catégorie « ${d.categorie_donateur} » mais saisi comme particulier : renseigner le nom de l'organisme.`
     : "Catégorie « Particulier » mais saisi comme personne morale.";
 }

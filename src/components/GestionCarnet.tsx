@@ -150,7 +150,7 @@ export default function GestionCarnet({
     e.preventDefault();
     setError(null);
     if (f.est_personne_morale ? !f.raison_sociale.trim() : !f.nom.trim()) {
-      setError(f.est_personne_morale ? "La raison sociale est obligatoire." : "Le nom est obligatoire.");
+      setError(f.est_personne_morale ? "Le nom de l'organisme est obligatoire." : "Le nom est obligatoire.");
       return;
     }
     setSaving(true);
@@ -366,7 +366,7 @@ export default function GestionCarnet({
             </div>
 
             {f.est_personne_morale ? (
-              <Field label="Raison sociale">
+              <Field label="Nom de l'organisme">
                 <input type="text" required value={f.raison_sociale} onChange={(e) => set("raison_sociale", e.target.value)} className={inputCls} />
               </Field>
             ) : (

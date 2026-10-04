@@ -266,7 +266,7 @@ export default function GestionPipeline({ prospects }: { prospects: Prospect[] }
       {edit && (
         <Modal title={edit === "nouveau" ? "Nouveau prospect" : "Modifier le prospect"} onClose={() => setEdit(null)}>
           <form onSubmit={submit} className="space-y-4">
-            <Field label="Nom / raison sociale">
+            <Field label="Nom / organisme">
               <input type="text" required value={form.nom} onChange={(e) => setForm({ ...form, nom: e.target.value })} className={inputCls} placeholder="Ex. M. et Mme X, Fondation Y, Entreprise Z" />
             </Field>
             <div className="grid grid-cols-2 gap-3">

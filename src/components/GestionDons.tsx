@@ -405,7 +405,7 @@ export default function GestionDons({
       return;
     }
     if (f.est_personne_morale ? !f.raison_sociale.trim() : !f.donateur_nom.trim()) {
-      setError(f.est_personne_morale ? "La raison sociale est obligatoire." : "Le nom est obligatoire.");
+      setError(f.est_personne_morale ? "Le nom de l'organisme est obligatoire." : "Le nom est obligatoire.");
       return;
     }
 
@@ -1042,7 +1042,7 @@ export default function GestionDons({
               </select>
               <span className="mt-1 block text-xs text-muted">
                 {f.est_personne_morale
-                  ? "Personne morale : le reçu est établi à la raison sociale ; nom et prénom désignent le contact."
+                  ? "Personne morale : le reçu est établi au nom de l'organisme ; nom et prénom désignent le contact."
                   : "Particulier : le reçu est établi au nom et prénom."}
               </span>
             </Field>
@@ -1091,7 +1091,7 @@ export default function GestionDons({
 
             {f.est_personne_morale ? (
               <>
-                <Field label="Raison sociale">
+                <Field label="Nom de l'organisme">
                   <input type="text" required value={f.raison_sociale} onChange={(e) => set("raison_sociale", e.target.value)} className={inputCls + ringManque(!f.raison_sociale.trim())} placeholder="Ex. Oeuvre Salésienne" />
                 </Field>
                 <div className="grid grid-cols-3 gap-3">
@@ -1106,7 +1106,7 @@ export default function GestionDons({
                   </Field>
                 </div>
                 <p className="-mt-1 text-xs text-muted">
-                  Le courriel sera adressé à ce contact ; le reçu fiscal reste établi au nom de la raison sociale.
+                  Le courriel sera adressé à ce contact ; le reçu fiscal reste établi au nom de l&apos;organisme.
                 </p>
               </>
             ) : (

@@ -116,14 +116,14 @@ export default function ChampsDonateur({
         </select>
         <span className="mt-1 block text-xs text-muted">
           {f.est_personne_morale
-            ? "Personne morale : le reçu est établi à la raison sociale ; nom et prénom désignent le contact."
+            ? "Personne morale : le reçu est établi au nom de l'organisme ; nom et prénom désignent le contact."
             : "Particulier : le reçu est établi au nom et prénom."}
         </span>
       </Field>
 
       {f.est_personne_morale ? (
         <>
-          <Field label="Raison sociale">
+          <Field label="Nom de l'organisme">
             <input type="text" required value={f.raison_sociale} onChange={(e) => set("raison_sociale", e.target.value)} className={inputCls} />
           </Field>
           <div className="grid grid-cols-3 gap-3">

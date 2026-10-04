@@ -49,7 +49,7 @@ export function etatDon(
   if (r.lien === "probable") return { etat: "probable", manquants: [] };
   if (verrou && don.pii_chiffre) return { etat: "relie_verrouille", manquants: [] };
   const sans = sansRecu(don);
-  const manquants = champsImportantsManquants(don).filter((c) => !sans || c === "nom" || c === "raison sociale");
+  const manquants = champsImportantsManquants(don).filter((c) => !sans || c === "nom" || c === "nom de l'organisme");
   return { etat: manquants.length ? "incomplet" : "complet", manquants };
 }
 

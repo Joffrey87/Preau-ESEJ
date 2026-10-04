@@ -65,7 +65,7 @@ export default function ReattribuerDon({
     setErreur(null);
     if (!coffre.estOuvert) return setErreur("Coffre verrouillé : déverrouillez-le (Paramètres → Sécurité) pour réattribuer un don.");
     const cible: FormDonateur = mode === "existant" && ficheChoisie ? formDonateurDepuisDon(ficheChoisie.exemple) : nouveau;
-    if (!ficheDonateurValide(cible)) return setErreur(cible.est_personne_morale ? "La raison sociale est obligatoire." : "Le nom est obligatoire.");
+    if (!ficheDonateurValide(cible)) return setErreur(cible.est_personne_morale ? "Le nom de l'organisme est obligatoire." : "Le nom est obligatoire.");
     setBusy(true);
     const supabase = createClient();
     const envoiPrefere = mode === "existant" && ficheChoisie ? (ficheChoisie.exemple.envoi_prefere ?? null) : null;

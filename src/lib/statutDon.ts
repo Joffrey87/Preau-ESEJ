@@ -84,7 +84,7 @@ export function sansRecu(d: Pick<Don, "recu_etat" | "recu_numero" | "envoi_prefe
 /** Champs importants manquants : bloquent un reçu CERFA valide ou son envoi. */
 export function champsImportantsManquants(d: Don): string[] {
   const m: string[] = [];
-  if (vide(nomDonateur(d))) m.push(d.est_personne_morale ? "raison sociale" : "nom");
+  if (vide(nomDonateur(d))) m.push(d.est_personne_morale ? "nom de l'organisme" : "nom");
   if (vide(d.adresse)) m.push("adresse");
   if (vide(d.cp_ville)) m.push("CP/ville");
   // Le courriel n'est exigé que si le donateur reçoit ses reçus par courriel.
@@ -108,7 +108,7 @@ export function statutsDon(d: Don, recurrents: Set<string>): Chip[] {
   // Axe workflow du reçu (une seule pastille).
   const sans = sansRecu(d);
   if (sans) {
-    chips.push({ key: "sans", label: "Reçu non demandé", tone: "gray", detail: "Le donateur ne demande pas de reçu" });
+    chips.push({ key: "sans", label: "Reçu non demandé", tone: "green", detail: "Le donateur ne demande pas de reçu" });
   } else if (recuEnvoye(d)) {
     chips.push({ key: "envoye", label: "Reçu envoyé", tone: "green" });
   } else if (vide(d.recu_numero)) {
@@ -123,7 +123,7 @@ export function statutsDon(d: Don, recurrents: Set<string>): Chip[] {
   // seule l'identité du donateur reste importante : l'adresse et le courriel
   // ne servent qu'au reçu.
   const importants = champsImportantsManquants(d).filter(
-    (c) => !sans || c === "nom" || c === "raison sociale",
+    (c) => !sans || c === "nom" || c === "nom de l'organisme",
   );
   const mineurs = champsMineursManquants(d);
   if (importants.length) {
@@ -163,5 +163,5 @@ export const FILTRES: { key: StatutKey; label: string; tone: Tone }[] = [
   { key: "annuel", label: "Reçu annuel en attente", tone: "violet" },
   { key: "envoyer", label: "Reçu à envoyer", tone: "blue" },
   { key: "envoye", label: "Reçu envoyé", tone: "green" },
-  { key: "sans", label: "Reçu non demandé", tone: "gray" },
+  { key: "sans", label: "Reçu non demandé", tone: "green" },
 ];

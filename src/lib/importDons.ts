@@ -72,7 +72,7 @@ export const CHAMPS_DON: ChampDon[] = [
   { key: "donateur_titre", label: "Titre", pii: true, kw: ["titre", "civilit"] },
   { key: "donateur_nom", label: "Nom", pii: true, kw: ["nom"] },
   { key: "donateur_prenom", label: "Prénom", pii: true, kw: ["prenom", "prénom"] },
-  { key: "raison_sociale", label: "Raison sociale", pii: true, kw: ["raison", "societe", "société", "organisme"] },
+  { key: "raison_sociale", label: "Nom de l'organisme", pii: true, kw: ["raison", "societe", "société", "organisme"] },
   { key: "adresse", label: "Adresse", pii: true, kw: ["adresse", "rue"] },
   { key: "cp_ville", label: "CP et ville", pii: true, kw: ["cp", "ville", "code postal", "commune"] },
   { key: "courriel", label: "Courriel", pii: true, kw: ["courriel", "mail", "email", "e-mail"] },

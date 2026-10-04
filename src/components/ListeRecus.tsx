@@ -102,8 +102,8 @@ function grouper(dons: DonRow[], coffreOuvert: boolean): Groupe[] {
 }
 
 /**
- * Où en est ce reçu ? Les dons de l'année en cours d'un donateur mensuel (dons sur au moins
- * 3 mois différents des 12 derniers mois) attendent la fin de l'année pour un reçu unique ;
+ * Où en est ce reçu ? Les dons de l'année en cours d'un donateur mensuel (il donne tous les
+ * mois, depuis au moins 3 mois, sur les 12 derniers mois) attendent la fin de l'année pour un reçu unique ;
  * un reçu intermédiaire reste possible à sa demande. Tout autre don sans reçu est « à établir ».
  */
 function statutRecu(g: Groupe, recurrents: Set<string>, anneeEnCours: number): StatutRecu {
@@ -168,8 +168,9 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
 
   const anneeEnCours = new Date().getFullYear();
 
-  // Un donateur est « mensuel » s'il a donné durant au moins 3 mois différents sur les 12
-  // derniers mois : seuls ses dons de l'année en cours attendent la fin d'année pour un reçu unique.
+  // Un donateur est « mensuel » s'il donne tous les mois : sur les 12 derniers mois, entre son
+  // premier et son dernier don il n'y a aucun mois sans don (au moins 3 mois). Seuls ses dons
+  // de l'année en cours attendent la fin d'année pour un reçu unique.
   const recurrents = useMemo(() => {
     const limite = new Date();
     limite.setFullYear(limite.getFullYear() - 1);
@@ -180,7 +181,17 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
       if (!c || c === "|" || d.date_don < depuis) continue;
       (mois.get(c) ?? mois.set(c, new Set()).get(c)!).add(d.date_don.slice(0, 7));
     }
-    return new Set([...mois].filter(([, m]) => m.size >= 3).map(([c]) => c));
+    const rang = (m: string) => Number(m.slice(0, 4)) * 12 + Number(m.slice(5, 7));
+    return new Set(
+      [...mois]
+        .filter(([, m]) => {
+          const rangs = [...m].map(rang);
+          const premier = Math.min(...rangs);
+          const dernier = Math.max(...rangs);
+          return rangs.length >= 3 && rangs.length === dernier - premier + 1;
+        })
+        .map(([c]) => c),
+    );
   }, [hydrates]);
 
   const tous = useMemo(

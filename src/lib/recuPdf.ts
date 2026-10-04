@@ -509,7 +509,12 @@ export function nomFichierRecu(don: DonPourRecu): string {
 async function adresseNommee(octets: Uint8Array, nom: string): Promise<string | null> {
   try {
     if (!("serviceWorker" in navigator) || !("caches" in window)) return null;
-    const reg = await navigator.serviceWorker.register("/recu-sw.js", { scope: "/recu-local/" });
+    // Ancienne inscription à portée réduite : remplacée par une inscription couvrant le site (le
+    // script ne répond qu'aux adresses /recu-local/), pour que cette page puisse vérifier le service.
+    for (const r of await navigator.serviceWorker.getRegistrations()) {
+      if (r.scope.endsWith("/recu-local/")) await r.unregister();
+    }
+    const reg = await navigator.serviceWorker.register("/recu-sw.js");
     const sw = reg.active ?? reg.waiting ?? reg.installing;
     if (!sw) return null;
     if (sw.state !== "activated") {
@@ -521,6 +526,15 @@ async function adresseNommee(octets: Uint8Array, nom: string): Promise<string | 
             ok();
           }
         });
+      });
+    }
+    if (!navigator.serviceWorker.controller) {
+      await new Promise<void>((ok) => {
+        const t = setTimeout(ok, 3000);
+        navigator.serviceWorker.addEventListener("controllerchange", () => {
+          clearTimeout(t);
+          ok();
+        }, { once: true });
       });
     }
     const cache = await caches.open("recu-local");
@@ -536,8 +550,14 @@ async function adresseNommee(octets: Uint8Array, nom: string): Promise<string | 
         },
       }),
     );
+    // Vérification : l'adresse doit bien renvoyer le PDF (sinon l'onglet recevrait une page web).
+    const essai = await fetch(chemin);
+    if (!essai.ok || !(essai.headers.get("content-type") ?? "").includes("pdf")) {
+      await cache.delete(chemin);
+      return null;
+    }
     setTimeout(() => void cache.delete(chemin), 10 * 60_000);
-    return chemin;
+    return `${location.origin}${chemin}`;
   } catch {
     return null;
   }

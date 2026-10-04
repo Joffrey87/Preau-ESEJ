@@ -6,6 +6,10 @@ import DeverrouillerCoffre from "@/components/DeverrouillerCoffre";
 import { Modal, Field, inputCls } from "./GestionComptes";
 import GestionDons, { type Don } from "./GestionDons";
 import ReattribuerDon from "./ReattribuerDon";
+import FicheRecuDonateur from "./FicheRecuDonateur";
+import { LIBELLE, TON, type StatutRecu } from "./recusCommun";
+
+export type { StatutRecu } from "./recusCommun";
 import { createClient } from "@/lib/supabase/client";
 import { formatEuros, formatDate, todayISO } from "@/lib/format";
 import { useDonsDechiffres } from "@/lib/donsChiffre";
@@ -33,7 +37,7 @@ export type RecuInfo = {
  * même donateur et d'une même année forment le reçu « à établir » — après un
  * reçu intermédiaire, il ne reprend donc que les dons arrivés depuis.
  */
-type Groupe = {
+export type Groupe = {
   cle: string;
   numero: string | null;
   annee: number;
@@ -97,24 +101,6 @@ function grouper(dons: DonRow[], coffreOuvert: boolean): Groupe[] {
   return groupes.sort((a, b) => b.representant.date_don.localeCompare(a.representant.date_don));
 }
 
-export type StatutRecu = "envoye" | "edite" | "attente" | "a_faire" | "sans";
-
-const LIBELLE: Record<StatutRecu, string> = {
-  envoye: "Envoyé",
-  edite: "Établi, à envoyer",
-  attente: "Attente fin d'année",
-  a_faire: "À établir",
-  sans: "Reçu non demandé",
-};
-
-const TON: Record<StatutRecu, string> = {
-  envoye: "bg-positive/15 text-positive",
-  edite: "bg-accent-soft text-accent",
-  attente: "bg-gold-soft text-gold",
-  a_faire: "bg-negative/10 text-negative",
-  sans: "bg-surface-2 text-muted",
-};
-
 /**
  * Où en est ce reçu ? Les dons de l'année en cours d'un donateur régulier
  * attendent la fin de l'année pour un reçu unique ; un reçu intermédiaire
@@ -122,7 +108,7 @@ const TON: Record<StatutRecu, string> = {
  */
 function statutRecu(g: Groupe, recurrents: Set<string>, anneeEnCours: number): StatutRecu {
   if (g.sans) return "sans";
-  if (g.numero) return g.dons.every(recuEnvoye) ? "envoye" : "edite";
+  if (g.numero) return g.dons.every(recuEnvoye) ? "envoye" : prefereCourrier(g.representant) ? "courrier" : "edite";
   const regulier = g.dons.length > 1 || recurrents.has(cleDonateur(g.representant));
   return regulier && g.annee >= anneeEnCours ? "attente" : "a_faire";
 }
@@ -151,14 +137,6 @@ function donPourRecu(r: DonRow, dons: DonRow[], numero: string, dateEdition: str
   };
 }
 
-/** Ligne de détail sous le statut : date et moyen d'envoi (registre), sinon l'ancien texte libre du don. */
-function detailEnvoi(g: Groupe, st: StatutRecu, suivi: RecuInfo | undefined): string | null {
-  if (st !== "envoye") return null;
-  if (suivi?.envoye_le) return `${formatDate(suivi.envoye_le)}${libelleMoyen(suivi.envoi_mode) ? ` · ${libelleMoyen(suivi.envoi_mode)}` : ""}`;
-  const texte = g.dons.map((d) => d.recu_etat?.trim()).find(Boolean);
-  return texte || null;
-}
-
 export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: RecuInfo[] }) {
   const router = useRouter();
   const { dons: hydrates, verrou } = useDonsDechiffres(dons);
@@ -172,6 +150,8 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
   // Fiche donateur ouverte en fenêtre (même formulaire que l'onglet Dons).
   const [ficheId, setFicheId] = useState<{ id: string; signaler: boolean } | null>(null);
   const [envoi, setEnvoi] = useState<Groupe | null>(null);
+  // Fiche « Reçu fiscal donateur » : tous les dons du donateur, année par année.
+  const [fiche, setFiche] = useState<{ ids: Set<string>; annee: number } | null>(null);
   // Lignes dépliées (leurs dons s'affichent en « lignes filles ») et don en cours de réattribution.
   const [ouverts, setOuverts] = useState<Set<string>>(new Set());
   const [reattribuer, setReattribuer] = useState<{ don: DonRow; statut: "envoye" | "edite" | null } | null>(null);
@@ -274,6 +254,7 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
     { cle: "a_faire", libelle: "À établir", ton: "text-negative" },
     { cle: "attente", libelle: "Attente fin d'année", ton: "text-gold" },
     { cle: "edite", libelle: "Établis, à envoyer", ton: "text-accent" },
+    { cle: "courrier", libelle: "Établis, à poster", ton: "text-emerald-600" },
     { cle: "envoye", libelle: "Envoyés", ton: "text-positive" },
     { cle: "sans", libelle: "Reçu non demandé", ton: "text-muted" },
   ];
@@ -298,6 +279,9 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
     const cle = cleDonateur(g.representant);
     return !verrou && cle && cle !== "|" ? hydrates.filter((d) => cleDonateur(d) === cle) : g.dons;
   };
+
+  const ouvrirFicheDonateur = (g: Groupe) =>
+    setFiche({ ids: new Set(donsDuDonateur(g).map((d) => d.id)), annee: g.annee });
 
   async function refuserRecu(g: Groupe) {
     const nom = nomAffiche(g.representant);
@@ -368,12 +352,16 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
       )}
 
       {/* Tableau de bord */}
-      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-5">
+      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-6">
         {tuiles.map((t) => (
           <button
             key={t.cle}
             type="button"
-            onClick={() => setStatut(statut === t.cle ? "tous" : t.cle)}
+            onClick={() => {
+              // Un filtre cliqué montre tous les reçus concernés : la recherche en cours est effacée.
+              setRecherche("");
+              setStatut(statut === t.cle ? "tous" : t.cle);
+            }}
             className={`rounded-xl border px-4 py-3 text-left transition-colors ${
               statut === t.cle ? "border-accent bg-accent-soft" : "border-border bg-surface hover:bg-surface-2"
             }`}
@@ -388,7 +376,10 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
       {incomplets > 0 && (
         <button
           type="button"
-          onClick={() => setIncompletsSeuls((v) => !v)}
+          onClick={() => {
+            setRecherche("");
+            setIncompletsSeuls((v) => !v);
+          }}
           aria-pressed={incompletsSeuls}
           className={`mb-4 flex w-full flex-wrap items-center justify-between gap-2 rounded-xl border px-4 py-2.5 text-left text-sm text-negative transition-colors ${
             incompletsSeuls ? "border-negative bg-negative/10" : "border-negative/30 bg-negative/5 hover:bg-negative/10"
@@ -437,7 +428,7 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
         </div>
         {incompletsSeuls && (
           <span className="text-sm text-negative">
-            Reçus incomplets uniquement{verrou ? "" : " — cliquez sur une ligne pour compléter la fiche"}
+            Reçus incomplets uniquement{verrou ? "" : " — cliquez sur une ligne pour ouvrir la fiche Reçu fiscal du donateur"}
           </span>
         )}
         {statut !== "tous" && (
@@ -471,12 +462,11 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
             ) : (
               affiches.map(({ g, statut: st, manquants }) => {
                 const aCompleter = st !== "envoye" && manquants.length > 0 && !verrou;
-                const detail = detailEnvoi(g, st, suivi.get(g.numero ?? ""));
                 return (
                 <Fragment key={g.cle}>
                 <tr
-                  onClick={verrou ? undefined : (e) => { if (!(e.target as HTMLElement).closest("button, a")) ouvrirFiche(g.representant, aCompleter); }}
-                  title={verrou ? undefined : aCompleter ? "Cliquer pour ouvrir la fiche du donateur et compléter : " + manquants.join(", ") : "Cliquer pour ouvrir la fiche du donateur"}
+                  onClick={verrou ? undefined : (e) => { if (!(e.target as HTMLElement).closest("button, a")) ouvrirFicheDonateur(g); }}
+                  title={verrou ? undefined : aCompleter ? "Cliquer pour ouvrir la fiche Reçu fiscal du donateur et compléter : " + manquants.join(", ") : "Cliquer pour ouvrir la fiche Reçu fiscal du donateur"}
                   className={`${verrou ? "" : "cursor-pointer hover:bg-surface-2"} ${ouverts.has(g.cle) ? "" : "border-b border-border last:border-0"}`}
                 >
                   <td className="px-4 py-3 tabular-nums">
@@ -514,7 +504,6 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
                         à scinder
                       </span>
                     )}
-                    {detail && <div className="mt-0.5 text-xs text-muted">{detail}</div>}
                   </td>
                   <td className="px-4 py-3 text-right whitespace-nowrap">
                     {verrou ? (
@@ -524,7 +513,7 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
                         <button type="button" onClick={() => telecharger(g)} disabled={busy === g.cle} className="text-accent hover:underline disabled:opacity-50">
                           PDF
                         </button>
-                        {st === "edite" && (
+                        {(st === "edite" || st === "courrier") && (
                           <>
                             <button type="button" onClick={() => setEnvoi(g)} disabled={busy === g.cle} className="text-positive hover:underline disabled:opacity-50">
                               Marquer envoyé
@@ -617,6 +606,34 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
           </tbody>
         </table>
       </div>
+
+      {fiche && (() => {
+        const donsFiche = hydrates.filter((d) => fiche.ids.has(d.id));
+        if (donsFiche.length === 0) return null;
+        return (
+          <FicheRecuDonateur
+            entrees={tous.filter((x) => x.g.dons.some((d) => fiche.ids.has(d.id))).map(({ g, statut: st }) => ({ g, statut: st }))}
+            dons={donsFiche}
+            suivi={suivi}
+            anneeCible={fiche.annee}
+            actions={{
+              etablir: setEtablir,
+              envoi: setEnvoi,
+              pdf: telecharger,
+              annuler,
+              refuser: refuserRecu,
+              retablir: retablirRecu,
+              modifierDon: (d, signaler) => ouvrirFiche(d, signaler),
+              reattribuer: (d, g, st) => setReattribuer({ don: d, statut: g.numero ? (st === "envoye" ? "envoye" : "edite") : null }),
+            }}
+            onFermer={() => setFiche(null)}
+            onChange={(ok, t) => {
+              setMessage({ ok, t });
+              router.refresh();
+            }}
+          />
+        );
+      })()}
 
       {envoi && (
         <EnvoiRecu

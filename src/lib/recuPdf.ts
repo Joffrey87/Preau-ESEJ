@@ -454,7 +454,7 @@ export async function construireRecuPdf(don: DonPourRecu, options: OptionsRecu =
     t2(tt, 535 - semi.widthOfTextAtSize(assainir(tt), VAL), y, semi, VAL);
   }
 
-  doc.setTitle(`Reçu fiscal ${numero || ""}`.trim());
+  doc.setTitle(titreRecu(don));
   doc.setAuthor("ARIL");
   doc.setProducer("Préau");
 
@@ -472,15 +472,26 @@ export function numeroCourt(recuNumero: string | null): string | null {
   return recuNumero?.startsWith("RE_") ? recuNumero.slice(3) : null;
 }
 
-/** Nom de fichier : « Reçu fiscal N°0228 - Nom Prénom.pdf » (raison sociale pour une entreprise). */
-export function nomFichierRecu(don: DonPourRecu): string {
-  const propre = (s: string | null | undefined) =>
-    (s ?? "").replace(/[\\/:*?"<>|]/g, "").replace(/\s+/g, " ").trim();
+/**
+ * Nom du reçu : « Reçu fiscal 2026 - N°0207 - EXEMPLE Marie » (avec « .pdf » pour le fichier).
+ * L'année est celle des dons, le numéro est abrégé (quatre derniers chiffres de la séquence),
+ * le donateur est écrit NOM Prénom, ou sa raison sociale pour une entreprise.
+ */
+export function titreRecu(don: DonPourRecu): string {
+  const propre = (t: string | null | undefined) =>
+    (t ?? "").replace(/[\\/:*?"<>|]/g, "").replace(/\s+/g, " ").trim();
   const qui = don.est_personne_morale
     ? propre(don.raison_sociale ?? don.donateur_nom)
-    : propre(`${don.donateur_nom ?? ""} ${don.donateur_prenom ?? ""}`);
+    : propre(`${(don.donateur_nom ?? "").toLocaleUpperCase("fr-FR")} ${don.donateur_prenom ?? ""}`);
+  const dates = don.versements?.length ? don.versements.map((v) => v.date) : [don.date_don];
+  const annee = dates.map((d) => d.slice(0, 4)).sort()[0];
   const num = numeroCourt(don.recu_numero);
-  return `Reçu fiscal ${num ? `N°${num}` : "sans numéro"} - ${qui || "donateur"}.pdf`;
+  return `Reçu fiscal ${annee} - ${num ? `N°${num}` : "sans numéro"} - ${qui || "donateur"}`;
+}
+
+/** Nom du fichier PDF d'un reçu. */
+export function nomFichierRecu(don: DonPourRecu): string {
+  return `${titreRecu(don)}.pdf`;
 }
 
 /**

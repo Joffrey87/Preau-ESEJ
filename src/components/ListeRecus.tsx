@@ -7,7 +7,7 @@ import { Modal, Field, inputCls } from "./GestionComptes";
 import GestionDons, { type Don } from "./GestionDons";
 import ReattribuerDon from "./ReattribuerDon";
 import FicheRecuDonateur from "./FicheRecuDonateur";
-import { LIBELLE, TON, type StatutRecu } from "./recusCommun";
+import { EDITION_EXIGEE_DEPUIS, LIBELLE, TON, type StatutRecu } from "./recusCommun";
 
 export type { StatutRecu } from "./recusCommun";
 import { createClient } from "@/lib/supabase/client";
@@ -15,7 +15,7 @@ import { formatEuros, formatDate, todayISO } from "@/lib/format";
 import { useDonsDechiffres } from "@/lib/donsChiffre";
 import { cleDonateur, champsImportantsManquants, recuEnvoye, sansRecu } from "@/lib/statutDon";
 import { MOYENS_ENVOI, etatEnvoye, libelleMoyen, prefereCourrier } from "@/lib/envoiRecu";
-import { genererRecuPdf, dateEditionDuNumero, type DonPourRecu } from "@/lib/recu";
+import { genererRecuPdf, type DonPourRecu } from "@/lib/recu";
 import { syntheseVersements } from "@/lib/recuVersements";
 
 /** Un don, tel que lu par la page (mêmes colonnes que l'onglet Dons : la fiche s'ouvre ici). */
@@ -48,11 +48,15 @@ export type Groupe = {
   aScinder: boolean;
   /** Le donateur ne demande pas de reçu fiscal pour ces dons. */
   sans: boolean;
+  /** Numéro seulement réservé : reçu 2026 ni édité (aucune date d'édition) ni envoyé. */
+  reserve: boolean;
 };
 
-/** Date d'édition : celle enregistrée sur les dons, sinon celle que porte le numéro, sinon aujourd'hui. */
-const dateEditionDuRecu = (g: Groupe) =>
-  g.dons.find((d) => d.recu_emis_le)?.recu_emis_le ?? dateEditionDuNumero(g.numero) ?? todayISO();
+/**
+ * Date d'édition : celle enregistrée sur les dons, sinon aujourd'hui. Le suffixe du numéro est la
+ * date du (premier) don, pas la date d'édition : il n'est jamais lu comme telle.
+ */
+const dateEditionDuRecu = (g: Groupe) => g.dons.find((d) => d.recu_emis_le)?.recu_emis_le ?? todayISO();
 
 /** Minuscules sans accents, pour une recherche tolérante. */
 const sansAccents = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
@@ -89,6 +93,10 @@ function grouper(dons: DonRow[], coffreOuvert: boolean): Groupe[] {
       numero: cle.startsWith("n|") ? representant.recu_numero : null,
       aScinder: false,
       sans: cle.startsWith("s|"),
+      reserve:
+        cle.startsWith("n|") &&
+        Number(representant.date_don.slice(0, 4)) >= EDITION_EXIGEE_DEPUIS &&
+        !rows.some((d) => d.recu_emis_le || recuEnvoye(d)),
       annee: Number(representant.date_don.slice(0, 4)),
       total: rows.reduce((s, d) => s + Number(d.montant), 0),
       dons: tri,
@@ -108,7 +116,7 @@ function grouper(dons: DonRow[], coffreOuvert: boolean): Groupe[] {
  */
 function statutRecu(g: Groupe, recurrents: Set<string>, anneeEnCours: number): StatutRecu {
   if (g.sans) return "sans";
-  if (g.numero) return g.dons.every(recuEnvoye) ? "envoye" : prefereCourrier(g.representant) ? "courrier" : "edite";
+  if (g.numero && !g.reserve) return g.dons.every(recuEnvoye) ? "envoye" : prefereCourrier(g.representant) ? "courrier" : "edite";
   return recurrents.has(cleDonateur(g.representant)) && g.annee >= anneeEnCours ? "attente" : "a_faire";
 }
 
@@ -334,6 +342,38 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
     router.refresh();
   }
 
+  /**
+   * Établit un reçu à numéro réservé : le numéro est conservé, la date d'édition devient celle
+   * d'aujourd'hui et le PDF s'ouvre. (Le PDF démarre d'abord, dans le geste du clic.)
+   */
+  async function editerReserve(g: Groupe) {
+    if (!g.numero) return;
+    const aujourdhui = todayISO();
+    if (!window.confirm(`Établir le reçu ${g.numero} (${formatEuros(g.total)}, ${g.dons.length} don${g.dons.length > 1 ? "s" : ""}) avec la date d'édition du ${formatDate(aujourdhui)} ?\n\nSes dons sont tous repris. Pour n'en éditer que certains, détachez les autres dans la fiche du donateur.`)) return;
+    setMessage(null);
+    setBusy(g.cle);
+    const pdf = genererRecuPdf(donPourRecu(g.representant, g.dons, g.numero, aujourdhui), { ouvrir: true });
+    const supabase = createClient();
+    const { error } = await supabase.from("dons").update({ recu_emis_le: aujourdhui }).in("id", g.dons.map((d) => d.id));
+    if (!error) await supabase.from("recus").update({ date_edition: aujourdhui }).eq("recu_numero", g.numero);
+    let erreurPdf: string | null = null;
+    try {
+      await pdf;
+    } catch (e) {
+      erreurPdf = e instanceof Error ? e.message : "Génération du PDF impossible.";
+    }
+    setBusy(null);
+    setMessage(
+      error
+        ? { ok: false, t: "Édition non enregistrée : " + error.message }
+        : { ok: !erreurPdf, t: erreurPdf ? `Reçu ${g.numero} établi, mais le PDF a échoué (${erreurPdf}) : utilisez « PDF ».` : `Reçu ${g.numero} établi le ${formatDate(aujourdhui)}.` },
+    );
+    router.refresh();
+  }
+
+  /** « Établir » : numéro réservé → date du jour ; sinon choix des dons et nouveau numéro. */
+  const lancerEtablir = (g: Groupe) => (g.reserve ? void editerReserve(g) : setEtablir(g));
+
   async function annuler(g: Groupe) {
     if (!g.numero) return;
     if (!window.confirm(`Annuler le reçu ${g.numero} ? Ses dons redeviendront « à établir » ; le numéro ne sera jamais réattribué.`)) return;
@@ -503,7 +543,10 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
                   </td>
                   <td className="px-4 py-3 text-right font-medium tabular-nums">{formatEuros(g.total)}</td>
                   <td className="px-4 py-3 text-center tabular-nums text-muted">{g.dons.length}</td>
-                  <td className="px-4 py-3 text-xs tabular-nums">{g.numero ?? "—"}</td>
+                  <td className="px-4 py-3 text-xs tabular-nums">
+                    {g.numero ?? "—"}
+                    {g.reserve && <div className="text-[10px] text-muted">réservé, pas encore édité</div>}
+                  </td>
                   <td className="px-4 py-3">
                     <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${TON[st]}`}>
                       {LIBELLE[st]}
@@ -522,7 +565,7 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
                   <td className="px-4 py-3 text-right whitespace-nowrap">
                     {verrou ? (
                       <span className="text-xs text-muted">🔒</span>
-                    ) : g.numero ? (
+                    ) : g.numero && !g.reserve ? (
                       <span className="inline-flex items-center gap-3 text-xs">
                         <button type="button" onClick={() => telecharger(g)} disabled={busy === g.cle} className="text-accent hover:underline disabled:opacity-50">
                           PDF
@@ -554,7 +597,7 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
                         </button>
                         <button
                           type="button"
-                          onClick={() => setEtablir(g)}
+                          onClick={() => lancerEtablir(g)}
                           className="rounded-lg bg-accent px-3 py-1 text-xs font-medium text-accent-fg hover:opacity-90"
                         >
                           {st === "attente" ? "Reçu intermédiaire" : "Établir le reçu"}
@@ -631,7 +674,7 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
             suivi={suivi}
             anneeCible={fiche.annee}
             actions={{
-              etablir: setEtablir,
+              etablir: lancerEtablir,
               envoi: setEnvoi,
               pdf: telecharger,
               annuler,
@@ -810,7 +853,7 @@ function EtablirRecu({
           </p>
         )}
         <p className="text-xs text-muted">
-          Le numéro suivant sera attribué automatiquement (format RE_000NNN_{todayISO().replace(/-/g, "")}) et le PDF téléchargé.
+          Le numéro suivant sera attribué automatiquement (format RE_000NNN_AAAAMMJJ, date du premier don) et le PDF téléchargé.
         </p>
         {erreur && <p className="rounded-lg bg-negative/10 px-3 py-2 text-sm text-negative">{erreur}</p>}
 

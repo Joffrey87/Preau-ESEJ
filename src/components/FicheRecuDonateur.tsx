@@ -8,7 +8,6 @@ import { LIBELLE, TON, VERROUILLER_ANNEES_AVANT, recalculerRegistre, type Statut
 import { CATEGORIES_DONATEUR, estCategoriePersonneMorale } from "@/lib/categoriesDonateur";
 import { PREFERENCES_ENVOI, libelleMoyen, prefereEnBase } from "@/lib/envoiRecu";
 import { formatDate, formatEuros } from "@/lib/format";
-import { dateEditionDuNumero } from "@/lib/recu";
 import { createClient } from "@/lib/supabase/client";
 import { useCoffre } from "@/components/CoffreProvider";
 import { champsImportantsManquants, recuEnvoye } from "@/lib/statutDon";
@@ -306,7 +305,7 @@ export default function FicheRecuDonateur({
                 {lesEntrees.map((e) => {
                   const { g, statut: st } = e;
                   const manque = g.sans ? [] : champsImportantsManquants(g.representant);
-                  const emis = g.dons.find((d) => d.recu_emis_le)?.recu_emis_le ?? dateEditionDuNumero(g.numero);
+                  const emis = g.dons.find((d) => d.recu_emis_le)?.recu_emis_le ?? null;
                   return (
                     <div key={g.cle} className="rounded-lg border border-border bg-surface-2/40 p-3">
                       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -314,7 +313,10 @@ export default function FicheRecuDonateur({
                           <div className="flex flex-wrap items-center gap-2">
                             <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${TON[st]}`}>{LIBELLE[st]}</span>
                             {g.numero ? (
-                              <span className="font-medium tabular-nums">{g.numero}</span>
+                              <span className="font-medium tabular-nums">
+                                {g.numero}
+                                {g.reserve && <span className="ml-1 text-xs font-normal text-muted">(numéro réservé, pas encore édité)</span>}
+                              </span>
                             ) : (
                               <span className="text-muted">Dons sans reçu</span>
                             )}
@@ -322,8 +324,8 @@ export default function FicheRecuDonateur({
                             {g.aScinder && <span className="rounded-full bg-gold-soft px-2 py-0.5 text-xs text-gold">numéro partagé avec une autre année</span>}
                           </div>
                           <div className="text-xs text-muted">
-                            {g.numero && emis ? `Édité le ${formatDate(emis)}` : null}
-                            {g.numero && infoEnvoi(g) ? ` · ${infoEnvoi(g)}` : null}
+                            {g.numero && !g.reserve && emis ? `Édité le ${formatDate(emis)}` : null}
+                            {g.numero && !g.reserve && infoEnvoi(g) ? ` · ${infoEnvoi(g)}` : null}
                             {!g.numero && !g.sans && st === "attente" ? "Donateur mensuel : un reçu unique est prévu en fin d'année ; un reçu intermédiaire reste possible." : null}
                             {g.sans ? "Ce donateur ne demande pas de reçu fiscal." : null}
                           </div>
@@ -331,7 +333,7 @@ export default function FicheRecuDonateur({
                         </div>
                         {!bloque && (
                           <div className="flex flex-wrap items-center gap-2 text-xs">
-                            {g.numero ? (
+                            {g.numero && !g.reserve ? (
                               <>
                                 <button type="button" onClick={() => actions.pdf(g)} className="rounded-lg border border-border px-2.5 py-1 hover:bg-surface-2">
                                   PDF

@@ -11,7 +11,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { formatEuros, formatDate, todayISO } from "@/lib/format";
-import { genererRecuPdf, dateEditionDuNumero } from "@/lib/recu";
+import { genererRecuPdf } from "@/lib/recu";
 import { PREFERENCES_ENVOI, prefereEnBase } from "@/lib/envoiRecu";
 import { Modal, Field, FormFooter, inputCls } from "./GestionComptes";
 import ChoixDonateur, { type IdentiteSaisie } from "@/components/ChoixDonateur";
@@ -616,7 +616,7 @@ export default function GestionDons({
         donateur_nom: d.donateur_nom ?? "",
         montant: couverts.reduce((s, x) => s + Number(x.montant), 0),
         versements: couverts.map((x) => ({ date: x.date_don, montant: Number(x.montant), mode: x.mode_paiement })),
-        date_edition: couverts.find((x) => x.recu_emis_le)?.recu_emis_le ?? dateEditionDuNumero(d.recu_numero) ?? undefined,
+        date_edition: couverts.find((x) => x.recu_emis_le)?.recu_emis_le ?? undefined,
       }, { ouvrir: true });
     } catch (e) {
       setGenErreur(e instanceof Error ? e.message : "Génération impossible.");

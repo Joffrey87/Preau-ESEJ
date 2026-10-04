@@ -24,6 +24,13 @@ export const TON: Record<StatutRecu, string> = {
 };
 
 /**
+ * À partir de cette année, un numéro de reçu ne prouve pas que le reçu a été édité : il est
+ * seulement « réservé » tant qu'aucun don du reçu ne porte de date d'édition et qu'il n'est
+ * pas envoyé. Avant, tout reçu numéroté est considéré comme édité (données historiques).
+ */
+export const EDITION_EXIGEE_DEPUIS = 2026;
+
+/**
  * Années dont les reçus ne sont plus modifiables (verrouillage prévu une fois toutes les
  * données vérifiées). `null` : rien n'est verrouillé. Exemple : 2026 verrouille 2025 et avant.
  */

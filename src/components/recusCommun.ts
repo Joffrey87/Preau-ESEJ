@@ -46,6 +46,6 @@ export async function recalculerRegistre(supabase: SupabaseClient, numero: strin
   const total = (data ?? []).reduce((s, d) => s + Number(d.montant), 0);
   await supabase
     .from("recus")
-    .update(nb === 0 ? { total: 0, nb_dons: 0, annule_le: new Date().toISOString() } : { total, nb_dons: nb })
+    .update(nb === 0 ? { total: 0, nb_dons: 0, annule_le: new Date().toISOString() } : { total, nb_dons: nb, telecharge_le: null })
     .eq("recu_numero", numero);
 }

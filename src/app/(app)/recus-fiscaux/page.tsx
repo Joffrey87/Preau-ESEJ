@@ -14,7 +14,7 @@ export default async function RecusFiscauxPage() {
       )
       .is("supprime_le", null)
       .order("date_don", { ascending: false }),
-    supabase.from("recus").select("recu_numero, envoye_le, envoi_mode"),
+    supabase.from("recus").select("recu_numero, envoye_le, envoi_mode, telecharge_le"),
   ]);
   const dons = ((data ?? []) as unknown as (DonRow & { operation: unknown })[]).map((d) => ({
     ...d,

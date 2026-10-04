@@ -28,6 +28,8 @@ export type RecuInfo = {
   recu_numero: string;
   envoye_le: string | null;
   envoi_mode: string | null;
+  /** Date à laquelle le reçu a été enregistré (ZIP ou « Télécharger ») ; vide = pas encore téléchargé. */
+  telecharge_le: string | null;
 };
 
 /**
@@ -279,6 +281,12 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
   /** Un reçu est téléchargeable s'il existe : numéroté, édité (pas seulement réservé), demandé. */
   const telechargeable = (g: Groupe) => !!g.numero && !g.reserve && !g.sans;
   const affichesTelechargeables = affiches.filter((x) => telechargeable(x.g));
+  /** Reçus nouvellement établis, pas encore enregistrés (ZIP ou « Télécharger »). */
+  const aTelecharger = (g: Groupe) => {
+    const info = g.numero ? suivi.get(g.numero) : undefined;
+    return telechargeable(g) && !!info && !info.telecharge_le;
+  };
+  const nouveaux = tous.map((x) => x.g).filter(aTelecharger);
   const trierPar = (col: ColTri) =>
     setTri((t) => (!t || t.col !== col ? { col, dir: "asc" } : t.dir === "asc" ? { col, dir: "desc" } : null));
   const enteteTri = (col: ColTri, libelle: string, alignement = "") => (
@@ -311,6 +319,13 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
     { cle: "sans", libelle: "Reçu non demandé", ton: "text-positive" },
   ];
 
+  /** Note au registre que ces reçus ont été enregistrés (ils ne sont plus « à télécharger »). */
+  async function marquerTelecharges(numeros: string[]) {
+    if (numeros.length === 0) return;
+    await createClient().from("recus").update({ telecharge_le: new Date().toISOString() }).in("recu_numero", numeros);
+    router.refresh();
+  }
+
   /** « PDF » ouvre le reçu dans un onglet ; « Télécharger » l'enregistre (nom de fichier complet). */
   async function telecharger(g: Groupe, ouvrir = true) {
     if (!g.numero) return;
@@ -321,6 +336,7 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
         donPourRecu(g.representant, g.dons, g.numero, dateEditionDuRecu(g)),
         { ouvrir },
       );
+      if (!ouvrir) await marquerTelecharges([g.numero]);
     } catch (e) {
       setMessage({ ok: false, t: e instanceof Error ? e.message : "Génération impossible." });
     }
@@ -385,7 +401,7 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
     const pdf = genererRecuPdf(donPourRecu(g.representant, g.dons, g.numero, aujourdhui), { ouvrir: true });
     const supabase = createClient();
     const { error } = await supabase.from("dons").update({ recu_emis_le: aujourdhui }).in("id", g.dons.map((d) => d.id));
-    if (!error) await supabase.from("recus").update({ date_edition: aujourdhui }).eq("recu_numero", g.numero);
+    if (!error) await supabase.from("recus").update({ date_edition: aujourdhui, telecharge_le: null }).eq("recu_numero", g.numero);
     let erreurPdf: string | null = null;
     try {
       await pdf;
@@ -405,19 +421,21 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
   const lancerEtablir = (g: Groupe) => (g.reserve ? void editerReserve(g) : setEtablir(g));
 
   /** Génère les PDF des reçus cochés et les remet dans un seul fichier ZIP. */
-  async function telechargerLot() {
-    const choisis = tous.map((x) => x.g).filter((g) => selection.has(g.cle) && telechargeable(g));
+  async function telechargerLot(parmi?: Groupe[]) {
+    const choisis = parmi ?? tous.map((x) => x.g).filter((g) => selection.has(g.cle) && telechargeable(g));
     if (choisis.length === 0) return;
     setMessage(null);
     setLot({ fait: 0, total: choisis.length });
     const echecs: string[] = [];
     const fichiers: { nom: string; octets: Uint8Array }[] = [];
+    const generes: string[] = [];
     try {
       const modele = await modeleRecuEnCache(createClient());
       for (const g of choisis) {
         try {
           const don = donPourRecu(g.representant, g.dons, g.numero!, dateEditionDuRecu(g));
           fichiers.push({ nom: nomFichierRecu(don), octets: await construireRecuPdf(don, { modele }) });
+          generes.push(g.numero!);
         } catch (e) {
           echecs.push(`${g.numero} (${e instanceof Error ? e.message : "erreur"})`);
         }
@@ -433,6 +451,7 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
         a.click();
         a.remove();
         setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        await marquerTelecharges(generes);
       }
       setMessage({
         ok: echecs.length === 0,
@@ -567,7 +586,7 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
         </span>
       </div>
 
-      {!verrou && (affichesTelechargeables.length > 0 || selection.size > 0) && (
+      {!verrou && (affichesTelechargeables.length > 0 || selection.size > 0 || nouveaux.length > 0) && (
         <div className="mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface-2/60 px-4 py-2.5 text-sm">
           <span className="font-medium">
             {selection.size} reçu{selection.size > 1 ? "s" : ""} sélectionné{selection.size > 1 ? "s" : ""}
@@ -584,6 +603,17 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
           {selection.size > 0 && (
             <button type="button" onClick={() => setSelection(new Set())} className="text-muted hover:text-foreground hover:underline">
               Tout désélectionner
+            </button>
+          )}
+          {nouveaux.length > 0 && (
+            <button
+              type="button"
+              onClick={() => void telechargerLot(nouveaux)}
+              disabled={lot !== null}
+              className="rounded-lg border border-accent px-3 py-1.5 font-medium text-accent hover:bg-accent-soft disabled:opacity-50"
+              title="Génère les reçus établis qui n'ont pas encore été enregistrés et les télécharge dans un ZIP"
+            >
+              {lot && lot.total === nouveaux.length ? `Génération… ${lot.fait}/${lot.total}` : `Télécharger les ${nouveaux.length} nouveau${nouveaux.length > 1 ? "x" : ""} reçu${nouveaux.length > 1 ? "s" : ""}`}
             </button>
           )}
           <button
@@ -698,6 +728,11 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
                     {st !== "envoye" && manquants.length > 0 && (
                       <span className="ml-1.5 text-gold" title={"Manque : " + manquants.join(", ")}>
                         ⚠
+                      </span>
+                    )}
+                    {aTelecharger(g) && (
+                      <span className="ml-1.5 rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent" title="Reçu établi, pas encore enregistré : « Télécharger les nouveaux reçus »">
+                        à télécharger
                       </span>
                     )}
                     {g.aScinder && (

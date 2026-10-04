@@ -539,7 +539,7 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
                   <td className="px-4 py-3">
                     {nomAffiche(g.representant)}
                     {prefereCourrier(g.representant) && <span className="ml-1.5 rounded-full bg-surface-2 px-1.5 py-0.5 text-[10px] text-muted">courrier postal</span>}
-                    {aCompleter && <div className="text-xs text-negative">Manque : {manquants.join(", ")}</div>}
+                    {aCompleter && <div className="text-xs text-gold">Manque : {manquants.join(", ")}</div>}
                   </td>
                   <td className="px-4 py-3 text-right font-medium tabular-nums">{formatEuros(g.total)}</td>
                   <td className="px-4 py-3 text-center tabular-nums text-muted">{g.dons.length}</td>
@@ -552,7 +552,7 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
                       {LIBELLE[st]}
                     </span>
                     {st !== "envoye" && manquants.length > 0 && (
-                      <span className="ml-1.5 text-negative" title={"Manque : " + manquants.join(", ")}>
+                      <span className="ml-1.5 text-gold" title={"Manque : " + manquants.join(", ")}>
                         ⚠
                       </span>
                     )}
@@ -634,7 +634,7 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
                                   hors compta
                                 </span>
                               )}
-                              {manque.length > 0 && <span className="text-xs text-negative">⚠ manque : {manque.join(", ")}</span>}
+                              {manque.length > 0 && <span className="text-xs text-gold">⚠ manque : {manque.join(", ")}</span>}
                               {!verrou && (
                                 <span className="ml-auto inline-flex items-center gap-3 text-xs">
                                   <button type="button" onClick={() => ouvrirFiche(d, manque.length > 0)} className="text-accent hover:underline">
@@ -848,7 +848,7 @@ function EtablirRecu({
           </p>
         )}
         {manquants.length > 0 && (
-          <p className="rounded-lg bg-negative/10 px-3 py-2 text-xs text-negative">
+          <p className="rounded-lg bg-gold-soft px-3 py-2 text-xs text-gold">
             Fiche incomplète ({manquants.join(", ")}) : complétez-la dans l&apos;onglet Dons avant d&apos;envoyer le reçu.
           </p>
         )}

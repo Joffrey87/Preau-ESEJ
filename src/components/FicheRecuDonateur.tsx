@@ -329,7 +329,7 @@ export default function FicheRecuDonateur({
                             {!g.numero && !g.sans && st === "attente" ? "Donateur mensuel : un reçu unique est prévu en fin d'année ; un reçu intermédiaire reste possible." : null}
                             {g.sans ? "Ce donateur ne demande pas de reçu fiscal." : null}
                           </div>
-                          {manque.length > 0 && <div className="text-xs text-negative">⚠ fiche incomplète : {manque.join(", ")}</div>}
+                          {manque.length > 0 && <div className="text-xs text-gold">⚠ fiche incomplète : {manque.join(", ")}</div>}
                         </div>
                         {!bloque && (
                           <div className="flex flex-wrap items-center gap-2 text-xs">

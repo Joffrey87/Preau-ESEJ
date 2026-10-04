@@ -43,7 +43,7 @@ type FormFiche = {
 const nomDe = (d: Don) =>
   d.est_personne_morale
     ? d.raison_sociale ?? d.donateur_nom ?? "—"
-    : [d.donateur_titre, d.donateur_prenom, d.donateur_nom].filter(Boolean).join(" ") || "—";
+    : [d.donateur_prenom, d.donateur_nom].filter(Boolean).join(" ") || d.donateur_titre || "—";
 
 function formDepuis(d: Don): FormFiche {
   return {

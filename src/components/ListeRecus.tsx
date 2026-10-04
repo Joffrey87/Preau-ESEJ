@@ -65,7 +65,7 @@ const dateEditionDuRecu = (g: Groupe) => g.dons.find((d) => d.recu_emis_le)?.rec
 /** Minuscules sans accents, pour une recherche tolérante. */
 const sansAccents = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
 
-type ColTri = "annee" | "donateur" | "total" | "dons" | "numero" | "statut";
+type ColTri = "annee" | "donateur" | "total" | "dons" | "statut";
 
 const numeroValide = (n: string | null) => !!n && /^RE_\d+/.test(n);
 
@@ -127,7 +127,7 @@ function statutRecu(g: Groupe, recurrents: Set<string>, anneeEnCours: number): S
 const nomAffiche = (d: DonRow) =>
   d.est_personne_morale
     ? d.raison_sociale ?? d.donateur_nom ?? "—"
-    : [d.donateur_titre, d.donateur_prenom, d.donateur_nom].filter(Boolean).join(" ") || "—";
+    : [d.donateur_prenom, d.donateur_nom].filter(Boolean).join(" ") || d.donateur_titre || "—";
 
 /** Données du PDF pour un reçu et les dons qu'il couvre. */
 function donPourRecu(r: DonRow, dons: DonRow[], numero: string, dateEdition: string): DonPourRecu {
@@ -272,7 +272,6 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
           : tri.col === "donateur" ? sansAccents(nomAffiche(x.g.representant))
           : tri.col === "total" ? x.g.total
           : tri.col === "dons" ? x.g.dons.length
-          : tri.col === "numero" ? x.g.numero ?? ""
           : LIBELLE[x.statut];
         const ka = cle(a), kb = cle(b);
         const c = typeof ka === "number" && typeof kb === "number" ? ka - kb : String(ka).localeCompare(String(kb), "fr");
@@ -632,6 +631,7 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border text-left text-muted">
+              <th className="w-6 py-3 pl-3 pr-0" aria-label="Dons"></th>
               <th className="w-8 px-3 py-3">
                 {!verrou && (
                   <input
@@ -657,7 +657,6 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
               {enteteTri("donateur", "Donateur")}
               {enteteTri("total", "Total", "text-right")}
               {enteteTri("dons", "Dons", "text-center")}
-              {enteteTri("numero", "N° reçu")}
               {enteteTri("statut", "Statut")}
               <th className="px-4 py-3 text-right font-medium">Action</th>
             </tr>
@@ -678,6 +677,18 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
                   title={verrou ? undefined : aCompleter ? "Cliquer pour ouvrir la fiche Reçu fiscal du donateur et compléter : " + manquants.join(", ") : "Cliquer pour ouvrir la fiche Reçu fiscal du donateur"}
                   className={`${verrou ? "" : "cursor-pointer hover:bg-surface-2"} ${ouverts.has(g.cle) ? "" : "border-b border-border last:border-0"}`}
                 >
+                  <td className="w-6 py-3 pl-3 pr-0">
+                    <button
+                      type="button"
+                      onClick={() => basculer(g.cle)}
+                      aria-expanded={ouverts.has(g.cle)}
+                      aria-label={ouverts.has(g.cle) ? "Replier les dons" : "Voir les dons"}
+                      title={ouverts.has(g.cle) ? "Replier les dons" : "Voir les dons de ce reçu"}
+                      className="inline-block w-5 rounded text-muted hover:bg-surface-2 hover:text-foreground"
+                    >
+                      {ouverts.has(g.cle) ? "▾" : "▸"}
+                    </button>
+                  </td>
                   <td className="w-8 px-3 py-3">
                     {!verrou && (
                       <input
@@ -698,16 +709,6 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
                     )}
                   </td>
                   <td className="px-4 py-3 tabular-nums">
-                    <button
-                      type="button"
-                      onClick={() => basculer(g.cle)}
-                      aria-expanded={ouverts.has(g.cle)}
-                      aria-label={ouverts.has(g.cle) ? "Replier les dons" : "Voir les dons"}
-                      title={ouverts.has(g.cle) ? "Replier les dons" : "Voir les dons de ce reçu"}
-                      className="-ml-1 mr-1 inline-block w-5 rounded text-muted hover:bg-surface-2 hover:text-foreground"
-                    >
-                      {ouverts.has(g.cle) ? "▾" : "▸"}
-                    </button>
                     {g.annee}
                   </td>
                   <td className="px-4 py-3">
@@ -717,10 +718,6 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
                   </td>
                   <td className="px-4 py-3 text-right font-medium tabular-nums">{formatEuros(g.total)}</td>
                   <td className="px-4 py-3 text-center tabular-nums text-muted">{g.dons.length}</td>
-                  <td className="px-4 py-3 text-xs tabular-nums">
-                    {g.numero ?? "—"}
-                    {g.reserve && <div className="text-[10px] text-muted">réservé, pas encore édité</div>}
-                  </td>
                   <td className="px-4 py-3">
                     <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${TON[st]}`}>
                       {LIBELLE[st]}
@@ -731,9 +728,11 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
                       </span>
                     )}
                     {aTelecharger(g) && (
-                      <span className="ml-1.5 rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent" title="Reçu établi, pas encore enregistré : « Télécharger les nouveaux reçus »">
-                        à télécharger
-                      </span>
+                      <div className="mt-1">
+                        <span className="inline-block whitespace-nowrap rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent" title="Reçu établi, pas encore enregistré : « Télécharger les nouveaux reçus »">
+                          À télécharger
+                        </span>
+                      </div>
                     )}
                     {g.aScinder && (
                       <span className="ml-1.5 rounded-full bg-gold-soft px-2 py-0.5 text-xs font-medium text-gold" title="Ce numéro couvre plusieurs années civiles : un reçu ne doit couvrir qu'une année. À scinder.">
@@ -787,7 +786,7 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
                 </tr>
                 {ouverts.has(g.cle) && (
                   <tr data-groupe={g.cle} className="border-b border-border bg-surface-2/40 last:border-0">
-                    <td colSpan={8} className="px-4 py-2 pl-10">
+                    <td colSpan={8} className="px-4 py-2 pl-14">
                       <ul className="divide-y divide-border/60">
                         {g.dons.map((d) => {
                           const manque = st !== "envoye" ? champsImportantsManquants(d) : [];

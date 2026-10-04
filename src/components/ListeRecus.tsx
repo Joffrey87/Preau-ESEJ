@@ -349,7 +349,6 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
   async function editerReserve(g: Groupe) {
     if (!g.numero) return;
     const aujourdhui = todayISO();
-    if (!window.confirm(`Établir le reçu ${g.numero} (${formatEuros(g.total)}, ${g.dons.length} don${g.dons.length > 1 ? "s" : ""}) avec la date d'édition du ${formatDate(aujourdhui)} ?\n\nSes dons sont tous repris. Pour n'en éditer que certains, détachez les autres dans la fiche du donateur.`)) return;
     setMessage(null);
     setBusy(g.cle);
     const pdf = genererRecuPdf(donPourRecu(g.representant, g.dons, g.numero, aujourdhui), { ouvrir: true });

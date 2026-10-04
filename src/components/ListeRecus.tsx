@@ -102,15 +102,14 @@ function grouper(dons: DonRow[], coffreOuvert: boolean): Groupe[] {
 }
 
 /**
- * Où en est ce reçu ? Les dons de l'année en cours d'un donateur régulier
- * attendent la fin de l'année pour un reçu unique ; un reçu intermédiaire
- * reste possible à sa demande.
+ * Où en est ce reçu ? Les dons de l'année en cours d'un donateur mensuel (dons sur au moins
+ * 3 mois différents des 12 derniers mois) attendent la fin de l'année pour un reçu unique ;
+ * un reçu intermédiaire reste possible à sa demande. Tout autre don sans reçu est « à établir ».
  */
 function statutRecu(g: Groupe, recurrents: Set<string>, anneeEnCours: number): StatutRecu {
   if (g.sans) return "sans";
   if (g.numero) return g.dons.every(recuEnvoye) ? "envoye" : prefereCourrier(g.representant) ? "courrier" : "edite";
-  const regulier = g.dons.length > 1 || recurrents.has(cleDonateur(g.representant));
-  return regulier && g.annee >= anneeEnCours ? "attente" : "a_faire";
+  return recurrents.has(cleDonateur(g.representant)) && g.annee >= anneeEnCours ? "attente" : "a_faire";
 }
 
 const nomAffiche = (d: DonRow) =>
@@ -169,15 +168,19 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
 
   const anneeEnCours = new Date().getFullYear();
 
-  // Un donateur est « régulier » s'il a versé plusieurs fois, toutes années
-  // confondues : c'est le signe qu'il donnera probablement encore cette année.
+  // Un donateur est « mensuel » s'il a donné durant au moins 3 mois différents sur les 12
+  // derniers mois : seuls ses dons de l'année en cours attendent la fin d'année pour un reçu unique.
   const recurrents = useMemo(() => {
-    const compte = new Map<string, number>();
+    const limite = new Date();
+    limite.setFullYear(limite.getFullYear() - 1);
+    const depuis = limite.toISOString().slice(0, 10);
+    const mois = new Map<string, Set<string>>();
     for (const d of hydrates) {
       const c = cleDonateur(d);
-      if (c) compte.set(c, (compte.get(c) ?? 0) + 1);
+      if (!c || c === "|" || d.date_don < depuis) continue;
+      (mois.get(c) ?? mois.set(c, new Set()).get(c)!).add(d.date_don.slice(0, 7));
     }
-    return new Set([...compte].filter(([, n]) => n > 1).map(([c]) => c));
+    return new Set([...mois].filter(([, m]) => m.size >= 3).map(([c]) => c));
   }, [hydrates]);
 
   const tous = useMemo(

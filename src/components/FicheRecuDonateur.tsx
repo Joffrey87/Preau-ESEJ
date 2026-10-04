@@ -321,7 +321,7 @@ export default function FicheRecuDonateur({
                           <div className="text-xs text-muted">
                             {g.numero && emis ? `Édité le ${formatDate(emis)}` : null}
                             {g.numero && infoEnvoi(g) ? ` · ${infoEnvoi(g)}` : null}
-                            {!g.numero && !g.sans && st === "attente" ? "Donateur régulier : un reçu unique est possible en fin d'année ; un reçu intermédiaire reste possible." : null}
+                            {!g.numero && !g.sans && st === "attente" ? "Donateur mensuel : un reçu unique est prévu en fin d'année ; un reçu intermédiaire reste possible." : null}
                             {g.sans ? "Ce donateur ne demande pas de reçu fiscal." : null}
                           </div>
                           {manque.length > 0 && <div className="text-xs text-negative">⚠ fiche incomplète : {manque.join(", ")}</div>}

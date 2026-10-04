@@ -19,7 +19,7 @@ export const TON: Record<StatutRecu, string> = {
   edite: "bg-accent-soft text-accent",
   courrier: "bg-emerald-500/15 text-emerald-700",
   attente: "bg-gold-soft text-gold",
-  a_faire: "bg-amber-500/15 text-amber-700",
+  a_faire: "bg-negative/10 text-negative",
   sans: "bg-positive/15 text-positive",
 };
 

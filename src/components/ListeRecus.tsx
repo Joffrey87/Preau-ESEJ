@@ -265,7 +265,7 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
   const ouvrirFiche = (d: DonRow, signaler: boolean) => setFicheId({ id: d.id, signaler });
 
   const tuiles: { cle: StatutRecu; libelle: string; ton: string }[] = [
-    { cle: "a_faire", libelle: "À établir", ton: "text-amber-600" },
+    { cle: "a_faire", libelle: "À établir", ton: "text-negative" },
     { cle: "attente", libelle: "Attente fin d'année", ton: "text-gold" },
     { cle: "edite", libelle: "Établis, à envoyer", ton: "text-accent" },
     { cle: "courrier", libelle: "Établis, à poster", ton: "text-emerald-600" },
@@ -395,8 +395,8 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
             setIncompletsSeuls((v) => !v);
           }}
           aria-pressed={incompletsSeuls}
-          className={`mb-4 flex w-full flex-wrap items-center justify-between gap-2 rounded-xl border px-4 py-2.5 text-left text-sm text-negative transition-colors ${
-            incompletsSeuls ? "border-negative bg-negative/10" : "border-negative/30 bg-negative/5 hover:bg-negative/10"
+          className={`mb-4 flex w-full flex-wrap items-center justify-between gap-2 rounded-xl border px-4 py-2.5 text-left text-sm text-gold transition-colors ${
+            incompletsSeuls ? "border-gold bg-gold-soft" : "border-gold/60 bg-gold-soft/50 hover:bg-gold-soft"
           }`}
         >
           <span>
@@ -441,7 +441,7 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
           ))}
         </div>
         {incompletsSeuls && (
-          <span className="text-sm text-negative">
+          <span className="text-sm text-gold">
             Reçus incomplets uniquement{verrou ? "" : " — cliquez sur une ligne pour ouvrir la fiche Reçu fiscal du donateur"}
           </span>
         )}

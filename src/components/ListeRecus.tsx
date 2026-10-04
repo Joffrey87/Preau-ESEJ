@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import DeverrouillerCoffre from "@/components/DeverrouillerCoffre";
 import { Modal, Field, inputCls } from "./GestionComptes";
@@ -167,6 +167,28 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
   // Lignes dépliées (leurs dons s'affichent en « lignes filles ») et don en cours de réattribution.
   const [ouverts, setOuverts] = useState<Set<string>>(new Set());
   const [reattribuer, setReattribuer] = useState<{ don: DonRow; statut: "envoye" | "edite" | null } | null>(null);
+  // Les écritures filles se referment dès qu'on clique ailleurs (hors de la ligne dépliée et de
+  // ses dons, hors fenêtres ouvertes) ou qu'on appuie sur Échap ; quitter la page les referme aussi.
+  useEffect(() => {
+    if (ouverts.size === 0) return;
+    const ailleurs = (e: MouseEvent) => {
+      const cible = e.target as Element | null;
+      if (!cible) return;
+      const ligne = cible.closest("tr[data-groupe]");
+      if (ligne && ouverts.has(ligne.getAttribute("data-groupe") ?? "")) return;
+      if (cible.closest(".fixed")) return;
+      setOuverts(new Set());
+    };
+    const echap = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOuverts(new Set());
+    };
+    document.addEventListener("mousedown", ailleurs);
+    document.addEventListener("keydown", echap);
+    return () => {
+      document.removeEventListener("mousedown", ailleurs);
+      document.removeEventListener("keydown", echap);
+    };
+  }, [ouverts]);
   const basculer = (cle: string) =>
     setOuverts((p) => {
       const n = new Set(p);
@@ -621,6 +643,7 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
                 return (
                 <Fragment key={g.cle}>
                 <tr
+                  data-groupe={g.cle}
                   onClick={verrou ? undefined : (e) => { if (!(e.target as HTMLElement).closest("button, a, input")) ouvrirFicheDonateur(g); }}
                   title={verrou ? undefined : aCompleter ? "Cliquer pour ouvrir la fiche Reçu fiscal du donateur et compléter : " + manquants.join(", ") : "Cliquer pour ouvrir la fiche Reçu fiscal du donateur"}
                   className={`${verrou ? "" : "cursor-pointer hover:bg-surface-2"} ${ouverts.has(g.cle) ? "" : "border-b border-border last:border-0"}`}
@@ -728,7 +751,7 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
                   </td>
                 </tr>
                 {ouverts.has(g.cle) && (
-                  <tr className="border-b border-border bg-surface-2/40 last:border-0">
+                  <tr data-groupe={g.cle} className="border-b border-border bg-surface-2/40 last:border-0">
                     <td colSpan={8} className="px-4 py-2 pl-10">
                       <ul className="divide-y divide-border/60">
                         {g.dons.map((d) => {

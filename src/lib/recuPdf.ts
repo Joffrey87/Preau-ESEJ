@@ -331,25 +331,22 @@ export async function construireRecuPdf(don: DonPourRecu, options: OptionsRecu =
   texte(modele.adresseCpVille, 54.5, (g += pas), regular, VAL);
   texte("Loi Association 1901.", 54.5, (g += 2 * pas), regular, VAL);
 
-  // Colonne droite : le donateur. Valeur à la suite de l'étiquette.
-  const champ = (etiquette: string, valeur: string, top: number) => {
-    texte(etiquette, 314.5, top, regular, LBL);
-    if (valeur) texte(valeur, 314.5 + largeur(etiquette, regular, LBL) + 3, top, regular, VAL, NOIR);
+  // Colonne droite : le donateur, sans intitulés de rubriques (seulement le contenu).
+  // Particulier : nom et prénom. Personne morale : raison sociale, puis le contact
+  // à qui le reçu est adressé.
+  const ligne = (valeur: string, top: number) => {
+    if (valeur) texte(valeur, 314.5, top, regular, VAL, NOIR);
   };
-  // Particulier : nom et prénom. Personne morale : raison sociale, et le
-  // contact à qui le reçu est adressé.
   let d = 471.5;
   texte("Donateur", 314.5, d, semi, LBL);
   if (pm) {
-    champ("Raison sociale :", raison ?? "", (d += pas));
-    if (identite) champ("À l'attention de :", identite, (d += pas));
-    else d += pas;
+    ligne(raison ?? "", (d += pas));
+    if (identite) ligne(`À l'attention de ${identite}`, (d += pas));
   } else {
-    champ("Nom/Prénom :", identite, (d += pas));
-    d += pas;
+    ligne(identite, (d += pas));
   }
-  champ("Adresse :", don.adresse ?? "", (d += pas));
-  champ("CP/ Ville :", don.cp_ville ?? "", (d += pas));
+  ligne(don.adresse ?? "", (d += pas));
+  ligne(don.cp_ville ?? "", (d += pas));
 
   // ---- Cases or ------------------------------------------------------------
   rect(52.5, 540.5, 243.5, 66.5);

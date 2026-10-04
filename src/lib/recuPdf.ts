@@ -502,68 +502,6 @@ export function nomFichierRecu(don: DonPourRecu): string {
 }
 
 /**
- * Adresse locale portant le nom du fichier (servie par `public/recu-sw.js` depuis le cache du
- * navigateur) : « Enregistrer » dans l'onglet propose alors le bon nom. Retourne null si le
- * navigateur ne le permet pas (on retombe sur une adresse anonyme).
- */
-async function adresseNommee(octets: Uint8Array, nom: string): Promise<string | null> {
-  try {
-    if (!("serviceWorker" in navigator) || !("caches" in window)) return null;
-    // Ancienne inscription à portée réduite : remplacée par une inscription couvrant le site (le
-    // script ne répond qu'aux adresses /recu-local/), pour que cette page puisse vérifier le service.
-    for (const r of await navigator.serviceWorker.getRegistrations()) {
-      if (r.scope.endsWith("/recu-local/")) await r.unregister();
-    }
-    const reg = await navigator.serviceWorker.register("/recu-sw.js");
-    const sw = reg.active ?? reg.waiting ?? reg.installing;
-    if (!sw) return null;
-    if (sw.state !== "activated") {
-      await new Promise<void>((ok, ko) => {
-        const t = setTimeout(() => ko(new Error("service worker trop long")), 5000);
-        sw.addEventListener("statechange", () => {
-          if (sw.state === "activated") {
-            clearTimeout(t);
-            ok();
-          }
-        });
-      });
-    }
-    if (!navigator.serviceWorker.controller) {
-      await new Promise<void>((ok) => {
-        const t = setTimeout(ok, 3000);
-        navigator.serviceWorker.addEventListener("controllerchange", () => {
-          clearTimeout(t);
-          ok();
-        }, { once: true });
-      });
-    }
-    const cache = await caches.open("recu-local");
-    // Les reçus contiennent des données personnelles : on ne garde que le dernier, et pas longtemps.
-    for (const k of await cache.keys()) await cache.delete(k);
-    const chemin = `/recu-local/${crypto.randomUUID()}/${encodeURIComponent(nom)}`;
-    await cache.put(
-      chemin,
-      new Response(octets as BlobPart, {
-        headers: {
-          "Content-Type": "application/pdf",
-          "Content-Disposition": `inline; filename*=UTF-8''${encodeURIComponent(nom)}`,
-        },
-      }),
-    );
-    // Vérification : l'adresse doit bien renvoyer le PDF (sinon l'onglet recevrait une page web).
-    const essai = await fetch(chemin);
-    if (!essai.ok || !(essai.headers.get("content-type") ?? "").includes("pdf")) {
-      await cache.delete(chemin);
-      return null;
-    }
-    setTimeout(() => void cache.delete(chemin), 10 * 60_000);
-    return `${location.origin}${chemin}`;
-  } catch {
-    return null;
-  }
-}
-
-/**
  * Construit le PDF puis le télécharge — ou, avec `ouvrir`, l'affiche dans un
  * nouvel onglet. L'onglet est ouvert tout de suite (dans le geste de l'utilisateur,
  * sinon le navigateur bloque la fenêtre) puis dirigé vers le PDF une fois prêt ;
@@ -572,18 +510,16 @@ async function adresseNommee(octets: Uint8Array, nom: string): Promise<string | 
 export async function genererRecuPdf(don: DonPourRecu, options: OptionsRecu = {}): Promise<void> {
   const onglet = options.ouvrir ? window.open("", "_blank") : null;
   let url: string;
-  let nommee: string | null = null;
   try {
     const modele = options.modele ?? (await modeleRecuEnCache(createClient()));
     const octets = await construireRecuPdf(don, { ...options, modele });
-    if (onglet) nommee = await adresseNommee(octets, nomFichierRecu(don));
     url = URL.createObjectURL(new Blob([octets as BlobPart], { type: "application/pdf" }));
   } catch (e) {
     onglet?.close();
     throw e;
   }
   if (onglet) {
-    onglet.location.href = nommee ?? url;
+    onglet.location.href = url;
     setTimeout(() => URL.revokeObjectURL(url), 5 * 60_000);
     return;
   }

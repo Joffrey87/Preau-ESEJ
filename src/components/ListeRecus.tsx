@@ -281,14 +281,15 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
     { cle: "sans", libelle: "Reçu non demandé", ton: "text-positive" },
   ];
 
-  async function telecharger(g: Groupe) {
+  /** « PDF » ouvre le reçu dans un onglet ; « Télécharger » l'enregistre (nom de fichier complet). */
+  async function telecharger(g: Groupe, ouvrir = true) {
     if (!g.numero) return;
     setMessage(null);
     setBusy(g.cle);
     try {
       await genererRecuPdf(
         donPourRecu(g.representant, g.dons, g.numero, dateEditionDuRecu(g)),
-        { ouvrir: true },
+        { ouvrir },
       );
     } catch (e) {
       setMessage({ ok: false, t: e instanceof Error ? e.message : "Génération impossible." });
@@ -566,8 +567,11 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
                       <span className="text-xs text-muted">🔒</span>
                     ) : g.numero && !g.reserve ? (
                       <span className="inline-flex items-center gap-3 text-xs">
-                        <button type="button" onClick={() => telecharger(g)} disabled={busy === g.cle} className="text-accent hover:underline disabled:opacity-50">
+                        <button type="button" onClick={() => telecharger(g)} disabled={busy === g.cle} className="text-accent hover:underline disabled:opacity-50" title="Ouvrir le reçu dans un onglet">
                           PDF
+                        </button>
+                        <button type="button" onClick={() => telecharger(g, false)} disabled={busy === g.cle} className="text-accent hover:underline disabled:opacity-50" title="Enregistrer le reçu (nom de fichier complet)">
+                          Télécharger
                         </button>
                         {(st === "edite" || st === "courrier") && (
                           <>
@@ -675,7 +679,8 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
             actions={{
               etablir: lancerEtablir,
               envoi: setEnvoi,
-              pdf: telecharger,
+              pdf: (g) => telecharger(g),
+              telecharger: (g) => telecharger(g, false),
               annuler,
               refuser: refuserRecu,
               retablir: retablirRecu,
@@ -785,7 +790,7 @@ function EtablirRecu({
     }
     const numero = data as string;
     try {
-      await genererRecuPdf(donPourRecu(groupe.representant, retenus, numero, date));
+      await genererRecuPdf(donPourRecu(groupe.representant, retenus, numero, date), { ouvrir: true });
     } catch (e) {
       setBusy(false);
       return onFait(`Reçu ${numero} établi, mais le PDF n'a pas pu être généré (${e instanceof Error ? e.message : "erreur"}) : utilisez « PDF » dans la liste.`);

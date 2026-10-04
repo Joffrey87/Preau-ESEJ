@@ -19,6 +19,7 @@ export type ActionsFiche = {
   etablir: (g: Groupe) => void;
   envoi: (g: Groupe) => void;
   pdf: (g: Groupe) => void;
+  telecharger: (g: Groupe) => void;
   annuler: (g: Groupe) => void;
   refuser: (g: Groupe) => void;
   retablir: (g: Groupe) => void;
@@ -335,8 +336,11 @@ export default function FicheRecuDonateur({
                           <div className="flex flex-wrap items-center gap-2 text-xs">
                             {g.numero && !g.reserve ? (
                               <>
-                                <button type="button" onClick={() => actions.pdf(g)} className="rounded-lg border border-border px-2.5 py-1 hover:bg-surface-2">
+                                <button type="button" onClick={() => actions.pdf(g)} className="rounded-lg border border-border px-2.5 py-1 hover:bg-surface-2" title="Ouvrir le reçu dans un onglet">
                                   PDF
+                                </button>
+                                <button type="button" onClick={() => actions.telecharger(g)} className="rounded-lg border border-border px-2.5 py-1 hover:bg-surface-2" title="Enregistrer le reçu (nom de fichier complet)">
+                                  Télécharger
                                 </button>
                                 {st === "envoye" ? (
                                   <button type="button" onClick={() => actions.envoi(g)} className="rounded-lg border border-border px-2.5 py-1 hover:bg-surface-2">

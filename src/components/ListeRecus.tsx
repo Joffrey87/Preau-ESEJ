@@ -265,7 +265,7 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
   const ouvrirFiche = (d: DonRow, signaler: boolean) => setFicheId({ id: d.id, signaler });
 
   const tuiles: { cle: StatutRecu; libelle: string; ton: string }[] = [
-    { cle: "a_faire", libelle: "À établir", ton: "text-negative" },
+    { cle: "a_faire", libelle: "À établir", ton: "text-gold" },
     { cle: "attente", libelle: "Attente fin d'année", ton: "text-gold" },
     { cle: "edite", libelle: "Établis, à envoyer", ton: "text-accent" },
     { cle: "courrier", libelle: "Établis, à poster", ton: "text-emerald-600" },

@@ -15,7 +15,9 @@ import { formatEuros, formatDate, todayISO } from "@/lib/format";
 import { useDonsDechiffres } from "@/lib/donsChiffre";
 import { cleDonateur, champsImportantsManquants, recuEnvoye, sansRecu } from "@/lib/statutDon";
 import { MOYENS_ENVOI, etatEnvoye, libelleMoyen, prefereCourrier } from "@/lib/envoiRecu";
-import { genererRecuPdf, type DonPourRecu } from "@/lib/recu";
+import { construireRecuPdf, genererRecuPdf, nomFichierRecu, type DonPourRecu } from "@/lib/recu";
+import { modeleRecuEnCache } from "@/lib/modeleRecu";
+import { creerZip } from "@/lib/zip";
 import { syntheseVersements } from "@/lib/recuVersements";
 
 /** Un don, tel que lu par la page (mêmes colonnes que l'onglet Dons : la fiche s'ouvre ici). */
@@ -157,6 +159,9 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
   // Fiche donateur ouverte en fenêtre (même formulaire que l'onglet Dons).
   const [ficheId, setFicheId] = useState<{ id: string; signaler: boolean } | null>(null);
   const [envoi, setEnvoi] = useState<Groupe | null>(null);
+  // Sélection de reçus à télécharger en lot (ZIP).
+  const [selection, setSelection] = useState<Set<string>>(new Set());
+  const [lot, setLot] = useState<{ fait: number; total: number } | null>(null);
   // Fiche « Reçu fiscal donateur » : tous les dons du donateur, année par année.
   const [fiche, setFiche] = useState<{ ids: Set<string>; annee: number } | null>(null);
   // Lignes dépliées (leurs dons s'affichent en « lignes filles ») et don en cours de réattribution.
@@ -249,6 +254,9 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
         const c = typeof ka === "number" && typeof kb === "number" ? ka - kb : String(ka).localeCompare(String(kb), "fr");
         return tri.dir === "asc" ? c : -c;
       });
+  /** Un reçu est téléchargeable s'il existe : numéroté, édité (pas seulement réservé), demandé. */
+  const telechargeable = (g: Groupe) => !!g.numero && !g.reserve && !g.sans;
+  const affichesTelechargeables = affiches.filter((x) => telechargeable(x.g));
   const trierPar = (col: ColTri) =>
     setTri((t) => (!t || t.col !== col ? { col, dir: "asc" } : t.dir === "asc" ? { col, dir: "desc" } : null));
   const enteteTri = (col: ColTri, libelle: string, alignement = "") => (
@@ -374,6 +382,48 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
   /** « Établir » : numéro réservé → date du jour ; sinon choix des dons et nouveau numéro. */
   const lancerEtablir = (g: Groupe) => (g.reserve ? void editerReserve(g) : setEtablir(g));
 
+  /** Génère les PDF des reçus cochés et les remet dans un seul fichier ZIP. */
+  async function telechargerLot() {
+    const choisis = tous.map((x) => x.g).filter((g) => selection.has(g.cle) && telechargeable(g));
+    if (choisis.length === 0) return;
+    setMessage(null);
+    setLot({ fait: 0, total: choisis.length });
+    const echecs: string[] = [];
+    const fichiers: { nom: string; octets: Uint8Array }[] = [];
+    try {
+      const modele = await modeleRecuEnCache(createClient());
+      for (const g of choisis) {
+        try {
+          const don = donPourRecu(g.representant, g.dons, g.numero!, dateEditionDuRecu(g));
+          fichiers.push({ nom: nomFichierRecu(don), octets: await construireRecuPdf(don, { modele }) });
+        } catch (e) {
+          echecs.push(`${g.numero} (${e instanceof Error ? e.message : "erreur"})`);
+        }
+        setLot((l) => (l ? { ...l, fait: l.fait + 1 } : l));
+      }
+      if (fichiers.length > 0) {
+        const blob = new Blob([creerZip(fichiers) as BlobPart], { type: "application/zip" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `Reçus fiscaux - ${fichiers.length} reçu${fichiers.length > 1 ? "s" : ""} - ${todayISO()}.zip`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      }
+      setMessage({
+        ok: echecs.length === 0,
+        t:
+          `${fichiers.length} reçu${fichiers.length > 1 ? "s" : ""} téléchargé${fichiers.length > 1 ? "s" : ""} dans un fichier ZIP.` +
+          (echecs.length ? ` Non générés : ${echecs.join(" ; ")}.` : ""),
+      });
+    } catch (e) {
+      setMessage({ ok: false, t: e instanceof Error ? e.message : "Téléchargement par lot impossible." });
+    }
+    setLot(null);
+  }
+
   async function annuler(g: Groupe) {
     if (!g.numero) return;
     if (!window.confirm(`Annuler le reçu ${g.numero} ? Ses dons redeviendront « à établir » ; le numéro ne sera jamais réattribué.`)) return;
@@ -495,10 +545,62 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
         </span>
       </div>
 
+      {!verrou && (affichesTelechargeables.length > 0 || selection.size > 0) && (
+        <div className="mb-3 flex flex-wrap items-center gap-3 rounded-xl border border-border bg-surface-2/60 px-4 py-2.5 text-sm">
+          <span className="font-medium">
+            {selection.size} reçu{selection.size > 1 ? "s" : ""} sélectionné{selection.size > 1 ? "s" : ""}
+          </span>
+          <button
+            type="button"
+            onClick={() => setSelection((p) => new Set([...p, ...affichesTelechargeables.map((x) => x.g.cle)]))}
+            disabled={affichesTelechargeables.length === 0}
+            className="text-accent hover:underline disabled:opacity-50"
+            title="Ajoute à la sélection tous les reçus affichés (selon les filtres) qui peuvent être téléchargés"
+          >
+            Sélectionner les {affichesTelechargeables.length} reçu{affichesTelechargeables.length > 1 ? "s" : ""} affiché{affichesTelechargeables.length > 1 ? "s" : ""}
+          </button>
+          {selection.size > 0 && (
+            <button type="button" onClick={() => setSelection(new Set())} className="text-muted hover:text-foreground hover:underline">
+              Tout désélectionner
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => void telechargerLot()}
+            disabled={selection.size === 0 || lot !== null}
+            className="ml-auto rounded-lg bg-accent px-4 py-1.5 font-medium text-accent-fg hover:opacity-90 disabled:opacity-50"
+            title="Génère les PDF des reçus sélectionnés et les télécharge dans un seul fichier ZIP"
+          >
+            {lot ? `Génération… ${lot.fait}/${lot.total}` : "Télécharger la sélection (ZIP)"}
+          </button>
+        </div>
+      )}
+
       <div className="overflow-x-auto rounded-xl border border-border bg-surface">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border text-left text-muted">
+              <th className="w-8 px-3 py-3">
+                {!verrou && (
+                  <input
+                    type="checkbox"
+                    aria-label="Sélectionner les reçus affichés"
+                    title="Sélectionner (ou désélectionner) tous les reçus affichés qui peuvent être téléchargés"
+                    checked={affichesTelechargeables.length > 0 && affichesTelechargeables.every((x) => selection.has(x.g.cle))}
+                    disabled={affichesTelechargeables.length === 0}
+                    onChange={(e) =>
+                      setSelection((p) => {
+                        const n = new Set(p);
+                        for (const x of affichesTelechargeables) {
+                          if (e.target.checked) n.add(x.g.cle);
+                          else n.delete(x.g.cle);
+                        }
+                        return n;
+                      })
+                    }
+                  />
+                )}
+              </th>
               {enteteTri("annee", "Année")}
               {enteteTri("donateur", "Donateur")}
               {enteteTri("total", "Total", "text-right")}
@@ -511,7 +613,7 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
           <tbody>
             {affiches.length === 0 ? (
               <tr>
-                <td colSpan={7} className="px-4 py-12 text-center text-muted">Aucun reçu pour ce filtre.</td>
+                <td colSpan={8} className="px-4 py-12 text-center text-muted">Aucun reçu pour ce filtre.</td>
               </tr>
             ) : (
               affiches.map(({ g, statut: st, manquants }) => {
@@ -519,10 +621,29 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
                 return (
                 <Fragment key={g.cle}>
                 <tr
-                  onClick={verrou ? undefined : (e) => { if (!(e.target as HTMLElement).closest("button, a")) ouvrirFicheDonateur(g); }}
+                  onClick={verrou ? undefined : (e) => { if (!(e.target as HTMLElement).closest("button, a, input")) ouvrirFicheDonateur(g); }}
                   title={verrou ? undefined : aCompleter ? "Cliquer pour ouvrir la fiche Reçu fiscal du donateur et compléter : " + manquants.join(", ") : "Cliquer pour ouvrir la fiche Reçu fiscal du donateur"}
                   className={`${verrou ? "" : "cursor-pointer hover:bg-surface-2"} ${ouverts.has(g.cle) ? "" : "border-b border-border last:border-0"}`}
                 >
+                  <td className="w-8 px-3 py-3">
+                    {!verrou && (
+                      <input
+                        type="checkbox"
+                        aria-label={`Sélectionner le reçu ${g.numero ?? ""}`}
+                        checked={selection.has(g.cle)}
+                        disabled={!telechargeable(g)}
+                        title={telechargeable(g) ? "Sélectionner pour un téléchargement par lot" : "Pas de reçu édité à télécharger"}
+                        onChange={(e) =>
+                          setSelection((p) => {
+                            const n = new Set(p);
+                            if (e.target.checked) n.add(g.cle);
+                            else n.delete(g.cle);
+                            return n;
+                          })
+                        }
+                      />
+                    )}
+                  </td>
                   <td className="px-4 py-3 tabular-nums">
                     <button
                       type="button"
@@ -611,7 +732,7 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
                 </tr>
                 {ouverts.has(g.cle) && (
                   <tr className="border-b border-border bg-surface-2/40 last:border-0">
-                    <td colSpan={7} className="px-4 py-2 pl-10">
+                    <td colSpan={8} className="px-4 py-2 pl-10">
                       <ul className="divide-y divide-border/60">
                         {g.dons.map((d) => {
                           const manque = st !== "envoye" ? champsImportantsManquants(d) : [];

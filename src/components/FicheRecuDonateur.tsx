@@ -227,18 +227,21 @@ export default function FicheRecuDonateur({
               </Field>
             </div>
             {form.est_personne_morale ? (
-              <div className="grid gap-3 sm:grid-cols-4">
-                <div className="sm:col-span-2">
-                  <Field label="Nom de l'organisme">
-                    <input type="text" value={form.raison_sociale} onChange={(e) => set("raison_sociale", e.target.value)} className={inputCls} />
+              <div className="space-y-3">
+                <Field label="Nom de l'organisme">
+                  <input type="text" value={form.raison_sociale} onChange={(e) => set("raison_sociale", e.target.value)} className={inputCls} />
+                </Field>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <Field label="Contact — Titre">
+                    <input type="text" value={form.donateur_titre} onChange={(e) => set("donateur_titre", e.target.value)} className={inputCls} placeholder="Monsieur…" />
+                  </Field>
+                  <Field label="Contact — Prénom">
+                    <input type="text" value={form.donateur_prenom} onChange={(e) => set("donateur_prenom", e.target.value)} className={inputCls} />
+                  </Field>
+                  <Field label="Contact — Nom">
+                    <input type="text" value={form.donateur_nom} onChange={(e) => set("donateur_nom", e.target.value)} className={inputCls} />
                   </Field>
                 </div>
-                <Field label="Contact — Prénom">
-                  <input type="text" value={form.donateur_prenom} onChange={(e) => set("donateur_prenom", e.target.value)} className={inputCls} />
-                </Field>
-                <Field label="Contact — Nom">
-                  <input type="text" value={form.donateur_nom} onChange={(e) => set("donateur_nom", e.target.value)} className={inputCls} />
-                </Field>
               </div>
             ) : (
               <div className="grid gap-3 sm:grid-cols-3">

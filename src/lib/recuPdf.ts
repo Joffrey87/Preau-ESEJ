@@ -342,9 +342,13 @@ export async function construireRecuPdf(don: DonPourRecu, options: OptionsRecu =
   if (pm) {
     ligne(raison ?? "", (d += pas));
     // Le contact n'est mentionné que s'il est renseigné et distinct de la raison sociale.
+    // Il se lit « À l'attention de Prénom Nom » ; un titre qui répète l'organisme (donnée
+    // mal saisie) ou qui n'est pas une civilité courte est écarté.
     const plat = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
-    const contactDistinct = plat(don.donateur_nom ?? "") !== "" && plat(don.donateur_nom ?? "") !== plat(raison ?? "") && plat(identite) !== plat(raison ?? "");
-    if (contactDistinct) ligne(`À l'attention de ${identite}`, (d += pas));
+    const titreContact = don.donateur_titre && don.donateur_titre.trim().length <= 15 && plat(don.donateur_titre) !== plat(raison ?? "") ? don.donateur_titre.trim() : "";
+    const contact = [titreContact, don.donateur_prenom, don.donateur_nom].filter((x) => x && x.trim()).join(" ");
+    const contactDistinct = plat(don.donateur_nom ?? "") !== "" && plat(don.donateur_nom ?? "") !== plat(raison ?? "") && plat(contact) !== plat(raison ?? "");
+    if (contactDistinct) ligne(`À l'attention de ${contact}`, (d += pas));
   } else {
     ligne(identite, (d += pas));
   }

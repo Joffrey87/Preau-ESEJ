@@ -341,7 +341,10 @@ export async function construireRecuPdf(don: DonPourRecu, options: OptionsRecu =
   texte("Donateur", 314.5, d, semi, LBL);
   if (pm) {
     ligne(raison ?? "", (d += pas));
-    if (identite) ligne(`À l'attention de ${identite}`, (d += pas));
+    // Le contact n'est mentionné que s'il est renseigné et distinct de la raison sociale.
+    const plat = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+    const contactDistinct = plat(don.donateur_nom ?? "") !== "" && plat(don.donateur_nom ?? "") !== plat(raison ?? "") && plat(identite) !== plat(raison ?? "");
+    if (contactDistinct) ligne(`À l'attention de ${identite}`, (d += pas));
   } else {
     ligne(identite, (d += pas));
   }

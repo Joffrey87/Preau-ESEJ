@@ -691,9 +691,6 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
                         <button type="button" onClick={() => telecharger(g)} disabled={busy === g.cle} className="text-accent hover:underline disabled:opacity-50" title="Ouvrir le reçu dans un onglet">
                           PDF
                         </button>
-                        <button type="button" onClick={() => telecharger(g, false)} disabled={busy === g.cle} className="text-accent hover:underline disabled:opacity-50" title="Enregistrer le reçu (nom de fichier complet)">
-                          Télécharger
-                        </button>
                         {(st === "edite" || st === "courrier") && (
                           <>
                             <button type="button" onClick={() => setEnvoi(g)} disabled={busy === g.cle} className="text-positive hover:underline disabled:opacity-50">

@@ -7,6 +7,8 @@ import type { AffectationDetail, InscriptionDepot, NatureAffectation } from "@/l
 import { estAmitieSainteAnne } from "@/lib/importEnrichi";
 import type { FicheFamille } from "@/components/FamilleEnfants";
 import type { Eleve } from "@/lib/eleves";
+import ModificationsFamilles from "@/components/ModificationsFamilles";
+import AccesFamilles from "@/components/AccesFamilles";
 
 export default async function ScolaritePage({
   searchParams,
@@ -127,12 +129,19 @@ export default async function ScolaritePage({
 
   // Familles (fiche) et élèves (prénom chiffré), pour le détail d'une famille.
   const [famillesRes, elevesRes] = await Promise.all([
-    supabase.from("familles").select("id, nom, parent1, parent2, adresse, cp_ville, telephone, courriels, notes"),
+    supabase
+      .from("familles")
+      .select(
+        "id, nom, parent1, parent2, adresse, cp_ville, telephone, courriels, notes, parent1_prenom, parent1_nom, parent1_telephone, parent1_courriel, parent2_prenom, parent2_nom, parent2_telephone, parent2_courriel",
+      ),
     supabase.from("eleves").select("id, famille_id, prenom, initiale, classe_entree, annee_entree, decalage, sorti_le"),
   ]);
 
   const bareme: Record<number, number> = {};
   for (const b of baremeRes.data ?? []) bareme[b.nb_enfants] = Number(b.montant_mensuel);
+
+  // Campagne de revalidation des coordonnées (août-septembre) ; alertes « Modification Famille » du bureau.
+  const { data: campagne } = await supabase.rpc("annee_revalidation");
 
   return (
     <div className="mx-auto max-w-6xl px-5 py-8 md:px-8">
@@ -154,6 +163,8 @@ export default async function ScolaritePage({
           </div>
         }
       />
+      <ModificationsFamilles campagne={(campagne as number | null) ?? null} />
+      <AccesFamilles />
       {annees.length === 0 ? (
         <div className="rounded-xl border border-border bg-surface px-4 py-16 text-center text-muted">
           Aucune donnée de scolarité.

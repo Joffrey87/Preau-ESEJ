@@ -3,13 +3,24 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { formatEuros, formatDate, todayISO } from "@/lib/format";
+import { formatEuros, todayISO } from "@/lib/format";
 import { Modal, Field, FormFooter, inputCls } from "@/components/GestionComptes";
+import { useCoffre } from "@/components/CoffreProvider";
+import DeverrouillerCoffre from "@/components/DeverrouillerCoffre";
+import ImportProspects from "@/components/ImportProspects";
+import BoutonFiltresMultiples, { CasePastille } from "@/components/BoutonFiltresMultiples";
+import { useFiltresMultiples } from "@/lib/filtresMultiples";
+import { NOM_NEUTRE, abregerCivilite, estListeChiffree, nomComplet, useProspectsDechiffres, type ProspectLisible } from "@/lib/prospectsChiffres";
+import { nomSoigne } from "@/lib/nomPropre";
+import type { Don } from "@/components/GestionDons";
+import Icon from "@/components/Icon";
+import ChoixResponsable from "@/components/ChoixResponsable";
+import LierEcrituresProspect from "@/components/LierEcrituresProspect";
+import { villeEtDepartement } from "@/lib/listeProspects";
 import {
   ETAPES,
   ETAPE_LABEL,
   SEGMENT_LABEL,
-  SEGMENT_POTENTIEL,
   CAPACITE_LABEL,
   etapeSuivante,
   type Prospect,
@@ -19,6 +30,10 @@ import {
 } from "@/lib/pipeline";
 
 type Form = {
+  civilite: string;
+  prenom: string;
+  adresse: string;
+  cp_ville: string;
   nom: string;
   segment: Segment;
   etape: Etape;
@@ -32,6 +47,7 @@ type Form = {
 };
 
 const vide: Form = {
+  civilite: "", prenom: "", adresse: "", cp_ville: "",
   nom: "", segment: "particulier", etape: "identifie", capacite: "",
   montant_cible: "", montant_obtenu: "", responsable: "",
   prochaine_action: "", prochaine_action_date: "", notes: "",
@@ -39,10 +55,31 @@ const vide: Form = {
 
 const eur = (s: string) => Number((s.trim() || "0").replace(/\s/g, "").replace(",", ".")) || 0;
 
-export default function GestionPipeline({ prospects }: { prospects: Prospect[] }) {
+export default function GestionPipeline({
+  prospects: brut,
+  dons,
+  obtenus = {},
+  peutLier = false,
+  listeInitiale = null,
+}: {
+  prospects: Prospect[];
+  dons: Don[];
+  /** « Obtenu » par prospect : somme des écritures comptables liées. */
+  obtenus?: Record<string, { montant: number; nb: number }>;
+  /** Trésorier (ou président, administrateur) : peut lier des écritures de Comptabilité. */
+  peutLier?: boolean;
+  /** Liste filtrée à l'ouverture (lien du menu « Mises à jour »). */
+  listeInitiale?: string | null;
+}) {
   const router = useRouter();
+  const coffre = useCoffre();
+  const { prospects, verrou } = useProspectsDechiffres(brut);
+  // Listes d'origine (ex. « Liste Axel ») : filtres en pastilles, cumulables avec « + ».
+  const { actifs: fListes, multiple: listeMultiple, basculer: basculerListe, basculerMultiple: basculerListeMultiple, estActif: listeActive, reinitialiser: reinitialiserListes } = useFiltresMultiples<string>(listeInitiale ? [listeInitiale] : []);
+  const listes = useMemo(() => [...new Set(prospects.map((p) => p.liste).filter((l): l is string => !!l))].sort((a, b) => a.localeCompare(b, "fr")), [prospects]);
   const today = todayISO();
-  const [edit, setEdit] = useState<Prospect | "nouveau" | null>(null);
+  const [edit, setEdit] = useState<ProspectLisible | "nouveau" | null>(null);
+  const [liaison, setLiaison] = useState<ProspectLisible | null>(null);
   const [form, setForm] = useState<Form>(vide);
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
@@ -56,16 +93,17 @@ export default function GestionPipeline({ prospects }: { prospects: Prospect[] }
     const ql = q.trim().toLowerCase();
     return prospects.filter(
       (p) =>
-        (!ql || p.nom.toLowerCase().includes(ql) || (p.responsable ?? "").toLowerCase().includes(ql)) &&
+        (!ql || [p.affiche, p.adresse, p.cp_ville, p.responsable].some((v) => (v ?? "").toLowerCase().includes(ql))) &&
         (!fEtape || p.etape === fEtape) &&
-        (!fSegment || p.segment === fSegment),
+        (!fSegment || p.segment === fSegment) &&
+        (fListes.length === 0 || (!!p.liste && fListes.includes(p.liste))),
     );
-  }, [prospects, q, fEtape, fSegment]);
+  }, [prospects, q, fEtape, fSegment, fListes]);
 
   // Analyse (sur la sélection filtrée).
   const actifs = filtres.filter((p) => p.etape !== "perdu");
   const totalCible = actifs.reduce((s, p) => s + Number(p.montant_cible ?? 0), 0);
-  const totalObtenu = filtres.reduce((s, p) => s + Number(p.montant_obtenu ?? 0), 0);
+  const totalObtenu = filtres.reduce((s, p) => s + (obtenus[p.id]?.montant ?? 0), 0);
   const dans7j = actifs.filter(
     (p) => p.prochaine_action_date && p.prochaine_action_date <= addJours(today, 7),
   ).length;
@@ -74,12 +112,13 @@ export default function GestionPipeline({ prospects }: { prospects: Prospect[] }
   const parEtape = ETAPES.map((e) => ({ ...e, n: filtres.filter((p) => p.etape === e.key).length }));
   const maxEtape = Math.max(1, ...parEtape.map((e) => e.n));
 
-  function ouvrir(p: Prospect | "nouveau") {
+  function ouvrir(p: ProspectLisible | "nouveau") {
     setError(null);
     if (p === "nouveau") setForm(vide);
     else
       setForm({
-        nom: p.nom, segment: p.segment, etape: p.etape, capacite: p.capacite ?? "",
+        civilite: abregerCivilite(p.titre), prenom: p.prenom ?? "", adresse: p.adresse ?? "", cp_ville: p.cp_ville ?? "",
+        nom: p.verrouille ? "" : p.nom, segment: p.segment, etape: p.etape, capacite: p.capacite ?? "",
         montant_cible: p.montant_cible != null ? String(p.montant_cible).replace(".", ",") : "",
         montant_obtenu: p.montant_obtenu ? String(p.montant_obtenu).replace(".", ",") : "",
         responsable: p.responsable ?? "", prochaine_action: p.prochaine_action ?? "",
@@ -92,15 +131,43 @@ export default function GestionPipeline({ prospects }: { prospects: Prospect[] }
     ev.preventDefault();
     setError(null);
     if (!form.nom.trim()) return setError("Le nom est obligatoire.");
+    // Seuls les prospects de la « Liste Axel » sont chiffrés (ils le restent) ; les autres sont enregistrés en clair.
+    const personnel = edit !== "nouveau" && !!edit?.chiffre;
+    if (personnel && !coffre.estOuvert) return setError("Coffre verrouillé : déverrouillez-le pour enregistrer des coordonnées (elles sont chiffrées).");
+    if (edit !== "nouveau" && edit?.verrouille) return setError("Fiche chiffrée illisible : déverrouillez le coffre.");
     setSaving(true);
     const supabase = createClient();
+    const nomPropre = form.segment === "particulier" ? nomSoigne(form.nom, false) : form.nom.trim();
+    const coordonnees: { nom: string; pii_chiffre: string | null } = personnel
+      ? {
+          nom: NOM_NEUTRE,
+          pii_chiffre: await coffre.chiffrer(
+            JSON.stringify({
+              titre: form.civilite.trim() || null,
+              nom: nomPropre,
+              prenom: form.prenom.trim() || null,
+              adresse: form.adresse.trim() || null,
+              cp_ville: form.cp_ville.trim() || null,
+            }),
+          ),
+        }
+      : { nom: nomPropre, pii_chiffre: null };
+    // En clair : civilité, prénom, adresse et ville dans leurs colonnes (vides pour une fiche chiffrée).
+    const enClair = personnel
+      ? { civilite: null, prenom: null, adresse: null, cp_ville: null }
+      : {
+          civilite: form.civilite.trim() || null,
+          prenom: form.prenom.trim() || null,
+          adresse: form.adresse.trim() || null,
+          cp_ville: form.cp_ville.trim() || null,
+        };
     const payload = {
-      nom: form.nom.trim(),
+      ...coordonnees,
+      ...enClair,
       segment: form.segment,
       etape: form.etape,
       capacite: form.capacite || null,
       montant_cible: form.montant_cible.trim() ? eur(form.montant_cible) : null,
-      montant_obtenu: eur(form.montant_obtenu),
       responsable: form.responsable.trim() || null,
       prochaine_action: form.prochaine_action.trim() || null,
       prochaine_action_date: form.prochaine_action_date || null,
@@ -117,6 +184,17 @@ export default function GestionPipeline({ prospects }: { prospects: Prospect[] }
     router.refresh();
   }
 
+  /** Modification directe d'un état depuis le tableau (étape, segment, capacité, responsable…). */
+  async function majChamp(
+    p: ProspectLisible,
+    patch: Partial<Pick<Prospect, "etape" | "segment" | "capacite" | "responsable" | "prochaine_action" | "prochaine_action_date" | "montant_cible">>,
+  ) {
+    setBusy(p.id);
+    await createClient().from("prospects").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", p.id);
+    setBusy(null);
+    router.refresh();
+  }
+
   async function avancer(p: Prospect) {
     const suite = etapeSuivante(p.etape);
     if (!suite) return;
@@ -127,8 +205,8 @@ export default function GestionPipeline({ prospects }: { prospects: Prospect[] }
     router.refresh();
   }
 
-  async function supprimer(p: Prospect) {
-    if (!confirm(`Supprimer « ${p.nom} » du pipeline ?`)) return;
+  async function supprimer(p: ProspectLisible) {
+    if (!confirm(`Supprimer « ${p.affiche} » du pipeline ?`)) return;
     setBusy(p.id);
     const supabase = createClient();
     await supabase.from("prospects").delete().eq("id", p.id);
@@ -192,10 +270,57 @@ export default function GestionPipeline({ prospects }: { prospects: Prospect[] }
             Réinitialiser
           </button>
         )}
+        <ImportProspects prospects={prospects} dons={dons} />
         <button type="button" onClick={() => ouvrir("nouveau")} className="rounded-lg bg-accent px-4 py-1.5 text-sm font-medium text-accent-fg hover:opacity-90">
-          + Ajouter un prospect
+          <span className="inline-flex items-center gap-1.5">
+            <Icon name="plus" className="h-4 w-4" />
+            Ajouter un prospect
+          </span>
         </button>
       </div>
+
+      {listes.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="mr-1 text-sm text-muted">Liste</span>
+          <button
+            type="button"
+            onClick={reinitialiserListes}
+            className={`rounded-full border px-3 py-1 text-sm transition ${fListes.length === 0 ? "border-accent bg-accent-soft font-medium text-accent" : "border-border text-muted hover:bg-surface-2"}`}
+          >
+            Toutes
+          </button>
+          {listes.map((l) => (
+            <button
+              key={l}
+              type="button"
+              onClick={() => basculerListe(l)}
+              aria-pressed={listeActive(l)}
+              className={`rounded-full border px-3 py-1 text-sm transition ${listeActive(l) ? "border-accent bg-accent-soft font-medium text-accent" : "border-border text-muted hover:bg-surface-2"}`}
+            >
+              {listeMultiple && <CasePastille coche={listeActive(l)} />}
+              {l}
+            </button>
+          ))}
+          <BoutonFiltresMultiples actif={listeMultiple} onClick={basculerListeMultiple} nombre={fListes.length} />
+        </div>
+      )}
+
+      {liaison && (
+        <LierEcrituresProspect
+          prospectId={liaison.id}
+          prospectNom={nomComplet({ titre: liaison.titre, prenom: liaison.prenom, nom: liaison.nom }) || liaison.affiche}
+          onClose={() => setLiaison(null)}
+        />
+      )}
+
+      {verrou && (
+        <div className="rounded-lg border border-gold/40 bg-gold-soft/40 px-4 py-3 text-sm text-gold">
+          🔒 Coffre verrouillé — les noms et adresses des prospects importés sont masqués.
+          <div className="mt-2">
+            <DeverrouillerCoffre label="🔓 Déverrouiller le coffre" />
+          </div>
+        </div>
+      )}
 
       {/* Table */}
       <div className="overflow-x-auto rounded-xl border border-border bg-surface">
@@ -221,39 +346,127 @@ export default function GestionPipeline({ prospects }: { prospects: Prospect[] }
                 return (
                   <tr key={p.id} className={`border-b border-border last:border-0 ${p.etape === "perdu" ? "opacity-50" : ""}`}>
                     <td className="px-4 py-3">
-                      <div className="font-medium">{p.nom}</div>
-                      <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted">
-                        <span>{SEGMENT_LABEL[p.segment]}</span>
-                        {p.capacite && <span className="rounded bg-surface-2 px-1.5 py-0.5" title={CAPACITE_LABEL[p.capacite]}>{p.capacite}</span>}
-                        <span className="text-muted/70">{SEGMENT_POTENTIEL[p.segment]}</span>
+                      <div className="font-medium">
+                        {!p.verrouille ? nomComplet({ titre: p.titre, prenom: p.prenom, nom: p.nom }) : p.affiche}
+                      </div>
+                      {p.cp_ville && <div className="text-xs text-muted">{villeEtDepartement(p.cp_ville)}</div>}
+                      <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted">
+                        {/* Prospects de la Liste Axel : tous des particuliers, segment non modifiable depuis le tableau. */}
+                        {!estListeChiffree(p.liste) && (
+                          <select
+                            value={p.segment}
+                            disabled={busy === p.id}
+                            onChange={(e) => void majChamp(p, { segment: e.target.value as Segment })}
+                            aria-label="Segment"
+                            className="rounded border border-transparent bg-transparent py-0.5 text-xs hover:border-border"
+                          >
+                            {Object.entries(SEGMENT_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                          </select>
+                        )}
                       </div>
                     </td>
                     <td className="px-4 py-3">
-                      <span className="rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent">{ETAPE_LABEL[p.etape]}</span>
+                      <select
+                        value={p.etape}
+                        disabled={busy === p.id}
+                        onChange={(e) => void majChamp(p, { etape: e.target.value as Etape })}
+                        aria-label="Étape"
+                        className="rounded-full border border-transparent bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent hover:border-accent"
+                      >
+                        {Object.entries(ETAPE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                      </select>
                     </td>
-                    <td className="px-4 py-3 text-muted">{p.responsable ?? "—"}</td>
                     <td className="px-4 py-3">
-                      {p.prochaine_action ? (
-                        <div className="text-xs">
-                          <div>{p.prochaine_action}</div>
-                          {p.prochaine_action_date && (
-                            <div className={retard ? "font-medium text-negative" : "text-muted"}>
-                              {retard ? "en retard · " : ""}{formatDate(p.prochaine_action_date)}
-                            </div>
-                          )}
-                        </div>
-                      ) : <span className="text-muted">—</span>}
+                      <ChoixResponsable
+                        key={`${p.id}-${p.responsable ?? ""}`}
+                        value={p.responsable ?? null}
+                        disabled={busy === p.id}
+                        compact
+                        onChange={(v) => void majChamp(p, { responsable: v })}
+                      />
                     </td>
-                    <td className="px-4 py-3 text-right tabular-nums text-muted">{p.montant_cible != null ? formatEuros(Number(p.montant_cible)) : "—"}</td>
-                    <td className="px-4 py-3 text-right tabular-nums font-medium text-positive">{p.montant_obtenu ? formatEuros(Number(p.montant_obtenu)) : "—"}</td>
-                    <td className="px-4 py-3 text-right whitespace-nowrap">
-                      {suite && (
-                        <button type="button" onClick={() => avancer(p)} disabled={busy === p.id} className="text-accent hover:underline disabled:opacity-50" title={`→ ${ETAPE_LABEL[suite]}`}>
-                          Avancer
+                    <td className="px-4 py-3">
+                      <input
+                        type="text"
+                        // Enregistré en quittant le champ.
+                        key={`${p.id}-a-${p.prochaine_action ?? ""}`}
+                        defaultValue={p.prochaine_action ?? ""}
+                        placeholder="—"
+                        aria-label="Prochaine action"
+                        onBlur={(e) => {
+                          const v = e.target.value.trim();
+                          if (v !== (p.prochaine_action ?? "")) void majChamp(p, { prochaine_action: v || null });
+                        }}
+                        className="w-36 rounded border border-border bg-background px-1.5 py-0.5 text-xs focus:border-accent focus:outline-none"
+                      />
+                      <input
+                        type="date"
+                        key={`${p.id}-d-${p.prochaine_action_date ?? ""}`}
+                        defaultValue={p.prochaine_action_date ?? ""}
+                        aria-label="Échéance de l'action"
+                        title={retard ? "En retard" : "Échéance"}
+                        onChange={(e) => void majChamp(p, { prochaine_action_date: e.target.value || null })}
+                        className={`mt-1 block rounded border bg-background px-1.5 py-0.5 text-xs focus:border-accent focus:outline-none ${retard ? "border-negative text-negative" : "border-border text-muted"}`}
+                      />
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <span className="inline-flex items-center gap-1">
+                        <input
+                          type="text"
+                          inputMode="decimal"
+                          key={`${p.id}-c-${p.montant_cible ?? ""}`}
+                          defaultValue={p.montant_cible != null ? String(p.montant_cible).replace(".", ",") : ""}
+                          placeholder="—"
+                          aria-label="Cible en euros"
+                          onBlur={(e) => {
+                            const t = e.target.value.trim();
+                            const v = t ? eur(t) : null;
+                            if (v !== (p.montant_cible != null ? Number(p.montant_cible) : null)) void majChamp(p, { montant_cible: v });
+                          }}
+                          className="w-20 rounded border border-border bg-background px-1.5 py-0.5 text-right text-xs tabular-nums focus:border-accent focus:outline-none"
+                        />
+                        <span className="text-xs text-muted">€</span>
+                      </span>
+                      <div className="mt-1">
+                        <select
+                          value={p.capacite ?? ""}
+                          disabled={busy === p.id}
+                          onChange={(e) => void majChamp(p, { capacite: (e.target.value || null) as Capacite | null })}
+                          aria-label="Capacité"
+                          title={p.capacite ? CAPACITE_LABEL[p.capacite] : "Capacité non estimée"}
+                          className="rounded border border-border bg-background py-0.5 text-xs text-muted focus:border-accent focus:outline-none"
+                        >
+                          <option value="">Capacité —</option>
+                          {Object.entries(CAPACITE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                        </select>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 text-right tabular-nums">
+                      <span className="font-medium text-positive">{obtenus[p.id] ? formatEuros(obtenus[p.id].montant) : "—"}</span>
+                      {peutLier && (
+                        <button
+                          type="button"
+                          onClick={() => setLiaison(p)}
+                          className="ml-1.5 rounded p-1 text-muted hover:bg-surface-2 hover:text-foreground"
+                          title={obtenus[p.id] ? `${obtenus[p.id].nb} écriture(s) liée(s) — gérer` : "Lier une écriture de Comptabilité"}
+                          aria-label="Lier une écriture de Comptabilité"
+                        >
+                          <Icon name="ledger" className="h-4 w-4" />
                         </button>
                       )}
-                      <button type="button" onClick={() => ouvrir(p)} className="ml-3 text-muted hover:underline">Modifier</button>
-                      <button type="button" onClick={() => supprimer(p)} disabled={busy === p.id} className="ml-3 text-muted hover:underline disabled:opacity-50">Suppr.</button>
+                    </td>
+                    <td className="px-4 py-3 text-right whitespace-nowrap">
+                      {suite && (
+                        <button type="button" onClick={() => avancer(p)} disabled={busy === p.id} className="rounded p-1.5 text-accent hover:bg-accent-soft disabled:opacity-50" title={`Avancer → ${ETAPE_LABEL[suite]}`} aria-label={`Avancer vers ${ETAPE_LABEL[suite]}`}>
+                          <Icon name="avancer" className="h-4 w-4" />
+                        </button>
+                      )}
+                      <button type="button" onClick={() => ouvrir(p)} className="rounded p-1.5 text-muted hover:bg-surface-2 hover:text-foreground" title="Modifier" aria-label="Modifier">
+                        <Icon name="crayon" className="h-4 w-4" />
+                      </button>
+                      <button type="button" onClick={() => supprimer(p)} disabled={busy === p.id} className="rounded p-1.5 text-muted hover:bg-negative/10 hover:text-negative disabled:opacity-50" title="Supprimer" aria-label="Supprimer">
+                        <Icon name="corbeille" className="h-4 w-4" />
+                      </button>
                     </td>
                   </tr>
                 );
@@ -264,11 +477,32 @@ export default function GestionPipeline({ prospects }: { prospects: Prospect[] }
       </div>
 
       {edit && (
-        <Modal title={edit === "nouveau" ? "Nouveau prospect" : "Modifier le prospect"} onClose={() => setEdit(null)}>
+        <Modal title={edit === "nouveau" ? "Nouveau prospect" : "Modifier le prospect"} onClose={() => setEdit(null)} enregistrerEnFermant>
           <form onSubmit={submit} className="space-y-4">
-            <Field label="Nom / organisme">
-              <input type="text" required value={form.nom} onChange={(e) => setForm({ ...form, nom: e.target.value })} className={inputCls} placeholder="Ex. M. et Mme X, Fondation Y, Entreprise Z" />
-            </Field>
+            <div className="grid grid-cols-3 gap-3">
+              <Field label="Civilité">
+                <select value={form.civilite} onChange={(e) => setForm({ ...form, civilite: e.target.value })} className={inputCls}>
+                  {["", "M.", "Mme", "M. & Mme", "Père", "Sœur", "Abbé"].map((c) => <option key={c} value={c}>{c || "—"}</option>)}
+                </select>
+              </Field>
+              <Field label="Prénom">
+                <input type="text" value={form.prenom} onChange={(e) => setForm({ ...form, prenom: e.target.value })} className={inputCls} />
+              </Field>
+              <Field label="Nom / organisme">
+                <input type="text" required value={form.nom} onChange={(e) => setForm({ ...form, nom: e.target.value })} className={inputCls} placeholder="Nom, ou Fondation Y…" />
+              </Field>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Adresse">
+                <input type="text" value={form.adresse} onChange={(e) => setForm({ ...form, adresse: e.target.value })} className={inputCls} placeholder="N° et rue" />
+              </Field>
+              <Field label="CP et ville">
+                <input type="text" value={form.cp_ville} onChange={(e) => setForm({ ...form, cp_ville: e.target.value })} className={inputCls} placeholder="51100 Reims" />
+              </Field>
+            </div>
+            {edit !== "nouveau" && edit?.chiffre && (
+              <p className="-mt-2 text-xs text-muted">Fiche de la « {edit.liste} » : prénom, adresse et civilité sont chiffrés dans le coffre.</p>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <Field label="Segment">
                 <select value={form.segment} onChange={(e) => setForm({ ...form, segment: e.target.value as Segment })} className={inputCls}>
@@ -289,16 +523,17 @@ export default function GestionPipeline({ prospects }: { prospects: Prospect[] }
                 </select>
               </Field>
               <Field label="Responsable (comité)">
-                <input type="text" value={form.responsable} onChange={(e) => setForm({ ...form, responsable: e.target.value })} className={inputCls} placeholder="Qui suit ce prospect" />
+                <ChoixResponsable value={form.responsable || null} onChange={(v) => setForm({ ...form, responsable: v ?? "" })} />
               </Field>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Montant cible (€)">
                 <input type="text" inputMode="decimal" value={form.montant_cible} onChange={(e) => setForm({ ...form, montant_cible: e.target.value })} className={inputCls} placeholder="0,00" />
               </Field>
-              <Field label="Montant obtenu (€)">
-                <input type="text" inputMode="decimal" value={form.montant_obtenu} onChange={(e) => setForm({ ...form, montant_obtenu: e.target.value })} className={inputCls} placeholder="0,00" />
-              </Field>
+              <div className="text-xs text-muted">
+                <span className="mb-1 block">Montant obtenu</span>
+                Tiré des écritures de Comptabilité liées par le Trésorier (bouton <Icon name="ledger" className="inline h-3.5 w-3.5" /> du tableau).
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Prochaine action">

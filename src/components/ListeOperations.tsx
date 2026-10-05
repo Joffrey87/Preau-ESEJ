@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Modal, Field, FormFooter, inputCls } from "./GestionComptes";
@@ -8,6 +8,14 @@ import VoletDetail from "@/components/VoletDetail";
 import Icon from "@/components/Icon";
 import PastilleDon, { etatDon, type DonCompta } from "@/components/PastilleDon";
 import ChiffrerLibellesDons from "@/components/ChiffrerLibellesDons";
+import DeverrouillerCoffre from "@/components/DeverrouillerCoffre";
+import GestionDons, { type Don } from "@/components/GestionDons";
+import CreerDonDepuisOperation from "@/components/CreerDonDepuisOperation";
+import HarmoniserFiches from "@/components/HarmoniserFiches";
+import LiaisonGlobale from "@/components/LiaisonGlobale";
+import NormaliserEntreprises from "@/components/NormaliserEntreprises";
+import { LienDonFille } from "@/components/LiaisonDons";
+import { candidatsPour, compatibleAvecIntitule, construireIdentites, estFort } from "@/lib/liaisonDons";
 import { useCoffre } from "@/components/CoffreProvider";
 import { LIBELLE_DON, chiffrerLibellesDon, dechiffrerLibellesDon, texteDonateur } from "@/lib/libelleDon";
 import { useDonsDechiffres } from "@/lib/donsChiffre";
@@ -106,7 +114,7 @@ export default function ListeOperations({
   selection,
   exercices,
   donsRepertories,
-  rapprochementsDons = {},
+  rapprochementsDons: rapprochementsServeur = {},
   donsCompta = [],
   inscriptions,
   affectations,
@@ -122,7 +130,7 @@ export default function ListeOperations({
   donsRepertories: string[];
   /** Don correspondant à chaque opération « Don » : relié, ou trouvé par montant et date. */
   rapprochementsDons?: Record<string, Rapprochement>;
-  /** Dons concernés (coordonnées chiffrées, déchiffrées ici si le coffre est ouvert). */
+  /** Tous les dons (coordonnées chiffrées, déchiffrées ici si le coffre est ouvert) : liens, fiches et créations. */
   donsCompta?: DonCompta[];
   inscriptions: Inscription[];
   affectations: Affectation[];
@@ -139,17 +147,62 @@ export default function ListeOperations({
   // Complétude des fiches donateur : jugée sur les dons déchiffrés.
   const { dons: donsClairs, verrou } = useDonsDechiffres(donsCompta);
   const donParId = useMemo(() => new Map(donsClairs.map((d) => [d.id, d])), [donsClairs]);
+  const donsLibres = useMemo(() => donsClairs.filter((d) => !d.operation_id), [donsClairs]);
+  // Donateurs connus : un nom de donateur dans un intitulé interdit de proposer un autre donateur.
+  const identites = useMemo(() => construireIdentites(donsClairs), [donsClairs]);
+  // `rapprochementsDons` (montant à ±15 jours, venu du serveur) est complété plus bas par le nom du donateur.
   const etatDonDe = (opId: string) =>
     etatDon(rapprochementsDons[opId], donParId.get(rapprochementsDons[opId]?.donId ?? ""), verrou).etat;
-  const pastilleDon = (opId: string) => (
-    <PastilleDon
-      operationId={opId}
-      exerciceId={exerciceDeLOperation(opId)}
-      rapprochement={rapprochementsDons[opId]}
-      don={donParId.get(rapprochementsDons[opId]?.donId ?? "")}
-      verrou={verrou}
-    />
-  );
+  const [ficheId, setFicheId] = useState<{ id: string; signaler: boolean } | null>(null);
+  const [creationOpId, setCreationOpId] = useState<string | null>(null);
+  /** Intitulés (bancaire, saisi) d'une écriture « Don », sous-écriture et ligne mère réunies. */
+  const texteDeOperation = (o: OperationRow): string | null => {
+    const mere = o.parent_id ? operations.find((x) => x.id === o.parent_id) : undefined;
+    return (
+      [
+        libellesDons.get(o.id),
+        o.libelle_origine,
+        o.libelle !== LIBELLE_DON ? o.libelle : null,
+        mere ? (libellesDons.get(mere.id) ?? mere.libelle_origine) : null,
+      ]
+        .filter(Boolean)
+        .join(" ") || null
+    );
+  };
+  const pastilleDon = (opId: string) => {
+    const op = operations.find((o) => o.id === opId);
+    const r = rapprochementsDons[opId];
+    return (
+      <>
+        <PastilleDon
+          operationId={opId}
+          exerciceId={exerciceDeLOperation(opId)}
+          rapprochement={r}
+          don={donParId.get(r?.donId ?? "")}
+          verrou={verrou}
+          onFiche={(id, signaler) => setFicheId({ id, signaler })}
+          onCreer={setCreationOpId}
+        />
+        {op && (
+          <span className="block basis-full">
+            <LienDonFille
+              filleId={op.id}
+              exerciceId={op.exercice_id}
+              date={op.date_operation}
+              montant={Number(op.montant)}
+              texte={texteDeOperation(op)}
+              lieId={r?.lien === "explicite" ? r.donId : null}
+              donParId={donParId}
+              libres={donsLibres}
+              verrou={verrou}
+              identites={identites}
+              onModifierCandidat={(id, signaler) => setFicheId({ id, signaler })}
+            />
+          </span>
+        )}
+      </>
+    );
+  };
   // Rattachements aux familles (onglet Frais de scolarité), par opération.
   const affectationsDe = new Map<string, Affectation[]>();
   for (const a of affectations) {
@@ -184,6 +237,88 @@ export default function ListeOperations({
       annule = true;
     };
   }, [operations, coffre.estOuvert, coffre.dechiffrer]);
+  // « Don trouvé » : au rapprochement par montant exact (±15 jours) s'ajoute le nom du donateur
+  // retrouvé dans l'intitulé bancaire (coffre ouvert) ; un don ne sert qu'à une écriture.
+  const rapprochementsDons = useMemo(() => {
+    const res: Record<string, Rapprochement> = { ...rapprochementsServeur };
+    if (!coffre.estOuvert || verrou) return res;
+    // Le rapprochement du serveur (montant et date seulement) ne tient pas compte des noms : on écarte
+    // ceux dont l'intitulé nomme un autre donateur.
+    for (const [opId, r] of Object.entries(res)) {
+      if (r.lien !== "probable") continue;
+      const op = operations.find((o) => o.id === opId);
+      const don = donParId.get(r.donId);
+      if (op && don && compatibleAvecIntitule(texteDeOperation(op), don, identites) === "non") delete res[opId];
+    }
+    const pris = new Set(Object.values(res).map((r) => r.donId));
+    const dons = operations
+      .filter((o) => o.categories?.nom === "Don" && !o.est_ventilee && !res[o.id])
+      .sort((a, b) => a.date_operation.localeCompare(b.date_operation) || a.id.localeCompare(b.id));
+    for (const o of dons) {
+      const c = candidatsPour(
+        { date: o.date_operation, montant: Number(o.montant), texte: texteDeOperation(o) },
+        donsLibres.filter((d) => !pris.has(d.id)),
+        5,
+        identites,
+      ).find((x) => x.nom >= 0.999);
+      if (c) {
+        pris.add(c.don.id);
+        res[o.id] = { donId: c.don.id, lien: "probable", motif: "nom" };
+      }
+    }
+    return res;
+    // texteDeOperation ne dépend que de `operations` et `libellesDons`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rapprochementsServeur, operations, libellesDons, donsLibres, donParId, identites, coffre.estOuvert, verrou]);
+
+  // Liens automatiques : nom exact dans l'intitulé + date à ±3 jours + montant exact. Seule une
+  // correspondance sans ambiguïté est liée (une écriture pour un don, un don pour une écriture).
+  const liensAuto = useMemo(() => {
+    if (!coffre.estOuvert || verrou) return [];
+    const ecritures = operations.filter(
+      (o) => o.categories?.nom === "Don" && !o.est_ventilee && rapprochementsServeur[o.id]?.lien !== "explicite",
+    );
+    const fortsDe = new Map<string, string[]>();
+    for (const o of ecritures) {
+      const forts = candidatsPour({ date: o.date_operation, montant: Number(o.montant), texte: texteDeOperation(o) }, donsLibres, 20, identites).filter(estFort);
+      if (forts.length > 0) fortsDe.set(o.id, forts.map((c) => c.don.id));
+    }
+    const ecrituresDe = new Map<string, string[]>();
+    for (const [opId, ids] of fortsDe) for (const id of ids) ecrituresDe.set(id, [...(ecrituresDe.get(id) ?? []), opId]);
+    const res: { op: OperationRow; don: DonCompta }[] = [];
+    for (const [opId, ids] of fortsDe) {
+      if (ids.length !== 1 || (ecrituresDe.get(ids[0])?.length ?? 0) !== 1) continue;
+      const op = operations.find((o) => o.id === opId);
+      const don = donParId.get(ids[0]);
+      if (op && don) res.push({ op, don });
+    }
+    return res;
+    // texteDeOperation ne dépend que de `operations` et `libellesDons`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [operations, rapprochementsServeur, libellesDons, donsLibres, donParId, identites, coffre.estOuvert, verrou]);
+  const dejaTentes = useRef(new Set<string>());
+  const [autoLies, setAutoLies] = useState<string[]>([]);
+  useEffect(() => {
+    const aFaire = liensAuto.filter((p) => !dejaTentes.current.has(p.op.id + p.don.id));
+    if (aFaire.length === 0) return;
+    aFaire.forEach((p) => dejaTentes.current.add(p.op.id + p.don.id));
+    (async () => {
+      const supabase = createClient();
+      const faits: string[] = [];
+      for (const { op, don } of aFaire) {
+        const maj: { operation_id: string; exercice_id?: string } = { operation_id: op.id };
+        if (!don.exercice_id && op.exercice_id) maj.exercice_id = op.exercice_id;
+        // « is null » : on ne remplace jamais un lien existant.
+        const { error } = await supabase.from("dons").update(maj).eq("id", don.id).is("operation_id", null);
+        if (!error) faits.push(`${nomDonateur(don) || "don"} (${formatDate(don.date_don)}, ${formatEuros(Number(don.montant))})`);
+      }
+      if (faits.length > 0) {
+        setAutoLies((l) => [...l, ...faits]);
+        router.refresh();
+      }
+    })();
+  }, [liensAuto, router]);
+
   // Ouverture des volets : `ouverture` ne retient que les choix explicites de
   // l'utilisateur ; par défaut, une ligne dont des dons restent à rattacher
   // s'ouvre d'elle-même.
@@ -292,8 +427,15 @@ export default function ListeOperations({
   /** Une écriture « Don » (la ligne ou l'une de ses sous-écritures) reste à régulariser. */
   const aRegulariser = (o: OperationRow) =>
     o.categories?.nom === "Don" && !o.est_ventilee && !["complet", "relie_verrouille"].includes(etatDonDe(o.id));
+  /** Ligne « Don » ventilée dont une partie du montant n'est pas encore ventilée (reste à saisir). */
+  const resteDonAVentiler = (op: OperationRow) => {
+    if (!op.est_ventilee) return false;
+    const filles = fillesDe.get(op.id) ?? [];
+    const estDon = op.categories?.nom === "Don" || filles.some((fi) => fi.categories?.nom === "Don");
+    return estDon && Number(op.montant) - filles.reduce((t, fi) => t + Number(fi.montant), 0) > 0.005;
+  };
   const donARegulariser = (op: OperationRow) =>
-    aRegulariser(op) || (fillesDe.get(op.id) ?? []).some((fi) => estRetenue(fi) && aRegulariser(fi));
+    aRegulariser(op) || resteDonAVentiler(op) || (fillesDe.get(op.id) ?? []).some((fi) => estRetenue(fi) && aRegulariser(fi));
   const nbDonsARegulariser = racines.filter(donARegulariser).length;
 
   const parCategorie =
@@ -387,7 +529,8 @@ export default function ListeOperations({
     ).length;
 
   const estOuverte = (opId: string) =>
-    ouverture[opId] ?? (donsARattacher(opId) > 0 || trouveeParSesFilles(opId));
+    ouverture[opId] ??
+    (donsARattacher(opId) > 0 || trouveeParSesFilles(opId) || (operations.find((o) => o.id === opId && resteDonAVentiler(o)) !== undefined));
   const basculer = (opId: string) =>
     setOuverture((p) => ({ ...p, [opId]: !estOuverte(opId) }));
 
@@ -416,6 +559,19 @@ export default function ListeOperations({
       (f.categorie_id || null) !== catDon &&
       !window.confirm(
         "Cette opération est reliée à un don de l'onglet Dons. En changeant sa catégorie, le don sera délié (il restera dans l'onglet Dons, à relier ailleurs ou à supprimer). Continuer ?",
+      )
+    ) {
+      return;
+    }
+
+    // Un don relié ne suit pas le montant de l'écriture : on prévient si les deux divergent.
+    const donLie = rapprochementsDons[edit.id]?.lien === "explicite" ? donParId.get(rapprochementsDons[edit.id].donId) : undefined;
+    if (
+      donLie &&
+      Math.abs(Number(donLie.montant) - montantTotal) >= 0.005 &&
+      Math.abs(Number(donLie.montant) - Number(edit.montant)) < 0.005 &&
+      !window.confirm(
+        `Cette écriture est reliée à un don de ${formatEuros(Number(donLie.montant))} : avec ${formatEuros(montantTotal)}, les deux montants ne correspondront plus (le don n'est pas modifié). Continuer ?`,
       )
     ) {
       return;
@@ -489,8 +645,32 @@ export default function ListeOperations({
 
   return (
     <>
+      {autoLies.length > 0 && (
+        <div className="mb-3 flex items-start justify-between gap-3 rounded-lg border border-positive/40 bg-positive/10 px-3 py-2 text-sm text-positive">
+          <span>
+            ✓ {autoLies.length} don{autoLies.length > 1 ? "s" : ""} lié{autoLies.length > 1 ? "s" : ""} automatiquement (nom exact, date à ±3 jours, montant exact) :{" "}
+            {autoLies.join(" ; ")}. Un lien se défait avec « Délier » sous l&apos;écriture.
+          </span>
+          <button type="button" onClick={() => setAutoLies([])} className="text-xs text-muted hover:text-foreground">
+            ✕
+          </button>
+        </div>
+      )}
       <div className="mb-3 flex flex-wrap items-center justify-end gap-2">
         <div className="mr-auto flex min-w-0 flex-1 flex-wrap items-center gap-2">
+          {/* Coffre : déverrouillable ici, sans passer par Paramètres (noms des donateurs, liens aux dons). */}
+          {coffre.estConfigure &&
+            (coffre.estOuvert ? (
+              <span className="rounded-lg bg-positive/10 px-2.5 py-1.5 text-xs font-medium text-positive" title="Les noms des donateurs sont lisibles">
+                🔓 Coffre ouvert
+              </span>
+            ) : (
+              <DeverrouillerCoffre label="🔒 Déverrouiller le coffre" />
+            ))}
+          <LiaisonGlobale dons={donsClairs} verrou={verrou} />
+          <NormaliserEntreprises dons={donsClairs as unknown as Don[]} verrou={verrou} />
+          <HarmoniserFiches dons={donsClairs as unknown as Don[]} verrou={verrou} />
+          <HarmoniserFiches mode="foyers" dons={donsClairs as unknown as Don[]} verrou={verrou} />
           <div className="relative w-full max-w-sm">
             <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted">⌕</span>
             <input
@@ -731,7 +911,7 @@ export default function ListeOperations({
                     </span>
                   </td>
                   <td className="px-4 py-3">
-                    <span className="inline-flex items-center">
+                    <span className="inline-flex flex-wrap items-center">
                       {op.libelle}
                       <button
                         type="button"
@@ -757,7 +937,7 @@ export default function ListeOperations({
                           ⚠ {questionDe(op)}
                         </span>
                       )}
-                      {!modeEdition && !op.est_ventilee && (fillesDe.get(op.id) ?? []).length === 0 &&
+                      {!op.est_ventilee && (fillesDe.get(op.id) ?? []).length === 0 &&
                         op.categories?.nom === "Don" &&
                         pastilleDon(op.id)}
                     </span>
@@ -835,6 +1015,13 @@ export default function ListeOperations({
                     pastilleDon={pastilleDon}
                     inscriptions={inscriptions}
                     affectations={affectations}
+                    onModifier={(id) => {
+                      const o = operations.find((x) => x.id === id);
+                      if (o) ouvrir(o);
+                    }}
+                    donsLibres={donsLibres}
+                    texteDe={(id) => libellesDons.get(id) ?? null}
+                    verrou={verrou}
                   />
                 ),
               ])
@@ -844,8 +1031,37 @@ export default function ListeOperations({
         </div>
       </div>
 
+      {ficheId && (
+        <GestionDons
+          dons={donsCompta as unknown as Don[]}
+          ouvrirId={ficheId.id}
+          signalerManques={ficheId.signaler}
+          onFermer={() => setFicheId(null)}
+        />
+      )}
+
+      {creationOpId &&
+        (() => {
+          const o = operations.find((x) => x.id === creationOpId);
+          if (!o) return null;
+          return (
+            <CreerDonDepuisOperation
+              operation={{
+                id: o.id,
+                date_operation: o.date_operation,
+                montant: Number(o.montant),
+                mode_paiement: o.mode_paiement,
+                exercice_id: o.exercice_id,
+                texte: texteDeOperation(o),
+              }}
+              dons={donsClairs as unknown as Don[]}
+              onFermer={() => setCreationOpId(null)}
+            />
+          );
+        })()}
+
       {edit && (
-        <Modal title="Modifier l'opération" onClose={() => setEdit(null)}>
+        <Modal title="Modifier l'opération" onClose={() => setEdit(null)} enregistrerEnFermant>
           <form onSubmit={enregistrer} className="max-h-[75vh] space-y-4 overflow-y-auto pr-1">
             <div className="grid grid-cols-2 gap-2">
               <button

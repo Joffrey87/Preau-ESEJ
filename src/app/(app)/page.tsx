@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { formatEuros } from "@/lib/format";
 import { regleDesFamilles } from "@/lib/regleScolarite";
 import { sansLignesVentilees } from "@/lib/operations";
+import { emailVue } from "@/lib/vueRoleServeur";
 import { roleByEmail } from "@/lib/roles";
 import { recuEnvoye, champsImportantsManquants, sansRecu } from "@/lib/statutDon";
 
@@ -46,7 +47,7 @@ export default async function Home() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const role = roleByEmail(user?.email);
+  const role = roleByEmail(await emailVue(user?.email));
   const meta = (user?.user_metadata ?? {}) as { prenom?: string; nom?: string };
   const prenom = (meta.prenom ?? "").trim();
   const slug = role?.slug ?? "";
@@ -87,6 +88,9 @@ export default async function Home() {
   ]);
 
   const anneeSco = (scoAnneeRes.data as { annee_scolaire: string } | null)?.annee_scolaire ?? null;
+  // Modifications de coordonnées faites par les familles, pas encore relues (le bureau qui valide seulement).
+  const { data: modifsFamilles } = await supabase.from("familles_modifications").select("famille_id").is("vu_le", null);
+  const famillesAValider = new Set((modifsFamilles ?? []).map((m) => m.famille_id as string)).size;
   const sco = anneeSco ? await regleDesFamilles(supabase, anneeSco) : [];
 
   // Finances
@@ -120,6 +124,9 @@ export default async function Home() {
 
   // Priorités du jour (filtrées par rôle)
   const prios: Prio[] = [];
+  if (famillesAValider > 0) {
+    prios.push({ title: `À valider : Modification Famille (${famillesAValider})`, detail: "Coordonnées modifiées par des familles dans leur espace", href: "/scolarite", icon: "graduation", tone: "amber" });
+  }
   if (estFinance && solde < 0)
     prios.push({ title: "Solde de trésorerie négatif", detail: formatEuros(solde), href: "/comptabilite", icon: "ledger", tone: "red" });
   if (estFinance && budgetConsomme !== null && budgetConsomme > 100)

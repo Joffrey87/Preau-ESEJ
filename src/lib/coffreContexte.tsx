@@ -8,6 +8,8 @@ import {
   configurerCoffre,
   ouvrirCoffre,
   regenererCodeSecours as regenererCodeCoffre,
+  definirCodeSecretaire as definirCodeSecretaireCoffre,
+  retirerCodeSecretaire as retirerCodeSecretaireCoffre,
   verifierSecret,
   type CoffreMeta,
 } from "@/lib/coffre";
@@ -23,6 +25,9 @@ export type CoffreCtx = {
   changerPhrase: (nouvellePhrase: string) => Promise<void>; // le code de secours reste valable
   regenererCodeSecours: () => Promise<string>; // invalide l'ancien code, renvoie le nouveau
   verifier: (secret: string) => Promise<boolean>; // teste un secret sans rien changer
+  aCodeSecretaire: boolean; // un code d'accès délégué au secrétaire existe-t-il ?
+  definirCodeSecretaire: () => Promise<string>; // génère (ou remplace) le code du secrétaire, renvoyé une seule fois
+  retirerCodeSecretaire: () => Promise<void>;
   chiffrer: (texte: string) => Promise<string>;
   dechiffrer: (blob: string) => Promise<string>;
 };
@@ -89,6 +94,20 @@ export function creerContexteCoffre(coffreId: number, nomAffiche: string) {
       return code;
     }, [dek]);
 
+    const definirCodeSecretaire = useCallback(async () => {
+      if (!dek) throw new Error("Coffre verrouillé.");
+      const supabase = createClient();
+      const code = await definirCodeSecretaireCoffre(supabase, dek, coffreId);
+      setMeta(await chargerMeta(supabase, coffreId));
+      return code;
+    }, [dek]);
+
+    const retirerCodeSecretaire = useCallback(async () => {
+      const supabase = createClient();
+      await retirerCodeSecretaireCoffre(supabase, coffreId);
+      setMeta(await chargerMeta(supabase, coffreId));
+    }, []);
+
     const verifier = useCallback(
       async (secret: string) => {
         if (!meta) return false;
@@ -124,6 +143,9 @@ export function creerContexteCoffre(coffreId: number, nomAffiche: string) {
           changerPhrase,
           regenererCodeSecours,
           verifier,
+          aCodeSecretaire: !!meta?.dek_secretaire,
+          definirCodeSecretaire,
+          retirerCodeSecretaire,
           chiffrer,
           dechiffrer,
         }}

@@ -1,10 +1,14 @@
 "use client";
 
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { Modal } from "./GestionComptes";
+import { createClient } from "@/lib/supabase/client";
 import { formatEuros, formatDate } from "@/lib/format";
 import { TONE_CLASSES } from "@/lib/statutDon";
 import { badgesDe, badgeTemperature, temperatureDe, type ProfilDonateur } from "@/lib/donateurs";
 import type { Don } from "@/components/GestionDons";
+import ModifierDonateur from "@/components/ModifierDonateur";
 
 /** Recommandation d'action en une phrase, selon le profil. */
 function recommandation(p: ProfilDonateur): string {
@@ -14,7 +18,6 @@ function recommandation(p: ProfilDonateur): string {
   if (p.etat === "perdu") return "Dernière relance personnalisée, sinon archivage.";
   if (p.etat === "sommeil") return "Campagne de réactivation (« vous nous avez soutenus en… »).";
   if (p.estNouveau) return "Accueillir : remerciement rapide et présentation de l'école.";
-  if (p.estPonctuel) return "Proposer de s'inscrire dans la durée (don mensuel).";
   if (p.estFidele) return "Fidéliser : proposer le club de dons mensuels.";
   return "Maintenir le lien.";
 }
@@ -28,7 +31,40 @@ export default function FicheDonateur({
   dons: Don[];
   onClose: () => void;
 }) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
   const temp = badgeTemperature(temperatureDe(profil));
+
+  /** Fonction réservée (Recherche de fonds, bureau) : ne modifie que les deux indicateurs « bourse ». */
+  async function definir(ids: string[], donateur: boolean | null, don: boolean | null) {
+    setBusy(true);
+    setErreur(null);
+    const { error } = await createClient().rpc("definir_boursier", { p_ids: ids, p_donateur_bourse: donateur, p_don_boursier: don });
+    setBusy(false);
+    if (error) return setErreur("Enregistrement impossible : " + error.message);
+    router.refresh();
+  }
+  async function definirFamille(statut: "actuelle" | "ancienne" | null) {
+    setBusy(true);
+    setErreur(null);
+    const { error } = await createClient().rpc("definir_famille", { p_ids: dons.map((d) => d.id), p_statut: statut });
+    setBusy(false);
+    if (error) return setErreur("Enregistrement impossible : " + error.message);
+    router.refresh();
+  }
+  // Cocher « Donateur Bourse » ne marque aucun don d'office : on coche ensuite les dons boursiers un à un.
+  // Décocher remet tous ses dons en dons ordinaires.
+  const basculerDonateur = (actif: boolean) => {
+    if (
+      !actif &&
+      profil.nbDonsBourse > 0 &&
+      !window.confirm(`Retirer ce donateur des « Donateurs Bourse » ? Ses ${profil.nbDonsBourse} don(s) boursier(s) redeviendront des dons ordinaires.`)
+    ) {
+      return;
+    }
+    void definir(dons.map((d) => d.id), actif, actif ? null : false);
+  };
   const historique = [...dons].sort((a, b) => (b.date_don ?? "").localeCompare(a.date_don ?? ""));
   const recent = historique[0]; // don le plus récent (pour l'adresse / contact à jour)
 
@@ -65,7 +101,7 @@ export default function FicheDonateur({
   ];
 
   return (
-    <Modal title="Fiche donateur" onClose={onClose}>
+    <Modal title="Fiche donateur" onClose={onClose} fermerAuClicExterieur enregistrerEnFermant>
       <div className="space-y-4">
         {/* Identité + badges */}
         <div>
@@ -74,6 +110,9 @@ export default function FicheDonateur({
             {profil.courriel && <div>{profil.courriel}</div>}
             {recent?.cp_ville && <div>{[recent.adresse, recent.cp_ville].filter(Boolean).join(" · ")}</div>}
             {contactMorale && <div>Contact : {contactMorale}</div>}
+          </div>
+          <div className="mt-2">
+            <ModifierDonateur key={recent?.id} dons={dons} />
           </div>
           <div className="mt-2 flex flex-wrap gap-1">
             {badgesDe(profil).map((b) => (
@@ -84,7 +123,31 @@ export default function FicheDonateur({
             <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${TONE_CLASSES[temp.tone]}`}>
               {temp.label}
             </span>
+            {profil.boursier && (
+              <span className="inline-flex items-center rounded-full bg-gold-soft px-2 py-0.5 text-xs font-medium text-gold">Donateur Bourse</span>
+            )}
           </div>
+          <label className="mt-3 flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm">
+            <input type="checkbox" checked={profil.boursier} disabled={busy} onChange={(e) => basculerDonateur(e.target.checked)} className="h-4 w-4" />
+            <span>
+              <strong>Donateur Bourse</strong>
+              <span className="ml-1 text-xs text-muted">— donne pour payer des bourses de frais de scolarité</span>
+            </span>
+          </label>
+          <label className="mt-2 flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm">
+            <strong>Famille de l&apos;école</strong>
+            <select
+              value={profil.famille ?? ""}
+              disabled={busy}
+              onChange={(e) => void definirFamille((e.target.value || null) as "actuelle" | "ancienne" | null)}
+              className="rounded-md border border-border bg-background px-2 py-1 text-sm"
+            >
+              <option value="">Non</option>
+              <option value="actuelle">Famille actuelle</option>
+              <option value="ancienne">Ancienne famille</option>
+            </select>
+          </label>
+          {erreur && <p className="mt-1 text-xs text-negative">{erreur}</p>}
         </div>
 
         {/* Chiffres clés */}
@@ -121,7 +184,7 @@ export default function FicheDonateur({
         {/* Derniers dons (les plus anciens sont résumés par année ci-dessus). */}
         <div>
           <h3 className="mb-2 text-sm font-semibold">
-            {historique.length > 5 ? "5 derniers dons" : "Détail des dons"}
+            {profil.boursier ? "Dons (cochez les dons boursiers)" : historique.length > 5 ? "5 derniers dons" : "Détail des dons"}
           </h3>
           <div className="overflow-hidden rounded-lg border border-border">
             <table className="w-full text-sm">
@@ -131,21 +194,34 @@ export default function FicheDonateur({
                   <th className="px-3 py-2 text-right font-medium">Montant</th>
                   <th className="px-3 py-2 font-medium">Mode</th>
                   <th className="px-3 py-2 font-medium">Catégorie</th>
+                  {profil.boursier && <th className="px-3 py-2 text-center font-medium">Don boursier</th>}
                 </tr>
               </thead>
               <tbody>
-                {historique.slice(0, 5).map((d) => (
+                {(profil.boursier ? historique : historique.slice(0, 5)).map((d) => (
                   <tr key={d.id} className="border-b border-border last:border-0">
                     <td className="px-3 py-2 tabular-nums whitespace-nowrap">{formatDate(d.date_don)}</td>
                     <td className="px-3 py-2 text-right font-medium tabular-nums">{formatEuros(Number(d.montant))}</td>
                     <td className="px-3 py-2 text-muted">{d.mode_paiement ?? "—"}</td>
                     <td className="px-3 py-2 text-muted">{d.categorie_donateur ?? "—"}</td>
+                    {profil.boursier && (
+                      <td className="px-3 py-2 text-center">
+                        <input
+                          type="checkbox"
+                          checked={!!d.don_boursier}
+                          disabled={busy}
+                          onChange={(e) => void definir([d.id], null, e.target.checked)}
+                          aria-label="Don boursier"
+                          className="h-4 w-4"
+                        />
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          {historique.length > 5 && (
+          {!profil.boursier && historique.length > 5 && (
             <p className="mt-1 text-xs text-muted">
               + {historique.length - 5} don{historique.length - 5 > 1 ? "s" : ""} antérieur
               {historique.length - 5 > 1 ? "s" : ""} — total repris dans « Par année » ci-dessus.

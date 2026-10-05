@@ -23,6 +23,16 @@ export type EspaceFamille = {
     cp_ville: string | null;
     telephone: string | null;
     courriels: string | null;
+    parent1_prenom: string | null;
+    parent1_nom: string | null;
+    parent1_telephone: string | null;
+    parent1_courriel: string | null;
+    parent2_prenom: string | null;
+    parent2_nom: string | null;
+    parent2_telephone: string | null;
+    parent2_courriel: string | null;
+    /** Année de la dernière revalidation annuelle complète. */
+    revalide_annee: number | null;
   };
   eleves: Eleve[];
   inscriptions: (Omit<InscriptionDepot, "famille_nom"> & Record<string, number | string | null> & {

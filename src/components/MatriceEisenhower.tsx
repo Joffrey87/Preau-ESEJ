@@ -144,7 +144,7 @@ export default function MatriceEisenhower({
       </p>
 
       {edit && (
-        <Modal title={edit === "nouveau" ? "Nouvelle tâche" : "Modifier la tâche"} onClose={() => setEdit(null)}>
+        <Modal title={edit === "nouveau" ? "Nouvelle tâche" : "Modifier la tâche"} onClose={() => setEdit(null)} enregistrerEnFermant>
           <form onSubmit={submit} className="space-y-4">
             <Field label="Titre">
               <input type="text" required value={form.titre} onChange={(e) => setForm({ ...form, titre: e.target.value })} className={inputCls} placeholder="Ex. Préparer l'ordre du jour du CA" autoFocus />

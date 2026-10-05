@@ -2,6 +2,7 @@ import Link from "next/link";
 import PageHeader from "@/components/PageHeader";
 import GestionDons, { type Don } from "@/components/GestionDons";
 import { createClient } from "@/lib/supabase/server";
+import { emailVue } from "@/lib/vueRoleServeur";
 import { roleByEmail } from "@/lib/roles";
 import ModeleRecuBouton from "@/components/ModeleRecuBouton";
 import type { ModeleRecuRow } from "@/lib/modeleRecu";
@@ -11,7 +12,7 @@ export default async function DonsPage() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const roleSlug = roleByEmail(user?.email)?.slug ?? null;
+  const roleSlug = roleByEmail(await emailVue(user?.email))?.slug ?? null;
 
   // On charge aussi les dons supprimés (corbeille) : le composant sépare actifs
   // et supprimés via `supprime_le`.

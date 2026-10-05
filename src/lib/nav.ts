@@ -39,6 +39,7 @@ export const NAV: NavSection[] = [
     title: "Flux",
     items: [
       { href: "/mails", label: "Mails", icon: "mail", ready: true },
+      { href: "/courriers", label: "Courriers à confirmer", icon: "receipt", ready: true, roles: ["secretaire", "tresorier", "president", "administrateur"] },
     ],
   },
   {

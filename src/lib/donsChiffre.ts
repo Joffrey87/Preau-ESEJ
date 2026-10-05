@@ -14,6 +14,8 @@ export type DonChiffrable = {
   adresse: string | null;
   cp_ville: string | null;
   courriel: string | null;
+  /** Consigne « à transmettre à » (une personne, un courriel) : chiffrée avec la fiche. */
+  a_transmettre?: string | null;
   pii_chiffre: string | null;
 };
 
@@ -25,6 +27,7 @@ export type PiiDonateur = {
   adresse: string | null;
   cp_ville: string | null;
   courriel: string | null;
+  transmettre?: string | null;
 };
 
 /** Extrait le PII (en clair) d'un don, pour chiffrement. */
@@ -37,6 +40,7 @@ export function piiDepuis(d: DonChiffrable): PiiDonateur {
     adresse: d.adresse,
     cp_ville: d.cp_ville,
     courriel: d.courriel,
+    transmettre: d.a_transmettre ?? null,
   };
 }
 
@@ -52,6 +56,7 @@ function verrouiller<T extends DonChiffrable>(d: T): T {
     adresse: null,
     cp_ville: null,
     courriel: null,
+    a_transmettre: null,
   };
 }
 
@@ -65,6 +70,7 @@ function appliquer<T extends DonChiffrable>(d: T, p: PiiDonateur): T {
     adresse: p.adresse,
     cp_ville: p.cp_ville,
     courriel: p.courriel,
+    a_transmettre: p.transmettre ?? null,
   };
 }
 

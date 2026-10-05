@@ -3,6 +3,7 @@ import { familleEnApercu } from "@/lib/apercuFamille";
 import { todayISO } from "@/lib/format";
 import { chargerEspace, anneeCourante, classeEn } from "@/lib/espaceFamille";
 import { depuis, prenomEleve, termineEnJuin } from "@/lib/eleves";
+import CoordonneesFamille from "@/components/CoordonneesFamille";
 
 export default async function MaFamille() {
   const supabase = await createClient();
@@ -14,32 +15,31 @@ export default async function MaFamille() {
   if (!espace) return <p className="text-sm text-negative">{erreur ?? "Espace indisponible."}</p>;
   const f = espace.famille;
   const annee = anneeCourante(espace, todayISO());
-  const champs: [string, string | null][] = [
-    ["Parent", f.parent1],
-    ["Parent", f.parent2],
-    ["Adresse", f.adresse],
-    ["Ville", f.cp_ville],
-    ["Téléphone", f.telephone],
-    ["Courriels", f.courriels],
-  ];
+  const { data: campagne } = await supabase.rpc("annee_revalidation");
 
   return (
     <div className="space-y-6">
       <h1 className="text-lg font-semibold">Famille {f.nom}</h1>
-      <section className="rounded-xl border border-border bg-surface p-4">
-        <h2 className="mb-2 text-sm font-semibold">Coordonnées</h2>
-        <dl className="grid gap-1 text-sm sm:grid-cols-2">
-          {champs.map(([l, v], k) => (
-            <div key={k} className="flex gap-2">
-              <dt className="w-24 shrink-0 text-muted">{l}</dt>
-              <dd>{v || <span className="text-muted">—</span>}</dd>
-            </div>
-          ))}
-        </dl>
-        <p className="mt-3 text-xs text-muted">
-          Une information à corriger ? Écrivez à {association?.courriel_contact ?? "l'école"}.
-        </p>
-      </section>
+      <CoordonneesFamille
+        init={{
+          adresse: f.adresse,
+          cp_ville: f.cp_ville,
+          parent1_prenom: f.parent1_prenom,
+          parent1_nom: f.parent1_nom,
+          parent1_telephone: f.parent1_telephone,
+          parent1_courriel: f.parent1_courriel,
+          parent2_prenom: f.parent2_prenom,
+          parent2_nom: f.parent2_nom,
+          parent2_telephone: f.parent2_telephone,
+          parent2_courriel: f.parent2_courriel,
+        }}
+        campagne={(campagne as number | null) ?? null}
+        revalide={campagne != null && f.revalide_annee === campagne}
+        lectureSeule={!!apercu}
+      />
+      <p className="text-xs text-muted">
+        Une question ? Écrivez à {association?.courriel_contact ?? "l'école"}.
+      </p>
       <section className="rounded-xl border border-border bg-surface p-4">
         <h2 className="mb-2 text-sm font-semibold">Enfants</h2>
         {espace.eleves.length === 0 ? (

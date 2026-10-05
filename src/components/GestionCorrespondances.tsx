@@ -1,6 +1,8 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import BoutonFiltresMultiples, { CasePastille } from "@/components/BoutonFiltresMultiples";
+import { useFiltresMultiples } from "@/lib/filtresMultiples";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Modal, Field, FormFooter, inputCls } from "./GestionComptes";
@@ -83,7 +85,7 @@ export default function GestionCorrespondances({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [recherche, setRecherche] = useState("");
-  const [filtre, setFiltre] = useState<"tous" | "sans-regle" | "alerte">("tous");
+  const { actifs: filtres, multiple: filtreMultiple, basculer: basculerFiltre, basculerMultiple: basculerFiltreMultiple, estActif: filtreActif, reinitialiser: reinitialiserFiltres } = useFiltresMultiples<"sans-regle" | "alerte">();
 
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) => setF((p) => ({ ...p, [k]: v }));
 
@@ -109,15 +111,14 @@ export default function GestionCorrespondances({
     const q = recherche.trim().toLowerCase();
     return apercu
       .filter(({ ech, res }) => {
-        if (filtre === "sans-regle" && res.regle) return false;
-        if (filtre === "alerte" && !res.alerte) return false;
+        if (filtres.length > 0 && !((filtres.includes("sans-regle") && !res.regle) || (filtres.includes("alerte") && res.alerte))) return false;
         if (!q) return true;
         return (
           ech.libelle_origine.toLowerCase().includes(q) || res.libelle.toLowerCase().includes(q)
         );
       })
       .slice(0, 200);
-  }, [apercu, recherche, filtre]);
+  }, [apercu, recherche, filtres]);
 
   const sansRegle = apercu.filter(({ res }) => !res.regle).reduce((s, { ech }) => s + ech.occurrences, 0);
   const totalOps = echantillons.reduce((s, e) => s + e.occurrences, 0);
@@ -269,23 +270,34 @@ export default function GestionCorrespondances({
             className={`${inputCls} max-w-xs`}
           />
           <div className="inline-flex rounded-lg border border-border p-0.5">
+            <button
+              type="button"
+              onClick={reinitialiserFiltres}
+              className={`rounded-md px-3 py-1.5 text-sm font-medium ${
+                filtres.length === 0 ? "bg-accent text-accent-fg" : "text-muted hover:text-foreground"
+              }`}
+            >
+              Tous
+            </button>
             {([
-              ["tous", "Tous"],
               ["sans-regle", "Sans règle"],
               ["alerte", "À vérifier"],
             ] as const).map(([k, l]) => (
               <button
                 key={k}
                 type="button"
-                onClick={() => setFiltre(k)}
+                onClick={() => basculerFiltre(k)}
+                aria-pressed={filtreActif(k)}
                 className={`rounded-md px-3 py-1.5 text-sm font-medium ${
-                  filtre === k ? "bg-accent text-accent-fg" : "text-muted hover:text-foreground"
+                  filtreActif(k) ? "bg-accent text-accent-fg" : "text-muted hover:text-foreground"
                 }`}
               >
+                {filtreMultiple && <CasePastille coche={filtreActif(k)} />}
                 {l}
               </button>
             ))}
           </div>
+          <BoutonFiltresMultiples actif={filtreMultiple} onClick={basculerFiltreMultiple} nombre={filtres.length} />
         </div>
       </div>
 
@@ -353,7 +365,7 @@ export default function GestionCorrespondances({
 
       {/* --- Édition ------------------------------------------------------ */}
       {edit && (
-        <Modal title={edit === "nouvelle" ? "Nouvelle règle" : "Modifier la règle"} onClose={() => setEdit(null)}>
+        <Modal title={edit === "nouvelle" ? "Nouvelle règle" : "Modifier la règle"} onClose={() => setEdit(null)} enregistrerEnFermant>
           <form onSubmit={enregistrer} className="max-h-[75vh] space-y-4 overflow-y-auto pr-1">
             <div className="rounded-lg bg-surface-2 px-3 py-2 text-xs text-muted">
               La règle s&apos;applique au <strong>libellé bancaire brut</strong>. La première règle qui

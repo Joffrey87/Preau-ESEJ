@@ -1,6 +1,7 @@
 import PageHeader from "@/components/PageHeader";
 import GestionFichesAide from "@/components/GestionFichesAide";
 import { createClient } from "@/lib/supabase/server";
+import { emailVue } from "@/lib/vueRoleServeur";
 import { roleByEmail } from "@/lib/roles";
 import { COLONNES_ACTIVEE, COLONNES_FICHE, ficheDepuisBase, type FicheActivee } from "@/lib/fichesAide";
 
@@ -28,7 +29,7 @@ export default async function ProcessusPage({
         fiches={((fichesRes.data ?? []) as Record<string, unknown>[]).map(ficheDepuisBase)}
         activees={(activeesRes.data ?? []) as FicheActivee[]}
         familles={(famillesRes.data ?? []) as { id: string; nom: string }[]}
-        profil={roleByEmail(user?.email)?.slug ?? ""}
+        profil={roleByEmail(await emailVue(user?.email))?.slug ?? ""}
         rechercheInitiale={q ?? ""}
         ficheInitiale={fiche ?? null}
         ongletInitial={onglet ?? ""}

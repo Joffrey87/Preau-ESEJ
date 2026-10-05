@@ -2,6 +2,7 @@ import PageHeader from "@/components/PageHeader";
 import GestionCarnet from "@/components/GestionCarnet";
 import SaisieGroupeeCarnet from "@/components/SaisieGroupeeCarnet";
 import { createClient } from "@/lib/supabase/server";
+import { emailVue } from "@/lib/vueRoleServeur";
 import { roleByEmail } from "@/lib/roles";
 import {
   peutVoirContact,
@@ -20,13 +21,13 @@ export default async function CarnetPage({
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const role = roleByEmail(user?.email);
+  const role = roleByEmail(await emailVue(user?.email));
   const slug = role?.slug;
 
   const { data } = await supabase
     .from("contacts")
     .select(
-      "id, civilite, est_personne_morale, nom, prenom, raison_sociale, categories, courriel, telephone, adresse, cp_ville, iban, notes, relation, supprime_le, supprime_par",
+      "id, civilite, est_personne_morale, nom, prenom, raison_sociale, categories, courriel, telephone, adresse, cp_ville, iban, notes, relation, famille_statut, supprime_le, supprime_par",
     )
     .order("nom", { ascending: true });
 

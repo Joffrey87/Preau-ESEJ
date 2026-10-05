@@ -24,7 +24,7 @@ export type DonRapprochable = {
   operation_id: string | null;
 };
 
-const TOLERANCE_JOURS = 3;
+const TOLERANCE_JOURS = 15;
 
 function ecartJours(a: string, b: string): number {
   const [ay, am, ad] = a.split("-").map(Number);
@@ -34,8 +34,10 @@ function ecartJours(a: string, b: string): number {
 
 export type Rapprochement = {
   donId: string;
-  /** « explicite » : lien enregistré sur le don ; « probable » : même montant à ±3 jours, à confirmer. */
+  /** « explicite » : lien enregistré sur le don ; « probable » : même montant à ±15 jours, ou nom du donateur dans l'intitulé bancaire, à confirmer. */
   lien: "explicite" | "probable";
+  /** Pour un lien probable : ce qui l'a fait trouver. */
+  motif?: "montant" | "nom";
 };
 
 /**
@@ -71,7 +73,7 @@ export function rapprocherDons(
     );
     if (candidat) {
       consommes.add(candidat.id);
-      res.set(op.id, { donId: candidat.id, lien: "probable" });
+      res.set(op.id, { donId: candidat.id, lien: "probable", motif: "montant" });
     }
   }
   return res;

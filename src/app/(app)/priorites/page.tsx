@@ -1,6 +1,7 @@
 import PageHeader from "@/components/PageHeader";
 import Priorites from "@/components/Priorites";
 import { createClient } from "@/lib/supabase/server";
+import { emailVue } from "@/lib/vueRoleServeur";
 import { roleByEmail } from "@/lib/roles";
 import { peutVoirEvenement, type Evenement } from "@/lib/evenements";
 import type { Tache } from "@/lib/taches";
@@ -10,7 +11,7 @@ export default async function PrioritesPage() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const role = roleByEmail(user?.email);
+  const role = roleByEmail(await emailVue(user?.email));
   const slug = role?.slug ?? "";
 
   // Tâches du rôle courant (chaque rôle a sa liste).

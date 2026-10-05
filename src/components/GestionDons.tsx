@@ -12,16 +12,26 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { formatEuros, formatDate, todayISO } from "@/lib/format";
 import { genererRecuPdf } from "@/lib/recu";
-import { PREFERENCES_ENVOI, prefereEnBase } from "@/lib/envoiRecu";
+import { ETAT_PASSE_SECRETAIRE, PREFERENCES_ENVOI, etatEnvoye, prefereEnBase } from "@/lib/envoiRecu";
 import { Modal, Field, FormFooter, inputCls } from "./GestionComptes";
 import ChoixDonateur, { type IdentiteSaisie } from "@/components/ChoixDonateur";
 import { useCoffre } from "@/components/CoffreProvider";
 import DeverrouillerCoffre from "@/components/DeverrouillerCoffre";
+import ChampsParticulier from "@/components/ChampsParticulier";
+import ChampCourriel from "@/components/ChampCourriel";
+import LierDonAEcriture from "@/components/LierDonAEcriture";
+import LiaisonGlobale from "@/components/LiaisonGlobale";
+import type { DonCompta } from "@/components/PastilleDon";
+import { estCouple } from "@/lib/couple";
+import BoutonFiltresMultiples, { CasePastille } from "@/components/BoutonFiltresMultiples";
+import { useFiltresMultiples } from "@/lib/filtresMultiples";
 import { useDonsDechiffres, piiDepuis, VERROU } from "@/lib/donsChiffre";
+import { nomSoigne } from "@/lib/nomPropre";
 import {
   statutsDon,
   donateursRecurrents,
   cleDonateur,
+  nomDonateur,
   TONE_CLASSES,
   FILTRES,
   type Chip,
@@ -41,6 +51,14 @@ export type Don = {
   adresse: string | null;
   cp_ville: string | null;
   courriel: string | null;
+  /** « À transmettre à » : à qui remettre le reçu fiscal (chiffré avec la fiche). */
+  a_transmettre?: string | null;
+  /** Le donateur est un « Donateur Bourse » (dons faits pour payer des bourses de scolarité). */
+  donateur_bourse?: boolean;
+  /** Ce don est un « Don boursier » (et non un don pour financer l'école). */
+  don_boursier?: boolean;
+  /** Famille de l'école : « actuelle » ou « ancienne ». */
+  famille_statut?: "actuelle" | "ancienne" | null;
   pii_chiffre: string | null;
   montant: number;
   date_don: string;
@@ -62,7 +80,7 @@ const CATEGORIES = CATEGORIES_DONATEUR;
 const MODES = ["Virement", "Chèque", "Carte bancaire", "Espèces", "Nature", "Autre"];
 
 // Colonnes affichables du tableau (le n° de reçu est masqué par défaut).
-type ColKey = "date" | "donateur" | "categorie" | "montant" | "mode" | "recu" | "statut";
+type ColKey = "date" | "donateur" | "categorie" | "montant" | "mode" | "recu" | "compta" | "statut";
 const COLONNES: { key: ColKey; label: string; sortable: boolean; defaut: boolean }[] = [
   { key: "date", label: "Date", sortable: true, defaut: true },
   { key: "donateur", label: "Donateur", sortable: true, defaut: true },
@@ -70,7 +88,8 @@ const COLONNES: { key: ColKey; label: string; sortable: boolean; defaut: boolean
   { key: "montant", label: "Montant", sortable: true, defaut: true },
   { key: "mode", label: "Mode", sortable: true, defaut: false },
   { key: "recu", label: "N° reçu", sortable: false, defaut: false },
-  { key: "statut", label: "Statut", sortable: false, defaut: true },
+  { key: "compta", label: "Lié Compta", sortable: false, defaut: true },
+  { key: "statut", label: "Reçu Fiscal", sortable: false, defaut: true },
 ];
 const COLS_DEFAUT = Object.fromEntries(COLONNES.map((c) => [c.key, c.defaut])) as Record<ColKey, boolean>;
 
@@ -104,6 +123,7 @@ type FormState = {
   adresse: string;
   cp_ville: string;
   courriel: string;
+  a_transmettre: string;
   envoi_prefere: string;
   montant: string;
   date_don: string;
@@ -125,6 +145,7 @@ function vide(): FormState {
     adresse: "",
     cp_ville: "",
     courriel: "",
+    a_transmettre: "",
     envoi_prefere: "courriel",
     montant: "",
     date_don: todayISO(),
@@ -174,7 +195,7 @@ export default function GestionDons({
   const [error, setError] = useState<string | null>(null);
   const [genErreur, setGenErreur] = useState<string | null>(null);
   const [f, setF] = useState<FormState>(vide());
-  const [filtre, setFiltre] = useState<StatutKey | null>(null);
+  const { actifs: filtres, multiple: filtreMultiple, basculer: basculerFiltre, basculerMultiple: basculerFiltreMultiple, estActif: filtreActif, reinitialiser: reinitialiserFiltres } = useFiltresMultiples<StatutKey>();
   const [signaler, setSignaler] = useState(false);
   const [recherche, setRecherche] = useState("");
   const [anneeFiltre, setAnneeFiltre] = useState<FiltreAnnee>(FILTRE_ANNEE_DEFAUT);
@@ -211,7 +232,11 @@ export default function GestionDons({
   const recurrents = useMemo(() => donateursRecurrents(dons), [dons]);
   const chipsParDon = useMemo(() => {
     const map = new Map<string, Chip[]>();
-    for (const d of dons) map.set(d.id, statutsDon(d, recurrents));
+    for (const d of dons) {
+      const chips = statutsDon(d, recurrents);
+      if (!d.operation_id) chips.push({ key: "nonlie", label: "Non lié", tone: "amber" });
+      map.set(d.id, chips);
+    }
     return map;
   }, [dons, recurrents]);
   const compteParStatut = useMemo(() => {
@@ -249,7 +274,7 @@ export default function GestionDons({
       });
     }
     return dons.filter((d) => {
-      if (filtre && !(chipsParDon.get(d.id) ?? []).some((c) => c.key === filtre)) return false;
+      if (filtres.length > 0 && !(chipsParDon.get(d.id) ?? []).some((c) => filtres.includes(c.key))) return false;
       if (!periodeDuDon(d, anneeFiltre)) return false;
       if (catFiltre === "incoherents") {
         if (!incoherenceCategorie(d)) return false;
@@ -262,7 +287,7 @@ export default function GestionDons({
       }
       return true;
     });
-  }, [dons, donsSupprimes, vueCorbeille, filtre, anneeFiltre, catFiltre, recherche, chipsParDon]);
+  }, [dons, donsSupprimes, vueCorbeille, filtres, anneeFiltre, catFiltre, recherche, chipsParDon]);
 
   const statsAffiches = useMemo(() => {
     const totalM = donsAffiches.reduce((s, d) => s + Number(d.montant), 0);
@@ -300,9 +325,9 @@ export default function GestionDons({
   }
 
   const filtresActifs =
-    filtre || anneeFiltre !== FILTRE_ANNEE_DEFAUT || catFiltre !== "toutes" || recherche.trim() !== "";
+    filtres.length > 0 || anneeFiltre !== FILTRE_ANNEE_DEFAUT || catFiltre !== "toutes" || recherche.trim() !== "";
   function reinitialiser() {
-    setFiltre(null);
+    reinitialiserFiltres();
     setAnneeFiltre(FILTRE_ANNEE_DEFAUT);
     setCatFiltre("toutes");
     setRecherche("");
@@ -338,7 +363,11 @@ export default function GestionDons({
   // (fiscalement, la remise du chèque), au plus tard l'encaissement.
   // Reçu établi : montant et date figés.
   const [enCaisse, setEnCaisse] = useState(true);
+  // Don dont on lie l'écriture comptable depuis la liste (sans ouvrir toute la fiche).
+  const [lierId, setLierId] = useState<string | null>(null);
   const donEdite = edit && edit !== "nouveau" ? edit : null;
+  // Écritures comptables déjà reliées à un don : elles ne sont pas proposées pour un autre.
+  const operationsLiees = useMemo(() => new Set(donsInit.map((d) => d.operation_id).filter((x): x is string => !!x)), [donsInit]);
   const lie = !!donEdite?.operation_id;
   const encaissement = lie ? (donEdite?.operation?.date_operation ?? null) : null;
   const recuFige = /^RE_/.test(donEdite?.recu_numero ?? "");
@@ -363,6 +392,7 @@ export default function GestionDons({
         adresse: d.adresse ?? "",
         cp_ville: d.cp_ville ?? "",
         courriel: d.courriel ?? "",
+        a_transmettre: d.a_transmettre ?? "",
         envoi_prefere: d.envoi_prefere ?? "courriel",
         montant: String(d.montant).replace(".", ","),
         date_don: d.date_don,
@@ -435,13 +465,19 @@ export default function GestionDons({
       titre: f.donateur_titre.trim() || null,
       // Personne morale : nom/prénom = le CONTACT (destinataire du courriel).
       // Le reçu fiscal reste établi à la raison sociale (voir champsRecu).
-      nom: f.donateur_nom.trim() || null,
+      nom: nomSoigne(f.donateur_nom, f.est_personne_morale) || null,
       prenom: f.donateur_prenom.trim() || null,
       raison: f.est_personne_morale ? f.raison_sociale.trim() : null,
       adresse: f.adresse.trim() || null,
       cp_ville: f.cp_ville.trim() || null,
       courriel: f.courriel.trim() || null,
+      transmettre: f.a_transmettre.trim() || null,
     };
+    // Sans coffre, la fiche s'enregistre en clair : la consigne « à transmettre à » n'a pas de colonne.
+    if (!coffre.estOuvert && pii.transmettre) {
+      setSaving(false);
+      return setError("Déverrouillez le coffre pour enregistrer « À transmettre à » (donnée chiffrée).");
+    }
 
     type DonPayload = typeof base & {
       pii_chiffre: string | null;
@@ -623,6 +659,29 @@ export default function GestionDons({
     }
   }
 
+  /**
+   * Courrier postal : « À passer » → « Vérifier envoi postal » (reçu remis au secrétaire) → « Posté » (validé).
+   * L'état est porté par tous les dons du même reçu.
+   */
+  async function avancerCourrier(d: Don, etape: "passer" | "verifier_poste") {
+    if (!d.recu_numero) return;
+    const memes = donsInit.filter((x) => x.recu_numero === d.recu_numero && !x.supprime_le);
+    const supabase = createClient();
+    if (etape === "passer") {
+      if (!window.confirm(`Le reçu ${d.recu_numero} (avec sa lettre) a été passé au secrétaire pour envoi postal ?`)) return;
+      const { error } = await supabase.from("dons").update({ recu_etat: ETAT_PASSE_SECRETAIRE }).in("id", memes.map((x) => x.id));
+      if (error) return setGenErreur("Mise à jour impossible : " + error.message);
+    } else {
+      if (!window.confirm(`Confirmer que le courrier du reçu ${d.recu_numero} a bien été posté ?`)) return;
+      const jour = todayISO();
+      const { error: errRecu } = await supabase.from("recus").update({ envoye_le: jour, envoi_mode: "courrier" }).eq("recu_numero", d.recu_numero);
+      if (errRecu) return setGenErreur("Registre des reçus non mis à jour : " + errRecu.message);
+      const { error } = await supabase.from("dons").update({ recu_etat: etatEnvoye(formatDate(jour), "courrier") }).in("id", memes.map((x) => x.id));
+      if (error) return setGenErreur("Mise à jour impossible : " + error.message);
+    }
+    router.refresh();
+  }
+
   const cellPad = compact ? "px-3 py-1.5" : "px-4 py-3";
   const ringManque = (estVide: boolean) =>
     signaler && estVide ? " ring-2 ring-negative/60 !border-negative" : "";
@@ -670,6 +729,7 @@ export default function GestionDons({
           placeholder="Rechercher un donateur…"
           className={`${inputCls} max-w-[16rem] flex-1`}
         />
+        <LiaisonGlobale dons={dons as unknown as DonCompta[]} verrou={verrou} />
         {filtresActifs && (
           <button type="button" onClick={reinitialiser} className="text-xs text-muted underline hover:text-foreground">
             Réinitialiser les filtres
@@ -805,7 +865,7 @@ export default function GestionDons({
           { label: "Donateurs", value: String(statsAffiches.donateurs) },
           { label: "Don moyen", value: formatEuros(statsAffiches.moyenne) },
         ].map((s) => (
-          <div key={s.label} className="rounded-xl border border-border bg-surface p-3">
+          <div key={s.label} className="rounded-xl border border-border bg-surface p-3 text-center">
             <div className="text-xs text-muted">{s.label}</div>
             <div className="mt-1 text-lg font-semibold tabular-nums">{s.value}</div>
           </div>
@@ -819,25 +879,28 @@ export default function GestionDons({
       <div className="mb-4 flex flex-wrap items-center gap-2">
         {FILTRES.map((item) => {
           const n = compteParStatut.get(item.key) ?? 0;
-          const actif = filtre === item.key;
+          const actif = filtreActif(item.key);
           return (
             <button
               key={item.key}
               type="button"
-              onClick={() => setFiltre(actif ? null : item.key)}
-              className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition ${TONE_CLASSES[item.tone]} ${
+              onClick={() => basculerFiltre(item.key)}
+              aria-pressed={actif}
+              className={`inline-flex items-center justify-center gap-1.5 rounded-full px-2.5 py-1 text-center text-xs font-medium transition ${TONE_CLASSES[item.tone]} ${
                 actif ? "ring-2 ring-accent ring-offset-1 ring-offset-background" : "opacity-90 hover:opacity-100"
               } ${n === 0 ? "opacity-40" : ""}`}
             >
+              {filtreMultiple && <CasePastille coche={actif} />}
               {item.label}
               <span className="rounded-full bg-black/10 px-1.5 tabular-nums dark:bg-white/15">{n}</span>
             </button>
           );
         })}
-        {filtre && (
+        <BoutonFiltresMultiples actif={filtreMultiple} onClick={basculerFiltreMultiple} nombre={filtres.length} />
+        {filtres.length > 0 && (
           <button
             type="button"
-            onClick={() => setFiltre(null)}
+            onClick={reinitialiserFiltres}
             className="text-xs text-muted underline hover:text-foreground"
           >
             Tout afficher
@@ -900,17 +963,47 @@ export default function GestionDons({
                           ↻
                         </span>
                       )}
-                      {d.cp_ville && <span className="text-muted"> · {d.cp_ville}</span>}
                     </td>
                   )}
                   {cols.categorie && <td className={`${cellPad} text-muted`}>{d.categorie_donateur ?? "—"}</td>}
                   {cols.montant && <td className={`${cellPad} text-right tabular-nums whitespace-nowrap`}>{formatEuros(Number(d.montant))}</td>}
                   {cols.mode && <td className={`${cellPad} text-muted`}>{d.mode_paiement ?? "—"}</td>}
                   {cols.recu && <td className={`${cellPad} tabular-nums text-xs`}>{d.recu_numero ?? "—"}</td>}
+                  {cols.compta && (
+                    <td className={`${cellPad} text-center`}>
+                      {vueCorbeille ? null : d.operation_id ? (
+                        <button
+                          type="button"
+                          onClick={() => setLierId(d.id)}
+                          title="Relié à une écriture comptable : voir ou délier"
+                          aria-label="Relié à la comptabilité"
+                          className="inline-flex text-positive hover:opacity-80"
+                        >
+                          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <path d="M5 12.5l4.5 4.5L19 7.5" />
+                          </svg>
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setLierId(d.id)}
+                          title="Non lié (hors compta) : lier à une écriture comptable"
+                          aria-label="Non lié à la comptabilité"
+                          className="inline-flex text-gold hover:opacity-80"
+                        >
+                          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <path d="M10 13a5 5 0 0 0 7.07 0l2-2a5 5 0 0 0-7.07-7.07l-1 1" />
+                            <path d="M14 11a5 5 0 0 0-7.07 0l-2 2a5 5 0 0 0 7.07 7.07l1-1" />
+                            <path d="M3 3l18 18" />
+                          </svg>
+                        </button>
+                      )}
+                    </td>
+                  )}
                   {cols.statut && (
                     <td className={cellPad}>
                       <div className={`flex gap-1 ${compact ? "flex-nowrap" : "flex-wrap"}`}>
-                        {(compact ? chips.slice(0, 1) : chips).map((c) => {
+                        {(compact ? chips.filter((x) => x.key !== "nonlie").slice(0, 1) : chips.filter((x) => x.key !== "nonlie")).map((c) => {
                           const cls = `inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${TONE_CLASSES[c.tone]}`;
                           return c.key === "important" || c.key === "mineur" ? (
                             <button
@@ -922,18 +1015,28 @@ export default function GestionDons({
                             >
                               {c.label}
                             </button>
+                          ) : c.key === "passer" || c.key === "verifier_poste" ? (
+                            <button
+                              key={c.key}
+                              type="button"
+                              onClick={() => void avancerCourrier(d, c.key as "passer" | "verifier_poste")}
+                              title={c.key === "passer" ? "Cliquer quand le reçu est passé au secrétaire" : "Cliquer pour valider : le courrier est posté"}
+                              className={`${cls} cursor-pointer hover:opacity-80`}
+                            >
+                              {c.label}
+                            </button>
                           ) : (
                             <span key={c.key} title={c.detail} className={cls}>
                               {c.label}
                             </span>
                           );
                         })}
-                        {compact && chips.length > 1 && (
+                        {compact && chips.filter((x) => x.key !== "nonlie").length > 1 && (
                           <span
-                            title={chips.map((c) => c.label).join(" · ")}
+                            title={chips.filter((x) => x.key !== "nonlie").map((c) => c.label).join(" · ")}
                             className="inline-flex items-center rounded-full bg-surface-2 px-1.5 py-0.5 text-xs text-muted"
                           >
-                            +{chips.length - 1}
+                            +{chips.filter((x) => x.key !== "nonlie").length - 1}
                           </span>
                         )}
                       </div>
@@ -968,16 +1071,28 @@ export default function GestionDons({
                         <button
                           type="button"
                           onClick={() => ouvrir(d)}
-                          className="ml-4 text-muted hover:underline"
+                          title="Modifier"
+                          aria-label="Modifier ce don"
+                          className="ml-3 inline-flex align-middle text-muted hover:text-accent"
                         >
-                          Modifier
+                          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <path d="M12 20h9" />
+                            <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z" />
+                          </svg>
                         </button>
                         <button
                           type="button"
                           onClick={() => supprimer(d)}
-                          className="ml-4 text-muted hover:text-negative hover:underline"
+                          title="Supprimer"
+                          aria-label="Supprimer ce don"
+                          className="ml-3 inline-flex align-middle text-muted hover:text-negative"
                         >
-                          Supprimer
+                          <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                            <path d="M3 6h18" />
+                            <path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2" />
+                            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6" />
+                            <path d="M10 11v6M14 11v6" />
+                          </svg>
                         </button>
                       </>
                     )}
@@ -993,10 +1108,25 @@ export default function GestionDons({
       </>
       )}
 
+      {lierId && (() => {
+        const d = donsHydrates.find((x) => x.id === lierId);
+        if (!d) return null;
+        return (
+          <Modal title="Lier le don à une écriture comptable" onClose={() => setLierId(null)}>
+            <p className="mb-3 rounded-lg bg-surface-2 px-3 py-2 text-sm">
+              Don du <strong>{formatDate(d.date_don)}</strong> de <strong>{formatEuros(Number(d.montant))}</strong>
+              {nomDonateur(d) ? <> — {nomDonateur(d)}</> : null}
+            </p>
+            <LierDonAEcriture don={d} operationsLiees={operationsLiees} dons={donsHydrates} />
+          </Modal>
+        );
+      })()}
+
       {edit && (
         <Modal
           title={edit === "nouveau" ? "Nouveau don" : "Modifier le don"}
           onClose={fermerFormulaire}
+          enregistrerEnFermant
         >
           <form onSubmit={handleSubmit} className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
             {signaler && (
@@ -1015,6 +1145,7 @@ export default function GestionDons({
                 adresse: f.adresse,
                 cp_ville: f.cp_ville,
                 courriel: f.courriel,
+                a_transmettre: f.a_transmettre,
                 categorie_donateur: f.categorie_donateur,
                 envoi_prefere: f.envoi_prefere,
               }}
@@ -1082,6 +1213,7 @@ export default function GestionDons({
                 />
               </Field>
             </div>
+            {donEdite && <LierDonAEcriture don={donEdite} operationsLiees={operationsLiees} dons={donsHydrates} />}
             {edit === "nouveau" && f.mode_paiement === "Espèces" && (
               <label className="-mt-2 flex items-center gap-2 text-xs text-muted">
                 <input type="checkbox" checked={enCaisse} onChange={(e) => setEnCaisse(e.target.checked)} />
@@ -1110,19 +1242,14 @@ export default function GestionDons({
                 </p>
               </>
             ) : (
-              <>
-                <div className="grid grid-cols-3 gap-3">
-                  <Field label="Titre">
-                    <input type="text" value={f.donateur_titre} onChange={(e) => set("donateur_titre", e.target.value)} className={inputCls} placeholder="Monsieur…" />
-                  </Field>
-                  <Field label="Nom">
-                    <input type="text" required value={f.donateur_nom} onChange={(e) => set("donateur_nom", e.target.value)} className={inputCls + ringManque(!f.donateur_nom.trim())} />
-                  </Field>
-                  <Field label="Prénom">
-                    <input type="text" value={f.donateur_prenom} onChange={(e) => set("donateur_prenom", e.target.value)} className={inputCls} />
-                  </Field>
-                </div>
-              </>
+              <ChampsParticulier
+                titre={f.donateur_titre}
+                prenom={f.donateur_prenom}
+                nom={f.donateur_nom}
+                set={set}
+                classeNom={ringManque(!f.donateur_nom.trim())}
+                nomAvantPrenom
+              />
             )}
 
             <Field label="Adresse">
@@ -1132,10 +1259,13 @@ export default function GestionDons({
               <Field label="CP et ville">
                 <input type="text" value={f.cp_ville} onChange={(e) => set("cp_ville", e.target.value)} className={inputCls + ringManque(f.envoi_prefere !== "aucun" && !f.cp_ville.trim())} placeholder="51100 Reims" />
               </Field>
-              <Field label="Courriel">
-                <input type="email" value={f.courriel} onChange={(e) => set("courriel", e.target.value)} className={inputCls + ringManque(f.envoi_prefere === "courriel" && !f.courriel.trim())} />
-              </Field>
+              {!(!f.est_personne_morale && estCouple(f.donateur_titre)) && (
+                <ChampCourriel titre={f.donateur_titre} courriel={f.courriel} onChange={(v) => set("courriel", v)} classe={ringManque(f.envoi_prefere === "courriel" && !f.courriel.trim())} />
+              )}
             </div>
+            {!f.est_personne_morale && estCouple(f.donateur_titre) && (
+              <ChampCourriel titre={f.donateur_titre} courriel={f.courriel} onChange={(v) => set("courriel", v)} classe={ringManque(f.envoi_prefere === "courriel" && !f.courriel.trim())} />
+            )}
             <Field label="Reçus fiscaux envoyés par">
               <select value={f.envoi_prefere} onChange={(e) => set("envoi_prefere", e.target.value)} className={inputCls}>
                 {PREFERENCES_ENVOI.map((o) => (
@@ -1147,9 +1277,25 @@ export default function GestionDons({
                   ? "Ce donateur ne demande pas de reçu fiscal : ses dons sans reçu établi n'apparaissent plus « à établir »."
                   : f.envoi_prefere === "courrier"
                     ? "Courrier postal : l'adresse et le code postal sont nécessaires ; le courriel est facultatif."
-                    : "Courriel : l'adresse électronique est nécessaire. À modifier si le donateur change de mode de réception."}
+                    : f.envoi_prefere === "transmettre"
+                      ? "À transmettre : le reçu est remis à la personne de contact indiquée ci-dessous ; le courriel du donateur est facultatif."
+                      : "Courriel : l'adresse électronique est nécessaire. À modifier si le donateur change de mode de réception."}
               </span>
             </Field>
+            {f.envoi_prefere === "transmettre" && (
+              <Field label="Reçu à transmettre à">
+                <input
+                  type="text"
+                  value={f.a_transmettre}
+                  onChange={(e) => set("a_transmettre", e.target.value)}
+                  className={inputCls + ringManque(!f.a_transmettre.trim())}
+                  placeholder="Prénom Nom, courriel de la personne de contact"
+                />
+                <span className="mt-1 block text-xs text-muted">
+                  Le reçu est remis à cette personne ou à ce courriel : l&apos;adresse électronique du donateur n&apos;est plus nécessaire. Donnée chiffrée avec la fiche.
+                </span>
+              </Field>
+            )}
 
             <div className="grid grid-cols-2 gap-3">
               <Field label="Mode de paiement">
@@ -1256,7 +1402,7 @@ function FiltreBtn({
     <button
       type="button"
       onClick={onClick}
-      className={`rounded-full border px-3 py-1 text-sm transition ${
+      className={`inline-flex items-center justify-center rounded-full border px-3 py-1 text-center text-sm transition ${
         actif
           ? "border-accent bg-accent-soft font-medium text-accent"
           : "border-border text-muted hover:bg-surface-2"

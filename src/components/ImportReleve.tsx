@@ -2,6 +2,8 @@
 
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import BoutonFiltresMultiples, { CasePastille } from "@/components/BoutonFiltresMultiples";
+import { useFiltresMultiples } from "@/lib/filtresMultiples";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { formatEuros, formatDate } from "@/lib/format";
@@ -235,7 +237,7 @@ export default function ImportReleve({
   const [fait, setFait] = useState<string | null>(null);
   const [ignores, setIgnores] = useState(0);
   const [suspects, setSuspects] = useState(0);
-  const [filtre, setFiltre] = useState<Filtre>("toutes");
+  const { actifs: filtres, multiple: filtreMultiple, basculer: basculerFiltre, basculerMultiple: basculerFiltreMultiple, estActif: filtreActif, reinitialiser: reinitialiserFiltres } = useFiltresMultiples<Exclude<Filtre, "toutes">>();
   const [solde, setSolde] = useState<{ date: string; montant: number } | null>(null);
   const [calage, setCalage] = useState<"ferme" | "confirmer" | "encours">("ferme");
   const [demandeCoffre, setDemandeCoffre] = useState(false);
@@ -754,7 +756,7 @@ export default function ImportReleve({
       setIgnores(ignoresN);
       setSuspects(suspectsN);
       setNomFichier(nom);
-      setFiltre("toutes");
+      reinitialiserFiltres();
     } catch (err) {
       setErreur("Lecture impossible : " + (err instanceof Error ? err.message : "fichier invalide"));
     }
@@ -838,19 +840,23 @@ export default function ImportReleve({
     (l.filles.length > 0 && Math.abs(resteFilles(l)) > 0.005);
 
   const correspondAuFiltre = (l: Ligne) => {
+    if (filtres.length === 0) return true;
     const ecr = ecrituresDe(l);
-    switch (filtre) {
-      case "a_classer":
-        return ecr.some(({ e }) => !e.categorie_id);
-      case "scolarite":
-        return ecr.some(({ e }) => natureDe(e.categorie_id) !== null);
-      case "dons":
-        return ecr.some(({ e }) => catNom(e.categorie_id) === CAT_DON);
-      case "a_valider":
-        return aValider(l);
-      default:
-        return true;
-    }
+    // Filtres cumulés en OU.
+    return filtres.some((f) => {
+      switch (f) {
+        case "a_classer":
+          return ecr.some(({ e }) => !e.categorie_id);
+        case "scolarite":
+          return ecr.some(({ e }) => natureDe(e.categorie_id) !== null);
+        case "dons":
+          return ecr.some(({ e }) => catNom(e.categorie_id) === CAT_DON);
+        case "a_valider":
+          return aValider(l);
+        default:
+          return true;
+      }
+    });
   };
 
   const retenues = lignes.filter((l) => l.inclus);
@@ -1516,22 +1522,28 @@ export default function ImportReleve({
           </div>
 
           <div className="flex flex-wrap gap-1.5">
-            {FILTRES.map((f) => (
+            {FILTRES.map((f) => {
+              const actif = f.v === "toutes" ? filtres.length === 0 : filtreActif(f.v);
+              return (
               <button
                 key={f.v}
                 type="button"
-                onClick={() => setFiltre(f.v)}
+                onClick={() => (f.v === "toutes" ? reinitialiserFiltres() : basculerFiltre(f.v))}
+                aria-pressed={actif}
                 className={`rounded-full border px-3 py-1 text-xs ${
-                  filtre === f.v
+                  actif
                     ? f.v === "a_valider"
                       ? "border-gold bg-gold-soft font-medium text-gold"
                       : "border-accent bg-accent-soft font-medium text-accent"
                     : "border-border text-muted hover:bg-surface-2"
                 }`}
               >
+                {filtreMultiple && f.v !== "toutes" && <CasePastille coche={actif} />}
                 {f.l} ({f.n})
               </button>
-            ))}
+              );
+            })}
+            <BoutonFiltresMultiples actif={filtreMultiple} onClick={basculerFiltreMultiple} nombre={filtres.length} />
           </div>
 
           <div className="overflow-x-auto rounded-xl border border-border bg-surface">
@@ -1865,7 +1877,7 @@ export default function ImportReleve({
       )}
 
       {cibleDon && (
-        <Modal title="Fiche du donateur" onClose={() => setCibleDon(null)}>
+        <Modal title="Fiche du donateur" onClose={() => setCibleDon(null)} enregistrerEnFermant>
           <form onSubmit={validerDonateur} className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
             {(() => {
               const l = lignes[cibleDon.i];

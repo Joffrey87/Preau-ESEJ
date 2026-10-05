@@ -37,7 +37,7 @@ export type EtatDon = "complet" | "incomplet" | "relie_verrouille" | "probable" 
  *    courriel ; le nom seul suffit quand aucun reçu n'est demandé) ;
  *  - incomplet : don relié, fiche à compléter ;
  *  - relie_verrouille : don relié, coffre fermé — complétude invérifiable ;
- *  - probable : un don de même montant à ±3 jours, pas encore relié ;
+ *  - probable : un don de même montant à ±15 jours, ou dont le nom figure dans l'intitulé bancaire, pas encore relié ;
  *  - absent : aucun don.
  */
 export function etatDon(
@@ -60,12 +60,18 @@ export default function PastilleDon({
   rapprochement,
   don,
   verrou,
+  onFiche,
+  onCreer,
 }: {
   operationId: string;
   exerciceId: string | null;
   rapprochement: Rapprochement | undefined;
   don: DonCompta | undefined;
   verrou: boolean;
+  /** Ouvre la fiche du don relié ; `signaler` met en évidence ce qui manque. */
+  onFiche?: (donId: string, signaler: boolean) => void;
+  /** Ouvre la création d'un don à partir de cette écriture (aucun don trouvé). */
+  onCreer?: (operationId: string) => void;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -92,20 +98,49 @@ export default function PastilleDon({
   switch (etat) {
     case "complet":
       return (
-        <span className="ml-2 text-positive" title={`Dans l'onglet Dons, fiche complète${qui ? ` — ${qui}` : ""}`}>
-          ✓
+        <span className="ml-2 inline-flex items-center gap-1.5">
+          <span className="text-positive" title={`Dans l'onglet Dons, fiche complète${qui ? ` — ${qui}` : ""}`}>
+            ✓
+          </span>
+          {onFiche && don && (
+            <button
+              type="button"
+              onClick={(e) => {
+                stop(e);
+                onFiche(don.id, false);
+              }}
+              className="rounded px-1 text-[11px] font-medium text-accent hover:bg-accent-soft"
+              title={`Ouvrir la fiche du donateur${qui ? ` (${qui})` : ""}`}
+            >
+              Fiche
+            </button>
+          )}
         </span>
       );
     case "incomplet":
       return (
-        <Link
-          href="/dons"
-          onClick={stop}
-          className="ml-2 font-semibold text-gold"
-          title={`Dans l'onglet Dons${qui ? ` (${qui})` : ""}, mais fiche à compléter : ${manquants.join(", ")}`}
-        >
-          ✓
-        </Link>
+        <span className="ml-2 inline-flex items-center gap-1.5">
+          <span className="font-semibold text-gold" title={`Dans l'onglet Dons${qui ? ` (${qui})` : ""}, mais fiche à compléter : ${manquants.join(", ")}`}>
+            ✓
+          </span>
+          {onFiche && don ? (
+            <button
+              type="button"
+              onClick={(e) => {
+                stop(e);
+                onFiche(don.id, true);
+              }}
+              className="rounded bg-gold-soft px-1.5 text-[11px] font-medium text-gold hover:opacity-90"
+              title={`Fiche à compléter : ${manquants.join(", ")}`}
+            >
+              Compléter la fiche
+            </button>
+          ) : (
+            <Link href="/dons" onClick={stop} className="text-[11px] text-gold">
+              fiche à compléter
+            </Link>
+          )}
+        </span>
       );
     case "relie_verrouille":
       return (
@@ -120,12 +155,25 @@ export default function PastilleDon({
             className="rounded-full border border-dashed border-gold px-1.5 text-[11px] text-gold"
             title={
               don
-                ? `Don de ${formatEuros(Number(don.montant))} du ${formatDate(don.date_don)}${qui ? ` (${qui})` : ""} trouvé par montant et date, pas encore relié`
+                ? `Don de ${formatEuros(Number(don.montant))} du ${formatDate(don.date_don)}${qui ? ` (${qui})` : ""} trouvé ${rapprochement?.motif === "nom" ? "par le nom du donateur dans l'intitulé bancaire" : "par montant exact (±15 jours)"}, pas encore relié`
                 : undefined
             }
           >
             ≈ don trouvé
           </span>
+          {onFiche && don && (
+            <button
+              type="button"
+              onClick={(e) => {
+                stop(e);
+                onFiche(don.id, false);
+              }}
+              className="rounded px-1 text-[11px] font-medium text-accent hover:bg-accent-soft"
+              title="Modifier ou compléter les informations de ce don avant de le lier"
+            >
+              Modifier
+            </button>
+          )}
           <button
             type="button"
             onClick={lier}
@@ -139,7 +187,19 @@ export default function PastilleDon({
         </span>
       );
     default:
-      return (
+      return onCreer ? (
+        <button
+          type="button"
+          onClick={(e) => {
+            stop(e);
+            onCreer(operationId);
+          }}
+          className="ml-2 rounded-full bg-gold-soft px-2 py-0.5 text-xs font-medium text-gold hover:opacity-90"
+          title="Ce don n'est pas encore dans l'onglet Dons : créer le don et sa fiche, reliés à cette écriture"
+        >
+          + Créer le don
+        </button>
+      ) : (
         <Link
           href="/dons/depuis-compta"
           onClick={stop}

@@ -19,6 +19,8 @@ export type DonPourRecu = {
   date_affichee?: string;
   /** Dons couverts par le reçu (détail porté sur le reçu). Absent : le seul don. */
   versements?: Versement[];
+  /** Mode d'envoi du donateur : « courrier » → le PDF s'ouvre sur la lettre de remerciement. */
+  envoi_prefere?: string | null;
   /** Date d'édition du reçu (ISO), celle de son numéro. Absent : aujourd'hui. */
   date_edition?: string;
 };

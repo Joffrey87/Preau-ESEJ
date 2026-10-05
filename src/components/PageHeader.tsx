@@ -6,15 +6,18 @@ export default function PageHeader({
   subtitle,
   action,
   maj,
+  compact = false,
 }: {
   title: string;
   subtitle?: string;
   action?: React.ReactNode;
   /** Date de la dernière écriture bancaire intégrée (voir `date_maj_comptes`). */
   maj?: string | null;
+  /** Marge réduite sous le titre (écrans denses). */
+  compact?: boolean;
 }) {
   return (
-    <div className="mb-5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+    <div className={`${compact ? "mb-2" : "mb-5"} flex flex-wrap items-center justify-between gap-x-3 gap-y-1`}>
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
         <h1 className="text-lg font-semibold tracking-tight">{title}</h1>
         {subtitle && <p className="text-xs text-muted">{subtitle}</p>}

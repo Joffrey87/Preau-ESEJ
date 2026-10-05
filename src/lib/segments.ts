@@ -57,13 +57,6 @@ export const SEGMENTS: SegmentDef[] = [
     regle: `Aucun don depuis ${PARAMS.perduMois} mois`,
     action: "Dernière relance personnalisée, sinon archivage.",
   },
-  {
-    key: "ponctuel",
-    emoji: "💶",
-    label: "Ponctuel élevé",
-    regle: `Un seul gros don isolé (≥ ${PARAMS.seuilGrandDonateur.toLocaleString("fr-FR")} €)`,
-    action: "Convertir en donateur régulier (mensuel), inscrire dans la durée.",
-  },
 ];
 
 // Les 4 pics de générosité de l'année (audit des dons + plan V3).

@@ -14,7 +14,15 @@ export type DonAgg = {
   montant: number;
   date_don: string;
   origine: string | null;
+  /** Donateur « bourse » (copie portée par chaque don) et don « boursier » : voir la migration don_boursier. */
+  donateur_bourse?: boolean;
+  don_boursier?: boolean;
+  /** Famille de l'école : « actuelle » (inscrite cette année) ou « ancienne » (copie portée par chaque don). */
+  famille_statut?: FamilleStatut | null;
 };
+
+export type FamilleStatut = "actuelle" | "ancienne";
+export const FAMILLE_LIBELLE: Record<FamilleStatut, string> = { actuelle: "Famille actuelle", ancienne: "Ancienne famille" };
 
 export type EtatDonateur = "actif" | "sommeil" | "perdu";
 
@@ -36,8 +44,14 @@ export type ProfilDonateur = {
   estGrand: boolean;
   estFidele: boolean;
   estNouveau: boolean;
-  estPonctuel: boolean;
   origine: string | null; // « qui a amené ce don » = relation (dernier don renseigné)
+  /** « Donateur Bourse » : à part, hors grands donateurs et hors campagnes de collecte. */
+  boursier: boolean;
+  /** Total et nombre de ses dons marqués « Don boursier ». */
+  cumulBourse: number;
+  nbDonsBourse: number;
+  /** Famille de l'école : actuelle l'emporte sur ancienne si ses dons divergent. */
+  famille: FamilleStatut | null;
 };
 
 /** Nombre de mois entiers écoulés entre deux dates ISO (b ≥ a). */
@@ -63,8 +77,15 @@ export function agregerDonateurs(dons: DonAgg[], todayISO: string): ProfilDonate
   }
 
   const profils: ProfilDonateur[] = [];
-  for (const [cle, liste] of groupes) {
+  for (const [cle, brut] of groupes) {
+    let liste = brut;
     liste.sort((a, b) => a.date_don.localeCompare(b.date_don));
+    // Les dons boursiers ne comptent pas dans le profil (cumul, années, état…) tant qu'il reste des dons ordinaires.
+    const donsBourse = liste.filter((d) => d.don_boursier);
+    const boursier = liste.some((d) => d.donateur_bourse);
+    const tout = liste;
+    const ordinaires = liste.filter((d) => !d.don_boursier);
+    liste = ordinaires.length > 0 ? ordinaires : tout;
     const cumul = liste.reduce((s, d) => s + Number(d.montant || 0), 0);
     const parAnnee = new Map<number, number>();
     for (const d of liste) {
@@ -97,11 +118,14 @@ export function agregerDonateurs(dons: DonAgg[], todayISO: string): ProfilDonate
       moisDepuisDernier,
       moyenne: cumul / liste.length,
       etat,
-      estGrand: meilleureAnnee >= PARAMS.seuilGrandDonateur,
+      estGrand: !boursier && meilleureAnnee >= PARAMS.seuilGrandDonateur,
       estFidele: parAnnee.size >= PARAMS.fideleAnnees,
       estNouveau: moisEntre(premier, todayISO) < PARAMS.nouveauMois,
-      estPonctuel: liste.length === 1 && cumul >= PARAMS.seuilGrandDonateur,
       origine,
+      boursier,
+      cumulBourse: donsBourse.reduce((s, d) => s + Number(d.montant || 0), 0),
+      nbDonsBourse: donsBourse.length,
+      famille: tout.some((d) => d.famille_statut === "actuelle") ? "actuelle" : tout.some((d) => d.famille_statut === "ancienne") ? "ancienne" : null,
     });
   }
 
@@ -119,13 +143,13 @@ const ETAT_BADGE: Record<EtatDonateur, Badge> = {
   perdu: { key: "perdu", label: "Perdu", tone: "red" },
 };
 
-/** Badges d'un profil : état + qualifications (grand, fidèle, nouveau, ponctuel). */
+/** Badges d'un profil : état + qualifications (grand, fidèle, nouveau). */
 export function badgesDe(p: ProfilDonateur): Badge[] {
   const b: Badge[] = [ETAT_BADGE[p.etat]];
   if (p.estGrand) b.push({ key: "grand", label: "Grand donateur", tone: "violet" });
   if (p.estFidele) b.push({ key: "fidele", label: "Fidèle", tone: "blue" });
   if (p.estNouveau) b.push({ key: "nouveau", label: "Nouveau", tone: "green" });
-  if (p.estPonctuel) b.push({ key: "ponctuel", label: "Ponctuel élevé", tone: "gray" });
+  if (p.famille) b.push({ key: "famille", label: FAMILLE_LIBELLE[p.famille], tone: p.famille === "actuelle" ? "blue" : "gray" });
   return b;
 }
 
@@ -198,11 +222,6 @@ export function suggestionsDonateurs(profils: ProfilDonateur[], todayISO: string
       motif = actionSegment("nouveau");
       tone = "green";
       base = 60;
-    } else if (p.estPonctuel) {
-      action = "Proposer un don mensuel régulier";
-      motif = actionSegment("ponctuel");
-      tone = "blue";
-      base = 50;
     } else if (p.estFidele) {
       action = "Proposer le club de dons mensuels";
       motif = actionSegment("fidele");

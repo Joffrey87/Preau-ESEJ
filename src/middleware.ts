@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { COOKIE_PRENOM, ROLES_PRENOM_A_L_ACCES, pageReserveeInterdite, pagesAutorisees, roleByEmail } from "@/lib/roles";
+import { COOKIE_VUE, emailEffectif } from "@/lib/vueRole";
 
 // Rafraîchit la session et protège toutes les routes : sans session,
 // on redirige vers /login (sauf la page /login elle-même).
@@ -34,7 +35,8 @@ export async function middleware(request: NextRequest) {
 
   const isAuthRoute = request.nextUrl.pathname.startsWith("/login");
   // Page où une famille invitée choisit son mot de passe (lien reçu par courriel).
-  const isMotDePasse = request.nextUrl.pathname.startsWith("/auth/mot-de-passe");
+  const isMotDePasse =
+    request.nextUrl.pathname.startsWith("/auth/mot-de-passe") || request.nextUrl.pathname.startsWith("/auth/invitation");
   if (isMotDePasse) return response;
 
   if (!user && !isAuthRoute) {
@@ -62,8 +64,12 @@ export async function middleware(request: NextRequest) {
     return sortie;
   }
 
+  // Vue « en tant que » (Trésorier) : les restrictions d'accès suivent le profil simulé.
+  const emailVue = emailEffectif(user?.email, request.cookies.get(COOKIE_VUE)?.value);
+  if (user && request.nextUrl.pathname.startsWith("/changer-profil")) return response;
+
   // Profil restreint (ex. Recherche de fonds) : ses seules pages.
-  const pages = user ? pagesAutorisees(user.email) : null;
+  const pages = user ? pagesAutorisees(emailVue) : null;
 
   if (user && isAuthRoute) {
     const url = request.nextUrl.clone();
@@ -71,7 +77,7 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  if (user && !estFamille && pageReserveeInterdite(user.email, request.nextUrl.pathname)) {
+  if (user && !estFamille && pageReserveeInterdite(emailVue, request.nextUrl.pathname)) {
     const url = request.nextUrl.clone();
     url.pathname = "/";
     url.search = "";

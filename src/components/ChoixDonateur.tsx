@@ -8,6 +8,7 @@ import { formatEuros } from "@/lib/format";
 import { cleDonateur, nomDonateur } from "@/lib/statutDon";
 import { normaliserCategorieDonateur } from "@/lib/categoriesDonateur";
 import type { Don } from "@/components/GestionDons";
+import { nomSoigne } from "@/lib/nomPropre";
 
 /** Champs d'identité partagés par la fiche donateur, quel que soit l'écran. */
 export type IdentiteSaisie = {
@@ -22,6 +23,8 @@ export type IdentiteSaisie = {
   categorie_donateur: string;
   /** Mode d'envoi des reçus (« courrier » ou « courriel ») ; absent des écrans qui ne le gèrent pas. */
   envoi_prefere?: string;
+  /** « À transmettre à » ; absent des écrans qui ne le gèrent pas (la valeur existante est alors conservée). */
+  a_transmettre?: string;
 };
 
 export function identiteDepuisDon(d: Don): IdentiteSaisie {
@@ -35,6 +38,7 @@ export function identiteDepuisDon(d: Don): IdentiteSaisie {
     cp_ville: d.cp_ville ?? "",
     courriel: d.courriel ?? "",
     envoi_prefere: d.envoi_prefere ?? "courriel",
+    a_transmettre: d.a_transmettre ?? "",
     categorie_donateur:
       normaliserCategorieDonateur(d.categorie_donateur) ?? (d.est_personne_morale ? "Association" : "Particulier"),
   };
@@ -140,12 +144,18 @@ export default function ChoixDonateur({
     const pii = {
       titre: v.donateur_titre.trim() || null,
       // Personne morale : nom et prénom = le contact ; la raison sociale porte le reçu.
-      nom: v.donateur_nom.trim() || null,
+      nom: nomSoigne(v.donateur_nom, v.est_personne_morale) || null,
       prenom: v.donateur_prenom.trim() || null,
       raison: v.est_personne_morale ? v.raison_sociale.trim() : null,
       adresse: v.adresse.trim() || null,
       cp_ville: v.cp_ville.trim() || null,
       courriel: v.courriel.trim() || null,
+      // Écran qui ne gère pas ce champ : on garde la consigne du don le plus récent.
+      transmettre:
+        (v.a_transmettre !== undefined
+          ? v.a_transmettre
+          : [...concernes].sort((a, b) => b.date_don.localeCompare(a.date_don))[0]?.a_transmettre
+        )?.trim() || null,
     };
     const blob = await chiffrer(JSON.stringify(pii));
 

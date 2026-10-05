@@ -2,6 +2,7 @@ import Link from "next/link";
 import PageHeader from "@/components/PageHeader";
 import ReconciliationCompta, { type Exercice } from "@/components/ReconciliationCompta";
 import { createClient } from "@/lib/supabase/server";
+import { emailVue } from "@/lib/vueRoleServeur";
 import { roleByEmail } from "@/lib/roles";
 import type { Don } from "@/components/GestionDons";
 import type { OpDon } from "@/lib/reconciliation";
@@ -11,7 +12,7 @@ export default async function DepuisComptaPage() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const roleSlug = roleByEmail(user?.email)?.slug ?? null;
+  const roleSlug = roleByEmail(await emailVue(user?.email))?.slug ?? null;
 
   // Catégorie « Don » de la comptabilité.
   const { data: catDon } = await supabase

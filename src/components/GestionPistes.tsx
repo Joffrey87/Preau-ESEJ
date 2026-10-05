@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import BoutonFiltresMultiples, { CasePastille } from "@/components/BoutonFiltresMultiples";
+import { useFiltresMultiples } from "@/lib/filtresMultiples";
 import { createClient } from "@/lib/supabase/client";
 import { Modal, Field, FormFooter, inputCls } from "./GestionComptes";
 import { formatEuros, formatDate, todayISO } from "@/lib/format";
@@ -65,7 +67,7 @@ export default function GestionPistes({
   const [f, setF] = useState<FormState>(vide());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [filtreAxe, setFiltreAxe] = useState<AxeFin | null>(null);
+  const { actifs: filtresAxe, multiple: axeMultiple, basculer: basculerAxe, basculerMultiple: basculerAxeMultiple, estActif: axeActif, reinitialiser: reinitialiserAxes } = useFiltresMultiples<AxeFin>();
   const [vueCorbeille, setVueCorbeille] = useState(false);
   const [toast, setToast] = useState<{ id: string; nom: string } | null>(null);
 
@@ -95,7 +97,7 @@ export default function GestionPistes({
   const affiches = useMemo(() => {
     const base = vueCorbeille ? supprimes : actifs;
     return base
-      .filter((x) => vueCorbeille || !filtreAxe || x.axe === filtreAxe)
+      .filter((x) => vueCorbeille || filtresAxe.length === 0 || filtresAxe.includes(x.axe))
       .sort((a, b) => {
         // Non clos d'abord, puis par échéance la plus proche, puis intitulé.
         const ca = estClos(a) ? 1 : 0;
@@ -106,7 +108,7 @@ export default function GestionPistes({
         if (b.echeance) return 1;
         return a.intitule.localeCompare(b.intitule);
       });
-  }, [actifs, supprimes, vueCorbeille, filtreAxe]);
+  }, [actifs, supprimes, vueCorbeille, filtresAxe]);
 
   // Prochaines échéances (pistes ouvertes datées, à venir ou en retard).
   const echeances = useMemo(
@@ -240,14 +242,16 @@ export default function GestionPistes({
       {/* Barre : filtres axe + corbeille + ajout */}
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <div className="flex flex-wrap gap-1.5">
-          <FiltreBtn actif={!filtreAxe} onClick={() => setFiltreAxe(null)}>
+          <FiltreBtn actif={filtresAxe.length === 0} onClick={reinitialiserAxes}>
             Tous
           </FiltreBtn>
           {AXES.map((a) => (
-            <FiltreBtn key={a.key} actif={filtreAxe === a.key} onClick={() => setFiltreAxe(a.key)}>
+            <FiltreBtn key={a.key} actif={axeActif(a.key)} onClick={() => basculerAxe(a.key)}>
+              {axeMultiple && <CasePastille coche={axeActif(a.key)} />}
               {a.court}
             </FiltreBtn>
           ))}
+          <BoutonFiltresMultiples actif={axeMultiple} onClick={basculerAxeMultiple} nombre={filtresAxe.length} />
         </div>
         <div className="ml-auto flex items-center gap-2">
           <button
@@ -354,7 +358,7 @@ export default function GestionPistes({
       </div>
 
       {edit && (
-        <Modal title={edit === "nouveau" ? "Nouvelle piste de financement" : "Modifier la piste"} onClose={() => setEdit(null)}>
+        <Modal title={edit === "nouveau" ? "Nouvelle piste de financement" : "Modifier la piste"} onClose={() => setEdit(null)} enregistrerEnFermant>
           <form onSubmit={handleSubmit} className="space-y-4">
             <Field label="Intitulé">
               <input type="text" required value={f.intitule} onChange={(e) => set("intitule", e.target.value)} className={inputCls} placeholder="Ex. Fondation du patrimoine — appel 2026" />

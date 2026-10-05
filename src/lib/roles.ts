@@ -41,6 +41,7 @@ export const ROLES_PRENOM_A_L_ACCES = ["recherche-fonds"];
 /** Pages réservées à certains rôles (les autres sont renvoyés à l'accueil). */
 export const PAGES_RESERVEES: { prefixe: string; roles: string[] }[] = [
   { prefixe: "/recherche", roles: ["president", "tresorier", "recherche-fonds"] },
+  { prefixe: "/courriers", roles: ["secretaire", "tresorier", "president", "administrateur"] },
 ];
 
 export function pageReserveeInterdite(email: string | null | undefined, chemin: string): boolean {

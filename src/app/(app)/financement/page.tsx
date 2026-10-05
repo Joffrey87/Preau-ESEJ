@@ -1,6 +1,7 @@
 import PageHeader from "@/components/PageHeader";
 import GestionPistes from "@/components/GestionPistes";
 import { createClient } from "@/lib/supabase/server";
+import { emailVue } from "@/lib/vueRoleServeur";
 import { roleByEmail } from "@/lib/roles";
 import { PARAMS } from "@/lib/segments";
 import type { Financement } from "@/lib/financements";
@@ -10,7 +11,7 @@ export default async function FinancementPage() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const roleSlug = roleByEmail(user?.email)?.slug ?? null;
+  const roleSlug = roleByEmail(await emailVue(user?.email))?.slug ?? null;
 
   const { data } = await supabase
     .from("financements")

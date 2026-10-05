@@ -13,6 +13,7 @@ import type { PDFFont, PDFPage, RGB } from "pdf-lib";
 import type { DonPourRecu } from "@/lib/recu";
 import { formatEuros, formatDate, todayISO } from "@/lib/format";
 import { montantEnLettres } from "@/lib/lettres";
+import { estCouple, nomComplet } from "@/lib/couple";
 import { MODELE_DEFAUT, modeleRecuEnCache, type ModeleRecu } from "@/lib/modeleRecu";
 import { syntheseVersements } from "@/lib/recuVersements";
 import { createClient } from "@/lib/supabase/client";
@@ -22,6 +23,18 @@ import { createClient } from "@/lib/supabase/client";
 // ---------------------------------------------------------------------------
 
 const ASSOCIATION_NOM = "ARIL - Association Rémoise pour l'Instruction Libre";
+
+/** Nom de l'expéditeur dans l'en-tête de la lettre, sur deux lignes (comme le contrat de travail). */
+const EXPEDITEUR_NOM = ["Association Remoise pour", "l'Instruction Libre"];
+
+/** Lettre d'accompagnement (page 1) : paragraphes, {annee} remplacée par l'année des dons. */
+const COURRIER: string[] = [
+  "Vous trouverez ci-joint le reçu fiscal correspondant au don que vous avez fait en {annee} à l'ARIL, l'association qui gère l'École du Saint-Enfant-Jésus à Reims.",
+  "Ce reçu vous ouvre droit à une réduction d'impôt ; nous vous invitons à le conserver avec vos documents fiscaux.",
+  "Nous vous remercions très sincèrement de votre soutien. Grâce à vous, l'école peut instruire les enfants avec exigence et élever leur cœur vers le beau, le bien et le vrai.",
+  "Je reste à votre disposition pour toute question.",
+];
+const COURRIER_FIN = "Bien cordialement,";
 
 const LETTRE_INTRO =
   "Vous avez fait confiance à l'Ecole du Saint Enfant Jésus. Grâce à vous, l'École du Saint-Enfant-Jésus va pouvoir remplir sa démarche pédagogique et son choix éducatif :";
@@ -173,6 +186,33 @@ function paragraphe(
   return lignes.length;
 }
 
+/** Minuscules sans accents ni doubles espaces, pour comparer des libellés. */
+const plat = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+
+/** « JAEGHERE » → « Jaeghere » ; les mots déjà en casse mixte (de, Le, Bourgeois) sont laissés tels quels. */
+const nomPropre = (nom: string) =>
+  nom
+    .split(/(\s+)/)
+    .map((m) => (m.length > 1 && m === m.toUpperCase() ? m[0] + m.slice(1).toLowerCase().replace(/-(\p{L})/gu, (_, c: string) => `-${c.toUpperCase()}`) : m))
+    .join("");
+
+/**
+ * Formule d'appel de la lettre : « Bonjour Monsieur Nom, », d'après la civilité du donateur (ou, pour
+ * une personne morale, celle de la personne « à l'attention de » qui le reçu est adressé).
+ * Sans civilité reconnue : « Bonjour Madame, Monsieur, ».
+ */
+export function appelLettre(titre: string | null | undefined, nom: string | null | undefined): string {
+  const t = plat(titre ?? "").replace(/\./g, "");
+  const n = nomPropre((nom ?? "").trim());
+  if (estCouple(titre)) return `Bonjour Monsieur et Madame${n ? ` ${n}` : ""},`;
+  const avecNom = (civ: string) => `Bonjour ${civ}${n ? ` ${n}` : ""},`;
+  if (/^(m|mr|monsieur|messieurs?)\b/.test(t)) return avecNom("Monsieur");
+  if (/^(mme|mlle|madame|mademoiselle)\b/.test(t)) return avecNom("Madame");
+  if (/^pere abbe\b/.test(t)) return "Bonjour Père Abbé,";
+  if (/^pere\b/.test(t)) return avecNom("Père");
+  return "Bonjour Madame, Monsieur,";
+}
+
 const capitaliser = (s: string) => (s.length ? s[0].toUpperCase() + s.slice(1) : s);
 
 /** Retire ce que la police allégée ne saurait pas dessiner. */
@@ -193,6 +233,8 @@ export type OptionsRecu = {
   dateEdition?: string;
   /** Signataires, adresse, contact ; par défaut le modèle ESEJ livré. */
   modele?: ModeleRecu;
+  /** Lettre de remerciement en page 1 ; par défaut, seulement pour un donateur qui reçoit ses reçus par courrier. */
+  lettre?: boolean;
   /** Ouvrir le PDF dans un nouvel onglet du navigateur au lieu de le télécharger. */
   ouvrir?: boolean;
 };
@@ -224,7 +266,10 @@ export async function construireRecuPdf(don: DonPourRecu, options: OptionsRecu =
     modele.signatureTresorier ? embedImage(modele.signatureTresorier) : null,
   ]);
 
-  const page = doc.addPage([A4.w, A4.h]);
+  // Reçu à poster : page 1 = lettre d'accompagnement, page 2 = reçu fiscal. Reçu envoyé par courriel :
+  // le reçu seul (le courriel tient lieu de lettre). Puis, au besoin, l'annexe.
+  const avecLettre = options.lettre ?? don.envoi_prefere === "courrier";
+  let page = doc.addPage([A4.w, A4.h]);
   const NAVY = rgb(0.12, 0.11, 0.31);
   const OR = rgb(0.863, 0.686, 0.353);
   const NOIR = rgb(0.04, 0.03, 0.2);
@@ -253,8 +298,24 @@ export async function construireRecuPdf(don: DonPourRecu, options: OptionsRecu =
   const annee = options.annee ?? Number(anneesDons[0]);
   const numero = (don.recu_numero ?? "").replace(/^RE_/, "");
   const pm = don.est_personne_morale;
-  const identite = [don.donateur_titre, don.donateur_nom, don.donateur_prenom].filter(Boolean).join(" ");
+  // Couple : « Monsieur & Madame François et Cécile Croison » ; sinon « Titre Nom Prénom ».
+  const couple = !don.est_personne_morale && estCouple(don.donateur_titre);
+  const identite = couple ? nomComplet(don) : [don.donateur_titre, don.donateur_nom, don.donateur_prenom].filter(Boolean).join(" ");
   const raison = pm ? (don.raison_sociale ?? don.donateur_nom) : "";
+  // Personne morale : le contact à qui le reçu est adressé n'est mentionné que s'il est renseigné et
+  // distinct de la raison sociale. Il se lit « À l'attention de Prénom Nom » ; un titre qui répète
+  // l'organisme (donnée mal saisie) ou qui n'est pas une civilité courte est écarté.
+  const titreContact =
+    don.donateur_titre && don.donateur_titre.trim().length <= 15 && plat(don.donateur_titre) !== plat(raison ?? "")
+      ? don.donateur_titre.trim()
+      : "";
+  const contact = [titreContact, don.donateur_prenom, don.donateur_nom].filter((x) => x && x.trim()).join(" ");
+  const contactDistinct =
+    plat(don.donateur_nom ?? "") !== "" &&
+    plat(don.donateur_nom ?? "") !== plat(raison ?? "") &&
+    plat(contact) !== plat(raison ?? "");
+  // Particulier en tête de lettre : « Prénom Nom », sans civilité.
+  const identiteSimple = couple ? nomComplet(don) : [don.donateur_prenom, don.donateur_nom].filter((x) => x && x.trim()).join(" ");
   const sommeLettresCap = capitaliser(montantEnLettres(montant));
   const dateEdition = formatDate(options.dateEdition ?? don.date_edition ?? todayISO());
   // Détail des dons couverts : chaque don, les dons réguliers synthétisés.
@@ -264,7 +325,84 @@ export async function construireRecuPdf(don: DonPourRecu, options: OptionsRecu =
       : [{ date: don.date_don, montant, mode: don.mode_paiement }],
   );
 
-  // ---- En-tête -------------------------------------------------------------
+  const fonts = { regular, italic };
+
+  if (avecLettre) {
+    // ---- En-tête : expéditeur à gauche, logo au centre, destinataire à droite --
+    image(logo, (A4.w - 100) / 2, 31.5, 100, 99);
+
+    const PT_ENTETE = 9.5;
+    const PAS_ENTETE = 13.2;
+    let e = 62 - PAS_ENTETE;
+    for (const l of EXPEDITEUR_NOM) texte(l, 67, (e += PAS_ENTETE), semi, PT_ENTETE, NOIR);
+    for (const l of [modele.adresseRue, modele.adresseCpVille, modele.courrielContact]) {
+      texte(l, 67, (e += PAS_ENTETE), regular, PT_ENTETE);
+    }
+
+    // Destinataire : aligné à droite, replié pour rester à la droite du logo.
+    const LARGEUR_DEST = 190;
+    const replier = (t: string, font: PDFFont) =>
+      enLignes(enMots([{ t: assainir(t) }], font, font), PT_ENTETE, LARGEUR_DEST, font.widthOfTextAtSize(" ", PT_ENTETE)).map(
+        (ligne) => ligne.map((m) => m.t).join(" "),
+      );
+    let r = 62 - PAS_ENTETE;
+    const droite = (t: string, font: PDFFont, color: RGB) => {
+      for (const l of replier(t, font)) {
+        r += PAS_ENTETE;
+        texte(l, 535.5 - largeur(l, font, PT_ENTETE), r, font, PT_ENTETE, color);
+      }
+    };
+    if (pm) {
+      droite(raison ?? "", semi, NOIR);
+      if (contactDistinct) {
+        // La civilité sert à la formule d'appel, pas à l'adresse ; un titre religieux, lui, se garde.
+        const civilite = /^(m|mr|monsieur|mme|mlle|madame|mademoiselle)$/.test(plat(titreContact).replace(/\./g, ""));
+        droite("À l'attention de", regular, NAVY);
+        droite([civilite ? "" : titreContact, don.donateur_prenom, don.donateur_nom].filter((x) => x && x.trim()).join(" "), regular, NAVY);
+      }
+    } else {
+      droite(identiteSimple || identite, semi, NOIR);
+    }
+    if (don.adresse) droite(don.adresse, regular, NAVY);
+    if (don.cp_ville) droite(don.cp_ville, regular, NAVY);
+
+    rect(67, 150.5, 469, 2.5);
+
+    // ---- Page 1 : lettre d'accompagnement -----------------------------------
+    const courrier: Style = { size: 10.5, color: NAVY, interligne: 16 };
+    const dateEditionISO = options.dateEdition ?? don.date_edition ?? todayISO();
+    const lieuDate = `Reims, le ${new Date(`${dateEditionISO}T12:00:00`)
+      .toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })
+      .replace(/^1 /, "1er ")}`;
+    texte(lieuDate, 535.5 - largeur(lieuDate, regular, 10.5), 190, regular, 10.5);
+
+    texte("Objet : Lettre de remerciement", 67.5, 222, semi, 10.5, NOIR);
+
+    const contactNom = pm ? (contactDistinct ? don.donateur_nom : "") : don.donateur_nom;
+    texte(appelLettre(pm ? titreContact : don.donateur_titre, contactNom), 67.5, 254, regular, 10.5);
+
+    let ligneCourrier = 286;
+    for (const para of COURRIER) {
+      const n = paragraphe(page, [{ t: para.replace("{annee}", String(annee)) }], fonts, 67.5, ligneCourrier, 468, courrier);
+      ligneCourrier += courrier.interligne * n + 9;
+    }
+    ligneCourrier += 4;
+    texte(COURRIER_FIN, 67.5, ligneCourrier, regular, 10.5);
+
+    const tresorierCourrier = `${modele.tresorierNom}, Trésorier de l'ARIL`;
+    ligneCourrier += 46;
+    texte(tresorierCourrier, 535.5 - largeur(tresorierCourrier, regular, 10.5), ligneCourrier, regular, 10.5);
+    if (signTresorier) image(signTresorier, 535.5 - 109 - 10, ligneCourrier - 48, 109, 37.5);
+
+    // Pied de la lettre : filet or, puis l'identité de l'association.
+    rect(67, 772, 469, 1.5);
+    const pied = `Association Remoise pour l'Instruction Libre - ${modele.adresseRue}, ${modele.adresseCpVille}`;
+    texte(pied, (A4.w - largeur(pied, semi, 8)) / 2, 790, semi, 8, NOIR);
+
+  }
+
+  // ---- Page 2 : le reçu fiscal, tel que le modèle ESEJ -----------------------
+  if (avecLettre) page = doc.addPage([A4.w, A4.h]);
   image(logo, 78.5, 31.5, 100, 99);
 
   rect(241.5, 32, 287.5, 21.5);
@@ -278,8 +416,6 @@ export async function construireRecuPdf(don: DonPourRecu, options: OptionsRecu =
 
   rect(67, 150.5, 469, 2.5);
 
-  // ---- Lettre --------------------------------------------------------------
-  const fonts = { regular, italic };
   const corps: Style = { size: 8.8, color: NAVY, interligne: 12.22, justifier: true };
 
   image(salutation, 73.5, 168, 85, 11.5);
@@ -309,9 +445,8 @@ export async function construireRecuPdf(don: DonPourRecu, options: OptionsRecu =
   page.drawLine({
     start: { x: 66, y: depuisLeHaut(421.25) },
     end: { x: 536.5, y: depuisLeHaut(421.25) },
-    thickness: 2.5,
+    thickness: 1.5,
     color: OR,
-    dashArray: [16, 3.75],
   });
 
   // ---- Bloc reçu -----------------------------------------------------------
@@ -341,13 +476,6 @@ export async function construireRecuPdf(don: DonPourRecu, options: OptionsRecu =
   texte("Donateur", 314.5, d, semi, LBL);
   if (pm) {
     ligne(raison ?? "", (d += pas));
-    // Le contact n'est mentionné que s'il est renseigné et distinct de la raison sociale.
-    // Il se lit « À l'attention de Prénom Nom » ; un titre qui répète l'organisme (donnée
-    // mal saisie) ou qui n'est pas une civilité courte est écarté.
-    const plat = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
-    const titreContact = don.donateur_titre && don.donateur_titre.trim().length <= 15 && plat(don.donateur_titre) !== plat(raison ?? "") ? don.donateur_titre.trim() : "";
-    const contact = [titreContact, don.donateur_prenom, don.donateur_nom].filter((x) => x && x.trim()).join(" ");
-    const contactDistinct = plat(don.donateur_nom ?? "") !== "" && plat(don.donateur_nom ?? "") !== plat(raison ?? "") && plat(contact) !== plat(raison ?? "");
     if (contactDistinct) ligne(`À l'attention de ${contact}`, (d += pas));
   } else {
     ligne(identite, (d += pas));

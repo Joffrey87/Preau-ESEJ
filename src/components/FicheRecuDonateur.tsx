@@ -2,6 +2,9 @@
 
 import { useMemo, useState } from "react";
 import { Field, inputCls } from "./GestionComptes";
+import ChampsParticulier from "./ChampsParticulier";
+import ChampCourriel from "./ChampCourriel";
+import { estCouple } from "@/lib/couple";
 import type { Don } from "./GestionDons";
 import type { Groupe, RecuInfo } from "./ListeRecus";
 import { LIBELLE, TON, VERROUILLER_ANNEES_AVANT, recalculerRegistre, type StatutRecu } from "./recusCommun";
@@ -11,6 +14,7 @@ import { formatDate, formatEuros } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
 import { useCoffre } from "@/components/CoffreProvider";
 import { champsImportantsManquants, recuEnvoye } from "@/lib/statutDon";
+import { nomSoigne } from "@/lib/nomPropre";
 
 type Entree = { g: Groupe; statut: StatutRecu };
 
@@ -37,6 +41,7 @@ type FormFiche = {
   adresse: string;
   cp_ville: string;
   courriel: string;
+  a_transmettre: string;
   envoi_prefere: string;
 };
 
@@ -56,6 +61,7 @@ function formDepuis(d: Don): FormFiche {
     adresse: d.adresse ?? "",
     cp_ville: d.cp_ville ?? "",
     courriel: d.courriel ?? "",
+    a_transmettre: d.a_transmettre ?? "",
     envoi_prefere: d.envoi_prefere ?? "courriel",
   };
 }
@@ -107,12 +113,13 @@ export default function FicheRecuDonateur({
     setBusy(true);
     const pii = {
       titre: form.donateur_titre.trim() || null,
-      nom: form.donateur_nom.trim() || null,
+      nom: nomSoigne(form.donateur_nom, form.est_personne_morale) || null,
       prenom: form.donateur_prenom.trim() || null,
       raison: form.est_personne_morale ? form.raison_sociale.trim() : null,
       adresse: form.adresse.trim() || null,
       cp_ville: form.cp_ville.trim() || null,
       courriel: form.courriel.trim() || null,
+      transmettre: form.a_transmettre.trim() || null,
     };
     const { error } = await createClient()
       .from("dons")
@@ -226,6 +233,20 @@ export default function FicheRecuDonateur({
                 </select>
               </Field>
             </div>
+            {form.envoi_prefere === "transmettre" && (
+              <Field label="Reçu à transmettre à">
+                <input
+                  type="text"
+                  value={form.a_transmettre}
+                  onChange={(e) => set("a_transmettre", e.target.value)}
+                  className={inputCls}
+                  placeholder="Prénom Nom, courriel de la personne de contact"
+                />
+                <span className="mt-1 block text-xs text-muted">
+                  Le reçu est remis à cette personne ou à ce courriel : l&apos;adresse électronique du donateur n&apos;est plus nécessaire. Donnée chiffrée avec la fiche.
+                </span>
+              </Field>
+            )}
             {form.est_personne_morale ? (
               <div className="space-y-3">
                 <Field label="Nom de l'organisme">
@@ -244,17 +265,7 @@ export default function FicheRecuDonateur({
                 </div>
               </div>
             ) : (
-              <div className="grid gap-3 sm:grid-cols-3">
-                <Field label="Titre">
-                  <input type="text" value={form.donateur_titre} onChange={(e) => set("donateur_titre", e.target.value)} className={inputCls} placeholder="Monsieur…" />
-                </Field>
-                <Field label="Prénom">
-                  <input type="text" value={form.donateur_prenom} onChange={(e) => set("donateur_prenom", e.target.value)} className={inputCls} />
-                </Field>
-                <Field label="Nom">
-                  <input type="text" value={form.donateur_nom} onChange={(e) => set("donateur_nom", e.target.value)} className={inputCls} />
-                </Field>
-              </div>
+              <ChampsParticulier titre={form.donateur_titre} prenom={form.donateur_prenom} nom={form.donateur_nom} set={set} />
             )}
             <Field label="Adresse">
               <input type="text" value={form.adresse} onChange={(e) => set("adresse", e.target.value)} className={inputCls} placeholder="N° et rue" />
@@ -263,10 +274,13 @@ export default function FicheRecuDonateur({
               <Field label="CP et ville">
                 <input type="text" value={form.cp_ville} onChange={(e) => set("cp_ville", e.target.value)} className={inputCls} placeholder="51100 Reims" />
               </Field>
-              <Field label="Courriel">
-                <input type="email" value={form.courriel} onChange={(e) => set("courriel", e.target.value)} className={inputCls} />
-              </Field>
+              {!(!form.est_personne_morale && estCouple(form.donateur_titre)) && (
+                <ChampCourriel titre={form.donateur_titre} courriel={form.courriel} onChange={(v) => set("courriel", v)} />
+              )}
             </div>
+            {!form.est_personne_morale && estCouple(form.donateur_titre) && (
+              <ChampCourriel titre={form.donateur_titre} courriel={form.courriel} onChange={(v) => set("courriel", v)} />
+            )}
             {erreur && <p className="rounded-lg bg-negative/10 px-3 py-2 text-negative">{erreur}</p>}
             <div className="flex items-center justify-between gap-3">
               <span className="text-xs text-muted">La fiche est reportée sur tous les dons de ce donateur.</span>

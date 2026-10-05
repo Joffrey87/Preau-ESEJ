@@ -1,17 +1,51 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { NAV } from "@/lib/nav";
 import { pagesAutorisees, roleByEmail } from "@/lib/roles";
+import { ICONES_ROLES, PROFILS_VUE } from "@/lib/vueRole";
+import { MISES_A_JOUR } from "@/lib/misesAJour";
 import { createClient } from "@/lib/supabase/client";
 import Icon from "./Icon";
+import BasculeTheme from "./BasculeTheme";
 
 // Agencement « rail dense » : menu compact, sections réduites à un fin libellé,
 // tous les liens visibles sans barre de défilement, pas de bandeau supérieur.
-export default function Sidebar({ userEmail, userName }: { userEmail?: string; userName?: string }) {
+export default function Sidebar({
+  userEmail,
+  peutChanger = false,
+  slugActif = "",
+  familles = [],
+}: {
+  userEmail?: string;
+  /** Trésorier : le bloc « Préau » ouvre le choix du profil (vue seulement). */
+  peutChanger?: boolean;
+  slugActif?: string;
+  /** Familles de l'école, pour choisir laquelle voir (aperçu de son espace). */
+  familles?: { id: string; nom: string }[];
+}) {
   const pathname = usePathname();
   const router = useRouter();
+  const [choixOuvert, setChoixOuvert] = useState(false);
+  const [famillesOuvertes, setFamillesOuvertes] = useState(false);
+  const enteteRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!choixOuvert) return;
+    const ferme = (e: MouseEvent | KeyboardEvent) => {
+      if (e instanceof KeyboardEvent ? e.key === "Escape" : !enteteRef.current?.contains(e.target as Node)) {
+        setChoixOuvert(false);
+      }
+    };
+    document.addEventListener("mousedown", ferme);
+    document.addEventListener("keydown", ferme);
+    return () => {
+      document.removeEventListener("mousedown", ferme);
+      document.removeEventListener("keydown", ferme);
+    };
+  }, [choixOuvert]);
 
   async function handleLogout() {
     const supabase = createClient();
@@ -23,17 +57,93 @@ export default function Sidebar({ userEmail, userName }: { userEmail?: string; u
 
   return (
     <aside className="flex flex-col border-b border-border bg-surface md:h-screen md:w-56 md:shrink-0 md:border-b-0 md:border-r md:sticky md:top-0">
-      <Link
-        href="/"
-        className="flex items-center gap-2.5 border-b border-border px-4 py-3 transition-colors hover:bg-surface-2"
-      >
+      <div ref={enteteRef} className="relative">
+        {peutChanger ? (
+          <button
+            type="button"
+            onClick={() => setChoixOuvert((o) => !o)}
+            aria-expanded={choixOuvert}
+            aria-haspopup="true"
+            title="Voir l'application en tant que…"
+            className="flex w-full items-center gap-2.5 border-b border-border px-4 py-3 text-left transition-colors hover:bg-surface-2"
+          >
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/logo.webp" alt="Préau" className="h-9 w-9 shrink-0 rounded-full object-contain" />
         <div className="leading-tight">
           <div className="text-sm font-semibold">Préau</div>
           <div className="text-[10px] text-muted">ARIL · Saint-Enfant-Jésus</div>
         </div>
-      </Link>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={`ml-auto h-4 w-4 shrink-0 text-muted transition-transform ${choixOuvert ? "rotate-180" : ""}`} aria-hidden="true">
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </button>
+        ) : (
+          <Link
+            href="/"
+            className="flex items-center gap-2.5 border-b border-border px-4 py-3 transition-colors hover:bg-surface-2"
+          >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/logo.webp" alt="Préau" className="h-9 w-9 shrink-0 rounded-full object-contain" />
+        <div className="leading-tight">
+          <div className="text-sm font-semibold">Préau</div>
+          <div className="text-[10px] text-muted">ARIL · Saint-Enfant-Jésus</div>
+        </div>
+          </Link>
+        )}
+
+        {peutChanger && choixOuvert && (
+          <div className="absolute left-2 right-2 top-full z-30 mt-1 rounded-xl border border-border bg-surface p-2 shadow-lg md:w-[19rem] md:right-auto">
+            <div className="px-1.5 pb-1.5 text-[11px] text-muted">
+              Voir l’application en tant que… <span className="text-muted/70">(aperçu : vos droits restent ceux du Trésorier)</span>
+            </div>
+            <div className="grid grid-cols-2 gap-1.5">
+              {PROFILS_VUE.map((r) => {
+                const actif = r.slug === slugActif;
+                return (
+                  <a
+                    key={r.slug}
+                    href={`/changer-profil/${r.slug}`}
+                    className={`flex flex-col items-center gap-1 rounded-lg border px-2 py-2.5 text-center text-[12px] leading-tight transition-colors ${
+                      actif
+                        ? "border-accent bg-accent-soft font-medium text-accent"
+                        : "border-border hover:bg-surface-2"
+                    }`}
+                  >
+                    <Icon name={ICONES_ROLES[r.slug] ?? "users"} className="h-6 w-6" />
+                    {r.label}
+                  </a>
+                );
+              })}
+              <button
+                type="button"
+                onClick={() => setFamillesOuvertes((o) => !o)}
+                aria-expanded={famillesOuvertes}
+                className={`flex flex-col items-center gap-1 rounded-lg border px-2 py-2.5 text-center text-[12px] leading-tight transition-colors ${
+                  famillesOuvertes ? "border-accent bg-accent-soft font-medium text-accent" : "border-border hover:bg-surface-2"
+                }`}
+              >
+                <Icon name="maison" className="h-6 w-6" />
+                Famille…
+              </button>
+            </div>
+            {famillesOuvertes && (
+              <div className="mt-2 border-t border-border pt-2">
+                <div className="px-1.5 pb-1 text-[11px] text-muted">Quelle famille voir ?</div>
+                <ul className="max-h-56 overflow-y-auto">
+                  {familles.map((f) => (
+                    <li key={f.id}>
+                      <a href={`/apercu-famille/${f.id}`} className="block rounded-md px-2 py-1 text-[13px] hover:bg-surface-2">
+                        {f.nom}
+                      </a>
+                    </li>
+                  ))}
+                  {familles.length === 0 && <li className="px-2 py-1 text-xs text-muted">Aucune famille.</li>}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Menu défilant à la molette s'il dépasse la hauteur de l'écran, sans barre de défilement visible ; marge en bas pour que le dernier item ne colle pas au bord. */}
       <nav className="flex-1 overscroll-contain px-2 pt-2 pb-8 md:min-h-0 md:overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -83,30 +193,42 @@ export default function Sidebar({ userEmail, userName }: { userEmail?: string; u
       </nav>
 
       {userEmail && (
-        <div className="mt-auto border-t border-border px-2 py-2">
-          <div className="px-2 pb-1 text-[11px] text-muted truncate">
-            {userName ? (
-              <>
-                <span className="font-medium text-foreground">{userName}</span>
-                {roleByEmail(userEmail)?.label ? ` · ${roleByEmail(userEmail)?.label}` : ""}
-              </>
-            ) : (
-              <>
-                Connecté :{" "}
-                <span className="font-medium text-foreground">
-                  {roleByEmail(userEmail)?.label ?? userEmail}
-                </span>
-              </>
-            )}
+        <div className="mt-auto border-t border-border px-2 pb-2 pt-2">
+          {/* Mises à jour : encart à part, pour le profil Recherche de fonds ; chaque point mène à l'endroit concerné. */}
+          {roleByEmail(userEmail)?.slug === "recherche-fonds" && (
+            <div className="mb-2 rounded-lg border border-border bg-surface-2 px-3 py-2">
+              {MISES_A_JOUR.map((m, i) => (
+                <div key={m.depuis} className={i === 0 ? "" : "mt-2"}>
+                  <div className="text-[11px] font-semibold text-gold">Mises à jour ({m.depuis})</div>
+                  <ul className="mt-1 space-y-0.5 text-[12px] leading-snug">
+                    {m.points.map((p) => (
+                      <li key={p.texte} className="flex items-baseline gap-1.5">
+                        {/* Petite puce ; bleu-gris discret, moins marqué que les textes du menu. */}
+                        <span aria-hidden="true" className="mt-1.5 h-1 w-1 shrink-0 self-start rounded-full bg-[color-mix(in_srgb,var(--accent)_45%,var(--muted))]" />
+                        <Link href={p.href} className="text-[color-mix(in_srgb,var(--accent)_45%,var(--muted))] hover:text-accent hover:underline">
+                          {p.texte}
+                        </Link>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ))}
+            </div>
+          )}
+          {/* À droite du badge « N » de Next (bas gauche, en développement) : déconnexion, thème. */}
+          <div className="pl-11">
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="flex min-w-0 flex-1 items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] text-foreground hover:bg-surface-2"
+            >
+              <Icon name="logout" className="h-4 w-4 shrink-0" />
+              <span>Déconnexion</span>
+            </button>
+            <BasculeTheme />
           </div>
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="flex w-full items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] text-foreground hover:bg-surface-2"
-          >
-            <Icon name="logout" className="h-4 w-4 shrink-0" />
-            <span>Déconnexion</span>
-          </button>
+          </div>
         </div>
       )}
     </aside>

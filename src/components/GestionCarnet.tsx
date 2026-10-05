@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import BoutonFiltresMultiples, { CasePastille } from "@/components/BoutonFiltresMultiples";
+import { useFiltresMultiples } from "@/lib/filtresMultiples";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { Modal, Field, FormFooter, inputCls } from "./GestionComptes";
@@ -14,6 +16,15 @@ import {
   type Contact,
   type CategorieSlug,
 } from "@/lib/carnet";
+
+/** Filtres « Famille » du carnet, ajoutés aux catégories (clé propre, jamais une catégorie réelle). */
+const FILTRES_FAMILLE: { slug: string; label: string; tone: "blue" | "gray" }[] = [
+  { slug: "famille_actuelle", label: "Familles actuelles", tone: "blue" },
+  { slug: "famille_ancienne", label: "Anciennes familles", tone: "gray" },
+];
+
+const correspondFiltre = (c: Contact, cle: string): boolean =>
+  cle === "famille_actuelle" ? c.famille_statut === "actuelle" : cle === "famille_ancienne" ? c.famille_statut === "ancienne" : !!c.categories?.includes(cle);
 
 const CIVILITES = ["", "Monsieur", "Madame", "M. et Mme", "Père", "Sœur", "Abbé"];
 
@@ -31,6 +42,7 @@ type FormState = {
   iban: string;
   notes: string;
   relation: string;
+  famille_statut: string;
 };
 
 function vide(): FormState {
@@ -48,6 +60,7 @@ function vide(): FormState {
     iban: "",
     notes: "",
     relation: "",
+    famille_statut: "",
   };
 }
 
@@ -79,7 +92,7 @@ export default function GestionCarnet({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [recherche, setRecherche] = useState(rechercheInitiale);
-  const [filtreCat, setFiltreCat] = useState<string | null>(null);
+  const { actifs: filtresCat, multiple: catMultiple, basculer: basculerCat, basculerMultiple: basculerCatMultiple, estActif: catActive, reinitialiser: reinitialiserCats } = useFiltresMultiples<string>();
   const [f, setF] = useState<FormState>(vide());
   const [vueCorbeille, setVueCorbeille] = useState(false);
   const [toast, setToast] = useState<{ id: string; nom: string } | null>(null);
@@ -114,13 +127,13 @@ export default function GestionCarnet({
     const base = vueCorbeille ? contactsSupprimes : contactsActifs;
     const q = recherche.trim().toLowerCase();
     return base.filter((c) => {
-      if (!vueCorbeille && filtreCat && !c.categories?.includes(filtreCat)) return false;
+      if (!vueCorbeille && filtresCat.length > 0 && !filtresCat.some((f) => correspondFiltre(c, f))) return false;
       if (!q) return true;
       return [c.nom, c.prenom, c.raison_sociale, c.courriel, c.cp_ville]
         .filter(Boolean)
         .some((v) => (v as string).toLowerCase().includes(q));
     });
-  }, [contactsActifs, contactsSupprimes, vueCorbeille, recherche, filtreCat]);
+  }, [contactsActifs, contactsSupprimes, vueCorbeille, recherche, filtresCat]);
 
   function ouvrir(c: Contact | "nouveau") {
     setError(null);
@@ -141,6 +154,7 @@ export default function GestionCarnet({
         iban: c.iban ?? "",
         notes: c.notes ?? "",
         relation: c.relation ?? "",
+        famille_statut: c.famille_statut ?? "",
       });
     }
     setEdit(c);
@@ -169,6 +183,7 @@ export default function GestionCarnet({
       ...(canVoirIban ? { iban: f.iban.trim() || null } : {}),
       notes: f.notes.trim() || null,
       relation: f.relation.trim() || null,
+      famille_statut: f.famille_statut || null,
       updated_at: new Date().toISOString(),
     };
 
@@ -242,25 +257,28 @@ export default function GestionCarnet({
 
       {catsFiltrables.length > 0 && (
         <div className="mb-4 flex flex-wrap gap-2">
-          {catsFiltrables.map((c) => {
-            const n = contacts.filter((k) => k.categories?.includes(c.slug)).length;
-            const actif = filtreCat === c.slug;
+          {[...catsFiltrables, ...FILTRES_FAMILLE.filter((c) => contactsActifs.some((k) => correspondFiltre(k, c.slug)))].map((c) => {
+            const n = contacts.filter((k) => correspondFiltre(k, c.slug)).length;
+            const actif = catActive(c.slug);
             return (
               <button
                 key={c.slug}
                 type="button"
-                onClick={() => setFiltreCat(actif ? null : c.slug)}
+                onClick={() => basculerCat(c.slug)}
+                aria-pressed={actif}
                 className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition ${TONE_CLASSES[c.tone]} ${
                   actif ? "ring-2 ring-accent ring-offset-1 ring-offset-background" : "opacity-90 hover:opacity-100"
                 }`}
               >
+                {catMultiple && <CasePastille coche={actif} />}
                 {c.label}
                 <span className="rounded-full bg-black/10 px-1.5 tabular-nums dark:bg-white/15">{n}</span>
               </button>
             );
           })}
-          {filtreCat && (
-            <button type="button" onClick={() => setFiltreCat(null)} className="text-xs text-muted underline hover:text-foreground">
+          <BoutonFiltresMultiples actif={catMultiple} onClick={basculerCatMultiple} nombre={filtresCat.length} />
+          {filtresCat.length > 0 && (
+            <button type="button" onClick={reinitialiserCats} className="text-xs text-muted underline hover:text-foreground">
               Tout afficher
             </button>
           )}
@@ -300,6 +318,11 @@ export default function GestionCarnet({
                   <td className="px-4 py-3 font-medium">{nomAffiche(c)}</td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap gap-1">
+                      {c.famille_statut && (
+                        <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${TONE_CLASSES[c.famille_statut === "actuelle" ? "blue" : "gray"]}`}>
+                          {c.famille_statut === "actuelle" ? "Famille actuelle" : "Ancienne famille"}
+                        </span>
+                      )}
                       {(c.categories ?? []).map((cat) => (
                         <span
                           key={cat}
@@ -346,7 +369,7 @@ export default function GestionCarnet({
       </div>
 
       {edit && (
-        <Modal title={edit === "nouveau" ? "Nouveau contact" : "Modifier le contact"} onClose={() => setEdit(null)}>
+        <Modal title={edit === "nouveau" ? "Nouveau contact" : "Modifier le contact"} onClose={() => setEdit(null)} enregistrerEnFermant>
           <form onSubmit={handleSubmit} className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
             <div className="grid grid-cols-2 gap-2">
               <button
@@ -426,6 +449,14 @@ export default function GestionCarnet({
                 <input type="text" value={f.iban} onChange={(e) => set("iban", e.target.value)} className={inputCls} placeholder="FR76…" />
               </Field>
             )}
+
+            <Field label="Famille de l'école">
+              <select value={f.famille_statut} onChange={(e) => set("famille_statut", e.target.value)} className={inputCls}>
+                <option value="">Non</option>
+                <option value="actuelle">Famille actuelle</option>
+                <option value="ancienne">Ancienne famille</option>
+              </select>
+            </Field>
 
             {f.categories.includes("donateur") && (
               <>

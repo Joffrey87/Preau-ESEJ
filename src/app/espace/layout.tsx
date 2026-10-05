@@ -24,19 +24,35 @@ export default async function EspaceLayout({ children }: { children: React.React
   if (!estFamille && !apercu) redirect("/");
 
   const { data: famille } = apercu
-    ? await supabase.from("familles").select("id, nom").eq("id", apercu).maybeSingle()
-    : await supabase.from("familles").select("id, nom").maybeSingle();
+    ? await supabase.from("familles").select("id, nom, revalide_annee").eq("id", apercu).maybeSingle()
+    : await supabase.from("familles").select("id, nom, revalide_annee").maybeSingle();
+  // Campagne annuelle de revalidation des coordonnées (1er août → 30 septembre).
+  const { data: campagne } = await supabase.rpc("annee_revalidation");
+  const aRevalider = !apercu && campagne != null && famille?.revalide_annee !== campagne;
 
   return (
     <div className="min-h-full bg-background">
       {apercu && (
-        <div className="flex flex-wrap items-center justify-center gap-3 bg-gold px-4 py-1.5 text-center text-xs font-medium text-white">
-          Aperçu (bureau) : vous voyez l&apos;espace tel que la famille {famille?.nom ?? ""} le verra.
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-gold/40 bg-gold/15 px-5 py-2 text-[13px] md:px-8">
+          <span className="font-semibold text-gold">⚠</span>
+          <span>
+            Vue en tant que <strong>famille {famille?.nom ?? ""}</strong> — simple aperçu de ce que la famille voit : vos droits réels
+            restent ceux du Trésorier.
+          </span>
           {/* Lien simple : un <Link> préchargerait la route et quitterait l'aperçu à l'affichage. */}
           {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
-          <a href="/apercu-famille/quitter" className="rounded bg-white/20 px-2 py-0.5 underline-offset-2 hover:underline">
-            Quitter l&apos;aperçu
+          <a href="/apercu-famille/quitter?vers=accueil" className="ml-auto font-medium text-accent hover:underline">
+            Revenir au Trésorier
           </a>
+        </div>
+      )}
+      {aRevalider && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-gold/40 bg-gold/15 px-5 py-2 text-[13px] md:px-8">
+          <span className="font-semibold text-gold">⚠</span>
+          <span>Merci de vérifier et de valider vos coordonnées (adresse, téléphones et courriels de Monsieur et de Madame) avant le 30 septembre.</span>
+          <Link href="/espace/famille" className="ml-auto font-medium text-accent hover:underline">
+            Vérifier mes informations
+          </Link>
         </div>
       )}
       <header className="border-b border-border bg-surface">

@@ -3,6 +3,8 @@
 //  - avancement du reçu (à établir → à envoyer / annuel en attente → envoyé)
 // Un don peut cumuler plusieurs pastilles (ex. « Reçu envoyé » + « Courriel manquant »).
 
+import { ETAT_PASSE_SECRETAIRE } from "@/lib/envoiRecu";
+
 export type Don = {
   est_personne_morale: boolean;
   donateur_nom: string | null;
@@ -15,8 +17,10 @@ export type Don = {
   mode_paiement: string | null;
   recu_numero: string | null;
   recu_etat: string | null;
-  /** Préférence d'envoi des reçus : « courrier » (postal) ou, par défaut, courriel. */
+  /** Préférence d'envoi des reçus : « courrier » (postal), « transmettre » (à une personne de contact) ou, par défaut, courriel. */
   envoi_prefere?: string | null;
+  /** Reçu « à transmettre » : personne ou courriel de contact (donnée chiffrée avec la fiche). */
+  a_transmettre?: string | null;
 };
 
 export type Tone = "red" | "amber" | "green" | "blue" | "violet" | "gray";
@@ -27,6 +31,10 @@ export type StatutKey =
   | "annuel"
   | "envoyer"
   | "etablir"
+  | "passer"
+  | "verifier_poste"
+  | "poste"
+  | "nonlie"
   | "sans";
 
 export type Chip = { key: StatutKey; label: string; tone: Tone; detail?: string };
@@ -87,8 +95,11 @@ export function champsImportantsManquants(d: Don): string[] {
   if (vide(nomDonateur(d))) m.push(d.est_personne_morale ? "nom de l'organisme" : "nom");
   if (vide(d.adresse)) m.push("adresse");
   if (vide(d.cp_ville)) m.push("CP/ville");
-  // Le courriel n'est exigé que si le donateur reçoit ses reçus par courriel.
-  if (d.envoi_prefere !== "courrier" && vide(d.courriel)) m.push("courriel");
+  // Le courriel n'est exigé que si le donateur reçoit ses reçus par courriel. Reçu « à transmettre » :
+  // c'est la personne de contact (ou son courriel) qui compte, pas l'adresse électronique du donateur.
+  if (d.envoi_prefere === "transmettre") {
+    if (vide(d.a_transmettre)) m.push("contact à qui transmettre");
+  } else if (d.envoi_prefere !== "courrier" && vide(d.courriel)) m.push("courriel");
   return m;
 }
 
@@ -107,16 +118,24 @@ export function statutsDon(d: Don, recurrents: Set<string>): Chip[] {
 
   // Axe workflow du reçu (une seule pastille).
   const sans = sansRecu(d);
+  const postal = d.envoi_prefere === "courrier";
   if (sans) {
-    chips.push({ key: "sans", label: "Reçu non demandé", tone: "green", detail: "Le donateur ne demande pas de reçu" });
+    chips.push({ key: "sans", label: "Non demandé", tone: "green", detail: "Le donateur ne demande pas de reçu" });
   } else if (recuEnvoye(d)) {
-    chips.push({ key: "envoye", label: "Reçu envoyé", tone: "green" });
+    chips.push(postal ? { key: "poste", label: "Posté", tone: "green" } : { key: "envoye", label: "Envoyé", tone: "green" });
   } else if (vide(d.recu_numero)) {
-    chips.push({ key: "etablir", label: "Reçu à établir", tone: "amber" });
+    chips.push({ key: "etablir", label: "À établir", tone: "amber" });
   } else if (recurrents.has(cleDonateur(d))) {
-    chips.push({ key: "annuel", label: "Reçu annuel en attente", tone: "violet" });
+    chips.push({ key: "annuel", label: "Annuel en attente", tone: "violet" });
+  } else if (postal) {
+    // Courrier postal : À passer (au secrétaire) puis Vérifier envoi postal, avant « Posté ».
+    chips.push(
+      (d.recu_etat ?? "").trim() === ETAT_PASSE_SECRETAIRE
+        ? { key: "verifier_poste", label: "Vérifier envoi postal", tone: "violet", detail: "Remis au secrétaire : à valider quand le courrier est posté" }
+        : { key: "passer", label: "À passer", tone: "blue", detail: "Reçu établi, à passer au secrétaire pour envoi postal" },
+    );
   } else {
-    chips.push({ key: "envoyer", label: "Reçu à envoyer", tone: "blue" });
+    chips.push({ key: "envoyer", label: "À envoyer", tone: "blue" });
   }
 
   // Axe complétude (au plus une pastille : important > mineur). Sans reçu,
@@ -159,9 +178,13 @@ export const TONE_CLASSES: Record<Tone, string> = {
 export const FILTRES: { key: StatutKey; label: string; tone: Tone }[] = [
   { key: "important", label: "Info importante manquante", tone: "red" },
   { key: "mineur", label: "À compléter", tone: "amber" },
-  { key: "etablir", label: "Reçu à établir", tone: "amber" },
-  { key: "annuel", label: "Reçu annuel en attente", tone: "violet" },
-  { key: "envoyer", label: "Reçu à envoyer", tone: "blue" },
-  { key: "envoye", label: "Reçu envoyé", tone: "green" },
-  { key: "sans", label: "Reçu non demandé", tone: "green" },
+  { key: "etablir", label: "À établir", tone: "amber" },
+  { key: "annuel", label: "Annuel en attente", tone: "violet" },
+  { key: "passer", label: "À passer", tone: "blue" },
+  { key: "verifier_poste", label: "Vérifier envoi postal", tone: "violet" },
+  { key: "envoyer", label: "À envoyer", tone: "blue" },
+  { key: "envoye", label: "Envoyé", tone: "green" },
+  { key: "poste", label: "Posté", tone: "green" },
+  { key: "sans", label: "Non demandé", tone: "green" },
+  { key: "nonlie", label: "Non lié (compta)", tone: "amber" },
 ];

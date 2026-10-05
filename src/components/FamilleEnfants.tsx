@@ -16,17 +16,30 @@ export type FicheFamille = {
   telephone: string | null;
   courriels: string | null;
   notes: string | null;
+  /** Monsieur (parent 1) et Madame (parent 2) : chacun son prénom, son nom, son téléphone et son courriel. */
+  parent1_prenom: string | null;
+  parent1_nom: string | null;
+  parent1_telephone: string | null;
+  parent1_courriel: string | null;
+  parent2_prenom: string | null;
+  parent2_nom: string | null;
+  parent2_telephone: string | null;
+  parent2_courriel: string | null;
 };
 
 type FormEleve = { prenom: string; classe_entree: Classe; annee_entree: string; decalage: string; sorti_le: string };
 
 const CHAMPS_FICHE: { k: keyof FicheFamille; l: string }[] = [
-  { k: "parent1", l: "Parent 1" },
-  { k: "parent2", l: "Parent 2" },
   { k: "adresse", l: "Adresse" },
   { k: "cp_ville", l: "CP et ville" },
-  { k: "telephone", l: "Téléphone" },
-  { k: "courriels", l: "Courriels" },
+  { k: "parent1_prenom", l: "Monsieur — prénom" },
+  { k: "parent1_nom", l: "Monsieur — nom" },
+  { k: "parent1_telephone", l: "Monsieur — téléphone" },
+  { k: "parent1_courriel", l: "Monsieur — courriel" },
+  { k: "parent2_prenom", l: "Madame — prénom" },
+  { k: "parent2_nom", l: "Madame — nom" },
+  { k: "parent2_telephone", l: "Madame — téléphone" },
+  { k: "parent2_courriel", l: "Madame — courriel" },
 ];
 
 /**
@@ -72,7 +85,15 @@ export default function FamilleEnfants({
     if (!fiche) return;
     setBusy(true);
     setErreur(null);
-    const maj = Object.fromEntries(CHAMPS_FICHE.map(({ k }) => [k, (fiche[k] as string | null)?.trim() || null]));
+    const maj: Record<string, string | null> = Object.fromEntries(
+      CHAMPS_FICHE.map(({ k }) => [k, (fiche[k] as string | null)?.trim() || null]),
+    );
+    // Anciens champs regroupés, tenus à jour pour les écrans qui les lisent encore.
+    const joindre = (sep: string, ...v: (string | null)[]) => v.filter(Boolean).join(sep) || null;
+    maj.telephone = joindre(" / ", maj.parent1_telephone, maj.parent2_telephone);
+    maj.courriels = joindre(", ", maj.parent1_courriel, maj.parent2_courriel);
+    maj.parent1 = joindre(" ", maj.parent1_prenom, maj.parent1_nom);
+    maj.parent2 = joindre(" ", maj.parent2_prenom, maj.parent2_nom);
     const { error } = await createClient().from("familles").update(maj).eq("id", famille!.id);
     setBusy(false);
     if (error) return setErreur(error.message);

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { COOKIE_PRENOM, ROLES, ROLES_PRENOM_A_L_ACCES } from "@/lib/roles";
 import { MEMBRES } from "@/lib/rechercheFonds";
+import { emailConnexionFamille, identifiantFamille } from "@/lib/identifiantFamille";
 
 const DERNIER_PRENOM = "recherche.dernierPrenom";
 
@@ -14,6 +15,11 @@ export default function LoginPage() {
   const [espace, setEspace] = useState<"bureau" | "famille">("bureau");
   const [email, setEmail] = useState(ROLES[1].email); // Trésorier par défaut
   const [password, setPassword] = useState("");
+  // Famille : le nom de famille sert d'identifiant (« Mot de passe oublié » : nom + une adresse connue de l'école).
+  const [nomFamille, setNomFamille] = useState("");
+  const [oubli, setOubli] = useState(false);
+  const [courrielOubli, setCourrielOubli] = useState("");
+  const [infoOubli, setInfoOubli] = useState<string | null>(null);
   // Profil partagé (Recherche de fonds) : chacun indique son prénom à l'accès.
   const [prenom, setPrenom] = useState("");
   // Le dernier prénom utilisé sur cet appareil est proposé d'office.
@@ -28,6 +34,18 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  /** « Mot de passe oublié » : demande enregistrée pour le bureau (réponse toujours identique, rien n'est divulgué). */
+  async function demanderReinitialisation(e: React.FormEvent) {
+    e.preventDefault();
+    setInfoOubli(null);
+    setLoading(true);
+    await createClient().rpc("demander_raz_famille", { p_nom: nomFamille, p_courriel: courrielOubli });
+    setLoading(false);
+    setInfoOubli(
+      "Votre demande est enregistrée. Si ce nom de famille et cette adresse sont connus de l'école, un nouveau lien pour choisir votre mot de passe vous sera transmis.",
+    );
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -35,10 +53,17 @@ export default function LoginPage() {
     setLoading(true);
 
     const supabase = createClient();
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (espace === "famille" && !identifiantFamille(nomFamille)) {
+      setLoading(false);
+      return setError("Indiquez votre nom de famille.");
+    }
+    const { error } = await supabase.auth.signInWithPassword({
+      email: espace === "famille" ? emailConnexionFamille(nomFamille) : email,
+      password,
+    });
 
     if (error) {
-      setError(espace === "famille" ? "Adresse ou mot de passe incorrect." : "Rôle ou mot de passe incorrect.");
+      setError(espace === "famille" ? "Nom de famille ou mot de passe incorrect." : "Rôle ou mot de passe incorrect.");
       setLoading(false);
       return;
     }
@@ -136,16 +161,16 @@ export default function LoginPage() {
             </>
           ) : (
             <>
-              <label className="mb-1 block text-sm font-medium" htmlFor="email">
-                Adresse électronique
+              <label className="mb-1 block text-sm font-medium" htmlFor="nomFamille">
+                Nom de famille
               </label>
               <input
-                id="email"
-                type="email"
+                id="nomFamille"
+                type="text"
                 autoComplete="username"
                 required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                value={nomFamille}
+                onChange={(e) => setNomFamille(e.target.value)}
                 className="mb-4 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent"
               />
             </>
@@ -180,9 +205,36 @@ export default function LoginPage() {
         </form>
 
         {espace !== "bureau" && (
-          <p className="mt-4 text-center text-xs text-muted">
-            Première connexion : utilisez le lien reçu par courriel pour choisir votre mot de passe.
-          </p>
+          <div className="mt-4 space-y-3 text-center text-xs text-muted">
+            <p>
+              Un seul mot de passe par famille : <strong>le même pour Monsieur et pour Madame</strong>. L&apos;adresse électronique ne sert qu&apos;à la
+              première connexion (lien pour choisir votre mot de passe) et à retrouver un mot de passe oublié.
+            </p>
+            <button type="button" onClick={() => setOubli((o) => !o)} className="text-accent underline-offset-2 hover:underline">
+              Mot de passe oublié ?
+            </button>
+            {oubli && (
+              <form onSubmit={demanderReinitialisation} className="rounded-2xl border border-border bg-surface p-4 text-left shadow-sm">
+                <p className="mb-2 text-xs">Indiquez votre nom de famille (ci-dessus) et l&apos;une des adresses électroniques données à l&apos;école.</p>
+                <input
+                  type="email"
+                  required
+                  value={courrielOubli}
+                  onChange={(e) => setCourrielOubli(e.target.value)}
+                  placeholder="Adresse électronique"
+                  className="mb-2 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent"
+                />
+                <button
+                  type="submit"
+                  disabled={loading || !identifiantFamille(nomFamille)}
+                  className="w-full rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-surface-2 disabled:opacity-50"
+                >
+                  Demander un nouveau mot de passe
+                </button>
+                {infoOubli && <p className="mt-2 rounded-lg bg-positive/10 px-3 py-2 text-xs text-positive">{infoOubli}</p>}
+              </form>
+            )}
+          </div>
         )}
       </div>
     </div>

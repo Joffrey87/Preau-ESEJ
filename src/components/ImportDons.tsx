@@ -9,6 +9,7 @@ import { useCoffre } from "@/components/CoffreProvider";
 import DeverrouillerCoffre from "@/components/DeverrouillerCoffre";
 import { formatEuros, formatDate } from "@/lib/format";
 import { Field, inputCls } from "@/components/GestionComptes";
+import { nomSoigne } from "@/lib/nomPropre";
 import {
   lireClasseurDons,
   devineMapping,
@@ -198,7 +199,13 @@ export default function ImportDons() {
         const raison = toTexte(champEff(i, "raison_sociale"));
         const pii = {
           titre: toTexte(champEff(i, "donateur_titre")) || null,
-          nom: (raison || toTexte(champEff(i, "donateur_nom"))) || null,
+          nom:
+            (raison ||
+              nomSoigne(
+                toTexte(champEff(i, "donateur_nom")),
+                estCategoriePersonneMorale(toTexte(champEff(i, "categorie_donateur"))),
+              )) ||
+            null,
           prenom: raison ? null : toTexte(champEff(i, "donateur_prenom")) || null,
           raison: raison || null,
           adresse: toTexte(champEff(i, "adresse")) || null,

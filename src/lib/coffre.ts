@@ -23,6 +23,9 @@ export type CoffreMeta = {
   dek_phrase: string;
   dek_secours: string;
   canari: string;
+  /** Troisième emballage de la clé, protégé par le code propre au secrétaire (absent : aucun accès délégué). */
+  sel_secretaire?: string | null;
+  dek_secretaire?: string | null;
 };
 
 // Le code de secours est affiché avec des tirets mais dérivé sans (saisie tolérante).
@@ -32,7 +35,16 @@ export const COFFRE_DONS = 1;
 
 export async function chargerMeta(supabase: SupabaseClient, id = COFFRE_DONS): Promise<CoffreMeta | null> {
   const { data } = await supabase.from("coffre").select("*").eq("id", id).maybeSingle();
-  return (data as CoffreMeta | null) ?? null;
+  if (data) return data as CoffreMeta;
+  // Le secrétaire ne lit pas la table : il n'obtient que son propre emballage de la clé (jamais la phrase ni le secours).
+  if (id === COFFRE_DONS) {
+    const { data: lignes } = await supabase.rpc("coffre_pour_secretaire");
+    const l = Array.isArray(lignes) ? lignes[0] : null;
+    if (l?.dek_secretaire) {
+      return { sel_phrase: "", sel_secours: "", dek_phrase: "", dek_secours: "", canari: l.canari, sel_secretaire: l.sel_secretaire, dek_secretaire: l.dek_secretaire };
+    }
+  }
+  return null;
 }
 
 /**
@@ -80,7 +92,37 @@ export async function ouvrirCoffre(meta: CoffreMeta, secret: string): Promise<Cr
   } catch {
     /* rien */
   }
-  throw new Error("Phrase secrète ou code de secours incorrect.");
+  // 3) tentative « code du secrétaire »
+  if (meta.sel_secretaire && meta.dek_secretaire) {
+    try {
+      const kek = await deriveKey(normaliseCode(secret), meta.sel_secretaire);
+      const dek = await deballerDEK(kek, meta.dek_secretaire);
+      if (await verifiePhrase(dek, meta.canari)) return dek;
+    } catch {
+      /* rien */
+    }
+  }
+  throw new Error("Phrase secrète ou code incorrect.");
+}
+
+/**
+ * Génère le code d'accès du secrétaire (affiché une seule fois) : la clé de données est emballée une troisième fois
+ * avec ce code. Le remplacer invalide l'ancien ; la phrase et le code de secours ne sont pas touchés.
+ */
+export async function definirCodeSecretaire(supabase: SupabaseClient, dek: CryptoKey, id = COFFRE_DONS): Promise<string> {
+  const code = genererCodeSecours();
+  const sel_secretaire = nouveauSel();
+  const kek = await deriveKey(normaliseCode(code), sel_secretaire);
+  const dek_secretaire = await emballerDEK(kek, dek);
+  const { error } = await supabase.from("coffre").update({ sel_secretaire, dek_secretaire }).eq("id", id);
+  if (error) throw new Error("Création du code du secrétaire impossible : " + error.message);
+  return code;
+}
+
+/** Retire l'accès du secrétaire au coffre (son code ne déverrouille plus rien). */
+export async function retirerCodeSecretaire(supabase: SupabaseClient, id = COFFRE_DONS): Promise<void> {
+  const { error } = await supabase.from("coffre").update({ sel_secretaire: null, dek_secretaire: null }).eq("id", id);
+  if (error) throw new Error("Retrait de l'accès impossible : " + error.message);
 }
 
 /**

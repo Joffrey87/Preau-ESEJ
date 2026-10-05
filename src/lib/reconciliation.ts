@@ -66,7 +66,7 @@ export function joursEcart(a: string, b: string): number {
 }
 
 /** Dons existants dont le montant colle et la date est à ±`jours` de l'opération. */
-export function donsProbables(op: OpDon, dons: Don[], jours = 3): Don[] {
+export function donsProbables(op: OpDon, dons: Don[], jours = 15): Don[] {
   return dons.filter(
     (d) =>
       Number(d.montant) === Number(op.montant) &&

@@ -23,6 +23,15 @@ export type Prospect = {
   prochaine_action_date: string | null;
   contact_id: string | null;
   notes: string | null;
+  /** Coordonnées en clair (prospects hors « Liste Axel »). */
+  civilite?: string | null;
+  prenom?: string | null;
+  adresse?: string | null;
+  cp_ville?: string | null;
+  /** Coordonnées personnelles chiffrées par le coffre (« Liste Axel » seulement : voir lib/prospectsChiffres.ts). */
+  pii_chiffre?: string | null;
+  /** Liste d'origine (ex. « Liste Axel »). */
+  liste?: string | null;
 };
 
 // Ordre du pipeline (le « moves management » du plan). « perdu » hors flux.

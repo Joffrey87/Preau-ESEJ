@@ -19,6 +19,8 @@ export type Contact = {
   iban: string | null;
   notes: string | null;
   relation: string | null;
+  /** Famille de l'école : « actuelle » (inscrite cette année) ou « ancienne ». */
+  famille_statut?: "actuelle" | "ancienne" | null;
   supprime_le: string | null;
   supprime_par: string | null;
 };

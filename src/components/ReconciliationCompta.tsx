@@ -451,7 +451,7 @@ export default function ReconciliationCompta({
       </div>
 
       {edit && (
-        <Modal title="Fiche du donateur" onClose={() => setEdit(null)}>
+        <Modal title="Fiche du donateur" onClose={() => setEdit(null)} enregistrerEnFermant>
           <form onSubmit={validerFiche} className="max-h-[70vh] space-y-4 overflow-y-auto pr-1">
             <div className="rounded-lg border border-border bg-surface-2 px-3 py-2 text-sm">
               <span className="text-muted">Opération : </span>

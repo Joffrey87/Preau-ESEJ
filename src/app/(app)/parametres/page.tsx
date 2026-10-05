@@ -7,6 +7,7 @@ import MonProfil from "@/components/MonProfil";
 import ChoixTheme from "@/components/ChoixTheme";
 import SecuriteDonnees from "@/components/SecuriteDonnees";
 import { createClient } from "@/lib/supabase/server";
+import { emailVue } from "@/lib/vueRoleServeur";
 import { roleByEmail } from "@/lib/roles";
 
 export default async function ParametresPage() {
@@ -14,7 +15,7 @@ export default async function ParametresPage() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const role = roleByEmail(user?.email);
+  const role = roleByEmail(await emailVue(user?.email));
   const meta = (user?.user_metadata ?? {}) as { prenom?: string; nom?: string };
 
   const [comptesRes, categoriesRes, exercicesRes, organisationRes] = await Promise.all([

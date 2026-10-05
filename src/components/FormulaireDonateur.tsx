@@ -3,6 +3,10 @@
 import { CATEGORIES_DONATEUR, estCategoriePersonneMorale, normaliserCategorieDonateur } from "@/lib/categoriesDonateur";
 import { Field, inputCls } from "./GestionComptes";
 import type { Don } from "@/components/GestionDons";
+import ChampsParticulier from "./ChampsParticulier";
+import ChampCourriel from "./ChampCourriel";
+import { estCouple } from "@/lib/couple";
+import { nomSoigne } from "@/lib/nomPropre";
 
 /**
  * Fiche donateur saisie au moment de rattacher une opération « Don » à l'onglet
@@ -19,6 +23,8 @@ export type FormDonateur = {
   courriel: string;
   categorie_donateur: string;
   origine: string;
+  /** « À transmettre à » : à qui remettre le reçu fiscal (personne ou courriel). */
+  a_transmettre?: string;
 };
 
 export function formDonateurDepuisNom(nomExtrait: string): FormDonateur {
@@ -48,6 +54,7 @@ export function formDonateurDepuisDon(d: Don): FormDonateur {
     courriel: d.courriel ?? "",
     categorie_donateur: normaliserCategorieDonateur(d.categorie_donateur) ?? (d.est_personne_morale ? "Association" : "Particulier"),
     origine: d.origine ?? "",
+    a_transmettre: d.a_transmettre ?? "",
   };
 }
 
@@ -70,12 +77,13 @@ export function ficheDonateurValide(f: FormDonateur): boolean {
 export function piiDeFiche(f: FormDonateur) {
   return {
     titre: f.donateur_titre.trim() || null,
-    nom: f.donateur_nom.trim() || null,
+    nom: nomSoigne(f.donateur_nom, f.est_personne_morale) || null,
     prenom: f.donateur_prenom.trim() || null,
     raison: f.est_personne_morale ? f.raison_sociale.trim() : null,
     adresse: f.adresse.trim() || null,
     cp_ville: f.cp_ville.trim() || null,
     courriel: f.courriel.trim() || null,
+    transmettre: f.a_transmettre?.trim() || null,
   };
 }
 
@@ -139,17 +147,7 @@ export default function ChampsDonateur({
           </div>
         </>
       ) : (
-        <div className="grid grid-cols-3 gap-3">
-          <Field label="Titre">
-            <input type="text" value={f.donateur_titre} onChange={(e) => set("donateur_titre", e.target.value)} className={inputCls} placeholder="Monsieur…" />
-          </Field>
-          <Field label="Prénom">
-            <input type="text" value={f.donateur_prenom} onChange={(e) => set("donateur_prenom", e.target.value)} className={inputCls} />
-          </Field>
-          <Field label="Nom">
-            <input type="text" required value={f.donateur_nom} onChange={(e) => set("donateur_nom", e.target.value)} className={inputCls} />
-          </Field>
-        </div>
+        <ChampsParticulier titre={f.donateur_titre} prenom={f.donateur_prenom} nom={f.donateur_nom} set={set} />
       )}
 
       <Field label="Adresse">
@@ -159,10 +157,13 @@ export default function ChampsDonateur({
         <Field label="CP et ville">
           <input type="text" value={f.cp_ville} onChange={(e) => set("cp_ville", e.target.value)} className={inputCls} />
         </Field>
-        <Field label="Courriel">
-          <input type="email" value={f.courriel} onChange={(e) => set("courriel", e.target.value)} className={inputCls} />
-        </Field>
+        {!(!f.est_personne_morale && estCouple(f.donateur_titre)) && (
+          <ChampCourriel titre={f.donateur_titre} courriel={f.courriel} onChange={(v) => set("courriel", v)} />
+        )}
       </div>
+      {!f.est_personne_morale && estCouple(f.donateur_titre) && (
+        <ChampCourriel titre={f.donateur_titre} courriel={f.courriel} onChange={(v) => set("courriel", v)} />
+      )}
       <Field label="Relation (qui a amené ce don)">
         <input
           type="text"

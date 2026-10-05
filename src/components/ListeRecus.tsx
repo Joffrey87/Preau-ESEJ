@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import DeverrouillerCoffre from "@/components/DeverrouillerCoffre";
 import { Modal, Field, inputCls } from "./GestionComptes";
 import GestionDons, { type Don } from "./GestionDons";
+import HarmoniserFiches from "./HarmoniserFiches";
+import NormaliserEntreprises from "./NormaliserEntreprises";
 import ReattribuerDon from "./ReattribuerDon";
 import FicheRecuDonateur from "./FicheRecuDonateur";
 import { EDITION_EXIGEE_DEPUIS, LIBELLE, TON, type StatutRecu } from "./recusCommun";
@@ -19,6 +21,8 @@ import { construireRecuPdf, genererRecuPdf, nomFichierRecu, type DonPourRecu } f
 import { modeleRecuEnCache } from "@/lib/modeleRecu";
 import { creerZip } from "@/lib/zip";
 import { syntheseVersements } from "@/lib/recuVersements";
+import BoutonFiltresMultiples, { CasePastille } from "@/components/BoutonFiltresMultiples";
+import { useFiltresMultiples } from "@/lib/filtresMultiples";
 
 /** Un don, tel que lu par la page (mêmes colonnes que l'onglet Dons : la fiche s'ouvre ici). */
 export type DonRow = Don;
@@ -130,7 +134,7 @@ const nomAffiche = (d: DonRow) =>
     : [d.donateur_prenom, d.donateur_nom].filter(Boolean).join(" ") || d.donateur_titre || "—";
 
 /** Données du PDF pour un reçu et les dons qu'il couvre. */
-function donPourRecu(r: DonRow, dons: DonRow[], numero: string, dateEdition: string): DonPourRecu {
+export function donPourRecu(r: DonRow, dons: DonRow[], numero: string, dateEdition: string): DonPourRecu {
   return {
     recu_numero: numero,
     donateur_titre: r.donateur_titre,
@@ -144,6 +148,7 @@ function donPourRecu(r: DonRow, dons: DonRow[], numero: string, dateEdition: str
     date_don: dons[dons.length - 1].date_don,
     mode_paiement: r.mode_paiement,
     versements: dons.map((d) => ({ date: d.date_don, montant: Number(d.montant), mode: d.mode_paiement })),
+    envoi_prefere: r.envoi_prefere,
     date_edition: dateEdition,
   };
 }
@@ -152,7 +157,7 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
   const router = useRouter();
   const { dons: hydrates, verrou } = useDonsDechiffres(dons);
   const [annee, setAnnee] = useState<number | "toutes">("toutes");
-  const [statut, setStatut] = useState<StatutRecu | "tous">("tous");
+  const { actifs: statuts, multiple: statutMultiple, basculer: basculerStatut, basculerMultiple: basculerStatutMultiple, estActif: statutActif, reinitialiser: reinitialiserStatuts } = useFiltresMultiples<StatutRecu>();
   // Reçus dont la fiche donateur est incomplète (alarme en haut de page).
   const [incompletsSeuls, setIncompletsSeuls] = useState(false);
   const [recherche, setRecherche] = useState("");
@@ -262,7 +267,7 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
     return mots.every((m) => texte.includes(m));
   };
   const filtres = deLAnnee.filter(
-    (x) => (statut === "tous" || x.statut === statut) && (!incompletsSeuls || estIncomplet(x)) && correspond(x.g),
+    (x) => (statuts.length === 0 || statuts.includes(x.statut)) && (!incompletsSeuls || estIncomplet(x)) && correspond(x.g),
   );
   const affiches = !tri
     ? filtres
@@ -303,7 +308,6 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
   );
 
   const compte = (s: StatutRecu) => deLAnnee.filter((x) => x.statut === s).length;
-  const somme = (s: StatutRecu) => deLAnnee.filter((x) => x.statut === s).reduce((t, x) => t + x.g.total, 0);
   const incomplets = deLAnnee.filter(estIncomplet).length;
 
   /** Ouvre la fiche d'un don (formulaire de l'onglet Dons) ; les manques sont surlignés. */
@@ -317,6 +321,27 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
     { cle: "envoye", libelle: "Envoyés", ton: "text-positive" },
     { cle: "sans", libelle: "Reçu non demandé", ton: "text-positive" },
   ];
+
+  /** Tuile-filtre du tableau de bord : nombre de reçus d'un statut. */
+  const Tuile = ({ t, libelle }: { t: (typeof tuiles)[number]; libelle?: string }) => (
+    <button
+      type="button"
+      onClick={() => {
+        // Un filtre cliqué montre tous les reçus concernés : la recherche en cours est effacée.
+        setRecherche("");
+        basculerStatut(t.cle);
+      }}
+      className={`rounded-xl border px-4 py-3 text-center transition-colors ${
+        statutActif(t.cle) ? "border-accent bg-accent-soft" : "border-border bg-surface hover:bg-surface-2"
+      }`}
+    >
+      <div className="text-xs text-muted">
+        {statutMultiple && <CasePastille coche={statutActif(t.cle)} />}
+        {libelle ?? t.libelle}
+      </div>
+      <div className={`mt-1 text-xl font-semibold tabular-nums ${t.ton}`}>{compte(t.cle)}</div>
+    </button>
+  );
 
   /** Note au registre que ces reçus ont été enregistrés (ils ne sont plus « à télécharger »). */
   async function marquerTelecharges(numeros: string[]) {
@@ -497,24 +522,21 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
 
       {/* Tableau de bord */}
       <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-6">
-        {tuiles.map((t) => (
-          <button
-            key={t.cle}
-            type="button"
-            onClick={() => {
-              // Un filtre cliqué montre tous les reçus concernés : la recherche en cours est effacée.
-              setRecherche("");
-              setStatut(statut === t.cle ? "tous" : t.cle);
-            }}
-            className={`rounded-xl border px-4 py-3 text-left transition-colors ${
-              statut === t.cle ? "border-accent bg-accent-soft" : "border-border bg-surface hover:bg-surface-2"
-            }`}
-          >
-            <div className="text-xs text-muted">{t.libelle}</div>
-            <div className={`mt-1 text-xl font-semibold tabular-nums ${t.ton}`}>{compte(t.cle)}</div>
-            <div className="text-xs text-muted tabular-nums">{formatEuros(somme(t.cle))}</div>
-          </button>
-        ))}
+        {tuiles.map((t) => {
+          // « à envoyer » et « à poster » sont les deux faces d'une même étape : un cadre commun les relie.
+          if (t.cle === "courrier") return null;
+          if (t.cle !== "edite") return <Tuile key={t.cle} t={t} />;
+          const poster = tuiles.find((x) => x.cle === "courrier");
+          return (
+            <div key="envoi" className="col-span-2 rounded-2xl border border-accent/40 bg-accent-soft/30 p-1.5">
+              <div className="mb-1 text-center text-xs text-muted">Établis, à envoyer</div>
+              <div className="grid grid-cols-2 gap-1.5">
+                <Tuile t={t} libelle="Par mail" />
+                {poster && <Tuile t={poster} libelle="Par courrier" />}
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {incomplets > 0 && (
@@ -575,11 +597,15 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
             Reçus incomplets uniquement{verrou ? "" : " — cliquez sur une ligne pour ouvrir la fiche Reçu fiscal du donateur"}
           </span>
         )}
-        {statut !== "tous" && (
-          <button type="button" onClick={() => setStatut("tous")} className="text-sm text-accent hover:underline">
+        <BoutonFiltresMultiples actif={statutMultiple} onClick={basculerStatutMultiple} nombre={statuts.length} />
+        {statuts.length > 0 && (
+          <button type="button" onClick={reinitialiserStatuts} className="text-sm text-accent hover:underline">
             Afficher tous les statuts
           </button>
         )}
+        <NormaliserEntreprises dons={hydrates} verrou={verrou} />
+        <HarmoniserFiches dons={hydrates} verrou={verrou} />
+        <HarmoniserFiches mode="foyers" dons={hydrates} verrou={verrou} />
         <span className="ml-auto text-sm text-muted">
           {affiches.length} reçu{affiches.length > 1 ? "s" : ""} affiché{affiches.length > 1 ? "s" : ""}
         </span>
@@ -714,6 +740,15 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
                   <td className="px-4 py-3">
                     {nomAffiche(g.representant)}
                     {prefereCourrier(g.representant) && <span className="ml-1.5 rounded-full bg-surface-2 px-1.5 py-0.5 text-[10px] text-muted">courrier postal</span>}
+                    {g.representant.envoi_prefere === "transmettre" && <span className="ml-1.5 rounded-full bg-accent-soft px-1.5 py-0.5 text-[10px] text-accent">à transmettre</span>}
+                    {(() => {
+                      const consigne = [...g.dons].reverse().find((d) => d.a_transmettre?.trim())?.a_transmettre?.trim();
+                      return consigne ? (
+                        <div className="text-xs text-accent" title="Consigne de la fiche donateur : à qui remettre ce reçu fiscal">
+                          ➜ À transmettre à : {consigne}
+                        </div>
+                      ) : null;
+                    })()}
                     {aCompleter && <div className="text-xs text-gold">Manque : {manquants.join(", ")}</div>}
                   </td>
                   <td className="px-4 py-3 text-right font-medium tabular-nums">{formatEuros(g.total)}</td>

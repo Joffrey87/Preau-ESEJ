@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { formatEuros } from "@/lib/format";
@@ -213,14 +213,56 @@ export function Modal({
   title,
   onClose,
   children,
+  fermerAuClicExterieur = false,
+  enregistrerEnFermant = false,
 }: {
   title: string;
   onClose: () => void;
   children: React.ReactNode;
+  /** Un clic en dehors de la fenêtre (ou Échap) la ferme : pour les fiches en lecture, pas pour les formulaires en saisie. */
+  fermerAuClicExterieur?: boolean;
+  /**
+   * Fiche à formulaire : un clic en dehors l'enregistre (le formulaire est soumis, avec ses contrôles habituels) puis la
+   * ferme. Sans modification, elle se ferme simplement. Échap ferme sans enregistrer.
+   */
+  enregistrerEnFermant?: boolean;
 }) {
+  const carte = useRef<HTMLDivElement>(null);
+  const modifie = useRef(false);
+  const sortirParClic = fermerAuClicExterieur || enregistrerEnFermant;
+
+  useEffect(() => {
+    if (!sortirParClic) return;
+    const surEchap = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    document.addEventListener("keydown", surEchap);
+    return () => document.removeEventListener("keydown", surEchap);
+  }, [sortirParClic, onClose]);
+
+  function clicExterieur() {
+    const form = carte.current?.querySelector("form");
+    if (enregistrerEnFermant && form && modifie.current) {
+      // Soumission normale : si un champ est invalide, le navigateur le signale et la fiche reste ouverte.
+      form.requestSubmit();
+      return;
+    }
+    onClose();
+  }
+
   return (
-    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
-      <div className="w-full max-w-lg rounded-2xl border border-border bg-surface p-6 shadow-xl">
+    <div
+      className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
+      // mousedown (et non click) : un glisser-déposer qui finit hors de la fenêtre, depuis un champ de texte, ne la ferme pas.
+      onMouseDown={(e) => {
+        if (sortirParClic && e.target === e.currentTarget) clicExterieur();
+      }}
+    >
+      <div
+        ref={carte}
+        onInput={() => {
+          modifie.current = true;
+        }}
+        className="max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto overscroll-contain rounded-2xl border border-border bg-surface p-6 shadow-xl"
+      >
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold">{title}</h2>
           <button type="button" onClick={onClose} className="text-muted hover:text-foreground" aria-label="Fermer">

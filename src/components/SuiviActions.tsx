@@ -3,6 +3,8 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import BoutonFiltresMultiples, { CasePastille } from "@/components/BoutonFiltresMultiples";
+import { useFiltresMultiples } from "@/lib/filtresMultiples";
 import { createClient } from "@/lib/supabase/client";
 import { formatDate, formatEuros } from "@/lib/format";
 import { inputCls } from "./GestionComptes";
@@ -50,14 +52,14 @@ export default function SuiviActions({
   estTresorerie: boolean;
 }) {
   const [ouverte, setOuverte] = useState<string | null>(actionInitiale);
-  const [filtrePilier, setFiltrePilier] = useState<Pilier | "">("");
+  const { actifs: filtresPilier, multiple: pilierMultiple, basculer: basculerPilier, basculerMultiple: basculerPilierMultiple, estActif: pilierActif, reinitialiser: reinitialiserPiliers } = useFiltresMultiples<Pilier>();
   const [voirCloses, setVoirCloses] = useState(false);
 
   const ideeDe = new Map(donnees.idees.map((i) => [i.id, i]));
   // Une action n'est suivie que si son idée est (toujours) retenue.
   const suivies = donnees.actions.filter((a) => {
     const i = a.idee_id ? ideeDe.get(a.idee_id) : undefined;
-    return (!a.idee_id || (i && i.statut === "retenue")) && (!filtrePilier || i?.pilier === filtrePilier);
+    return (!a.idee_id || (i && i.statut === "retenue")) && (filtresPilier.length === 0 || (!!i && filtresPilier.includes(i.pilier)));
   });
   const deStatut = (s: StatutAction) => suivies.filter((a) => a.statut === s);
   const closes = suivies.filter((a) => a.statut === "terminee" || a.statut === "abandonnee");
@@ -109,12 +111,14 @@ export default function SuiviActions({
   return (
     <>
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <button type="button" onClick={() => setFiltrePilier("")} className={chip(!filtrePilier)}>Tous les piliers</button>
+        <button type="button" onClick={reinitialiserPiliers} className={chip(filtresPilier.length === 0)}>Tous les piliers</button>
         {PILIERS.map((p) => (
-          <button key={p.code} type="button" onClick={() => setFiltrePilier(filtrePilier === p.code ? "" : p.code)} className={chip(filtrePilier === p.code)} title={p.titre}>
+          <button key={p.code} type="button" onClick={() => basculerPilier(p.code)} className={chip(pilierActif(p.code))} aria-pressed={pilierActif(p.code)} title={p.titre}>
+            {pilierMultiple && <CasePastille coche={pilierActif(p.code)} />}
             {p.code} · {p.titre}
           </button>
         ))}
+        <BoutonFiltresMultiples actif={pilierMultiple} onClick={basculerPilierMultiple} nombre={filtresPilier.length} />
         <div className="ml-auto flex gap-2">
           <HistoriqueRecherche />
           <Link href="/recherche/axes" className="rounded-lg border border-border px-3 py-2 text-sm hover:bg-surface-2">Axes de recherche</Link>

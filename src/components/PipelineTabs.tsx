@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import GestionPipeline from "@/components/GestionPipeline";
 import DonateursPipeline from "@/components/DonateursPipeline";
 import type { Prospect } from "@/lib/pipeline";
@@ -19,11 +20,32 @@ const VOLETS: { v: Volet; l: string }[] = [
  * depuis les dons, filtres), les prospections (suivi relationnel) et les
  * campagnes de collecte (objectif, relances, actions suggérées).
  */
-export default function PipelineTabs({ prospects, dons }: { prospects: Prospect[]; dons: Don[] }) {
-  const [vue, setVue] = useState<Volet>("fichier");
+type Props = {
+  prospects: Prospect[];
+  dons: Don[];
+  obtenus?: Record<string, { montant: number; nb: number }>;
+  peutLier?: boolean;
+};
+
+/**
+ * Les liens du menu « Mises à jour » ouvrent directement le bon endroit : `?volet=prospections`, `?filtre=alentours&carte=1`,
+ * `?filtre=bourse`, `?liste=Liste Axel`. Chaque adresse différente recrée l'écran avec ces réglages de départ.
+ */
+export default function PipelineTabs(props: Props) {
+  const params = useSearchParams();
+  return <PipelineTabsContenu key={params.toString()} {...props} />;
+}
+
+function PipelineTabsContenu({ prospects, dons, obtenus, peutLier }: Props) {
+  const params = useSearchParams();
+  const voletParam = params.get("volet");
+  const [vue, setVue] = useState<Volet>(
+    voletParam === "prospections" || voletParam === "campagnes" ? voletParam : "fichier",
+  );
+  const filtre = params.get("filtre");
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-2">
       <div className="inline-flex flex-wrap rounded-lg border border-border bg-surface p-0.5">
         {VOLETS.map((o) => (
           <button
@@ -40,9 +62,9 @@ export default function PipelineTabs({ prospects, dons }: { prospects: Prospect[
       </div>
 
       {vue === "prospections" ? (
-        <GestionPipeline prospects={prospects} />
+        <GestionPipeline prospects={prospects} dons={dons} obtenus={obtenus} peutLier={peutLier} listeInitiale={params.get("liste")} />
       ) : (
-        <DonateursPipeline donsInit={dons} volet={vue} />
+        <DonateursPipeline donsInit={dons} volet={vue} filtreInitial={filtre} carteInitiale={params.get("carte") === "1"} />
       )}
     </div>
   );

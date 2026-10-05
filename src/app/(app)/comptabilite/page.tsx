@@ -114,7 +114,7 @@ export default async function ComptabilitePage({
   const { data: donsData } = await supabase
     .from("dons")
     .select(
-      "id, operation_id, exercice_id, montant, date_don, est_personne_morale, donateur_titre, donateur_nom, donateur_prenom, raison_sociale, adresse, cp_ville, courriel, mode_paiement, recu_numero, recu_etat, pii_chiffre",
+      "id, operation_id, exercice_id, origine, categorie_donateur, montant, date_don, est_personne_morale, donateur_titre, donateur_nom, donateur_prenom, raison_sociale, adresse, cp_ville, courriel, mode_paiement, recu_numero, recu_etat, recu_emis_le, envoi_prefere, observations, supprime_le, supprime_par, pii_chiffre",
     )
     .is("supprime_le", null);
   const dons = (donsData ?? []) as DonCompta[];
@@ -157,9 +157,9 @@ export default async function ComptabilitePage({
   const rapprochements = rapprocherDons(operations, dons);
   const donsRepertories = [...rapprochements.keys()];
   const rapprochementsDons: Record<string, Rapprochement> = Object.fromEntries(rapprochements);
-  // Seuls les dons concernés par cette page partent vers le navigateur.
-  const idsDons = new Set([...rapprochements.values()].map((r) => r.donId));
-  const donsCompta = dons.filter((d) => idsDons.has(d.id));
+  // Tous les dons partent vers le navigateur (colonnes de la fiche donateur comprises) : liens à
+  // ±1 mois, nom du donateur dans l'intitulé bancaire, fiche et création d'un don depuis la Compta.
+  const donsCompta = dons;
 
   // Une ligne détaillée ne compte pas : ses sous-écritures portent les montants
   // et les catégories. La présence de filles fait foi, pas l'indicateur seul.

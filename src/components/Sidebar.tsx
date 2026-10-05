@@ -6,7 +6,8 @@ import { usePathname, useRouter } from "next/navigation";
 import { NAV } from "@/lib/nav";
 import { pagesAutorisees, roleByEmail } from "@/lib/roles";
 import { ICONES_ROLES, PROFILS_VUE } from "@/lib/vueRole";
-import { MISES_A_JOUR } from "@/lib/misesAJour";
+import { MISES_A_JOUR, titreEnAmbre } from "@/lib/misesAJour";
+import { todayISO } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
 import Icon from "./Icon";
 import BasculeTheme from "./BasculeTheme";
@@ -29,6 +30,9 @@ export default function Sidebar({
   const pathname = usePathname();
   const router = useRouter();
   const [choixOuvert, setChoixOuvert] = useState(false);
+  // Téléphone : le menu entier (pages, déconnexion, thème) se déplie en touchant le logo Préau.
+  const [menuOuvert, setMenuOuvert] = useState(false);
+  const surTelephone = () => typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
   const [famillesOuvertes, setFamillesOuvertes] = useState(false);
   const enteteRef = useRef<HTMLDivElement>(null);
 
@@ -56,13 +60,13 @@ export default function Sidebar({
   }
 
   return (
-    <aside className="flex flex-col border-b border-border bg-surface md:h-screen md:w-56 md:shrink-0 md:border-b-0 md:border-r md:sticky md:top-0">
+    <aside className="flex flex-col border-b border-border bg-surface max-md:sticky max-md:top-0 max-md:z-40 max-md:max-h-dvh max-md:overflow-y-auto md:h-screen md:w-56 md:shrink-0 md:border-b-0 md:border-r md:sticky md:top-0">
       <div ref={enteteRef} className="relative">
         {peutChanger ? (
           <button
             type="button"
-            onClick={() => setChoixOuvert((o) => !o)}
-            aria-expanded={choixOuvert}
+            onClick={() => (surTelephone() ? setMenuOuvert((o) => !o) : setChoixOuvert((o) => !o))}
+            aria-expanded={choixOuvert || menuOuvert}
             aria-haspopup="true"
             title="Voir l'application en tant que…"
             className="flex w-full items-center gap-2.5 border-b border-border px-4 py-3 text-left transition-colors hover:bg-surface-2"
@@ -73,13 +77,20 @@ export default function Sidebar({
           <div className="text-sm font-semibold">Préau</div>
           <div className="text-[10px] text-muted">ARIL · Saint-Enfant-Jésus</div>
         </div>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={`ml-auto h-4 w-4 shrink-0 text-muted transition-transform ${choixOuvert ? "rotate-180" : ""}`} aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={`ml-auto h-4 w-4 shrink-0 text-muted transition-transform ${choixOuvert || menuOuvert ? "rotate-180" : ""}`} aria-hidden="true">
               <path d="m6 9 6 6 6-6" />
             </svg>
           </button>
         ) : (
           <Link
             href="/"
+            onClick={(e) => {
+              if (surTelephone()) {
+                e.preventDefault();
+                setMenuOuvert((o) => !o);
+              }
+            }}
+            aria-expanded={menuOuvert}
             className="flex items-center gap-2.5 border-b border-border px-4 py-3 transition-colors hover:bg-surface-2"
           >
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -88,6 +99,9 @@ export default function Sidebar({
           <div className="text-sm font-semibold">Préau</div>
           <div className="text-[10px] text-muted">ARIL · Saint-Enfant-Jésus</div>
         </div>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={`ml-auto h-4 w-4 shrink-0 text-muted transition-transform md:hidden ${menuOuvert ? "rotate-180" : ""}`} aria-hidden="true">
+              <path d="m6 9 6 6 6-6" />
+            </svg>
           </Link>
         )}
 
@@ -146,7 +160,17 @@ export default function Sidebar({
       </div>
 
       {/* Menu défilant à la molette s'il dépasse la hauteur de l'écran, sans barre de défilement visible ; marge en bas pour que le dernier item ne colle pas au bord. */}
-      <nav className="flex-1 overscroll-contain px-2 pt-2 pb-8 md:min-h-0 md:overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+      <nav onClick={(e) => (e.target as HTMLElement).closest("a") && setMenuOuvert(false)} className={`${menuOuvert ? "" : "max-md:hidden"} flex-1 overscroll-contain px-2 pt-2 pb-8 md:min-h-0 md:overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden`}>
+        {peutChanger && (
+          <button
+            type="button"
+            onClick={() => setChoixOuvert(true)}
+            className="mb-2 flex w-full items-center gap-2.5 rounded-md border border-border px-2.5 py-1.5 text-[13px] hover:bg-surface-2 md:hidden"
+          >
+            <Icon name="users" className="h-4 w-4 shrink-0" />
+            <span>Voir en tant que…</span>
+          </button>
+        )}
         {navDe(userEmail).map((section, i) => (
           <div key={section.title} className={i === 0 ? "" : "mt-2 border-t border-border/70 pt-2"}>
             <div className="px-2 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted/70">
@@ -193,14 +217,21 @@ export default function Sidebar({
       </nav>
 
       {userEmail && (
-        <div className="mt-auto border-t border-border px-2 pb-2 pt-2">
+        <div className={`${menuOuvert ? "" : "max-md:hidden"} mt-auto border-t border-border px-2 pb-2 pt-2`}>
           {/* Mises à jour : encart à part, pour le profil Recherche de fonds ; chaque point mène à l'endroit concerné. */}
           {roleByEmail(userEmail)?.slug === "recherche-fonds" && (
             <div className="mb-2 rounded-lg border border-border bg-surface-2 px-3 py-2">
-              {MISES_A_JOUR.map((m, i) => (
-                <div key={m.depuis} className={i === 0 ? "" : "mt-2"}>
-                  <div className="text-[11px] font-semibold text-gold">Mises à jour ({m.depuis})</div>
-                  <ul className="mt-1 space-y-0.5 text-[12px] leading-snug">
+              {/* Titre en ambre pendant 3 jours après chaque ajout, puis discret. */}
+              <div
+                suppressHydrationWarning
+                className={`text-[11px] font-semibold ${titreEnAmbre(todayISO()) ? "text-gold" : "text-muted"}`}
+              >
+                Mises à jour
+              </div>
+              {MISES_A_JOUR.map((m) => (
+                <div key={m.depuis} className="mt-1.5">
+                  <div className="text-[10.5px] text-muted">Depuis le {m.depuis}</div>
+                  <ul className="mt-0.5 space-y-0.5 text-[12px] leading-snug">
                     {m.points.map((p) => (
                       <li key={p.texte} className="flex items-baseline gap-1.5">
                         {/* Petite puce ; bleu-gris discret, moins marqué que les textes du menu. */}

@@ -233,7 +233,9 @@
 }
 .separateur { margin: 0 0.55em; color: var(--pale); }
 @container jauge-dons (max-width: 460px) {
-  .item { white-space: normal; }
+  /* Téléphone : « Confort … » passe à la ligne, sans le point de séparation. */
+  .item { display: block; white-space: normal; }
+  .separateur { display: none; }
 }
 .bouton {
   flex: none;

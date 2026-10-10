@@ -9,7 +9,7 @@ import type { Don } from "./GestionDons";
 import type { Groupe, RecuInfo } from "./ListeRecus";
 import { LIBELLE, TON, VERROUILLER_ANNEES_AVANT, recalculerRegistre, type StatutRecu } from "./recusCommun";
 import { CATEGORIES_DONATEUR, estCategoriePersonneMorale } from "@/lib/categoriesDonateur";
-import { PREFERENCES_ENVOI, libelleMoyen, prefereEnBase } from "@/lib/envoiRecu";
+import { ETAT_PASSE_SECRETAIRE, PREFERENCES_ENVOI, libelleMoyen, prefereCourrier, prefereEnBase } from "@/lib/envoiRecu";
 import { formatDate, formatEuros } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
 import { useCoffre } from "@/components/CoffreProvider";
@@ -22,6 +22,10 @@ type Entree = { g: Groupe; statut: StatutRecu };
 export type ActionsFiche = {
   etablir: (g: Groupe) => void;
   envoi: (g: Groupe) => void;
+  /** Courrier postal : changer l'étape (À passer, Vérifier envoi, Envoyé), dans les deux sens. */
+  etapePostale: (g: Groupe) => void;
+  /** Corriger le numéro du reçu (celui réellement remis au donateur). */
+  numero: (g: Groupe) => void;
   pdf: (g: Groupe) => void;
   telecharger: (g: Groupe) => void;
   annuler: (g: Groupe) => void;
@@ -146,7 +150,7 @@ export default function FicheRecuDonateur({
   /** Retire un don de son reçu : il redevient « sans reçu » et rejoint le reçu à établir de l'année. */
   async function detacher(d: Don, g: Groupe, st: StatutRecu) {
     if (!g.numero) return;
-    const avert = st === "envoye" ? " Ce reçu a déjà été envoyé : l'exemplaire du donateur ne correspondra plus." : st === "edite" || st === "courrier" ? " Ce reçu est déjà établi : son PDF sera à refaire." : "";
+    const avert = st === "envoye" ? " Ce reçu a déjà été envoyé : l'exemplaire du donateur ne correspondra plus." : st === "edite" || st === "passer" || st === "verifier" ? " Ce reçu est déjà établi : son PDF sera à refaire." : "";
     if (!window.confirm(`Retirer le don du ${formatDate(d.date_don)} (${formatEuros(Number(d.montant))}) du reçu ${g.numero} ?${avert}`)) return;
     setBusy(true);
     const supabase = createClient();
@@ -173,7 +177,11 @@ export default function FicheRecuDonateur({
       .update({
         recu_numero: numero,
         recu_emis_le: cible.g.dons.find((x) => x.recu_emis_le)?.recu_emis_le ?? null,
-        recu_etat: envoye ? cible.g.dons.map((x) => x.recu_etat).find((t) => recuEnvoye({ recu_etat: t } as never) && t) ?? modele.recu_etat : null,
+        recu_etat: envoye
+          ? cible.g.dons.map((x) => x.recu_etat).find((t) => recuEnvoye({ recu_etat: t } as never) && t) ?? modele.recu_etat
+          : cible.statut === "verifier"
+            ? ETAT_PASSE_SECRETAIRE
+            : null,
       })
       .eq("id", d.id);
     if (!error) await recalculerRegistre(supabase, numero);
@@ -184,7 +192,7 @@ export default function FicheRecuDonateur({
 
   const infoEnvoi = (g: Groupe) => {
     const s = g.numero ? suivi.get(g.numero) : undefined;
-    if (s?.envoye_le) return `Envoyé le ${formatDate(s.envoye_le)}${libelleMoyen(s.envoi_mode) ? ` · ${libelleMoyen(s.envoi_mode)}` : ""}`;
+    if (s?.envoye_le) return `Envoyé le ${formatDate(s.envoye_le)}${s.envoi_mode === "autre" && s.envoi_precision?.trim() ? ` · ${s.envoi_precision.trim()}` : libelleMoyen(s.envoi_mode) ? ` · ${libelleMoyen(s.envoi_mode)}` : ""}`;
     return g.dons.map((d) => d.recu_etat?.trim()).find(Boolean) ?? null;
   };
 
@@ -356,6 +364,14 @@ export default function FicheRecuDonateur({
                                 <button type="button" onClick={() => actions.telecharger(g)} className="rounded-lg border border-border px-2.5 py-1 hover:bg-surface-2" title="Enregistrer le reçu (nom de fichier complet)">
                                   Télécharger
                                 </button>
+                                <button type="button" onClick={() => actions.numero(g)} className="rounded-lg border border-border px-2.5 py-1 text-muted hover:text-foreground" title="Corriger le numéro de ce reçu (celui réellement remis au donateur)">
+                                  Modifier le n°
+                                </button>
+                                {(st === "passer" || st === "verifier" || (st === "envoye" && prefereCourrier(g.representant))) && (
+                                  <button type="button" onClick={() => actions.etapePostale(g)} className="rounded-lg border border-accent/40 px-2.5 py-1 text-accent hover:bg-accent-soft" title="Changer l'étape du courrier postal, dans les deux sens">
+                                    Étape du courrier…
+                                  </button>
+                                )}
                                 {st === "envoye" ? (
                                   <button type="button" onClick={() => actions.envoi(g)} className="rounded-lg border border-border px-2.5 py-1 hover:bg-surface-2">
                                     Modifier l&apos;envoi

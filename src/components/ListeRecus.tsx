@@ -9,15 +9,16 @@ import HarmoniserFiches from "./HarmoniserFiches";
 import NormaliserEntreprises from "./NormaliserEntreprises";
 import ReattribuerDon from "./ReattribuerDon";
 import FicheRecuDonateur from "./FicheRecuDonateur";
-import { EDITION_EXIGEE_DEPUIS, LIBELLE, TON, type StatutRecu } from "./recusCommun";
+import EtapePostaleListe, { BandeauEtapePostale } from "./EtapePostale";
+import { EDITION_EXIGEE_DEPUIS, ETAPES_POSTALES, LIBELLE, TON, placerEtapePostale, type EtapePostale, type StatutRecu } from "./recusCommun";
 
 export type { StatutRecu } from "./recusCommun";
 import { createClient } from "@/lib/supabase/client";
 import { formatEuros, formatDate, todayISO } from "@/lib/format";
 import { useDonsDechiffres } from "@/lib/donsChiffre";
 import { cleDonateur, champsImportantsManquants, recuEnvoye, sansRecu } from "@/lib/statutDon";
-import { MOYENS_ENVOI, etatEnvoye, libelleMoyen, prefereCourrier } from "@/lib/envoiRecu";
-import { construireRecuPdf, genererRecuPdf, nomFichierRecu, type DonPourRecu } from "@/lib/recu";
+import { ETAT_PASSE_SECRETAIRE, MOYENS_ENVOI, etatEnvoye, libelleMoyen, prefereCourrier } from "@/lib/envoiRecu";
+import { construireRecuPdf, genererRecuPdf, nomFichierRecu, numeroCourt, type DonPourRecu } from "@/lib/recu";
 import { modeleRecuEnCache } from "@/lib/modeleRecu";
 import { creerZip } from "@/lib/zip";
 import { syntheseVersements } from "@/lib/recuVersements";
@@ -32,6 +33,8 @@ export type RecuInfo = {
   recu_numero: string;
   envoye_le: string | null;
   envoi_mode: string | null;
+  /** Moyen « Autre » : précision libre (ex. « Transmis à JF »). */
+  envoi_precision?: string | null;
   /** Date à laquelle le reçu a été enregistré (ZIP ou « Télécharger ») ; vide = pas encore téléchargé. */
   telecharge_le: string | null;
 };
@@ -124,7 +127,12 @@ function grouper(dons: DonRow[], coffreOuvert: boolean): Groupe[] {
  */
 function statutRecu(g: Groupe, recurrents: Set<string>, anneeEnCours: number): StatutRecu {
   if (g.sans) return "sans";
-  if (g.numero && !g.reserve) return g.dons.every(recuEnvoye) ? "envoye" : prefereCourrier(g.representant) ? "courrier" : "edite";
+  if (g.numero && !g.reserve) {
+    if (g.dons.every(recuEnvoye)) return "envoye";
+    if (!prefereCourrier(g.representant)) return "edite";
+    // Courrier postal : À passer → Vérifier envoi postal (remis au secrétaire) → Envoyé.
+    return g.dons.every((d) => (d.recu_etat ?? "").trim() === ETAT_PASSE_SECRETAIRE) ? "verifier" : "passer";
+  }
   return recurrents.has(cleDonateur(g.representant)) && g.annee >= anneeEnCours ? "attente" : "a_faire";
 }
 
@@ -166,6 +174,10 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
   // Fiche donateur ouverte en fenêtre (même formulaire que l'onglet Dons).
   const [ficheId, setFicheId] = useState<{ id: string; signaler: boolean } | null>(null);
   const [envoi, setEnvoi] = useState<Groupe | null>(null);
+  // Reçu dont on corrige le numéro (celui réellement remis au donateur).
+  const [numeroRecu, setNumeroRecu] = useState<Groupe | null>(null);
+  // Courrier postal : fenêtre de changement d'étape (un reçu, ou la sélection), dans les deux sens.
+  const [etapePostale, setEtapePostale] = useState<Groupe[] | null>(null);
   // Sélection de reçus à télécharger en lot (ZIP).
   const [selection, setSelection] = useState<Set<string>>(new Set());
   const [lot, setLot] = useState<{ fait: number; total: number } | null>(null);
@@ -282,6 +294,8 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
         const c = typeof ka === "number" && typeof kb === "number" ? ka - kb : String(ka).localeCompare(String(kb), "fr");
         return tri.dir === "asc" ? c : -c;
       });
+  /** Reçu établi d'un donateur « courrier postal » : il suit le parcours À passer → Vérifier envoi → Envoyé. */
+  const postalNumerote = (g: Groupe) => !!g.numero && !g.reserve && !g.sans && prefereCourrier(g.representant);
   /** Un reçu est téléchargeable s'il existe : numéroté, édité (pas seulement réservé), demandé. */
   const telechargeable = (g: Groupe) => !!g.numero && !g.reserve && !g.sans;
   const affichesTelechargeables = affiches.filter((x) => telechargeable(x.g));
@@ -317,7 +331,8 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
     { cle: "a_faire", libelle: "À établir", ton: "text-gold" },
     { cle: "attente", libelle: "Attente fin d'année", ton: "text-gold" },
     { cle: "edite", libelle: "Établis, à envoyer", ton: "text-accent" },
-    { cle: "courrier", libelle: "Établis, à poster", ton: "text-emerald-600" },
+    { cle: "passer", libelle: "À passer", ton: "text-blue-600" },
+    { cle: "verifier", libelle: "Vérifier envoi", ton: "text-violet-600" },
     { cle: "envoye", libelle: "Envoyés", ton: "text-positive" },
     { cle: "sans", libelle: "Reçu non demandé", ton: "text-positive" },
   ];
@@ -422,13 +437,15 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
     const aujourdhui = todayISO();
     setMessage(null);
     setBusy(g.cle);
-    const pdf = genererRecuPdf(donPourRecu(g.representant, g.dons, g.numero, aujourdhui), { ouvrir: true });
+    // Téléchargé (et non ouvert dans un onglet) : le fichier garde son nom complet à l'enregistrement.
+    const pdf = genererRecuPdf(donPourRecu(g.representant, g.dons, g.numero, aujourdhui), { ouvrir: false });
     const supabase = createClient();
     const { error } = await supabase.from("dons").update({ recu_emis_le: aujourdhui }).in("id", g.dons.map((d) => d.id));
     if (!error) await supabase.from("recus").update({ date_edition: aujourdhui, telecharge_le: null }).eq("recu_numero", g.numero);
     let erreurPdf: string | null = null;
     try {
       await pdf;
+      if (!error) await supabase.from("recus").update({ telecharge_le: new Date().toISOString() }).eq("recu_numero", g.numero);
     } catch (e) {
       erreurPdf = e instanceof Error ? e.message : "Génération du PDF impossible.";
     }
@@ -489,6 +506,16 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
     setLot(null);
   }
 
+  /** Courrier postal : fait avancer un reçu d'une étape (ex. « Passé au secrétaire »). */
+  async function avancerPostal(g: Groupe, etape: EtapePostale) {
+    if (!g.numero) return;
+    setBusy(g.cle);
+    const erreur = await placerEtapePostale(createClient(), g.numero, g.dons.map((d) => d.id), etape, todayISO());
+    setBusy(null);
+    setMessage(erreur ? { ok: false, t: erreur } : { ok: true, t: `Reçu ${g.numero} : remis au secrétaire, à vérifier une fois posté.` });
+    router.refresh();
+  }
+
   async function annuler(g: Groupe) {
     if (!g.numero) return;
     if (!window.confirm(`Annuler le reçu ${g.numero} ? Ses dons redeviendront « à établir » ; le numéro ne sera jamais réattribué.`)) return;
@@ -521,18 +548,20 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
       )}
 
       {/* Tableau de bord */}
-      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-6">
+      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-7">
         {tuiles.map((t) => {
-          // « à envoyer » et « à poster » sont les deux faces d'une même étape : un cadre commun les relie.
-          if (t.cle === "courrier") return null;
+          // « à envoyer » (par mail) et les deux étapes du courrier postal sont les faces d'une même étape : un cadre commun les relie.
+          if (t.cle === "passer" || t.cle === "verifier") return null;
           if (t.cle !== "edite") return <Tuile key={t.cle} t={t} />;
-          const poster = tuiles.find((x) => x.cle === "courrier");
+          const passer = tuiles.find((x) => x.cle === "passer");
+          const verifier = tuiles.find((x) => x.cle === "verifier");
           return (
-            <div key="envoi" className="col-span-2 rounded-2xl border border-accent/40 bg-accent-soft/30 p-1.5">
+            <div key="envoi" className="col-span-2 rounded-2xl border border-accent/40 bg-accent-soft/30 p-1.5 lg:col-span-3">
               <div className="mb-1 text-center text-xs text-muted">Établis, à envoyer</div>
-              <div className="grid grid-cols-2 gap-1.5">
+              <div className="grid grid-cols-3 gap-1.5">
                 <Tuile t={t} libelle="Par mail" />
-                {poster && <Tuile t={poster} libelle="Par courrier" />}
+                {passer && <Tuile t={passer} libelle="Courrier : à passer" />}
+                {verifier && <Tuile t={verifier} libelle="Courrier : vérifier envoi" />}
               </div>
             </div>
           );
@@ -643,6 +672,15 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
           )}
           <button
             type="button"
+            onClick={() => setEtapePostale(tous.map((x) => x.g).filter(postalNumerote).filter((g) => selection.has(g.cle)))}
+            disabled={!tous.some((x) => selection.has(x.g.cle) && postalNumerote(x.g))}
+            className="rounded-lg border border-border px-3 py-1.5 font-medium hover:bg-surface-2 disabled:opacity-50"
+            title="Change l'étape du courrier postal (À passer, Vérifier envoi, Envoyé) des reçus sélectionnés, dans les deux sens"
+          >
+            Étape du courrier de la sélection…
+          </button>
+          <button
+            type="button"
             onClick={() => void telechargerLot()}
             disabled={selection.size === 0 || lot !== null}
             className="ml-auto rounded-lg bg-accent px-4 py-1.5 font-medium text-accent-fg hover:opacity-90 disabled:opacity-50"
@@ -699,7 +737,7 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
                 <Fragment key={g.cle}>
                 <tr
                   data-groupe={g.cle}
-                  onClick={verrou ? undefined : (e) => { if (!(e.target as HTMLElement).closest("button, a, input")) ouvrirFicheDonateur(g); }}
+                  onClick={verrou ? undefined : (e) => { if (!(e.target as HTMLElement).closest("button, a, input, select")) ouvrirFicheDonateur(g); }}
                   title={verrou ? undefined : aCompleter ? "Cliquer pour ouvrir la fiche Reçu fiscal du donateur et compléter : " + manquants.join(", ") : "Cliquer pour ouvrir la fiche Reçu fiscal du donateur"}
                   className={`${verrou ? "" : "cursor-pointer hover:bg-surface-2"} ${ouverts.has(g.cle) ? "" : "border-b border-border last:border-0"}`}
                 >
@@ -754,9 +792,13 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
                   <td className="px-4 py-3 text-right font-medium tabular-nums">{formatEuros(g.total)}</td>
                   <td className="px-4 py-3 text-center tabular-nums text-muted">{g.dons.length}</td>
                   <td className="px-4 py-3">
-                    <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${TON[st]}`}>
-                      {LIBELLE[st]}
-                    </span>
+                    {g.numero && !g.reserve && (st === "passer" || st === "verifier" || (st === "envoye" && prefereCourrier(g.representant))) ? (
+                      <EtapePostaleListe numero={g.numero} idsDons={g.dons.map((d) => d.id)} etape={st === "envoye" ? "envoye" : st} />
+                    ) : (
+                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${TON[st]}`}>
+                        {LIBELLE[st]}
+                      </span>
+                    )}
                     {st !== "envoye" && manquants.length > 0 && (
                       <span className="ml-1.5 text-gold" title={"Manque : " + manquants.join(", ")}>
                         ⚠
@@ -783,7 +825,10 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
                         <button type="button" onClick={() => telecharger(g)} disabled={busy === g.cle} className="text-accent hover:underline disabled:opacity-50" title="Ouvrir le reçu dans un onglet">
                           PDF
                         </button>
-                        {(st === "edite" || st === "courrier") && (
+                        <button type="button" onClick={() => setNumeroRecu(g)} className="text-muted hover:text-foreground hover:underline" title="Corriger le numéro de ce reçu (celui réellement remis au donateur)">
+                          N°
+                        </button>
+                        {st === "edite" && (
                           <>
                             <button type="button" onClick={() => setEnvoi(g)} disabled={busy === g.cle} className="text-positive hover:underline disabled:opacity-50">
                               Marquer envoyé
@@ -793,10 +838,29 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
                             </button>
                           </>
                         )}
+                        {st === "passer" && (
+                          <>
+                            <button type="button" onClick={() => void avancerPostal(g, "verifier")} disabled={busy === g.cle} className="text-positive hover:underline disabled:opacity-50" title="Le reçu (avec sa lettre) a été remis au secrétaire pour envoi postal">
+                              Passé au secrétaire
+                            </button>
+                            <button type="button" onClick={() => annuler(g)} disabled={busy === g.cle} className="text-muted hover:text-negative disabled:opacity-50">
+                              Annuler
+                            </button>
+                          </>
+                        )}
+                        {st === "verifier" && (
+                          <>
+                            <button type="button" onClick={() => setEnvoi(g)} disabled={busy === g.cle} className="text-positive hover:underline disabled:opacity-50" title="Le courrier a bien été posté">
+                              Marquer posté
+                            </button>
+                          </>
+                        )}
                         {st === "envoye" && (
-                          <button type="button" onClick={() => setEnvoi(g)} className="text-muted hover:text-foreground hover:underline">
-                            Modifier l&apos;envoi
-                          </button>
+                          <>
+                            <button type="button" onClick={() => setEnvoi(g)} className="text-muted hover:text-foreground hover:underline">
+                              Modifier l&apos;envoi
+                            </button>
+                          </>
                         )}
                       </span>
                     ) : g.sans ? (
@@ -889,6 +953,8 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
             actions={{
               etablir: lancerEtablir,
               envoi: setEnvoi,
+              etapePostale: (g) => setEtapePostale([g]),
+              numero: setNumeroRecu,
               pdf: (g) => telecharger(g),
               telecharger: (g) => telecharger(g, false),
               annuler,
@@ -913,6 +979,34 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
           onFermer={() => setEnvoi(null)}
           onFait={(t) => {
             setEnvoi(null);
+            setMessage({ ok: true, t });
+            router.refresh();
+          }}
+        />
+      )}
+
+      <BandeauEtapePostale />
+
+      {numeroRecu && (
+        <NumeroRecuFenetre
+          groupe={numeroRecu}
+          onFermer={() => setNumeroRecu(null)}
+          onFait={(t) => {
+            setNumeroRecu(null);
+            setFiche(null);
+            setMessage({ ok: true, t });
+            router.refresh();
+          }}
+        />
+      )}
+
+      {etapePostale && (
+        <EtapePostaleFenetre
+          groupes={etapePostale}
+          suivi={suivi}
+          onFermer={() => setEtapePostale(null)}
+          onFait={(t) => {
+            setEtapePostale(null);
             setMessage({ ok: true, t });
             router.refresh();
           }}
@@ -1000,7 +1094,9 @@ function EtablirRecu({
     }
     const numero = data as string;
     try {
-      await genererRecuPdf(donPourRecu(groupe.representant, retenus, numero, date), { ouvrir: true });
+      // Téléchargement direct : le fichier garde son nom complet (un onglet de visualisation le renommerait).
+      await genererRecuPdf(donPourRecu(groupe.representant, retenus, numero, date), { ouvrir: false });
+      await createClient().from("recus").update({ telecharge_le: new Date().toISOString() }).eq("recu_numero", numero);
     } catch (e) {
       setBusy(false);
       return onFait(`Reçu ${numero} établi, mais le PDF n'a pas pu être généré (${e instanceof Error ? e.message : "erreur"}) : utilisez « PDF » dans la liste.`);
@@ -1107,6 +1203,7 @@ function EnvoiRecu({
   const dejaEnvoye = groupe.dons.every(recuEnvoye);
   const [moyen, setMoyen] = useState<string>(suivi?.envoi_mode ?? (prefereCourrier(groupe.representant) ? "courrier" : "courriel"));
   const [date, setDate] = useState(suivi?.envoye_le ?? todayISO());
+  const [precision, setPrecision] = useState(suivi?.envoi_precision ?? "");
   const [busy, setBusy] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
 
@@ -1117,7 +1214,11 @@ function EnvoiRecu({
     const supabase = createClient();
     const { data, error } = await supabase
       .from("recus")
-      .update(annulerEnvoi ? { envoye_le: null, envoi_mode: null } : { envoye_le: date, envoi_mode: moyen })
+      .update(
+        annulerEnvoi
+          ? { envoye_le: null, envoi_mode: null, envoi_precision: null }
+          : { envoye_le: date, envoi_mode: moyen, envoi_precision: moyen === "autre" ? precision.trim() || null : null },
+      )
       .eq("recu_numero", groupe.numero)
       .select("recu_numero");
     if (error || !data || data.length === 0) {
@@ -1126,11 +1227,11 @@ function EnvoiRecu({
     }
     const { error: errDons } = await supabase
       .from("dons")
-      .update({ recu_etat: annulerEnvoi ? null : etatEnvoye(formatDate(date), moyen) })
+      .update({ recu_etat: annulerEnvoi ? null : etatEnvoye(formatDate(date), moyen, precision) })
       .in("id", groupe.dons.map((d) => d.id));
     setBusy(false);
     if (errDons) return setErreur("Reçu enregistré, mais l'état des dons n'a pas pu être mis à jour : " + errDons.message);
-    onFait(annulerEnvoi ? `Envoi du reçu ${groupe.numero} annulé.` : `Reçu ${groupe.numero} marqué envoyé le ${formatDate(date)} (${libelleMoyen(moyen)}).`);
+    onFait(annulerEnvoi ? `Envoi du reçu ${groupe.numero} annulé.` : `Reçu ${groupe.numero} marqué envoyé le ${formatDate(date)} (${moyen === "autre" && precision.trim() ? precision.trim() : libelleMoyen(moyen)}).`);
   }
 
   return (
@@ -1152,6 +1253,19 @@ function EnvoiRecu({
             <input type="date" value={date} max={todayISO()} onChange={(e) => setDate(e.target.value)} className={inputCls} />
           </Field>
         </div>
+        {moyen === "autre" && (
+          <Field label="Précision (champ libre)">
+            <input
+              type="text"
+              value={precision}
+              onChange={(e) => setPrecision(e.target.value)}
+              placeholder="ex. Transmis à JF"
+              maxLength={120}
+              autoFocus
+              className={inputCls}
+            />
+          </Field>
+        )}
         {erreur && <p className="rounded-lg bg-negative/10 px-3 py-2 text-sm text-negative">{erreur}</p>}
         <div className="flex flex-wrap items-center justify-between gap-2">
           {dejaEnvoye ? (
@@ -1169,6 +1283,212 @@ function EnvoiRecu({
               {busy ? "Enregistrement…" : "Enregistrer"}
             </button>
           </span>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * Courrier postal : place un ou plusieurs reçus sur l'une des étapes À passer / Vérifier envoi postal / Envoyé,
+ * en avant comme en arrière. L'historique des changements d'état des dons s'affiche pour un seul reçu.
+ */
+function EtapePostaleFenetre({
+  groupes,
+  suivi,
+  onFermer,
+  onFait,
+}: {
+  groupes: Groupe[];
+  suivi: Map<string, RecuInfo>;
+  onFermer: () => void;
+  onFait: (message: string) => void;
+}) {
+  const un = groupes.length === 1 ? groupes[0] : null;
+  const courante: EtapePostale | null = un
+    ? un.dons.every(recuEnvoye)
+      ? "envoye"
+      : un.dons.every((d) => (d.recu_etat ?? "").trim() === ETAT_PASSE_SECRETAIRE)
+        ? "verifier"
+        : "passer"
+    : null;
+  const [etape, setEtape] = useState<EtapePostale>(courante ?? "verifier");
+  const [date, setDate] = useState((un && suivi.get(un.numero ?? "")?.envoye_le) || todayISO());
+  const [busy, setBusy] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
+  const [historique, setHistorique] = useState<{ id: string; ancien: string | null; nouveau: string | null; change_le: string; par: string | null }[]>([]);
+
+  useEffect(() => {
+    if (!un) return;
+    let annule = false;
+    createClient()
+      .from("dons_etat_historique")
+      .select("id, ancien, nouveau, change_le, par")
+      .eq("recu_numero", un.numero as string)
+      .order("change_le", { ascending: false })
+      .limit(30)
+      .then(({ data }) => {
+        if (annule) return;
+        // Un geste touche tous les dons du reçu : une seule ligne par changement identique et simultané.
+        const vus = new Set<string>();
+        const lignes = ((data ?? []) as typeof historique).filter((h) => {
+          const cle = `${h.change_le.slice(0, 19)}|${h.ancien}|${h.nouveau}`;
+          if (vus.has(cle)) return false;
+          vus.add(cle);
+          return true;
+        });
+        setHistorique(lignes.slice(0, 6));
+      });
+    return () => {
+      annule = true;
+    };
+  }, [un]);
+
+  async function appliquer() {
+    setBusy(true);
+    setErreur(null);
+    const supabase = createClient();
+    let nb = 0;
+    for (const g of groupes) {
+      if (!g.numero) continue;
+      const e = await placerEtapePostale(supabase, g.numero, g.dons.map((d) => d.id), etape, date);
+      if (e) {
+        setBusy(false);
+        return setErreur(`Reçu ${g.numero} : ${e}`);
+      }
+      nb++;
+    }
+    setBusy(false);
+    const lib = ETAPES_POSTALES.find((x) => x.cle === etape)?.libelle ?? "";
+    onFait(`${nb} reçu${nb > 1 ? "s" : ""} placé${nb > 1 ? "s" : ""} sur « ${lib} »${etape === "envoye" ? ` (envoyé le ${formatDate(date)})` : ""}.`);
+  }
+
+  return (
+    <Modal title={un ? `Étape du courrier — reçu ${un.numero}` : `Étape du courrier — ${groupes.length} reçus`} onClose={onFermer}>
+      <div className="space-y-4 text-sm">
+        <p className="text-muted">
+          {un ? `${nomAffiche(un.representant)} — ${formatEuros(un.total)}, ${un.dons.length} don${un.dons.length > 1 ? "s" : ""}.` : "Tous les reçus sélectionnés (donateurs « courrier postal ») sont placés sur l'étape choisie."}{" "}
+          Le changement se fait dans les deux sens et reste consigné.
+        </p>
+        <div className="space-y-2">
+          {ETAPES_POSTALES.map((x) => (
+            <label key={x.cle} className={`flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2 ${etape === x.cle ? "border-accent bg-accent-soft/40" : "border-border hover:bg-surface-2"}`}>
+              <input type="radio" name="etape-postale" checked={etape === x.cle} onChange={() => setEtape(x.cle)} className="mt-1" />
+              <span>
+                <span className="font-medium">{x.libelle}</span>
+                {courante === x.cle && <span className="ml-2 text-xs text-muted">(étape actuelle)</span>}
+                <span className="block text-xs text-muted">{x.aide}</span>
+              </span>
+            </label>
+          ))}
+        </div>
+        {etape === "envoye" && (
+          <Field label="Date d'envoi (courrier posté)">
+            <input type="date" value={date} max={todayISO()} onChange={(e) => setDate(e.target.value)} className={inputCls} />
+          </Field>
+        )}
+        <p className="text-xs text-muted">
+          Pour revenir plus en arrière encore (« À établir »), utilisez « Annuler » sur le reçu : le numéro ne sera jamais réattribué.
+        </p>
+        {historique.length > 0 && (
+          <div className="rounded-lg bg-surface-2 px-3 py-2 text-xs">
+            <div className="mb-1 font-medium uppercase tracking-wide text-muted">Derniers changements</div>
+            {historique.map((h) => (
+              <div key={h.id} className="flex flex-wrap justify-between gap-2 py-0.5">
+                <span>
+                  {h.ancien?.trim() || "— (aucun état)"} → <strong>{h.nouveau?.trim() || "— (aucun état)"}</strong>
+                </span>
+                <span className="text-muted">{formatDate(h.change_le.slice(0, 10))}{h.par ? ` · ${h.par}` : ""}</span>
+              </div>
+            ))}
+          </div>
+        )}
+        {erreur && <p className="rounded-lg bg-negative/10 px-3 py-2 text-sm text-negative">{erreur}</p>}
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onFermer} className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-surface-2">
+            Fermer
+          </button>
+          <button
+            type="button"
+            onClick={appliquer}
+            disabled={busy || (etape === "envoye" && !date) || (un !== null && courante === etape && etape !== "envoye")}
+            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-fg hover:opacity-90 disabled:opacity-50"
+          >
+            {busy ? "Enregistrement…" : "Appliquer"}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+/**
+ * Modifier le numéro d'un reçu : celui que le donateur a réellement reçu doit faire foi. Le numéro change sur le
+ * registre, sur les dons du reçu et dans l'historique de leurs états ; le PDF régénéré porte le nouveau numéro.
+ * On peut saisir seulement la séquence (« 205 » → RE_000205_ + le suffixe actuel) ou le numéro complet.
+ */
+function NumeroRecuFenetre({ groupe, onFermer, onFait }: { groupe: Groupe; onFermer: () => void; onFait: (message: string) => void }) {
+  const actuel = groupe.numero ?? "";
+  const suffixe = actuel.match(/_(\d{8})$/)?.[1] ?? null;
+  const [saisie, setSaisie] = useState(actuel);
+  const [busy, setBusy] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
+  const t = saisie.trim();
+  const nouveau = /^\d{1,6}$/.test(t) ? `RE_${t.padStart(6, "0")}${suffixe ? `_${suffixe}` : ""}` : t;
+  const envoye = groupe.dons.every(recuEnvoye);
+
+  async function valider() {
+    setBusy(true);
+    setErreur(null);
+    const { error } = await createClient().rpc("renommer_recu", { p_ancien: actuel, p_nouveau: nouveau });
+    setBusy(false);
+    if (error) return setErreur(error.message);
+    onFait(`Reçu ${actuel} renuméroté ${nouveau}.`);
+  }
+
+  return (
+    <Modal title="Modifier le numéro du reçu" onClose={onFermer}>
+      <div className="space-y-4 text-sm">
+        <p className="text-muted">
+          {nomAffiche(groupe.representant)} — {formatEuros(groupe.total)}, {groupe.dons.length} don{groupe.dons.length > 1 ? "s" : ""} ({groupe.annee}).
+          Saisissez le numéro tel que le donateur l&apos;a reçu.
+        </p>
+        <Field label={`Numéro du reçu (actuel : ${actuel})`}>
+          <input
+            type="text"
+            value={saisie}
+            onChange={(e) => setSaisie(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && nouveau !== actuel && nouveau && !busy && void valider()}
+            autoFocus
+            className={`${inputCls} font-mono`}
+            placeholder="RE_000207_20260311 ou 207"
+          />
+        </Field>
+        <p className="text-xs text-muted">
+          Numéro retenu : <strong className="font-mono text-foreground">{nouveau || "—"}</strong> — affiché sur le PDF : N°
+          {numeroCourt(nouveau) ?? "?"}.
+        </p>
+        {envoye && (
+          <p className="rounded-lg bg-gold-soft px-3 py-2 text-xs text-gold">
+            Ce reçu est marqué envoyé : l&apos;exemplaire du donateur n&apos;est pas modifié. Seul le numéro enregistré ici change.
+          </p>
+        )}
+        <p className="text-xs text-muted">
+          Un numéro déjà porté par un autre reçu est refusé ; un numéro annulé et vide peut être repris. Le changement est consigné.
+        </p>
+        {erreur && <p className="rounded-lg bg-negative/10 px-3 py-2 text-sm text-negative">{erreur}</p>}
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onFermer} className="rounded-lg border border-border px-4 py-2 hover:bg-surface-2">
+            Fermer
+          </button>
+          <button
+            type="button"
+            onClick={valider}
+            disabled={busy || !nouveau || nouveau === actuel}
+            className="rounded-lg bg-accent px-4 py-2 font-medium text-accent-fg hover:opacity-90 disabled:opacity-50"
+          >
+            {busy ? "Enregistrement…" : "Changer le numéro"}
+          </button>
         </div>
       </div>
     </Modal>

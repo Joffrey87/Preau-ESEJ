@@ -209,7 +209,7 @@ export default function ListeOperations({
     affectationsDe.set(a.operation_id, [...(affectationsDe.get(a.operation_id) ?? []), a]);
   }
   const familleDe = new Map(inscriptions.map((i) => [i.id, i.famille_nom]));
-  const [modeEdition, setModeEdition] = useState(false);
+  const [modeEdition, setModeEdition] = useState(true);
   // Filtre par catégories : vide = toutes. « __sans__ » vise les non catégorisées.
   const [filtreCats, setFiltreCats] = useState<string[]>([]);
   // Filtre « à vérifier » : ne garde que les lignes portant une question ouverte.
@@ -530,7 +530,11 @@ export default function ListeOperations({
 
   const estOuverte = (opId: string) =>
     ouverture[opId] ??
-    (donsARattacher(opId) > 0 || trouveeParSesFilles(opId) || (operations.find((o) => o.id === opId && resteDonAVentiler(o)) !== undefined));
+    (donsARattacher(opId) > 0 ||
+      trouveeParSesFilles(opId) ||
+      // Une sous-écriture signalée en ambre (question ouverte, scolarité à compléter) : la mère s'ouvre pour montrer toutes ses filles.
+      (fillesDe.get(opId) ?? []).some(aVerifier) ||
+      (operations.find((o) => o.id === opId && resteDonAVentiler(o)) !== undefined));
   const basculer = (opId: string) =>
     setOuverture((p) => ({ ...p, [opId]: !estOuverte(opId) }));
 

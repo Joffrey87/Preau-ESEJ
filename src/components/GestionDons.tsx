@@ -20,6 +20,8 @@ import DeverrouillerCoffre from "@/components/DeverrouillerCoffre";
 import ChampsParticulier from "@/components/ChampsParticulier";
 import ChampCourriel from "@/components/ChampCourriel";
 import LierDonAEcriture from "@/components/LierDonAEcriture";
+import FenetreDonEcriture from "@/components/FenetreDonEcriture";
+import EtapePostaleListe, { BandeauEtapePostale } from "@/components/EtapePostale";
 import LiaisonGlobale from "@/components/LiaisonGlobale";
 import type { DonCompta } from "@/components/PastilleDon";
 import { estCouple } from "@/lib/couple";
@@ -365,6 +367,8 @@ export default function GestionDons({
   const [enCaisse, setEnCaisse] = useState(true);
   // Don dont on lie l'écriture comptable depuis la liste (sans ouvrir toute la fiche).
   const [lierId, setLierId] = useState<string | null>(null);
+  // Fenêtre « don + écriture comptable » ouverte par un clic sur la ligne du don.
+  const [ficheEcritureId, setFicheEcritureId] = useState<string | null>(null);
   const donEdite = edit && edit !== "nouveau" ? edit : null;
   // Écritures comptables déjà reliées à un don : elles ne sont pas proposées pour un autre.
   const operationsLiees = useMemo(() => new Set(donsInit.map((d) => d.operation_id).filter((x): x is string => !!x)), [donsInit]);
@@ -950,7 +954,15 @@ export default function GestionDons({
               donsTries.map((d) => {
                 const chips = chipsParDon.get(d.id) ?? [];
                 return (
-                <tr key={d.id} className="border-b border-border last:border-0 align-middle">
+                <tr
+                  key={d.id}
+                  onClick={(e) => {
+                    // Les boutons, liens et champs de la ligne gardent leur rôle ; ailleurs, la ligne s'ouvre.
+                    if (vueCorbeille || (e.target as HTMLElement).closest("button, a, input, select, textarea")) return;
+                    setFicheEcritureId(d.id);
+                  }}
+                  className={`border-b border-border last:border-0 align-middle ${vueCorbeille ? "" : "cursor-pointer hover:bg-surface-2"}`}
+                >
                   {cols.date && <td className={`${cellPad} tabular-nums whitespace-nowrap`}>{formatDate(d.date_don)}</td>}
                   {cols.donateur && (
                     <td className={`${cellPad} max-w-[18rem] truncate`}>
@@ -1005,6 +1017,18 @@ export default function GestionDons({
                       <div className={`flex gap-1 ${compact ? "flex-nowrap" : "flex-wrap"}`}>
                         {(compact ? chips.filter((x) => x.key !== "nonlie").slice(0, 1) : chips.filter((x) => x.key !== "nonlie")).map((c) => {
                           const cls = `inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${TONE_CLASSES[c.tone]}`;
+                          // Courrier postal : la pastille est une liste (À passer / Vérifier envoi postal / Posté).
+                          if ((c.key === "passer" || c.key === "verifier_poste" || c.key === "poste") && d.recu_numero) {
+                            return (
+                              <EtapePostaleListe
+                                key={c.key}
+                                numero={d.recu_numero}
+                                idsDons={donsInit.filter((x) => x.recu_numero === d.recu_numero && !x.supprime_le).map((x) => x.id)}
+                                etape={c.key === "passer" ? "passer" : c.key === "verifier_poste" ? "verifier" : "envoye"}
+                                libelleEnvoye="Posté"
+                              />
+                            );
+                          }
                           return c.key === "important" || c.key === "mineur" ? (
                             <button
                               key={c.key}
@@ -1119,6 +1143,23 @@ export default function GestionDons({
             </p>
             <LierDonAEcriture don={d} operationsLiees={operationsLiees} dons={donsHydrates} />
           </Modal>
+        );
+      })()}
+
+      {ficheEcritureId && (() => {
+        const d = donsHydrates.find((x) => x.id === ficheEcritureId);
+        if (!d) return null;
+        return (
+          <FenetreDonEcriture
+            don={d}
+            dons={donsHydrates}
+            operationsLiees={operationsLiees}
+            onFermer={() => setFicheEcritureId(null)}
+            onModifierDon={() => {
+              setFicheEcritureId(null);
+              ouvrir(d);
+            }}
+          />
         );
       })()}
 
@@ -1363,6 +1404,8 @@ export default function GestionDons({
       )}
 
       {/* Toast : suppression réversible */}
+      {!seule && <BandeauEtapePostale />}
+
       {toast && (
         <div className="fixed bottom-5 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3 text-sm shadow-lg">
           <span>

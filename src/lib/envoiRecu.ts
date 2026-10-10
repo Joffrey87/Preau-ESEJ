@@ -37,6 +37,12 @@ export const libelleMoyen = (v: string | null | undefined) => MOYENS_ENVOI.find(
 /** Le donateur reçoit-il ses reçus par courrier postal ? (sinon : courriel) */
 export const prefereCourrier = (d: { envoi_prefere?: string | null }) => d.envoi_prefere === "courrier";
 
-/** Texte résumé inscrit dans « Reçu – état » du don : « Envoyé le 23/07/2026 - Courrier postal ». */
-export const etatEnvoye = (dateFr: string, moyen: string | null | undefined) =>
-  `Envoyé le ${dateFr}${libelleMoyen(moyen) ? ` - ${libelleMoyen(moyen)}` : ""}`;
+/**
+ * Texte résumé inscrit dans « Reçu – état » du don : « Envoyé le 23/07/2026 - Courrier postal ».
+ * Moyen « Autre » : la précision libre prend la place du moyen (« Envoyé le 06/10/2026 - Transmis à JF »).
+ */
+export const etatEnvoye = (dateFr: string, moyen: string | null | undefined, precision?: string | null) => {
+  const libre = moyen === "autre" ? precision?.trim() : "";
+  const lib = libre || libelleMoyen(moyen);
+  return `Envoyé le ${dateFr}${lib ? ` - ${lib}` : ""}`;
+};

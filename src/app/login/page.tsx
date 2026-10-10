@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { COOKIE_PRENOM, ROLES, ROLES_PRENOM_A_L_ACCES } from "@/lib/roles";
 import { MEMBRES } from "@/lib/rechercheFonds";
 import { emailConnexionFamille, identifiantFamille } from "@/lib/identifiantFamille";
+import { memoriserSession } from "@/lib/basculeEspace";
 
 const DERNIER_PRENOM = "recherche.dernierPrenom";
 
@@ -33,6 +34,25 @@ export default function LoginPage() {
   const avecPrenom = espace === "bureau" && ROLES_PRENOM_A_L_ACCES.includes(ROLES.find((r) => r.email === email)?.slug ?? "");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  // Arrivée depuis le logo (changement d'espace) : l'espace voulu est présélectionné.
+  const [depuisBascule, setDepuisBascule] = useState(false);
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    const voulu = q.get("espace");
+    if (voulu === "famille") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setEspace("famille");
+      setEmail("");
+      setNomFamille(q.get("nom") ?? "");
+      setDepuisBascule(true);
+    } else if (voulu === "recherche") {
+      setEspace("bureau");
+      setEmail(ROLES.find((r) => r.slug === "recherche-fonds")?.email ?? ROLES[1].email);
+      const p = q.get("prenom");
+      if (p && MEMBRES.includes(p)) setPrenom(p);
+      setDepuisBascule(true);
+    }
+  }, []);
 
   /** « Mot de passe oublié » : demande enregistrée pour le bureau (réponse toujours identique, rien n'est divulgué). */
   async function demanderReinitialisation(e: React.FormEvent) {
@@ -73,6 +93,10 @@ export default function LoginPage() {
         localStorage.setItem(DERNIER_PRENOM, prenom);
       } catch {}
     }
+    // Session gardée pour le va-et-vient Espace famille ↔ Recherche de fonds (logo en haut à gauche).
+    if (espace === "famille") await memoriserSession("famille");
+    else if (avecPrenom) await memoriserSession("recherche");
+
     // Prénom de la visite : cookie de session (sans durée), effacé à la fermeture du navigateur.
     document.cookie = avecPrenom
       ? `${COOKIE_PRENOM}=${encodeURIComponent(prenom)}; path=/; SameSite=Lax`
@@ -98,6 +122,12 @@ export default function LoginPage() {
             ARIL · École du Saint-Enfant-Jésus
           </p>
         </div>
+
+        {depuisBascule && (
+          <p className="mb-3 rounded-lg bg-accent-soft px-3 py-2 text-center text-xs text-accent">
+            Première ouverture de cet espace sur cet appareil : connectez-vous une fois, le passage de l&apos;un à l&apos;autre sera ensuite direct (logo en haut à gauche).
+          </p>
+        )}
 
         <form
           onSubmit={handleSubmit}

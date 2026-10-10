@@ -61,6 +61,8 @@ export type Don = {
   don_boursier?: boolean;
   /** Famille de l'école : « actuelle » ou « ancienne ». */
   famille_statut?: "actuelle" | "ancienne" | null;
+  /** Le donateur ne souhaite pas être sollicité (copie portée par chacun de ses dons). */
+  ne_pas_solliciter?: boolean;
   pii_chiffre: string | null;
   montant: number;
   date_don: string;

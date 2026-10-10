@@ -51,6 +51,7 @@ export default async function PaiementsFamille({ searchParams }: { searchParams:
           famille={nom}
           association={association}
           annees={toutesAnnees.filter((a) => a.annee === annee)}
+          detailsOuverts
         />
       </section>
 

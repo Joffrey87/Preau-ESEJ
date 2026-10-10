@@ -65,6 +65,14 @@ export default function FicheDonateur({
     }
     void definir(dons.map((d) => d.id), actif, actif ? null : false);
   };
+  async function definirNePasSolliciter(actif: boolean) {
+    setBusy(true);
+    setErreur(null);
+    const { error } = await createClient().rpc("definir_ne_pas_solliciter", { p_ids: dons.map((d) => d.id), p_valeur: actif });
+    setBusy(false);
+    if (error) return setErreur("Enregistrement impossible : " + error.message);
+    router.refresh();
+  }
   const historique = [...dons].sort((a, b) => (b.date_don ?? "").localeCompare(a.date_don ?? ""));
   const recent = historique[0]; // don le plus récent (pour l'adresse / contact à jour)
 
@@ -146,6 +154,13 @@ export default function FicheDonateur({
               <option value="actuelle">Famille actuelle</option>
               <option value="ancienne">Ancienne famille</option>
             </select>
+          </label>
+          <label className="mt-2 flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm">
+            <input type="checkbox" checked={profil.nePasSolliciter} disabled={busy} onChange={(e) => void definirNePasSolliciter(e.target.checked)} className="h-4 w-4" />
+            <span>
+              <strong>Ne souhaite pas être sollicité</strong>
+              <span className="ml-1 text-xs text-muted">— exclu des exports, des campagnes et des actions suggérées</span>
+            </span>
           </label>
           {erreur && <p className="mt-1 text-xs text-negative">{erreur}</p>}
         </div>

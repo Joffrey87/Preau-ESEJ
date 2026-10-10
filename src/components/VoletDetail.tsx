@@ -16,6 +16,9 @@ export type OpDetail = {
   categorie: string | null;
   mode_paiement: string | null;
   compte: string | null;
+  /** N° d'opération (grand livre) et numéro de la facture éditée pour cette écriture. */
+  numero_operation?: number | null;
+  facture?: string | null;
 };
 
 /**
@@ -87,6 +90,8 @@ export default function VoletDetail({
           />
           <Ligne label="Mode de paiement" value={op.mode_paiement ?? "—"} />
           <Ligne label="Compte" value={op.compte ?? "—"} />
+          {op.numero_operation != null && <Ligne label="N° d'opération" value={String(op.numero_operation)} />}
+          {op.facture && <Ligne label="Facture" value={op.facture} />}
         </dl>
         {epingle && (
           <p className="mt-2 text-xs text-muted">

@@ -10,8 +10,7 @@ import JaugeScolarite, { AideReglement, etatJauge } from "@/components/JaugeScol
 import FamilleEnfants, { type FicheFamille } from "@/components/FamilleEnfants";
 import { partJuinNonDue, type Eleve } from "@/lib/eleves";
 import { etatPaiement, moisEchus } from "@/lib/retardScolarite";
-import { telechargerAttestation, type Attestation } from "@/lib/attestationPdf";
-import { modeleRecuEnCache } from "@/lib/modeleRecu";
+import BoutonFacture from "@/components/BoutonFacture";
 import Icon from "@/components/Icon";
 import {
   etatDepot,
@@ -835,25 +834,14 @@ type LigneVersement = {
   libelle: string;
   montant: number;
   origine?: string;
-  /** Versement enregistré en comptabilité : une attestation de paiement peut être éditée. */
-  attestation?: Attestation;
+  /** Écriture de Comptabilité du paiement : une facture peut être éditée (une par écriture). */
+  operationId?: string;
+  facture?: string | null;
   /** Affiché pour mémoire, non compté (mensualité rattachée d'une année suivie au classeur). */
   horsTotal?: boolean;
 };
 
 type InscriptionDossier = InscriptionDepot & Partial<Inscription>;
-
-/** Attestation de paiement, avec l'en-tête et la signature du modèle de reçu. */
-async function editerAttestation(a: Attestation) {
-  const m = await modeleRecuEnCache(createClient());
-  await telechargerAttestation(a, {
-    adresseRue: m.adresseRue,
-    adresseCpVille: m.adresseCpVille,
-    tresorierNom: m.tresorierNom,
-    courrielContact: m.courrielContact,
-    signatureTresorier: m.signatureTresorier,
-  });
-}
 
 /**
  * Paiements d'une inscription (un exercice) : versements fléchés depuis la
@@ -881,17 +869,8 @@ function paiementsExercice(
         horsTotal: nonComptee,
         montant: d.type === "depense" ? -Number(d.montant) : Number(d.montant),
         origine,
-        attestation:
-          d.type === "recette" && d.date_operation
-            ? {
-                famille: insc.famille_nom,
-                annee_scolaire: exercice,
-                nature: d.nature,
-                montant: Number(d.montant),
-                date: d.date_operation,
-                origine: origine === "Association (tiers)" ? "Association" : origine,
-              }
-            : undefined,
+        operationId: d.type === "recette" && d.date_operation && origine === "Famille" ? d.operation_id : undefined,
+        facture: d.facture ?? null,
       };
     })
     .sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""));
@@ -919,7 +898,7 @@ function TablePaiements({ lignes, avecExercice = false }: { lignes: LigneVerseme
           <th className="border-b border-border pb-1 pr-2 font-medium">Libellé</th>
           <th className="hidden border-b border-border pb-1 pr-2 font-medium sm:table-cell">Payeur</th>
           <th className="border-b border-border pb-1 text-right font-medium">Montant</th>
-          <th className="border-b border-border pb-1 text-right font-medium" title="Attestation de paiement">Attest.</th>
+          <th className="border-b border-border pb-1 text-right font-medium" title="Facture du paiement">Facture</th>
         </tr>
       </thead>
       <tbody>
@@ -949,16 +928,10 @@ function TablePaiements({ lignes, avecExercice = false }: { lignes: LigneVerseme
                 <td className={`py-1 text-right tabular-nums whitespace-nowrap ${l.montant < 0 ? "text-negative" : ""}`}>
                   {formatEuros(l.montant)}
                 </td>
-                <td className="w-10 py-1 text-right">
-                  {l.attestation && (
-                    <button
-                      type="button"
-                      onClick={() => editerAttestation(l.attestation!)}
-                      className="text-[11px] text-accent hover:underline"
-                      title="Attestation de paiement (PDF)"
-                    >
-                      PDF
-                    </button>
+                <td className="w-28 py-1 text-right">
+                  {/* Une facture par écriture : sur sa première ligne (frais de dossier + mois d'avance : une seule facture). */}
+                  {l.operationId && lignes.findIndex((x) => x.operationId === l.operationId) === k && (
+                    <BoutonFacture operationId={l.operationId} numero={l.facture} />
                   )}
                 </td>
               </tr>

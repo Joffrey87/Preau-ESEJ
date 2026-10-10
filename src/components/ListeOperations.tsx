@@ -46,6 +46,8 @@ type Exercice = { id: string; libelle: string; date_debut: string; date_fin: str
 
 export type OperationRow = {
   id: string;
+  /** N° d'opération (grand livre) : attribué à la création de l'écriture. */
+  numero_operation?: number | null;
   date_operation: string;
   libelle: string;
   libelle_origine: string | null;
@@ -118,6 +120,7 @@ export default function ListeOperations({
   donsCompta = [],
   inscriptions,
   affectations,
+  factures = {},
 }: {
   operations: OperationRow[];
   categories: Categorie[];
@@ -134,6 +137,8 @@ export default function ListeOperations({
   donsCompta?: DonCompta[];
   inscriptions: Inscription[];
   affectations: Affectation[];
+  /** Numéro de la facture éditée pour une écriture (frais de scolarité), par identifiant d'écriture. */
+  factures?: Record<string, string>;
 }) {
   const router = useRouter();
   const coffre = useCoffre();
@@ -1003,6 +1008,8 @@ export default function ListeOperations({
                       categorie: op.categories?.nom ?? null,
                       mode_paiement: op.mode_paiement,
                       compte: op.comptes?.nom ?? null,
+                      numero_operation: op.numero_operation ?? null,
+                      facture: factures[op.id] ?? null,
                     }}
                   />
                 ),

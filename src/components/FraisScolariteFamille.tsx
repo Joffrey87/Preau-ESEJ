@@ -2,10 +2,9 @@
 
 import { Fragment, useState } from "react";
 import JaugeScolarite, { AideReglement, etatJauge } from "@/components/JaugeScolarite";
-import { BoutonAttestation } from "@/components/EspaceClient";
+import BoutonFacture from "@/components/BoutonFacture";
 import { formatEurosCourt as formatEuros, formatDate } from "@/lib/format";
 import type { Association, Situation } from "@/lib/espaceFamille";
-import type { NatureAttestee } from "@/lib/attestationPdf";
 
 const MODES: Record<string, string> = { virement: "Virement", prelevement: "Prélèvement", cheque: "Chèque", carte: "Carte", especes: "Espèces" };
 
@@ -25,8 +24,10 @@ type Paiement = {
   montant: number;
   origine: string;
   mode: string | null;
-  /** Nature attestable ; absente pour une saisie du classeur (non datée). */
-  attestee: NatureAttestee | null;
+  /** Écriture de Comptabilité du paiement (facturable) ; absente pour une saisie du classeur. */
+  operationId: string | null;
+  /** Numéro de la facture déjà éditée pour cette écriture. */
+  facture: string | null;
 };
 
 export type AnneeFamille = { annee: string; nbEnfants: number | null; s: Situation };
@@ -53,11 +54,12 @@ function paiements(s: Situation): Paiement[] {
       montant: l.montant,
       origine: l.origine,
       mode: l.mode,
-      attestee: l.nature === "classeur" ? null : l.nature,
+      operationId: l.nature === "classeur" ? null : (l.operation_id ?? null),
+      facture: l.facture ?? null,
     };
     (l.date ? dates : classeur).push(p);
   }
-  const depuis = (nature: Nature, attestee: NatureAttestee) => (d: Situation["depot"]["details"][number]): Paiement => ({
+  const depuis = (nature: Nature) => (d: Situation["depot"]["details"][number]): Paiement => ({
     annee: s.annee,
     date: d.date_operation,
     nature,
@@ -65,20 +67,21 @@ function paiements(s: Situation): Paiement[] {
     montant: d.type === "depense" ? -Number(d.montant) : Number(d.montant),
     origine: d.origine ?? "Famille",
     mode: null,
-    attestee: d.type === "recette" ? attestee : null,
+    operationId: d.type === "recette" ? (d.operation_id ?? null) : null,
+    facture: d.facture ?? null,
   });
   // Le dépôt suit la famille d'année en année : on ne garde que les versements de celle-ci.
   const deLAnnee = (d: { inscription_id: string }) => d.inscription_id === s.inscriptionId;
   dates.push(
-    ...s.frais.details.filter(deLAnnee).map(depuis("dossier", "frais_dossier")),
-    ...s.depot.details.filter(deLAnnee).map(depuis("depot", "mois_avance")),
+    ...s.frais.details.filter(deLAnnee).map(depuis("dossier")),
+    ...s.depot.details.filter(deLAnnee).map(depuis("depot")),
   );
   dates.sort((a, b) => (b.date ?? "").localeCompare(a.date ?? ""));
   // Les saisies du classeur, sans date, ferment la liste (juin → septembre, puis le report).
   return [...dates, ...classeur.reverse()];
 }
 
-function TablePaiements({ lignes, famille, association }: { lignes: Paiement[]; famille: string; association: Association }) {
+function TablePaiements({ lignes }: { lignes: Paiement[] }) {
   if (lignes.length === 0) return <p className="py-1 text-muted">Aucun paiement enregistré.</p>;
   return (
     <table className="w-full">
@@ -88,7 +91,7 @@ function TablePaiements({ lignes, famille, association }: { lignes: Paiement[]; 
           <th className="border-b border-border pb-1 pr-2 font-medium">Nature</th>
           <th className="border-b border-border pb-1 pr-2 font-medium">Détail</th>
           <th className="border-b border-border pb-1 text-right font-medium">Montant</th>
-          <th className="border-b border-border pb-1 text-right font-medium">Attestation</th>
+          <th className="border-b border-border pb-1 text-right font-medium">Facture</th>
         </tr>
       </thead>
       <tbody>
@@ -109,20 +112,10 @@ function TablePaiements({ lignes, famille, association }: { lignes: Paiement[]; 
                 <td className={`py-1 text-right tabular-nums whitespace-nowrap ${p.montant < 0 ? "text-negative" : ""}`}>
                   {formatEuros(p.montant)}
                 </td>
-                <td className="w-20 py-1 text-right">
-                  {p.date && p.attestee && p.montant > 0 && (
-                    <BoutonAttestation
-                      association={association}
-                      attestation={{
-                        famille,
-                        annee_scolaire: p.annee,
-                        nature: p.attestee,
-                        montant: p.montant,
-                        date: p.date,
-                        origine: p.origine,
-                        mode: p.mode,
-                      }}
-                    />
+                <td className="w-28 py-1 text-right">
+                  {/* Une facture par paiement : sur la première ligne de l'écriture (frais de dossier + mois d'avance : une seule facture). */}
+                  {p.date && p.operationId && p.origine === "Famille" && p.montant > 0 && lignes.findIndex((x) => x.operationId === p.operationId) === k && (
+                    <BoutonFacture operationId={p.operationId} numero={p.facture} />
                   )}
                 </td>
               </tr>
@@ -138,19 +131,21 @@ function TablePaiements({ lignes, famille, association }: { lignes: Paiement[]; 
  * Frais de scolarité d'une famille, présentés comme dans l'onglet du bureau :
  * une ligne par année (total dû « mensuel x10 », mois d'avance, frais de
  * dossier, avancement, réglé avec retard, reste) et, au clic, ses paiements
- * avec les attestations.
+ * avec leurs factures.
  */
 export default function FraisScolariteFamille({
-  famille,
   annees,
-  association,
+  detailsOuverts = false,
 }: {
-  famille: string;
+  /** Conservés pour les appelants ; la facture n'en a plus besoin (tout vient de la base). */
+  famille?: string;
   annees: AnneeFamille[];
-  association: Association;
+  association?: Association;
+  /** Détails des paiements déjà affichés pour la première année (page Paiements de l'Espace famille). */
+  detailsOuverts?: boolean;
 }) {
   // Replié par défaut : l'indication « Détails » invite à ouvrir.
-  const [ouverte, setOuverte] = useState<string | null>(null);
+  const [ouverte, setOuverte] = useState<string | null>(detailsOuverts ? (annees[0]?.annee ?? null) : null);
   const basculer = (annee: string) => setOuverte((o) => (o === annee ? null : annee));
 
   return (
@@ -274,7 +269,7 @@ export default function FraisScolariteFamille({
                     <tr className="border-b border-border bg-surface-2/40">
                       <td colSpan={8} className="px-4 py-2 text-left text-xs">
                         <h3 className="mb-1 text-left text-xs font-semibold uppercase tracking-wide text-muted">Détails des paiements</h3>
-                        <TablePaiements lignes={lignes} famille={famille} association={association} />
+                        <TablePaiements lignes={lignes} />
                       </td>
                     </tr>
                   )}
@@ -290,16 +285,15 @@ export default function FraisScolariteFamille({
 
 /**
  * Dossier de la famille pour les années précédentes : pour chacune, un
- * bandeau (dû, réglé, reste) puis ses paiements, avec les attestations.
+ * bandeau (dû, réglé, reste) puis ses paiements, avec leurs factures.
  */
 export function DossierAnneesPrecedentes({
-  famille,
   annees,
-  association,
 }: {
-  famille: string;
+  /** Conservés pour les appelants ; la facture n'en a plus besoin (tout vient de la base). */
+  famille?: string;
   annees: AnneeFamille[];
-  association: Association;
+  association?: Association;
 }) {
   const triees = [...annees].sort((a, b) => b.annee.localeCompare(a.annee));
   return (
@@ -335,7 +329,7 @@ export function DossierAnneesPrecedentes({
                   </span>
                 </div>
                 <div className="mt-1 px-1 text-xs">
-                  <TablePaiements lignes={paiements(s)} famille={famille} association={association} />
+                  <TablePaiements lignes={paiements(s)} />
                 </div>
               </div>
             ))}

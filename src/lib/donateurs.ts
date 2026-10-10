@@ -19,6 +19,8 @@ export type DonAgg = {
   don_boursier?: boolean;
   /** Famille de l'école : « actuelle » (inscrite cette année) ou « ancienne » (copie portée par chaque don). */
   famille_statut?: FamilleStatut | null;
+  /** Ne souhaite pas être sollicité (copie portée par chaque don du donateur). */
+  ne_pas_solliciter?: boolean;
 };
 
 export type FamilleStatut = "actuelle" | "ancienne";
@@ -52,6 +54,8 @@ export type ProfilDonateur = {
   nbDonsBourse: number;
   /** Famille de l'école : actuelle l'emporte sur ancienne si ses dons divergent. */
   famille: FamilleStatut | null;
+  /** Ne souhaite pas être sollicité : exclu des exports, campagnes et actions suggérées. */
+  nePasSolliciter: boolean;
 };
 
 /** Nombre de mois entiers écoulés entre deux dates ISO (b ≥ a). */
@@ -125,6 +129,7 @@ export function agregerDonateurs(dons: DonAgg[], todayISO: string): ProfilDonate
       boursier,
       cumulBourse: donsBourse.reduce((s, d) => s + Number(d.montant || 0), 0),
       nbDonsBourse: donsBourse.length,
+      nePasSolliciter: tout.some((d) => d.ne_pas_solliciter),
       famille: tout.some((d) => d.famille_statut === "actuelle") ? "actuelle" : tout.some((d) => d.famille_statut === "ancienne") ? "ancienne" : null,
     });
   }
@@ -149,6 +154,7 @@ export function badgesDe(p: ProfilDonateur): Badge[] {
   if (p.estGrand) b.push({ key: "grand", label: "Grand donateur", tone: "violet" });
   if (p.estFidele) b.push({ key: "fidele", label: "Fidèle", tone: "blue" });
   if (p.estNouveau) b.push({ key: "nouveau", label: "Nouveau", tone: "green" });
+  if (p.nePasSolliciter) b.push({ key: "nepas", label: "Ne pas solliciter", tone: "gray" });
   if (p.famille) b.push({ key: "famille", label: FAMILLE_LIBELLE[p.famille], tone: p.famille === "actuelle" ? "blue" : "gray" });
   return b;
 }

@@ -40,17 +40,18 @@ export default async function TableauDeBordFamille() {
       </div>
 
       <section>
+        {/* Tuiles compactes, côte à côte (deux par ligne dès la largeur d'une tablette). */}
         <h2 className="mb-2 text-sm font-semibold">À noter</h2>
         {liste.length === 0 ? (
-          <p className="rounded-xl border border-positive/30 bg-positive/5 px-4 py-3 text-sm text-positive">Tout est à jour. Merci !</p>
+          <p className="rounded-lg border border-positive/30 bg-positive/5 px-3 py-2 text-[13px] text-positive">Tout est à jour. Merci !</p>
         ) : (
-          <ul className="space-y-2">
+          <ul className="grid gap-2 sm:grid-cols-2">
             {liste.map((a, k) => (
-              <li key={k} className={`rounded-xl border px-4 py-3 text-sm ${TONS[a.ton]}`}>
+              <li key={k} className={`flex flex-col rounded-lg border px-3 py-2 text-[13px] leading-snug ${TONS[a.ton]}`}>
                 <div className="font-medium">{a.titre}</div>
                 {a.detail && <div className="text-xs opacity-80">{a.detail}</div>}
                 {a.lien && (
-                  <Link href={a.lien} className="mt-1 inline-block text-xs underline">
+                  <Link href={a.lien} className="mt-auto pt-1 text-xs underline">
                     Voir le détail
                   </Link>
                 )}

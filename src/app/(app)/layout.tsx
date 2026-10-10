@@ -1,9 +1,10 @@
 import { redirect } from "next/navigation";
+import { cookies } from "next/headers";
 import Sidebar from "@/components/Sidebar";
 import CoffreProvider from "@/components/CoffreProvider";
 import { createClient } from "@/lib/supabase/server";
 import AideFlottante from "@/components/AideFlottante";
-import { pagesAutorisees, roleByEmail } from "@/lib/roles";
+import { COOKIE_PRENOM, pagesAutorisees, roleByEmail } from "@/lib/roles";
 import { peutChangerDeVue } from "@/lib/vueRole";
 import { emailVue } from "@/lib/vueRoleServeur";
 import Icon from "@/components/Icon";
@@ -35,6 +36,12 @@ export default async function AppLayout({
   const familles = peutChanger
     ? (((await supabase.from("familles").select("id, nom").order("nom")).data ?? []) as { id: string; nom: string }[])
     : [];
+  // Membre de la Recherche de fonds qui a aussi un Espace famille : le logo propose le passage de l'un à l'autre.
+  const prenomVisite = decodeURIComponent((await cookies()).get(COOKIE_PRENOM)?.value ?? "");
+  const familleLiee =
+    roleByEmail(user.email)?.slug === "recherche-fonds" && prenomVisite
+      ? ((await supabase.rpc("famille_du_membre", { p_prenom: prenomVisite })).data as string | null)
+      : null;
   const jauge = rechercheFonds ? ((await supabase.rpc("dons_exercice_courant")).data as DonsExercice) : null;
 
   return (
@@ -45,6 +52,7 @@ export default async function AppLayout({
           peutChanger={peutChanger}
           familles={familles}
           slugActif={roleVu?.slug ?? "tresorier"}
+          bascule={familleLiee ? { famille: familleLiee, prenom: prenomVisite } : undefined}
         />
         <main className="flex-1 min-w-0">
           {enVue && (

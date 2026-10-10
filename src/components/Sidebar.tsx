@@ -11,6 +11,8 @@ import { todayISO } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
 import Icon from "./Icon";
 import BasculeTheme from "./BasculeTheme";
+import { PanneauBascule } from "./BasculeEspace";
+import { oublierSessions } from "@/lib/basculeEspace";
 
 // Agencement « rail dense » : menu compact, sections réduites à un fin libellé,
 // tous les liens visibles sans barre de défilement, pas de bandeau supérieur.
@@ -19,6 +21,7 @@ export default function Sidebar({
   peutChanger = false,
   slugActif = "",
   familles = [],
+  bascule,
 }: {
   userEmail?: string;
   /** Trésorier : le bloc « Préau » ouvre le choix du profil (vue seulement). */
@@ -26,6 +29,8 @@ export default function Sidebar({
   slugActif?: string;
   /** Familles de l'école, pour choisir laquelle voir (aperçu de son espace). */
   familles?: { id: string; nom: string }[];
+  /** Membre de la Recherche de fonds ayant aussi un Espace famille : le logo propose le passage de l'un à l'autre. */
+  bascule?: { famille: string; prenom: string };
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -54,6 +59,7 @@ export default function Sidebar({
   async function handleLogout() {
     const supabase = createClient();
     await supabase.auth.signOut();
+    oublierSessions();
     document.cookie = "recherche_prenom=; path=/; max-age=0; SameSite=Lax";
     router.push("/login");
     router.refresh();
@@ -62,13 +68,13 @@ export default function Sidebar({
   return (
     <aside className="flex flex-col border-b border-border bg-surface max-md:sticky max-md:top-0 max-md:z-40 max-md:max-h-dvh max-md:overflow-y-auto md:h-screen md:w-56 md:shrink-0 md:border-b-0 md:border-r md:sticky md:top-0">
       <div ref={enteteRef} className="relative">
-        {peutChanger ? (
+        {peutChanger || bascule ? (
           <button
             type="button"
             onClick={() => (surTelephone() ? setMenuOuvert((o) => !o) : setChoixOuvert((o) => !o))}
             aria-expanded={choixOuvert || menuOuvert}
             aria-haspopup="true"
-            title="Voir l'application en tant que…"
+            title={bascule ? "Changer d'espace" : "Voir l'application en tant que…"}
             className="flex w-full items-center gap-2.5 border-b border-border px-4 py-3 text-left transition-colors hover:bg-surface-2"
           >
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -103,6 +109,13 @@ export default function Sidebar({
               <path d="m6 9 6 6 6-6" />
             </svg>
           </Link>
+        )}
+
+        {!peutChanger && bascule && choixOuvert && (
+          <div className="absolute left-2 right-2 top-full z-30 mt-1 rounded-xl border border-border bg-surface p-2 shadow-lg md:w-[19rem] md:right-auto">
+            <div className="px-1.5 pb-1.5 text-[11px] text-muted">Changer d’espace</div>
+            <PanneauBascule actuel="recherche" famille={bascule.famille} prenom={bascule.prenom} />
+          </div>
         )}
 
         {peutChanger && choixOuvert && (
@@ -161,6 +174,11 @@ export default function Sidebar({
 
       {/* Menu défilant à la molette s'il dépasse la hauteur de l'écran, sans barre de défilement visible ; marge en bas pour que le dernier item ne colle pas au bord. */}
       <nav onClick={(e) => (e.target as HTMLElement).closest("a") && setMenuOuvert(false)} className={`${menuOuvert ? "" : "max-md:hidden"} flex-1 overscroll-contain px-2 pt-2 pb-8 md:min-h-0 md:overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden`}>
+        {!peutChanger && bascule && (
+          <div className="mb-2 md:hidden">
+            <PanneauBascule actuel="recherche" famille={bascule.famille} prenom={bascule.prenom} />
+          </div>
+        )}
         {peutChanger && (
           <button
             type="button"

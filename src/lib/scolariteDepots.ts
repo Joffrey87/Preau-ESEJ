@@ -54,6 +54,9 @@ export type AffectationDetail = {
   type: "recette" | "depense";
   /** Qui a payé : « Amitié Sainte-Anne », une autre association, ou la famille. */
   origine?: string;
+  /** Écriture de Comptabilité d'origine, et numéro de la facture déjà éditée pour elle. */
+  operation_id?: string;
+  facture?: string | null;
 };
 
 export type EtatDepot = {

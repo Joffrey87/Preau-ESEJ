@@ -117,6 +117,10 @@ export default async function ScolaritePage({
     }
   }
 
+  // Factures déjà éditées (une par écriture) : leur numéro s'affiche à côté du paiement.
+  const facturesParOperation = new Map<string, string>(
+    (((await supabase.from("factures").select("operation_id, numero")).data ?? []) as { operation_id: string; numero: string }[]).map((f) => [f.operation_id, f.numero]),
+  );
   const affectationsDetail: AffectationDetail[] = brutes.map((a) => ({
     inscription_id: a.inscription_id,
     nature: a.nature ?? "don_association",
@@ -125,6 +129,8 @@ export default async function ScolaritePage({
     date_operation: parOperation.get(a.operation_id)?.date_operation ?? "",
     type: parOperation.get(a.operation_id)?.type ?? "recette",
     origine: parOperation.get(a.operation_id)?.origine,
+    operation_id: a.operation_id,
+    facture: facturesParOperation.get(a.operation_id) ?? null,
   }));
 
   // Familles (fiche) et élèves (prénom chiffré), pour le détail d'une famille.

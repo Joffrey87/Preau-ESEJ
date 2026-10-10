@@ -49,6 +49,9 @@ export type EspaceFamille = {
     type: "recette" | "depense";
     mode: string | null;
     origine: string;
+    /** Écriture de Comptabilité du paiement et numéro de sa facture, si elle a été éditée. */
+    operation_id: string;
+    facture: string | null;
   }[];
   activites: {
     activite_id: string;
@@ -107,7 +110,16 @@ export type Situation = {
   retard: number;
   /** À régler avant la fin du mois (à partir du 27). */
   aReglerFinDeMois: number;
-  lignes: { date: string | null; libelle: string; montant: number; origine: string; nature: NatureAffectation | "classeur"; mode: string | null }[];
+  lignes: {
+    date: string | null;
+    libelle: string;
+    montant: number;
+    origine: string;
+    nature: NatureAffectation | "classeur";
+    mode: string | null;
+    operation_id?: string;
+    facture?: string | null;
+  }[];
   depot: ReturnType<typeof etatDepot>;
   frais: ReturnType<typeof etatFraisDossier>;
 };
@@ -133,6 +145,8 @@ export function situation(espace: EspaceFamille, annee: string, aujourdhui: stri
     origine: l.origine ?? (l.nature === "report" ? "—" : "Famille"),
     nature: l.nature === "report" ? "classeur" : l.nature,
     mode: l.mode ?? null,
+    operation_id: l.operation_id,
+    facture: l.facture,
   }));
   const regle = lignes.reduce((s, l) => s + l.montant, 0);
   const paiement = etatPaiement(annee, mensuel, du, regle, aujourdhui, partJuin.montant);
@@ -156,6 +170,8 @@ export function situation(espace: EspaceFamille, annee: string, aujourdhui: stri
     date_operation: v.date,
     type: v.type,
     origine: v.origine,
+    operation_id: v.operation_id,
+    facture: v.facture,
   }));
   const courante = toutes.find((i) => i.id === insc.id)!;
 
@@ -207,7 +223,8 @@ export function alertes(espace: EspaceFamille, s: Situation | null, aujourdhui: 
     }
   }
   const f = espace.famille;
-  if (!f.telephone || !f.adresse) out.push({ ton: "info", titre: "Fiche famille à compléter", detail: "Adresse ou téléphone manquant : contactez l'école.", lien: "/espace/famille" });
+  const manques = [!f.adresse && "adresse", !f.telephone && "téléphone"].filter(Boolean);
+  if (manques.length > 0) out.push({ ton: "info", titre: "Fiche famille à compléter", detail: `Manque : ${manques.join(", ")}.`, lien: "/espace/famille" });
   if (s && scolarises(espace.eleves, s.annee).length === 0) out.push({ ton: "info", titre: "Enfants non encore renseignés", detail: "L'école complétera la liste de vos enfants." });
   return out;
 }

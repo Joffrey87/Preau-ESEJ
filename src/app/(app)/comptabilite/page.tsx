@@ -29,7 +29,7 @@ type OperationRow = {
 };
 
 const COLONNES =
-  "id, date_operation, libelle, libelle_origine, libelle_origine_chiffre, montant, type, mode_paiement, categorie_id, compte_id, exercice_id, parent_id, est_ventilee, a_verifier, categories(nom), comptes(nom)";
+  "id, numero_operation, date_operation, libelle, libelle_origine, libelle_origine_chiffre, montant, type, mode_paiement, categorie_id, compte_id, exercice_id, parent_id, est_ventilee, a_verifier, categories(nom), comptes(nom)";
 
 export default async function ComptabilitePage({
   searchParams,
@@ -91,7 +91,8 @@ export default async function ComptabilitePage({
       .sort((a, b) => b.date_operation.localeCompare(a.date_operation) || b.created_at.localeCompare(a.created_at));
   };
 
-  const [operationsExercice, catsRes, comptesRes, inscriptionsRes, affectationsRes, majRes] = await Promise.all([
+  const [operationsExercice, catsRes, comptesRes, inscriptionsRes, affectationsRes, majRes, facturesRes] = await Promise.all([
+
     chargerSelection(),
     supabase
       .from("categories")
@@ -107,6 +108,8 @@ export default async function ComptabilitePage({
       .order("famille_nom"),
     supabase.from("affectations_scolarite").select("id, operation_id, inscription_id, montant, notes, nature"),
     supabase.rpc("date_maj_comptes"),
+    // Factures de frais de scolarité : leur numéro s'affiche sur l'écriture correspondante.
+    supabase.from("factures").select("operation_id, numero"),
   ]);
 
   // Dons, pour la pastille des opérations « Don » : relié ou trouvé, et fiche
@@ -288,6 +291,7 @@ export default async function ComptabilitePage({
         donsCompta={donsCompta}
         inscriptions={(inscriptionsRes.data ?? []) as Inscription[]}
         affectations={(affectationsRes.data ?? []) as Affectation[]}
+        factures={Object.fromEntries(((facturesRes.data ?? []) as { operation_id: string; numero: string }[]).map((f) => [f.operation_id, f.numero]))}
       />
     </div>
   );

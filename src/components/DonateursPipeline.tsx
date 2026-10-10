@@ -19,6 +19,7 @@ import {
 import CampagneCollecte from "@/components/CampagneCollecte";
 import FicheDonateur from "@/components/FicheDonateur";
 import HarmoniserFiches from "@/components/HarmoniserFiches";
+import ExportRelations from "@/components/ExportRelations";
 import CarteDonateurs from "@/components/CarteDonateurs";
 import DeverrouillerCoffre from "@/components/DeverrouillerCoffre";
 import BoutonFiltresMultiples, { CasePastille } from "@/components/BoutonFiltresMultiples";
@@ -96,7 +97,9 @@ export default function DonateursPipeline({
     }
     return m;
   }, [dons]);
-  const suggestions = useMemo(() => suggestionsDonateurs(ordinaires, today), [ordinaires, today]);
+  // Campagnes et actions suggérées : jamais ceux qui ne souhaitent pas être sollicités.
+  const sollicitables = useMemo(() => ordinaires.filter((p) => !p.nePasSolliciter), [ordinaires]);
+  const suggestions = useMemo(() => suggestionsDonateurs(sollicitables, today), [sollicitables, today]);
   const pic = picCourant(today);
 
   const stats = useMemo(() => {
@@ -235,7 +238,7 @@ export default function DonateursPipeline({
       {volet === "campagnes" && (
       <>
       {/* Campagne « objectif » — trouver X € avant une échéance */}
-      <CampagneCollecte profils={ordinaires} today={today} onOuvrirFiche={setFicheCle} donsParCle={donsParCle} />
+      <CampagneCollecte profils={sollicitables} today={today} onOuvrirFiche={setFicheCle} donsParCle={donsParCle} />
 
       {/* Prochaines actions suggérées */}
       <section className="rounded-xl border border-border bg-surface p-4">
@@ -298,6 +301,7 @@ export default function DonateursPipeline({
           </button>
         ))}
         <span className="ml-auto flex flex-wrap items-center gap-2">
+          <ExportRelations profils={profils} donsParCle={donsParCle} aujourdhui={today} />
           <HarmoniserFiches dons={dons as unknown as Don[]} verrou={verrou} />
         </span>
         {alentours && (

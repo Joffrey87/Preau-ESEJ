@@ -21,7 +21,7 @@ export default async function PipelinePage() {
     supabase
       .from("dons")
       .select(
-        "id, exercice_id, origine, categorie_donateur, est_personne_morale, donateur_titre, donateur_nom, donateur_prenom, raison_sociale, adresse, cp_ville, courriel, pii_chiffre, montant, date_don, mode_paiement, recu_numero, recu_etat, recu_emis_le, observations, donateur_bourse, don_boursier, famille_statut",
+        "id, exercice_id, origine, categorie_donateur, est_personne_morale, donateur_titre, donateur_nom, donateur_prenom, raison_sociale, adresse, cp_ville, courriel, pii_chiffre, montant, date_don, mode_paiement, recu_numero, recu_etat, recu_emis_le, observations, donateur_bourse, don_boursier, famille_statut, ne_pas_solliciter",
       )
       .is("supprime_le", null),
     supabase.rpc("dons_exercice_courant"),

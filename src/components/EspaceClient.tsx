@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
+import { oublierSessions } from "@/lib/basculeEspace";
 import { telechargerAttestation, type Attestation } from "@/lib/attestationPdf";
 import type { Association } from "@/lib/espaceFamille";
 
@@ -14,6 +15,7 @@ export function Deconnexion() {
       type="button"
       onClick={async () => {
         await createClient().auth.signOut();
+        oublierSessions();
         router.push("/login");
         router.refresh();
       }}

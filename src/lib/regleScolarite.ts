@@ -56,6 +56,8 @@ export type VersementRegle = {
   libelle?: string;
   origine?: string;
   mode?: string | null;
+  operation_id?: string;
+  facture?: string | null;
 };
 
 export type LigneRegle = {
@@ -65,6 +67,8 @@ export type LigneRegle = {
   nature: "mensualite" | "don_association" | "classeur" | "report";
   origine?: string;
   mode?: string | null;
+  operation_id?: string;
+  facture?: string | null;
 };
 
 /** Ce qui compte dans le réglé de l'inscription, ligne par ligne. */
@@ -93,6 +97,8 @@ export function lignesRegle(
         nature: v.nature,
         origine: v.origine,
         mode: v.mode ?? null,
+        operation_id: v.operation_id,
+        facture: v.facture,
       });
     }
   }

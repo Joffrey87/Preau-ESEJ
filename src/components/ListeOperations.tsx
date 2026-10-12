@@ -121,6 +121,7 @@ export default function ListeOperations({
   inscriptions,
   affectations,
   factures = {},
+  lectureSeule = false,
 }: {
   operations: OperationRow[];
   categories: Categorie[];
@@ -137,6 +138,8 @@ export default function ListeOperations({
   donsCompta?: DonCompta[];
   inscriptions: Inscription[];
   affectations: Affectation[];
+  /** Consultation seule (Président) : ni mode modification, ni annulation, ni liaison ou création de don. */
+  lectureSeule?: boolean;
   /** Numéro de la facture éditée pour une écriture (frais de scolarité), par identifiant d'écriture. */
   factures?: Record<string, string>;
 }) {
@@ -185,10 +188,11 @@ export default function ListeOperations({
           rapprochement={r}
           don={donParId.get(r?.donId ?? "")}
           verrou={verrou}
-          onFiche={(id, signaler) => setFicheId({ id, signaler })}
-          onCreer={setCreationOpId}
+          onFiche={lectureSeule ? undefined : (id, signaler) => setFicheId({ id, signaler })}
+          onCreer={lectureSeule ? undefined : setCreationOpId}
+          lectureSeule={lectureSeule}
         />
-        {op && (
+        {op && !lectureSeule && (
           <span className="block basis-full">
             <LienDonFille
               filleId={op.id}
@@ -304,6 +308,7 @@ export default function ListeOperations({
   const dejaTentes = useRef(new Set<string>());
   const [autoLies, setAutoLies] = useState<string[]>([]);
   useEffect(() => {
+    if (lectureSeule) return;
     const aFaire = liensAuto.filter((p) => !dejaTentes.current.has(p.op.id + p.don.id));
     if (aFaire.length === 0) return;
     aFaire.forEach((p) => dejaTentes.current.add(p.op.id + p.don.id));
@@ -322,7 +327,7 @@ export default function ListeOperations({
         router.refresh();
       }
     })();
-  }, [liensAuto, router]);
+  }, [liensAuto, router, lectureSeule]);
 
   // Ouverture des volets : `ouverture` ne retient que les choix explicites de
   // l'utilisateur ; par défaut, une ligne dont des dons restent à rattacher
@@ -707,6 +712,8 @@ export default function ListeOperations({
           )}
           {annulation && <span className="text-sm text-muted">{annulation}</span>}
         </div>
+        {!lectureSeule && (
+        <>
         <button
           type="button"
           onClick={annuler}
@@ -725,6 +732,8 @@ export default function ListeOperations({
         >
           {modeEdition ? "✓ Mode modification actif" : "✏️ Mode modification"}
         </button>
+        </>
+        )}
       </div>
 
       <ChiffrerLibellesDons />

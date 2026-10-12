@@ -62,6 +62,7 @@ export default function PastilleDon({
   verrou,
   onFiche,
   onCreer,
+  lectureSeule = false,
 }: {
   operationId: string;
   exerciceId: string | null;
@@ -72,6 +73,8 @@ export default function PastilleDon({
   onFiche?: (donId: string, signaler: boolean) => void;
   /** Ouvre la création d'un don à partir de cette écriture (aucun don trouvé). */
   onCreer?: (operationId: string) => void;
+  /** Consultation seule : l'état du don est montré, sans action (lier, compléter). */
+  lectureSeule?: boolean;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -135,6 +138,8 @@ export default function PastilleDon({
             >
               Compléter la fiche
             </button>
+          ) : lectureSeule ? (
+            <span className="text-[11px] text-gold">fiche à compléter</span>
           ) : (
             <Link href="/dons" onClick={stop} className="text-[11px] text-gold">
               fiche à compléter
@@ -174,7 +179,7 @@ export default function PastilleDon({
               Modifier
             </button>
           )}
-          <button
+          {!lectureSeule && <button
             type="button"
             onClick={lier}
             disabled={busy}
@@ -182,7 +187,7 @@ export default function PastilleDon({
             title="Confirmer : relier ce don à l'opération"
           >
             {busy ? "…" : "Lier"}
-          </button>
+          </button>}
           {erreur && <span className="text-[11px] text-negative">{erreur}</span>}
         </span>
       );

@@ -30,8 +30,8 @@ export const PAGES_RESTREINTES: Record<string, string[]> = {
   "recherche-fonds": ["/", "/recherche/axes", "/recherche/suivi", "/mecenat/pipeline"],
   // Directeur spirituel : lecture du carnet, des dons et des relations donateurs ; bulletins (il enseigne le catéchisme).
   "directeur-spirituel": ["/", "/carnet", "/dons", "/mecenat/pipeline", "/bulletins"],
-  // Président : Tableau de bord, Comptabilité, Relations donateurs, et l'Espace famille de sa famille (paiements passés).
-  president: ["/", "/comptabilite", "/mecenat/pipeline", "/ma-famille/paiements", "/ma-famille/fiche"],
+  // Président : Tableau de bord, Comptabilité (lecture), Relations donateurs, et l'Espace famille de sa famille (sans bulletins).
+  president: ["/", "/comptabilite", "/mecenat/pipeline", "/ma-famille/accueil", "/ma-famille/paiements", "/ma-famille/fiche"],
   // Profils pas encore configurés : rien de visible (une page d'attente) tant que leurs accès ne sont pas définis.
   secretaire: ["/en-attente"],
   administrateur: ["/en-attente"],
@@ -52,6 +52,9 @@ export const ROLES_PRENOM_A_L_ACCES = ["recherche-fonds"];
 export const PAGES_RESERVEES: { prefixe: string; roles: string[] }[] = [
   { prefixe: "/recherche", roles: ["president", "tresorier", "recherche-fonds"] },
   { prefixe: "/courriers", roles: ["secretaire", "tresorier", "president", "administrateur"] },
+  // Comptabilité : le Président la consulte seulement (pas d'import de relevé ni de règles de correspondance).
+  { prefixe: "/comptabilite/import", roles: ["tresorier", "administrateur"] },
+  { prefixe: "/comptabilite/correspondances", roles: ["tresorier", "administrateur"] },
 ];
 
 export function pageReserveeInterdite(email: string | null | undefined, chemin: string): boolean {

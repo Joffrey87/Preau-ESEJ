@@ -1,12 +1,15 @@
 import Link from "next/link";
 import PageHeader from "@/components/PageHeader";
 import NouvelleOperation from "@/components/NouvelleOperation";
+import MenuPeriodeCompta from "@/components/MenuPeriodeCompta";
 import ListeOperations from "@/components/ListeOperations";
 import type { Affectation, Inscription } from "@/components/AffectationScolarite";
 import { createClient } from "@/lib/supabase/server";
 import { toutesLesOperations } from "@/lib/operations";
 import { rapprocherDons, type Rapprochement } from "@/lib/rapprochementDons";
 import type { DonCompta } from "@/components/PastilleDon";
+import { roleByEmail } from "@/lib/roles";
+import { emailVue } from "@/lib/vueRoleServeur";
 
 type OperationRow = {
   id: string;
@@ -37,6 +40,11 @@ export default async function ComptabilitePage({
 }) {
   const supabase = await createClient();
   const { exercice: exParam, annee: anneeParam } = await searchParams;
+  // Président : la même page que le Trésorier, en lecture seule (ni saisie, ni import, ni liaison).
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  const lectureSeule = roleByEmail(await emailVue(user?.email))?.slug === "president";
 
   // Tous les exercices (pour le sélecteur). Par défaut : l'exercice qui couvre
   // la date du jour (septembre → août), sinon celui marqué actif, sinon le plus
@@ -163,15 +171,7 @@ export default async function ComptabilitePage({
   // ±1 mois, nom du donateur dans l'intitulé bancaire, fiche et création d'un don depuis la Compta.
   const donsCompta = dons;
 
-  // Liens des boutons : un seul exercice à la fois ; les années, elles, se
-  // cumulent (un clic ajoute ou retire l'année ; retirer la dernière ramène au
-  // mode exercice, sur l'exercice du jour).
-  const basculer = <T,>(liste: T[], v: T) => (liste.includes(v) ? liste.filter((x) => x !== v) : [...liste, v]);
-  const lienExercice = (id: string) => `/comptabilite?exercice=${id}`;
-  const lienAnnee = (a: number) => {
-    const as = basculer(annees, a);
-    return as.length > 0 ? `/comptabilite?annee=${as.join(",")}` : "/comptabilite";
-  };
+  // Période : bouton-menu Année / Exercice (MenuPeriodeCompta) ; un exercice à la fois, les années se cumulent.
   const libelleSelection =
     annees.length > 0
       ? `Année${annees.length > 1 ? "s" : ""} ${[...annees].sort().join(", ")}`
@@ -179,10 +179,6 @@ export default async function ComptabilitePage({
           .map((e) => e.libelle)
           .reverse()
           .join(" + ");
-  const boutonCls = (actif: boolean) =>
-    `rounded-lg border px-3 py-1.5 text-sm ${
-      actif ? "border-accent bg-accent-soft font-medium text-accent" : "border-border hover:bg-surface-2"
-    }`;
 
   return (
     <div className="mx-auto max-w-6xl px-5 py-8 md:px-8">
@@ -199,57 +195,38 @@ export default async function ComptabilitePage({
               >
                 Bilan
               </Link>
-              <Link
-                href="/comptabilite/correspondances"
-                className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-surface-2"
-              >
-                Correspondances
-              </Link>
-              <Link
-                href="/comptabilite/import"
-                className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-surface-2"
-              >
-                Importer relevé
-              </Link>
-              <NouvelleOperation
-                categories={catsRes.data ?? []}
-                comptes={comptesRes.data ?? []}
-                exerciceId={exercice.id}
-              />
+              {!lectureSeule && (
+                <>
+                  <Link
+                    href="/comptabilite/correspondances"
+                    className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-surface-2"
+                  >
+                    Correspondances
+                  </Link>
+                  <Link
+                    href="/comptabilite/import"
+                    className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-surface-2"
+                  >
+                    Importer relevé
+                  </Link>
+                  <NouvelleOperation
+                    categories={catsRes.data ?? []}
+                    comptes={comptesRes.data ?? []}
+                    exerciceId={exercice.id}
+                  />
+                </>
+              )}
             </div>
           ) : null
         }
       />
 
       {liste.length > 0 && (
-        <div className="mb-4 space-y-1.5">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="w-16 text-sm text-muted">Exercice</span>
-            {liste.map((e) => (
-              <Link
-                key={e.id}
-                href={lienExercice(e.id)}
-                className={boutonCls(selection.exercices.includes(e.id))}
-              >
-                {e.libelle.replace("Exercice ", "")}
-                {e.actif ? " •" : ""}
-              </Link>
-            ))}
-          </div>
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="w-16 text-sm text-muted">Année</span>
-            {anneesProposees.map((a) => (
-              <Link
-                key={a}
-                href={lienAnnee(a)}
-                title={`Opérations datées du 1er janvier au 31 décembre ${a} — cliquer pour ajouter ou retirer cette année`}
-                className={boutonCls(annees.includes(a))}
-              >
-                {a}
-              </Link>
-            ))}
-          </div>
-        </div>
+        <MenuPeriodeCompta
+          exercices={liste.map((e) => ({ id: e.id, libelle: e.libelle, actif: !!e.actif }))}
+          annees={anneesProposees}
+          selection={selection}
+        />
       )}
 
       <ListeOperations
@@ -264,6 +241,7 @@ export default async function ComptabilitePage({
         donsCompta={donsCompta}
         inscriptions={(inscriptionsRes.data ?? []) as Inscription[]}
         affectations={(affectationsRes.data ?? []) as Affectation[]}
+        lectureSeule={lectureSeule}
         factures={Object.fromEntries(((facturesRes.data ?? []) as { operation_id: string; numero: string }[]).map((f) => [f.operation_id, f.numero]))}
       />
     </div>

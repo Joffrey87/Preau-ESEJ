@@ -15,8 +15,12 @@ export const COOKIE_APERCU = "apercu_famille";
  * (`familles.profil_lie`, ex. : le Président, parent d'un ancien élève, voit ses paiements dans son propre menu).
  */
 export async function familleConsultee(user: User | null): Promise<string | null> {
-  const apercu = await familleEnApercu(user);
-  if (apercu || !user || (user.app_metadata as { espace?: string } | undefined)?.espace === "famille") return apercu;
+  return (await familleEnApercu(user)) ?? (await familleDuProfil(user));
+}
+
+/** Famille rattachée au profil d'Administration connecté (ou vu), hors aperçu ; null sinon. */
+export async function familleDuProfil(user: User | null): Promise<string | null> {
+  if (!user || (user.app_metadata as { espace?: string } | undefined)?.espace === "famille") return null;
   const slug = roleByEmail(await emailVue(user.email))?.slug;
   if (!slug) return null;
   const { data } = await (await createClient()).from("familles").select("id").eq("profil_lie", slug).maybeSingle();

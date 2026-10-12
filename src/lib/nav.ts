@@ -44,6 +44,7 @@ export const NAV: NavSection[] = [
     // Profil rattaché à une famille (familles.profil_lie) : ses pages d'Espace famille, dans son menu.
     title: "Espace famille",
     items: [
+      { href: "/ma-famille/accueil", label: "Accueil famille", icon: "dashboard", ready: true, roles: ["president"] },
       { href: "/ma-famille/paiements", label: "Paiements", icon: "invoice", ready: true, roles: ["president"] },
       { href: "/ma-famille/fiche", label: "Ma famille", icon: "maison", ready: true, roles: ["president"] },
     ],

@@ -36,6 +36,7 @@ const DESCRIPTIONS: Record<string, string> = {
   "/parametres": "Association, comptes, catégories.",
   "/processus": "Fiches d'aide et procédures.",
   "/acces-familles": "Comptes de l'Espace famille.",
+  "/ma-famille/accueil": "Ce qui est à noter pour votre famille.",
   "/ma-famille/paiements": "Frais de scolarité réglés, factures et attestations de votre famille.",
   "/ma-famille/fiche": "Coordonnées et enfants de votre famille.",
 };

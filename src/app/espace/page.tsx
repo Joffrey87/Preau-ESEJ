@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { familleEnApercu } from "@/lib/apercuFamille";
+import { familleDuProfil, familleEnApercu } from "@/lib/apercuFamille";
 import { formatEurosCourt as formatEuros, todayISO } from "@/lib/format";
 import { PastilleMaj } from "@/components/PageHeader";
 import { chargerEspace, situation, alertes, anneeCourante, classeEn } from "@/lib/espaceFamille";
@@ -17,7 +17,14 @@ export default async function TableauDeBordFamille() {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const apercu = await familleEnApercu(user);
+  // Aperçu (cookie) ou famille rattachée au profil (ex. : le Président, depuis son propre menu).
+  const enApercu = await familleEnApercu(user);
+  const liee = enApercu ? null : await familleDuProfil(user);
+  const apercu = enApercu ?? liee;
+  // Depuis le menu d'un profil d'Administration, les liens restent dans ce menu ; pas de bulletins (années passées
+  // dans École Futée).
+  const lien = (href: string | undefined) =>
+    !liee || !href ? href : href === "/espace/paiements" ? "/ma-famille/paiements" : href === "/espace/famille" ? "/ma-famille/fiche" : undefined;
   const { espace, erreur } = await chargerEspace(supabase, apercu);
   if (!espace) return <p className="text-sm text-negative">{erreur ?? "Espace indisponible."}</p>;
 
@@ -31,7 +38,7 @@ export default async function TableauDeBordFamille() {
     .eq("statut", "publie")
     .is("lu_le", null);
   const liste = [
-    ...(bulletinsNonLus
+    ...(bulletinsNonLus && !liee
       ? [
           {
             ton: "info" as const,
@@ -68,8 +75,8 @@ export default async function TableauDeBordFamille() {
               <li key={k} className={`flex flex-col rounded-lg border px-3 py-2 text-[13px] leading-snug ${TONS[a.ton]}`}>
                 <div className="font-medium">{a.titre}</div>
                 {a.detail && <div className="text-xs opacity-80">{a.detail}</div>}
-                {a.lien && (
-                  <Link href={a.lien} className="mt-auto pt-1 text-xs underline">
+                {lien(a.lien) && (
+                  <Link href={lien(a.lien) as string} className="mt-auto pt-1 text-xs underline">
                     Voir le détail
                   </Link>
                 )}

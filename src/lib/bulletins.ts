@@ -10,6 +10,7 @@
 // Les bulletins repris d'École Futée portent ses chiffres (`synthese.chiffres`), qui priment sur le calcul.
 
 import { classeEn, type Eleve } from "@/lib/eleves";
+import { resumeAbsences, type Absence, type ResumeAbsences } from "@/lib/absences";
 
 export type Statut = "nouveau" | "en_cours" | "pret" | "valide" | "publie";
 export type Mention = "avertissement" | "encouragements" | "compliments" | "felicitations";
@@ -102,6 +103,10 @@ export type Synthese = {
   mention: Mention | null;
   appreciation: string | null;
   publieLe?: string | null;
+  /** Absences et retards de la période (bulletins publiés depuis Préau). */
+  absences?: ResumeAbsences;
+  /** Commentaires par rubrique (Catéchisme, Travail…), repris d'École Futée. */
+  rubriques?: { titre: string; texte: string }[];
   /** Bulletins repris d'École Futée : ses chiffres, conservés pour un éventuel retour en arrière. */
   chiffres?: Record<string, Chiffre>;
 };
@@ -160,6 +165,7 @@ export type ResultatEleve = {
   bulletin: Bulletin | null;
   general: Chiffre;
   groupes: { groupe: Groupe; chiffre: Chiffre; matieres: ResultatMatiere[] }[];
+  absences: ResumeAbsences;
 };
 
 export type ContexteClasse = {
@@ -172,6 +178,8 @@ export type ContexteClasse = {
   notes: Note[];
   bulletins: Bulletin[];
   lignes: Ligne[];
+  /** Absences des élèves de la classe pendant la période. */
+  absences: Absence[];
 };
 
 /** Calcule moyennes, moyennes de classe et rangs de tous les élèves d'une classe pour une période. */
@@ -203,7 +211,8 @@ export function calculerClasse(ctx: ContexteClasse): ResultatEleve[] {
       })
       .filter((g) => g.matieres.length > 0);
     const general = moyennePonderee(gs.filter((g) => g.chiffre.moy !== null).map((g) => [g.chiffre.moy as number, Number(g.groupe.coef)]));
-    return { eleve, niveau, bulletin, groupes: gs, general: { moy: general, moyClasse: null, rang: null } };
+    const absences = resumeAbsences((ctx.absences ?? []).filter((a) => a.eleve_id === eleve.id && a.date >= ctx.periode.debut && a.date <= ctx.periode.fin));
+    return { eleve, niveau, bulletin, groupes: gs, general: { moy: general, moyClasse: null, rang: null }, absences };
   });
 
   // 2. Moyennes de classe et rangs, parmi les élèves comparables (même niveau si la classe le demande).
@@ -294,6 +303,7 @@ export function construireSynthese(r: ResultatEleve, ctx: { classe: Classe; peri
     })),
     mention: b?.mention ?? null,
     appreciation: b?.appreciation?.trim() || null,
+    absences: r.absences,
     publieLe: new Date().toISOString(),
     ...((b?.synthese as { chiffres?: Record<string, Chiffre> } | null)?.chiffres ? { chiffres: (b?.synthese as { chiffres: Record<string, Chiffre> }).chiffres } : {}),
   };

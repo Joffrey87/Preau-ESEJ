@@ -218,7 +218,7 @@ export function alertes(espace: EspaceFamille, s: Situation | null, aujourdhui: 
     });
   }
   if (s) {
-    for (const e of espace.eleves.filter((x) => termineEnJuin(x, s.annee))) {
+    for (const e of espace.eleves.filter((x) => termineEnJuin(x, s.annee) && !x.juin_du)) {
       out.push({ ton: "info", titre: `Dernière année à l'école pour ${prenomEleve(e)} (CM2)`, detail: "Le mois de juin n'est pas dû pour cet enfant : il est couvert par le mois d'avance." });
     }
   }

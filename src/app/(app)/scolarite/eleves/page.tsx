@@ -12,7 +12,7 @@ export default async function ElevesPage() {
 
   const [famillesRes, elevesRes] = await Promise.all([
     supabase.from("familles").select("id, nom").order("nom"),
-    supabase.from("eleves").select("id, famille_id, prenom, initiale, classe_entree, annee_entree, decalage, sorti_le"),
+    supabase.from("eleves").select("id, famille_id, prenom, initiale, classe_entree, annee_entree, decalage, sorti_le, juin_du"),
   ]);
 
   return (

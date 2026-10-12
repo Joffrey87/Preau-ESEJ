@@ -5,6 +5,7 @@
 import type { PDFFont, PDFPage, RGB } from "pdf-lib";
 import { chargerRessources, assainir } from "@/lib/recuPdf";
 import { mentionLabel, nomFichierBulletin, note20, rangTexte, titrePeriode, type Synthese } from "@/lib/bulletins";
+import { texteAbsences } from "@/lib/absences";
 
 const W = 595.28, H = 841.89, M = 40;
 
@@ -126,7 +127,8 @@ export async function construireBulletinsPdf(syntheses: Synthese[]): Promise<Uin
       centre(note20(c.moyClasse), cols.classe + 20, t, regular, 8, color === BLANC ? BLANC : GRIS);
       if (avecRang) centre(rangTexte(c.rang), cols.rang + 15, t, regular, 8, color);
     };
-    entete();
+    // Sans notes (grande section) : ni tableau ni moyenne générale, seulement les appréciations.
+    if (s.groupes.length) entete();
     for (const g of s.groupes) {
       place(18 + 22);
       rect(M, top, W - 2 * M, 17, OR_DOUX);
@@ -145,11 +147,20 @@ export async function construireBulletinsPdf(syntheses: Synthese[]): Promise<Uin
         top += h;
       }
     }
-    place(22);
-    rect(M, top, W - 2 * M, 20, NAVY);
-    texte("Moyenne générale", cols.matiere + 6, top + 13.5, semi, 9, BLANC);
-    chiffres(s.general, top + 13.5, semi, BLANC);
-    top += 30;
+    if (s.groupes.length) {
+      place(22);
+      rect(M, top, W - 2 * M, 20, NAVY);
+      texte("Moyenne générale", cols.matiere + 6, top + 13.5, semi, 9, BLANC);
+      chiffres(s.general, top + 13.5, semi, BLANC);
+      top += 30;
+    }
+
+    if (s.absences) {
+      place(20);
+      texte("Absences :", M, top + 10, regular, 9.5, GRIS);
+      texte(texteAbsences(s.absences), M + 54, top + 10, regular, 9.5);
+      top += 20;
+    }
 
     // Mention et appréciation générale.
     const mention = mentionLabel(s.mention);
@@ -159,6 +170,17 @@ export async function construireBulletinsPdf(syntheses: Synthese[]): Promise<Uin
       texte(mention, M + 50, top + 10, semi, 10, OR);
       top += 22;
     }
+    // Commentaires par rubrique (Catéchisme, Travail…), repris d'École Futée.
+    for (const x of s.rubriques ?? []) {
+      const lignes = coupe(x.texte, regular, 9, W - 2 * M - 24);
+      const h = 24 + lignes.length * 12.5;
+      place(h);
+      page.drawRectangle({ x: M, y: y(top + h), width: W - 2 * M, height: h, borderColor: TRAIT, borderWidth: 0.8 });
+      texte(x.titre, M + 12, top + 15, semi, 9);
+      lignes.forEach((l, i) => texte(l, M + 12, top + 29 + i * 12.5, regular, 9));
+      top += h + 8;
+    }
+
     const app = s.appreciation ? coupe(s.appreciation, regular, 9, W - 2 * M - 24) : [];
     const hApp = 28 + Math.max(1, app.length) * 12.5;
     place(hApp);

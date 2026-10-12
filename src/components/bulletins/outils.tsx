@@ -6,6 +6,8 @@ import { construireSynthese, estSynthese, statutDe, type ContexteClasse, type En
 export function syntheseDe(r: ResultatEleve, ctx: ContexteClasse, titulaire: string | null, enseignants: Map<string, Enseignant>): Synthese {
   const b = r.bulletin;
   if (b?.statut === "publie" && estSynthese(b.synthese)) return b.synthese;
+  // Bulletin repris en entier d'École Futée (sans matières ni notes dans Préau) : sa synthèse est la référence.
+  if (b?.source === "ecole-futee" && estSynthese(b.synthese) && ctx.groupes.length === 0) return b.synthese;
   return construireSynthese(r, { classe: ctx.classe, periode: ctx.periode, titulaire, enseignants });
 }
 

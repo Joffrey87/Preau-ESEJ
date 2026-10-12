@@ -22,6 +22,8 @@ export type Eleve = {
   annee_entree: string;
   decalage: number;
   sorti_le: string | null;
+  /** Exception à la règle du CM2 : juin reste dû pour cet élève (décision du trésorier). */
+  juin_du?: boolean;
 };
 
 const debut = (annee: string) => Number(annee.slice(0, 4));
@@ -58,7 +60,7 @@ export function partJuinNonDue(
   eleves: Eleve[],
   bareme: Record<number, number>,
 ): { montant: number; enfants: Eleve[] } {
-  const enfants = eleves.filter((e) => termineEnJuin(e, inscription.annee_scolaire));
+  const enfants = eleves.filter((e) => termineEnJuin(e, inscription.annee_scolaire) && !e.juin_du);
   if (enfants.length === 0) return { montant: 0, enfants };
   const nb = inscription.nb_enfants ?? scolarises(eleves, inscription.annee_scolaire).length;
   const mensuel = Number(inscription.montant_mensuel) || 0;

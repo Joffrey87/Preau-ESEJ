@@ -139,7 +139,7 @@ export default async function ScolaritePage({
       .select(
         "id, nom, parent1, parent2, adresse, cp_ville, telephone, courriels, notes, parent1_prenom, parent1_nom, parent1_telephone, parent1_courriel, parent2_prenom, parent2_nom, parent2_telephone, parent2_courriel",
       ),
-    supabase.from("eleves").select("id, famille_id, prenom, initiale, classe_entree, annee_entree, decalage, sorti_le"),
+    supabase.from("eleves").select("id, famille_id, prenom, initiale, classe_entree, annee_entree, decalage, sorti_le, juin_du"),
   ]);
 
   const bareme: Record<number, number> = {};

@@ -1,6 +1,7 @@
 // Chargement des données d'une classe pour une période (côté navigateur ; la base filtre selon le profil).
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Absence } from "@/lib/absences";
 import type { Bulletin, Classe, ContexteClasse, EleveBulletin, Enseignant, Evaluation, Groupe, Ligne, Matiere, Note, Periode } from "@/lib/bulletins";
 
 export type Referentiel = { periodes: Periode[]; classes: Classe[]; enseignants: Enseignant[] };
@@ -28,13 +29,17 @@ export async function chargerClasse(sb: SupabaseClient, classe: Classe, periode:
   const membres = new Set(((ce.data ?? []) as { eleve_id: string }[]).map((x) => x.eleve_id));
   const evaluations = (ev.data ?? []) as Evaluation[];
   const bulletins = (b.data ?? []) as Bulletin[];
-  const [n, l] = await Promise.all([
+  const ids = [...membres];
+  const [n, l, a] = await Promise.all([
     evaluations.length
       ? sb.from("evaluation_notes").select("*").in("evaluation_id", evaluations.map((x) => x.id))
       : Promise.resolve({ data: [] as Note[] }),
     bulletins.length
       ? sb.from("bulletin_lignes").select("*").in("bulletin_id", bulletins.map((x) => x.id))
       : Promise.resolve({ data: [] as Ligne[] }),
+    ids.length
+      ? sb.from("absences").select("*").in("eleve_id", ids).gte("date", periode.debut).lte("date", periode.fin)
+      : Promise.resolve({ data: [] as Absence[] }),
   ]);
   return {
     classe,
@@ -46,6 +51,7 @@ export async function chargerClasse(sb: SupabaseClient, classe: Classe, periode:
     notes: (n.data ?? []) as Note[],
     bulletins,
     lignes: (l.data ?? []) as Ligne[],
+    absences: (a.data ?? []) as Absence[],
   };
 }
 

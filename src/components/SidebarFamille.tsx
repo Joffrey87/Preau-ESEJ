@@ -13,6 +13,7 @@ const NAV = [
   { href: "/espace", label: "Tableau de bord", icon: "dashboard", exact: true },
   { href: "/espace/paiements", label: "Paiements", icon: "invoice", exact: false },
   { href: "/espace/bulletins", label: "Bulletins", icon: "bulletin", exact: false },
+  { href: "/espace/absences", label: "Absences", icon: "calendar", exact: false },
   { href: "/espace/famille", label: "Ma famille", icon: "maison", exact: false },
 ];
 

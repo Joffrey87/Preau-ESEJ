@@ -67,6 +67,7 @@ export type Don = {
   famille_statut?: "actuelle" | "ancienne" | null;
   /** Le donateur ne souhaite pas être sollicité (copie portée par chacun de ses dons). */
   ne_pas_solliciter?: boolean;
+  contact_reserve_a?: string | null;
   pii_chiffre: string | null;
   montant: number;
   date_don: string;

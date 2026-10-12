@@ -9,6 +9,7 @@ import { TONE_CLASSES } from "@/lib/statutDon";
 import { badgesDe, badgeTemperature, temperatureDe, type ProfilDonateur } from "@/lib/donateurs";
 import type { Don } from "@/components/GestionDons";
 import ModifierDonateur from "@/components/ModifierDonateur";
+import { PROFILS_BUREAU, PROFILS_RECHERCHE_FONDS } from "@/lib/profilsContact";
 
 /** Recommandation d'action en une phrase, selon le profil. */
 function recommandation(p: ProfilDonateur): string {
@@ -69,6 +70,14 @@ export default function FicheDonateur({
     setBusy(true);
     setErreur(null);
     const { error } = await createClient().rpc("definir_ne_pas_solliciter", { p_ids: dons.map((d) => d.id), p_valeur: actif });
+    setBusy(false);
+    if (error) return setErreur("Enregistrement impossible : " + error.message);
+    router.refresh();
+  }
+  async function definirContactReserve(valeur: string) {
+    setBusy(true);
+    setErreur(null);
+    const { error } = await createClient().rpc("definir_contact_reserve", { p_ids: dons.map((d) => d.id), p_valeur: valeur });
     setBusy(false);
     if (error) return setErreur("Enregistrement impossible : " + error.message);
     router.refresh();
@@ -161,6 +170,35 @@ export default function FicheDonateur({
               <strong>Ne souhaite pas être sollicité</strong>
               <span className="ml-1 text-xs text-muted">— exclu des exports, des campagnes et des actions suggérées</span>
             </span>
+          </label>
+          <label className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm">
+            <strong>Contact réservé à</strong>
+            <select
+              value={profil.contactReserveA ?? ""}
+              disabled={busy}
+              onChange={(e) => void definirContactReserve(e.target.value)}
+              className="rounded-md border border-border bg-background px-2 py-1 text-sm"
+            >
+              <option value="">Personne en particulier</option>
+              {profil.contactReserveA && ![...PROFILS_RECHERCHE_FONDS, ...PROFILS_BUREAU].includes(profil.contactReserveA) && (
+                <option value={profil.contactReserveA}>{profil.contactReserveA}</option>
+              )}
+              <optgroup label="Recherche de fonds">
+                {PROFILS_RECHERCHE_FONDS.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </optgroup>
+              <optgroup label="Bureau">
+                {PROFILS_BUREAU.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </optgroup>
+            </select>
+            <span className="text-xs text-muted">— lui seul contacte ce donateur</span>
           </label>
           {erreur && <p className="mt-1 text-xs text-negative">{erreur}</p>}
         </div>

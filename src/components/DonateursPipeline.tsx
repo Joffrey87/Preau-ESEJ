@@ -20,6 +20,7 @@ import CampagneCollecte from "@/components/CampagneCollecte";
 import FicheDonateur from "@/components/FicheDonateur";
 import HarmoniserFiches from "@/components/HarmoniserFiches";
 import ExportRelations from "@/components/ExportRelations";
+import ListeProfilsContact from "@/components/ListeProfilsContact";
 import CarteDonateurs from "@/components/CarteDonateurs";
 import DeverrouillerCoffre from "@/components/DeverrouillerCoffre";
 import BoutonFiltresMultiples, { CasePastille } from "@/components/BoutonFiltresMultiples";
@@ -301,6 +302,7 @@ export default function DonateursPipeline({
           </button>
         ))}
         <span className="ml-auto flex flex-wrap items-center gap-2">
+          <ListeProfilsContact profils={profils} onOuvrirFiche={setFicheCle} />
           <ExportRelations profils={profils} donsParCle={donsParCle} aujourdhui={today} />
           <HarmoniserFiches dons={dons as unknown as Don[]} verrou={verrou} />
         </span>

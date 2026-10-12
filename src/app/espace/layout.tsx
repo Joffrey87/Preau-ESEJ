@@ -18,15 +18,15 @@ export default async function EspaceLayout({ children }: { children: React.React
   if (!estFamille && !apercu) redirect("/");
 
   const { data: famille } = apercu
-    ? await supabase.from("familles").select("id, nom, revalide_annee, membre_recherche").eq("id", apercu).maybeSingle()
-    : await supabase.from("familles").select("id, nom, revalide_annee, membre_recherche").maybeSingle();
+    ? await supabase.from("familles").select("id, nom, revalide_annee, membre_recherche, directrice_liee").eq("id", apercu).maybeSingle()
+    : await supabase.from("familles").select("id, nom, revalide_annee, membre_recherche, directrice_liee").maybeSingle();
   // Campagne annuelle de revalidation des coordonnées (1er août → 30 septembre).
   const { data: campagne } = await supabase.rpc("annee_revalidation");
   const aRevalider = !apercu && campagne != null && famille?.revalide_annee !== campagne;
 
   return (
     <div className="flex min-h-full flex-col bg-background md:flex-row">
-      <SidebarFamille famille={famille?.nom ?? ""} apercu={!!apercu} bascule={!apercu ? (famille?.membre_recherche ?? undefined) : undefined} />
+      <SidebarFamille famille={famille?.nom ?? ""} apercu={!!apercu} bascule={!apercu && famille ? { prenom: famille.membre_recherche ?? null, directrice: !!famille.directrice_liee } : undefined} />
       <div className="min-w-0 flex-1">
         {apercu && (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-gold/40 bg-gold/15 px-5 py-2 text-[13px] md:px-8">

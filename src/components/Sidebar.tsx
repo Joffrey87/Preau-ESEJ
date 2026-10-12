@@ -11,7 +11,7 @@ import { todayISO } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
 import Icon from "./Icon";
 import BasculeTheme from "./BasculeTheme";
-import { PanneauBascule } from "./BasculeEspace";
+import { PanneauBascule, type LiensEspace } from "./BasculeEspace";
 import { oublierSessions } from "@/lib/basculeEspace";
 
 // Agencement « rail dense » : menu compact, sections réduites à un fin libellé,
@@ -29,8 +29,8 @@ export default function Sidebar({
   slugActif?: string;
   /** Familles de l'école, pour choisir laquelle voir (aperçu de son espace). */
   familles?: { id: string; nom: string }[];
-  /** Membre de la Recherche de fonds ayant aussi un Espace famille : le logo propose le passage de l'un à l'autre. */
-  bascule?: { famille: string; prenom: string };
+  /** Profil relié à un Espace famille (Recherche de fonds, Directrice) : le logo propose le passage de l'un à l'autre. */
+  bascule?: LiensEspace;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -114,7 +114,7 @@ export default function Sidebar({
         {!peutChanger && bascule && choixOuvert && (
           <div className="absolute left-2 right-2 top-full z-30 mt-1 rounded-xl border border-border bg-surface p-2 shadow-lg md:w-[19rem] md:right-auto">
             <div className="px-1.5 pb-1.5 text-[11px] text-muted">Changer d’espace</div>
-            <PanneauBascule actuel="recherche" famille={bascule.famille} prenom={bascule.prenom} />
+            <PanneauBascule actuel={roleByEmail(userEmail)?.slug === "directrice" ? "directrice" : "recherche"} liens={bascule} />
           </div>
         )}
 
@@ -176,7 +176,7 @@ export default function Sidebar({
       <nav onClick={(e) => (e.target as HTMLElement).closest("a") && setMenuOuvert(false)} className={`${menuOuvert ? "" : "max-md:hidden"} flex-1 overscroll-contain px-2 pt-2 pb-8 md:min-h-0 md:overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden`}>
         {!peutChanger && bascule && (
           <div className="mb-2 md:hidden">
-            <PanneauBascule actuel="recherche" famille={bascule.famille} prenom={bascule.prenom} />
+            <PanneauBascule actuel={roleByEmail(userEmail)?.slug === "directrice" ? "directrice" : "recherche"} liens={bascule} />
           </div>
         )}
         {peutChanger && (

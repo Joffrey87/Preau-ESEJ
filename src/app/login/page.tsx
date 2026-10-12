@@ -76,6 +76,10 @@ export default function LoginPage() {
       setEmail("");
       setNomFamille(q.get("nom") ?? "");
       setDepuisBascule(true);
+    } else if (voulu === "directrice") {
+      setEspace("bureau");
+      setEmail(ROLES.find((r) => r.slug === "directrice")?.email ?? ROLES[1].email);
+      setDepuisBascule(true);
     } else if (voulu === "recherche") {
       setEspace("bureau");
       setEmail(ROLES.find((r) => r.slug === "recherche-fonds")?.email ?? ROLES[1].email);
@@ -136,6 +140,7 @@ export default function LoginPage() {
     // Session gardée pour le va-et-vient Espace famille ↔ Recherche de fonds (logo en haut à gauche).
     if (espace === "famille") await memoriserSession("famille");
     else if (avecPrenom) await memoriserSession("recherche");
+    else if (adresse === ROLES.find((r) => r.slug === "directrice")?.email) await memoriserSession("directrice");
 
     // Prénom de la visite : cookie de session (sans durée), effacé à la fermeture du navigateur.
     document.cookie = avecPrenom

@@ -29,8 +29,8 @@ export default function SidebarFamille({
   famille: string;
   /** Aperçu du Trésorier : pas de déconnexion ni de changement d'espace. */
   apercu?: boolean;
-  /** Prénom du membre Recherche de fonds de la famille, s'il y en a un. */
-  bascule?: string;
+  /** Espaces reliés : prénom du membre Recherche de fonds de la famille, s'il y en a un ; famille de la Directrice. */
+  bascule?: { prenom: string | null; directrice: boolean };
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -38,7 +38,8 @@ export default function SidebarFamille({
   const [choixOuvert, setChoixOuvert] = useState(false);
   const enteteRef = useRef<HTMLDivElement>(null);
   const surTelephone = () => typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
-  const avecChoix = !apercu && !!bascule;
+  const avecChoix = !apercu && !!bascule && (!!bascule.prenom || bascule.directrice);
+  const liens = { famille, prenom: bascule?.prenom ?? null, directrice: !!bascule?.directrice };
 
   useEffect(() => {
     if (!choixOuvert) return;
@@ -101,7 +102,7 @@ export default function SidebarFamille({
         {avecChoix && choixOuvert && (
           <div className="absolute left-2 right-2 top-full z-30 mt-1 rounded-xl border border-border bg-surface p-2 shadow-lg md:right-auto md:w-[19rem]">
             <div className="px-1.5 pb-1.5 text-[11px] text-muted">Changer d’espace</div>
-            <PanneauBascule actuel="famille" famille={famille} prenom={bascule as string} />
+            <PanneauBascule actuel="famille" liens={liens} />
           </div>
         )}
       </div>
@@ -112,7 +113,7 @@ export default function SidebarFamille({
       >
         {avecChoix && (
           <div className="mb-2 md:hidden">
-            <PanneauBascule actuel="famille" famille={famille} prenom={bascule as string} />
+            <PanneauBascule actuel="famille" liens={liens} />
           </div>
         )}
         <ul>

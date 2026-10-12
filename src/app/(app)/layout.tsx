@@ -10,6 +10,7 @@ import { emailVue } from "@/lib/vueRoleServeur";
 import Icon from "@/components/Icon";
 import JaugeDons, { type DonsExercice } from "@/components/JaugeDons";
 import { todayISO } from "@/lib/format";
+import type { LiensEspace } from "@/components/BasculeEspace";
 
 export default async function AppLayout({
   children,
@@ -36,12 +37,18 @@ export default async function AppLayout({
   const familles = peutChanger
     ? (((await supabase.from("familles").select("id, nom").order("nom")).data ?? []) as { id: string; nom: string }[])
     : [];
-  // Membre de la Recherche de fonds qui a aussi un Espace famille : le logo propose le passage de l'un à l'autre.
+  // Profil relié à un Espace famille (membre de la Recherche de fonds, Directrice) : le logo propose le passage de l'un
+  // à l'autre — et, pour la famille de la Directrice, entre les trois.
   const prenomVisite = decodeURIComponent((await cookies()).get(COOKIE_PRENOM)?.value ?? "");
-  const familleLiee =
-    roleByEmail(user.email)?.slug === "recherche-fonds" && prenomVisite
-      ? ((await supabase.rpc("famille_du_membre", { p_prenom: prenomVisite })).data as string | null)
-      : null;
+  const slugReel = roleByEmail(user.email)?.slug;
+  let bascule: LiensEspace | undefined;
+  if (slugReel === "recherche-fonds" && prenomVisite) {
+    const lien = ((await supabase.rpc("liens_du_membre", { p_prenom: prenomVisite })).data as { famille: string; directrice: boolean }[] | null)?.[0];
+    if (lien) bascule = { famille: lien.famille, prenom: prenomVisite, directrice: lien.directrice };
+  } else if (slugReel === "directrice") {
+    const { data: f } = await supabase.from("familles").select("nom, membre_recherche").eq("directrice_liee", true).maybeSingle();
+    if (f) bascule = { famille: f.nom as string, prenom: (f.membre_recherche as string | null) ?? null, directrice: true };
+  }
   const jauge = rechercheFonds ? ((await supabase.rpc("dons_exercice_courant")).data as DonsExercice) : null;
 
   return (
@@ -52,7 +59,7 @@ export default async function AppLayout({
           peutChanger={peutChanger}
           familles={familles}
           slugActif={roleVu?.slug ?? "tresorier"}
-          bascule={familleLiee ? { famille: familleLiee, prenom: prenomVisite } : undefined}
+          bascule={bascule}
         />
         <main className="flex-1 min-w-0">
           {enVue && (

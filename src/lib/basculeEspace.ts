@@ -1,13 +1,17 @@
-// Aller-retour entre l'Espace famille et la Recherche de fonds pour une personne qui a les deux profils.
+// Aller-retour entre l'Espace famille, la Recherche de fonds et le profil Directrice pour une famille qui a plusieurs
+// profils (ex. : la Directrice et son mari, membre de la Recherche de fonds).
 //
-// Les deux profils sont deux comptes distincts. Après s'être connecté une fois à chacun sur cet appareil, la session de
+// Les profils sont des comptes distincts. Après s'être connecté une fois à chacun sur cet appareil, la session de
 // l'espace laissé de côté est gardée dans le navigateur (localStorage) : le logo bascule alors de l'un à l'autre sans
 // ressaisir de mot de passe. Un espace jamais ouvert sur cet appareil renvoie à la connexion. La déconnexion efface tout.
 
 import { createClient } from "@/lib/supabase/client";
 import { COOKIE_PRENOM } from "@/lib/roles";
 
-export type Espace = "famille" | "recherche";
+export type Espace = "famille" | "recherche" | "directrice";
+
+/** Page d'arrivée de chaque espace. */
+const ACCUEIL: Record<Espace, string> = { famille: "/espace", recherche: "/recherche/axes", directrice: "/bulletins" };
 
 const CLE = "preau.sessions";
 type Session = { access_token: string; refresh_token: string };
@@ -47,12 +51,12 @@ const cookiePrenom = (prenom: string | null) => {
 };
 
 /**
- * Passe à l'autre espace. `prenom` : prénom du membre Recherche de fonds (pour aller vers la Recherche de fonds) ;
- * `famille` : nom de la famille (pour préremplir la connexion quand l'espace n'a pas encore été ouvert ici).
+ * Passe de l'espace `quitte` à l'espace `vers`. `prenom` : prénom du membre Recherche de fonds (pour aller vers la
+ * Recherche de fonds) ; `famille` : nom de la famille (pour préremplir la connexion quand l'espace n'a pas encore été
+ * ouvert ici).
  */
-export async function basculerVers(vers: Espace, infos: { prenom?: string | null; famille?: string | null }) {
+export async function basculerVers(vers: Espace, quitte: Espace, infos: { prenom?: string | null; famille?: string | null }) {
   const supabase = createClient();
-  const quitte: Espace = vers === "famille" ? "recherche" : "famille";
   await memoriserSession(quitte);
 
   const session = lire()[vers];
@@ -61,7 +65,7 @@ export async function basculerVers(vers: Espace, infos: { prenom?: string | null
     if (!error && data.session) {
       ecrire({ ...lire(), [vers]: { access_token: data.session.access_token, refresh_token: data.session.refresh_token } });
       cookiePrenom(vers === "recherche" ? (infos.prenom ?? null) : null);
-      window.location.assign(vers === "famille" ? "/espace" : "/recherche/axes");
+      window.location.assign(ACCUEIL[vers]);
       return;
     }
     // Session expirée ou révoquée : on la retire et on repasse par la connexion.
@@ -76,7 +80,9 @@ export async function basculerVers(vers: Espace, infos: { prenom?: string | null
   const q = new URLSearchParams(
     vers === "famille"
       ? { espace: "famille", ...(infos.famille ? { nom: infos.famille } : {}) }
-      : { espace: "recherche", ...(infos.prenom ? { prenom: infos.prenom } : {}) },
+      : vers === "directrice"
+        ? { espace: "directrice" }
+        : { espace: "recherche", ...(infos.prenom ? { prenom: infos.prenom } : {}) },
   );
   window.location.assign(`/login?${q.toString()}`);
 }

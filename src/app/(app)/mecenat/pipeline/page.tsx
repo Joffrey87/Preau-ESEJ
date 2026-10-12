@@ -1,11 +1,10 @@
-import Link from "next/link";
 import PageHeader from "@/components/PageHeader";
 import PipelineTabs from "@/components/PipelineTabs";
 import { createClient } from "@/lib/supabase/server";
 import type { Prospect } from "@/lib/pipeline";
 import type { Don } from "@/components/GestionDons";
 import { emailVue } from "@/lib/vueRoleServeur";
-import { pagesAutorisees, roleByEmail } from "@/lib/roles";
+import { roleByEmail } from "@/lib/roles";
 import JaugeDons, { type DonsExercice } from "@/components/JaugeDons";
 import { todayISO } from "@/lib/format";
 
@@ -37,11 +36,6 @@ export default async function PipelinePage() {
       <PageHeader
         compact
         title="Relations donateurs"
-        action={
-          pagesAutorisees(await emailVue(user?.email)) ? undefined : <Link href="/mecenat/strategie" className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-surface-2">
-            Stratégie & règles
-          </Link>
-        }
       />
       {/* Recherche de fonds : la jauge est déjà en haut de chaque onglet (layout). */}
       {roleByEmail(await emailVue(user?.email))?.slug !== "recherche-fonds" && (

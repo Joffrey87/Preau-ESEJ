@@ -20,7 +20,6 @@ export const NAV: NavSection[] = [
     items: [
       { href: "/", label: "Tableau de bord", icon: "dashboard", ready: true },
       { href: "/comptabilite", label: "Comptabilité", icon: "ledger", ready: true },
-      { href: "/en-cours", label: "En cours", icon: "clock", ready: true },
       { href: "/budget", label: "Budget", icon: "chart", ready: true },
       { href: "/scolarite", label: "Frais de scolarité", icon: "graduation", ready: true },
     ],
@@ -28,9 +27,7 @@ export const NAV: NavSection[] = [
   {
     title: "Financement",
     items: [
-      { href: "/financement", label: "Financement", icon: "chart", ready: true },
       { href: "/dons", label: "Dons", icon: "gift", ready: true },
-      { href: "/mecenat", label: "Mécénat", icon: "target", ready: true },
       { href: "/mecenat/pipeline", label: "Relations donateurs", icon: "funnel", ready: true },
       { href: "/recus-fiscaux", label: "Reçus fiscaux", icon: "receipt", ready: true },
     ],
@@ -66,4 +63,14 @@ export const NAV: NavSection[] = [
       { href: "/processus", label: "Processus", icon: "ampoule", ready: true },
     ],
   },
+];
+
+/**
+ * Onglets mis de côté (retirés du menu, pages et code conservés : les URL restent atteignables).
+ * Pour les remettre, les replacer dans NAV (En cours : « Comptabilité » ; Financement et Mécénat : « Financement »).
+ */
+export const ONGLETS_DE_COTE: NavItem[] = [
+  { href: "/en-cours", label: "En cours", icon: "clock", ready: true },
+  { href: "/financement", label: "Financement", icon: "chart", ready: true },
+  { href: "/mecenat", label: "Mécénat", icon: "target", ready: true },
 ];

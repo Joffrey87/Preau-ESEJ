@@ -4,7 +4,6 @@ import NouvelleOperation from "@/components/NouvelleOperation";
 import ListeOperations from "@/components/ListeOperations";
 import type { Affectation, Inscription } from "@/components/AffectationScolarite";
 import { createClient } from "@/lib/supabase/server";
-import { formatEuros } from "@/lib/format";
 import { toutesLesOperations } from "@/lib/operations";
 import { rapprocherDons, type Rapprochement } from "@/lib/rapprochementDons";
 import type { DonCompta } from "@/components/PastilleDon";
@@ -164,11 +163,6 @@ export default async function ComptabilitePage({
   // ±1 mois, nom du donateur dans l'intitulé bancaire, fiche et création d'un don depuis la Compta.
   const donsCompta = dons;
 
-  // Une ligne détaillée ne compte pas : ses sous-écritures portent les montants
-  // et les catégories. La présence de filles fait foi, pas l'indicateur seul.
-  const meres = new Set(operations.map((o) => o.parent_id).filter(Boolean) as string[]);
-  const comptabilisees = operations.filter((o) => !meres.has(o.id) && !o.est_ventilee && estRetenue(o));
-
   // Liens des boutons : un seul exercice à la fois ; les années, elles, se
   // cumulent (un clic ajoute ou retire l'année ; retirer la dernière ramène au
   // mode exercice, sur l'exercice du jour).
@@ -189,8 +183,6 @@ export default async function ComptabilitePage({
     `rounded-lg border px-3 py-1.5 text-sm ${
       actif ? "border-accent bg-accent-soft font-medium text-accent" : "border-border hover:bg-surface-2"
     }`;
-  const recettes = comptabilisees.filter((o) => o.type === "recette").reduce((s, o) => s + Number(o.montant), 0);
-  const depenses = comptabilisees.filter((o) => o.type === "depense").reduce((s, o) => s + Number(o.montant), 0);
 
   return (
     <div className="mx-auto max-w-6xl px-5 py-8 md:px-8">
@@ -256,25 +248,6 @@ export default async function ComptabilitePage({
                 {a}
               </Link>
             ))}
-          </div>
-        </div>
-      )}
-
-      {operations.length > 0 && (
-        <div className="mb-4 grid grid-cols-3 gap-3">
-          <div className="rounded-xl border border-border bg-surface px-4 py-3">
-            <div className="text-xs text-muted">Recettes · {comptabilisees.length} opérations</div>
-            <div className="mt-1 text-lg font-semibold tabular-nums text-positive">{formatEuros(recettes)}</div>
-          </div>
-          <div className="rounded-xl border border-border bg-surface px-4 py-3">
-            <div className="text-xs text-muted">Dépenses</div>
-            <div className="mt-1 text-lg font-semibold tabular-nums text-negative">{formatEuros(depenses)}</div>
-          </div>
-          <div className="rounded-xl border border-border bg-surface px-4 py-3">
-            <div className="text-xs text-muted">Résultat</div>
-            <div className={`mt-1 text-lg font-semibold tabular-nums ${recettes - depenses >= 0 ? "text-positive" : "text-negative"}`}>
-              {formatEuros(recettes - depenses)}
-            </div>
           </div>
         </div>
       )}

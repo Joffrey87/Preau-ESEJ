@@ -389,7 +389,7 @@ export default function DonateursPipeline({
         <section className="mt-8 rounded-xl border border-dashed border-border bg-surface-2/40 p-4">
           <h2 className="mb-1 text-sm font-semibold">Donateurs Bourse ({boursiersAffiches.length})</h2>
           <p className="mb-3 text-xs text-muted">
-            Ils donnent pour payer des bourses de frais de scolarité : hors grands donateurs, hors statistiques et campagnes de collecte. Cochez ou décochez leurs « dons boursiers » dans leur fiche.
+            Ils donnent pour payer des bourses de frais de scolarité : hors grands donateurs, hors statistiques et campagnes de collecte. Cochez ou décochez leurs « dons boursiers » dans leur fiche (boutons « Tout cocher » / « Tout décocher »).
           </p>
           <div className="overflow-x-auto rounded-lg border border-border bg-surface">
             <table className="w-full text-sm">

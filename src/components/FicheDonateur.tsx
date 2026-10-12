@@ -109,7 +109,7 @@ export default function FicheDonateur({
   ];
 
   return (
-    <Modal title="Fiche donateur" onClose={onClose} fermerAuClicExterieur enregistrerEnFermant>
+    <Modal title="Fiche donateur" onClose={onClose} fermerAuClicExterieur enregistrerEnFermant large>
       <div className="space-y-4">
         {/* Identité + badges */}
         <div>
@@ -198,10 +198,32 @@ export default function FicheDonateur({
 
         {/* Derniers dons (les plus anciens sont résumés par année ci-dessus). */}
         <div>
-          <h3 className="mb-2 text-sm font-semibold">
-            {profil.boursier ? "Dons (cochez les dons boursiers)" : historique.length > 5 ? "5 derniers dons" : "Détail des dons"}
-          </h3>
-          <div className="overflow-hidden rounded-lg border border-border">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-sm font-semibold">
+              {profil.boursier ? "Dons (cochez les dons boursiers)" : historique.length > 5 ? "5 derniers dons" : "Détail des dons"}
+            </h3>
+            {profil.boursier && historique.length > 0 && (
+              <span className="flex gap-1.5 text-xs">
+                <button
+                  type="button"
+                  disabled={busy || profil.nbDonsBourse === historique.length}
+                  onClick={() => void definir(historique.map((d) => d.id), null, true)}
+                  className="rounded-md border border-border px-2 py-1 hover:bg-surface-2 disabled:opacity-40"
+                >
+                  Tout cocher
+                </button>
+                <button
+                  type="button"
+                  disabled={busy || profil.nbDonsBourse === 0}
+                  onClick={() => void definir(historique.map((d) => d.id), null, false)}
+                  className="rounded-md border border-border px-2 py-1 hover:bg-surface-2 disabled:opacity-40"
+                >
+                  Tout décocher
+                </button>
+              </span>
+            )}
+          </div>
+          <div className="overflow-x-auto rounded-lg border border-border">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-surface-2 text-left text-muted">

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { DonCompta } from "@/components/PastilleDon";
 import { useCoffre } from "@/components/CoffreProvider";
@@ -28,7 +28,19 @@ const COLONNES = "id, parent_id, date_operation, montant, libelle_origine, libel
  * les rapproche des dons « hors compta ». Les liens sans (quasi) doute sont posés d'un clic ; les autres
  * écritures sont classées par nature du doute. Rien n'est écrit avant la confirmation.
  */
-export default function LiaisonGlobale({ dons, verrou }: { dons: DonCompta[]; verrou: boolean }) {
+export default function LiaisonGlobale({
+  dons,
+  verrou,
+  demande = 0,
+  sansBouton = false,
+}: {
+  dons: DonCompta[];
+  verrou: boolean;
+  /** Ouverture depuis un menu extérieur : le compteur augmente à chaque demande. */
+  demande?: number;
+  /** Aucun bouton affiché : seule la fenêtre existe (déclenchée par `demande`). */
+  sansBouton?: boolean;
+}) {
   const router = useRouter();
   const coffre = useCoffre();
   const [ouvert, setOuvert] = useState(false);
@@ -42,8 +54,14 @@ export default function LiaisonGlobale({ dons, verrou }: { dons: DonCompta[]; ve
   // Doutes : le don que l'utilisateur choisit de lier, par écriture (un seul don par écriture).
   const [choix, setChoix] = useState<Map<string, string>>(new Map());
 
+  useEffect(() => {
+    if (demande > 0 && !verrou && coffre.estOuvert) void analyser();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [demande]);
+
   // Coffre fermé : le bouton reste visible mais inactif (les noms des donateurs sont nécessaires au rapprochement).
   if (verrou || !coffre.estOuvert) {
+    if (sansBouton) return null;
     return (
       <button
         type="button"
@@ -205,14 +223,16 @@ export default function LiaisonGlobale({ dons, verrou }: { dons: DonCompta[]; ve
 
   return (
     <>
-      <button
-        type="button"
-        onClick={analyser}
-        className="rounded-lg border border-accent/50 bg-accent-soft/40 px-3 py-1.5 text-sm font-medium text-accent hover:bg-accent-soft"
-        title="Rapproche toutes les écritures « Don » sans don (tous les exercices) des dons « hors compta »"
-      >
-        🔗 Lier toutes les années
-      </button>
+      {!sansBouton && (
+        <button
+          type="button"
+          onClick={analyser}
+          className="rounded-lg border border-accent/50 bg-accent-soft/40 px-3 py-1.5 text-sm font-medium text-accent hover:bg-accent-soft"
+          title="Rapproche toutes les écritures « Don » sans don (tous les exercices) des dons « hors compta »"
+        >
+          🔗 Lier toutes les années
+        </button>
+      )}
       {ouvert && (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4">
           <div className="flex max-h-[92vh] w-full max-w-6xl flex-col rounded-2xl border border-border bg-surface p-5 shadow-xl">

@@ -151,21 +151,3 @@ export default function JaugeScolarite({
     </div>
   );
 }
-
-/**
- * « ? » placé après un montant réglé signalé : rouge pour un retard, ambre pour
- * la mensualité du mois à régler avant sa fin. Le survol en donne le sens.
- */
-export function AideReglement({ retard, finDeMois }: { retard: boolean; finDeMois: boolean }) {
-  if (!retard && !finDeMois) return null;
-  return (
-    <span
-      title={retard ? "En retard : mensualité due depuis la fin du mois dernier" : "À payer d'ici la fin du mois"}
-      className={`ml-1 inline-flex h-4 w-4 cursor-help items-center justify-center rounded-full border text-[10px] font-bold ${
-        retard ? "border-negative/50 text-negative" : "border-gold/60 text-gold"
-      }`}
-    >
-      ?
-    </span>
-  );
-}

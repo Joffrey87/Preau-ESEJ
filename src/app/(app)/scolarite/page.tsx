@@ -8,7 +8,6 @@ import { estAmitieSainteAnne } from "@/lib/importEnrichi";
 import type { FicheFamille } from "@/components/FamilleEnfants";
 import type { Eleve } from "@/lib/eleves";
 import ModificationsFamilles from "@/components/ModificationsFamilles";
-import AccesFamilles from "@/components/AccesFamilles";
 
 export default async function ScolaritePage({
   searchParams,
@@ -150,8 +149,9 @@ export default async function ScolaritePage({
   const { data: campagne } = await supabase.rpc("annee_revalidation");
 
   return (
-    <div className="mx-auto max-w-6xl px-5 py-8 md:px-8">
+    <div className="mx-auto max-w-6xl px-5 py-5 md:px-8">
       <PageHeader
+        compact
         title="Frais de scolarité"
         subtitle="Suivi des paiements par famille : dû, réglé, reste à percevoir et mois d'avance."
         maj={(majRes.data as string | null) ?? null}
@@ -170,7 +170,6 @@ export default async function ScolaritePage({
         }
       />
       <ModificationsFamilles campagne={(campagne as number | null) ?? null} />
-      <AccesFamilles />
       {annees.length === 0 ? (
         <div className="rounded-xl border border-border bg-surface px-4 py-16 text-center text-muted">
           Aucune donnée de scolarité.

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import Icon from "@/components/Icon";
+import AccesFamilles from "@/components/AccesFamilles";
 import { createClient } from "@/lib/supabase/server";
 import { formatEuros } from "@/lib/format";
 import { regleDesFamilles } from "@/lib/regleScolarite";
@@ -115,7 +116,6 @@ export default async function Home() {
   const donsIncomplets = dons.filter((d) =>
     champsImportantsManquants(d).some((c) => !sansRecu(d) || c === "nom" || c === "nom de l'organisme"),
   ).length;
-  const totalDons = dons.length;
 
   // Scolarité — reste à payer = dû − réglé (calcul commun : lib/regleScolarite)
   const resteFamille = (r: (typeof sco)[number]) => r.du - r.regle;
@@ -137,29 +137,6 @@ export default async function Home() {
     prios.push({ title: `${recusAEnvoyer} reçu${recusAEnvoyer > 1 ? "s" : ""} fiscal${recusAEnvoyer > 1 ? "s" : ""} à envoyer`, detail: "Dons sans reçu encore envoyé", href: "/recus-fiscaux", icon: "receipt", tone: "blue" });
   if ((estFinance || estEcole) && famImpayees.length > 0)
     prios.push({ title: `${famImpayees.length} famille${famImpayees.length > 1 ? "s" : ""} avec un reste à régler`, detail: `${formatEuros(resteTotal)} au total · scolarité ${anneeSco}`, href: "/scolarite", icon: "graduation", tone: "amber" });
-
-  // Chiffres clés selon le rôle
-  type Stat = { label: string; value: string; hint: string };
-  let stats: Stat[] = [];
-  if (estFinance) {
-    stats = [
-      { label: "Solde courant", value: formatEuros(solde), hint: "Tous comptes" },
-      { label: "Dépenses / prévu", value: budgetConsomme === null ? "—" : `${Math.round(budgetConsomme)} %`, hint: "Budget de l'exercice" },
-      { label: "Reçus à envoyer", value: String(recusAEnvoyer), hint: `${totalDons} dons au total` },
-      { label: "Restes scolarité", value: formatEuros(resteTotal), hint: `${famImpayees.length} famille(s)` },
-    ];
-  } else if (estMecenat) {
-    stats = [
-      { label: "Dons enregistrés", value: String(totalDons), hint: "Toutes années" },
-      { label: "Reçus à envoyer", value: String(recusAEnvoyer), hint: "Dons non envoyés" },
-      { label: "Dons à compléter", value: String(donsIncomplets), hint: "Info manquante" },
-    ];
-  } else if (estEcole) {
-    stats = [
-      { label: "Familles inscrites", value: String(sco.length), hint: `Scolarité ${anneeSco ?? ""}` },
-      { label: "Restes à régler", value: String(famImpayees.length), hint: "Familles concernées" },
-    ];
-  }
 
   // Accès rapide selon le rôle
   const RACCOURCIS: Record<string, { href: string; icon: string; title: string; desc: string }> = {
@@ -214,7 +191,7 @@ export default async function Home() {
           Vos priorités du jour
         </h2>
         {prios.length === 0 ? (
-          <div className="flex items-center gap-3 rounded-xl border border-border bg-surface px-5 py-6 text-sm text-muted">
+          <div className="flex items-center gap-3 rounded-lg border border-border bg-surface px-4 py-3 text-sm text-muted">
             <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-positive/10 text-positive">
               <Icon name="check" className="h-5 w-5" />
             </span>
@@ -226,35 +203,22 @@ export default async function Home() {
               <Link
                 key={p.title}
                 href={p.href}
-                className={`group flex items-start gap-3 rounded-xl border border-border bg-surface p-4 transition-colors ${TONE[p.tone].ring}`}
+                className={`group flex items-start gap-2.5 rounded-lg border border-border bg-surface px-3 py-2 transition-colors ${TONE[p.tone].ring}`}
               >
-                <span className={`mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full ${TONE[p.tone].dot}`} />
+                <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${TONE[p.tone].dot}`} />
                 <span className="min-w-0 flex-1">
                   <span className="block font-medium">{p.title}</span>
                   <span className="mt-0.5 block text-sm text-muted">{p.detail}</span>
                 </span>
-                <Icon name="transfer" className="mt-1 h-4 w-4 shrink-0 text-muted opacity-0 transition-opacity group-hover:opacity-100" />
+                <Icon name="transfer" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted opacity-0 transition-opacity group-hover:opacity-100" />
               </Link>
             ))}
           </div>
         )}
       </section>
 
-      {/* Chiffres clés */}
-      {stats.length > 0 && (
-        <section className="mb-9">
-          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted">Chiffres clés</h2>
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {stats.map((s) => (
-              <div key={s.label} className="rounded-xl border border-border bg-surface p-4">
-                <div className="text-sm text-muted">{s.label}</div>
-                <div className="mt-2 text-2xl font-semibold tabular-nums">{s.value}</div>
-                <div className="mt-1 text-xs text-muted">{s.hint}</div>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
+      {/* Accès des familles (visible du Trésorier et des administrateurs seulement) */}
+      <AccesFamilles />
 
       {/* Accès rapide */}
       <section>
@@ -266,7 +230,8 @@ export default async function Home() {
               <Link
                 key={s.href}
                 href={s.href}
-                className="group flex items-start gap-4 rounded-xl border border-border bg-surface p-5 transition-colors hover:border-accent"
+                title={s.desc}
+                className="group flex items-center gap-2.5 rounded-lg border border-border bg-surface px-3 py-2 transition-colors hover:border-accent"
               >
                 <div className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-accent-soft text-accent">
                   <Icon name={s.icon} className="h-5 w-5" />

@@ -45,7 +45,9 @@ export default async function PipelinePage() {
       />
       {/* Recherche de fonds : la jauge est déjà en haut de chaque onglet (layout). */}
       {roleByEmail(await emailVue(user?.email))?.slug !== "recherche-fonds" && (
-        <JaugeDons donnees={(jaugeRes.data as DonsExercice) ?? null} aujourdhui={todayISO()} />
+        <div className="mb-5">
+          <JaugeDons donnees={(jaugeRes.data as DonsExercice) ?? null} aujourdhui={todayISO()} />
+        </div>
       )}
       <PipelineTabs
         prospects={(prospectsData ?? []) as Prospect[]}

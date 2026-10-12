@@ -23,6 +23,10 @@ import LierDonAEcriture from "@/components/LierDonAEcriture";
 import FenetreDonEcriture from "@/components/FenetreDonEcriture";
 import EtapePostaleListe, { BandeauEtapePostale } from "@/components/EtapePostale";
 import LiaisonGlobale from "@/components/LiaisonGlobale";
+import Link from "next/link";
+import PageHeader from "@/components/PageHeader";
+import ModeleRecuDialog from "@/components/ModeleRecuDialog";
+import type { ModeleRecuRow } from "@/lib/modeleRecu";
 import type { DonCompta } from "@/components/PastilleDon";
 import { estCouple } from "@/lib/couple";
 import BoutonFiltresMultiples, { CasePastille } from "@/components/BoutonFiltresMultiples";
@@ -104,7 +108,6 @@ const anneeScolaireISO = (iso: string) => {
   return m >= 9 ? `${y}-${y + 1}` : `${y - 1}-${y}`;
 };
 const anneeScolaireCourante = () => anneeScolaireISO(new Date().toISOString().slice(0, 10));
-const anneeCivileCourante = () => String(new Date().getFullYear());
 
 // Filtre de période : « toutes », un exercice (« exo:2026-2027 ») ou une année
 // civile (« civ:2026 » — celle des reçus fiscaux).
@@ -115,6 +118,9 @@ const periodeDuDon = (d: Don, f: FiltreAnnee): boolean => {
   return f.startsWith("civ:") ? d.date_don.slice(0, 4) === f.slice(4) : anneeScolaireISO(d.date_don) === f.slice(4);
 };
 const FILTRE_ANNEE_DEFAUT: FiltreAnnee = `exo:${anneeScolaireCourante()}`;
+
+// Filtres de statut toujours affichés ; les autres apparaissent avec « + de filtres » (ou dès qu'ils sont actifs).
+const FILTRES_VISIBLES: StatutKey[] = ["important", "mineur", "etablir", "annuel", "envoyer", "nonlie"];
 
 type FormState = {
   origine: string;
@@ -167,9 +173,15 @@ export default function GestionDons({
   ouvrirId = null,
   signalerManques = false,
   onFermer,
+  modeleRecu,
+  sousEntete,
 }: {
+  /** Page Dons : bloc affiché sous le titre (jauge des dons). */
+  sousEntete?: React.ReactNode;
   dons: Don[];
   roleSlug?: string | null;
+  /** Page Dons : fournit le modèle de reçu (même null) et affiche l'en-tête avec le menu « Options ». */
+  modeleRecu?: ModeleRecuRow | null;
   /** Relations déjà employées, proposées en suggestion pour éviter les doublons. */
   relations?: string[];
   /**
@@ -203,11 +215,18 @@ export default function GestionDons({
   const [signaler, setSignaler] = useState(false);
   const [recherche, setRecherche] = useState("");
   const [anneeFiltre, setAnneeFiltre] = useState<FiltreAnnee>(FILTRE_ANNEE_DEFAUT);
-  const [catFiltre, setCatFiltre] = useState("toutes");
+  // Catégories décochées dans le menu « Catégorie » (aucune = toutes affichées) ; « à corriger » = filtre à part.
+  const [catsMasquees, setCatsMasquees] = useState<string[]>([]);
+  const [soloIncoherents, setSoloIncoherents] = useState(false);
+  const [menuCats, setMenuCats] = useState(false);
   const [compact, setCompact] = useState(true);
   const [cols, setCols] = useState<Record<ColKey, boolean>>(COLS_DEFAUT);
   const [tri, setTri] = useState<{ key: ColKey; dir: "asc" | "desc" }>({ key: "date", dir: "desc" });
   const [menuCols, setMenuCols] = useState(false);
+  const [menuOptions, setMenuOptions] = useState(false);
+  const [plusFiltres, setPlusFiltres] = useState(false);
+  const [modeleOuvert, setModeleOuvert] = useState(false);
+  const [demandeLiaison, setDemandeLiaison] = useState(0);
 
   // Préférences d'affichage (colonnes, tri, densité) restaurées au montage.
   // setState au montage depuis localStorage : cas légitime, non SSR-able autrement.
@@ -249,13 +268,18 @@ export default function GestionDons({
       for (const ch of chips) c.set(ch.key, (c.get(ch.key) ?? 0) + 1);
     return c;
   }, [chipsParDon]);
-  // Exercices antérieurs à l'exercice en cours, proposés dans « Autres ».
-  const exercicesAnterieurs = useMemo(() => {
-    const s = new Set<string>();
-    for (const d of dons) if (d.date_don) s.add(anneeScolaireISO(d.date_don));
-    s.delete(anneeScolaireCourante());
-    return [...s].sort().reverse();
+  // Toutes les années civiles et tous les exercices, du premier don à aujourd'hui (même ceux sans don), du plus récent au plus ancien.
+  const periodes = useMemo(() => {
+    const annees: number[] = [];
+    const exercices: string[] = [];
+    const debut = dons.reduce((m, d) => (d.date_don && d.date_don < m ? d.date_don : m), todayISO());
+    for (let y = new Date().getFullYear(); y >= Number(debut.slice(0, 4)); y--) annees.push(y);
+    for (let y = Number(anneeScolaireCourante().slice(0, 4)); y >= Number(anneeScolaireISO(debut).slice(0, 4)); y--) exercices.push(`${y}-${y + 1}`);
+    return { annees, exercices };
   }, [dons]);
+  const [menuPeriode, setMenuPeriode] = useState(false);
+  const libellePeriode =
+    anneeFiltre === "toutes" ? "Toutes les périodes" : anneeFiltre.startsWith("civ:") ? `Année ${anneeFiltre.slice(4)}` : `Exercice ${anneeFiltre.slice(4)}`;
   const categoriesPresentes = useMemo(() => {
     const s = new Set<string>();
     for (const d of dons) if (d.categorie_donateur) s.add(d.categorie_donateur);
@@ -280,9 +304,8 @@ export default function GestionDons({
     return dons.filter((d) => {
       if (filtres.length > 0 && !(chipsParDon.get(d.id) ?? []).some((c) => filtres.includes(c.key))) return false;
       if (!periodeDuDon(d, anneeFiltre)) return false;
-      if (catFiltre === "incoherents") {
-        if (!incoherenceCategorie(d)) return false;
-      } else if (catFiltre !== "toutes" && (d.categorie_donateur ?? "") !== catFiltre) return false;
+      if (soloIncoherents && !incoherenceCategorie(d)) return false;
+      if (catsMasquees.includes(d.categorie_donateur ?? "")) return false;
       if (q) {
         const nom = d.est_personne_morale
           ? d.raison_sociale ?? d.donateur_nom
@@ -291,7 +314,7 @@ export default function GestionDons({
       }
       return true;
     });
-  }, [dons, donsSupprimes, vueCorbeille, filtres, anneeFiltre, catFiltre, recherche, chipsParDon]);
+  }, [dons, donsSupprimes, vueCorbeille, filtres, anneeFiltre, catsMasquees, soloIncoherents, recherche, chipsParDon]);
 
   const statsAffiches = useMemo(() => {
     const totalM = donsAffiches.reduce((s, d) => s + Number(d.montant), 0);
@@ -329,11 +352,12 @@ export default function GestionDons({
   }
 
   const filtresActifs =
-    filtres.length > 0 || anneeFiltre !== FILTRE_ANNEE_DEFAUT || catFiltre !== "toutes" || recherche.trim() !== "";
+    filtres.length > 0 || anneeFiltre !== FILTRE_ANNEE_DEFAUT || catsMasquees.length > 0 || soloIncoherents || recherche.trim() !== "";
   function reinitialiser() {
     reinitialiserFiltres();
     setAnneeFiltre(FILTRE_ANNEE_DEFAUT);
-    setCatFiltre("toutes");
+    setCatsMasquees([]);
+    setSoloIncoherents(false);
     setRecherche("");
   }
 
@@ -700,6 +724,72 @@ export default function GestionDons({
     <>
       {!seule && (
       <>
+      {modeleRecu !== undefined && (
+        <PageHeader
+          title="Dons"
+          subtitle="Suivi des dons reçus et génération des reçus fiscaux."
+          action={
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setMenuOptions((v) => !v)}
+                aria-haspopup="menu"
+                aria-expanded={menuOptions}
+                className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-surface-2"
+              >
+                Options ▾
+              </button>
+              {menuOptions && (
+                <>
+                  <div className="fixed inset-0 z-10" onClick={() => setMenuOptions(false)} />
+                  <div role="menu" className="absolute right-0 z-20 mt-1 w-64 rounded-lg border border-border bg-surface p-1.5 shadow-lg">
+                    {(() => {
+                      const itemCls = "block w-full rounded-md px-3 py-2 text-left text-sm hover:bg-surface-2 disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-transparent";
+                      const liaisonBloquee = verrou || !coffre.estOuvert;
+                      return (
+                        <>
+                          <button type="button" role="menuitem" onClick={() => { setMenuOptions(false); ouvrir("nouveau"); }} className={`${itemCls} font-medium text-accent`}>
+                            + Nouveau don
+                          </button>
+                          <div className="my-1 border-t border-border" />
+                          <button type="button" role="menuitem" onClick={() => { setMenuOptions(false); setModeleOuvert(true); }} className={itemCls}>
+                            Modèle de reçu
+                          </button>
+                          <Link role="menuitem" href="/dons/depuis-compta" className={itemCls}>
+                            Importer depuis Comptabilité
+                          </Link>
+                          <Link role="menuitem" href="/dons/import" className={itemCls}>
+                            Importer (.xlsx)
+                          </Link>
+                          <button
+                            type="button"
+                            role="menuitem"
+                            disabled={liaisonBloquee}
+                            title={liaisonBloquee ? "Déverrouillez le coffre pour lier les dons à la comptabilité" : "Rapproche toutes les écritures « Don » sans don (tous les exercices) des dons « hors compta »"}
+                            onClick={() => { setMenuOptions(false); setDemandeLiaison((n) => n + 1); }}
+                            className={itemCls}
+                          >
+                            🔗 Lier toutes les années{liaisonBloquee ? " 🔒" : ""}
+                          </button>
+                          <div className="my-1 border-t border-border" />
+                          <button type="button" role="menuitem" onClick={() => { setMenuOptions(false); setVueCorbeille((v) => !v); }} className={itemCls}>
+                            {vueCorbeille ? "✓ " : ""}🗑 Corbeille{donsSupprimes.length > 0 ? ` (${donsSupprimes.length})` : ""}
+                          </button>
+                          <button type="button" role="menuitem" onClick={() => { setMenuOptions(false); exporterCSV(); }} className={itemCls}>
+                            Exporter CSV
+                          </button>
+                        </>
+                      );
+                    })()}
+                  </div>
+                </>
+              )}
+              {modeleOuvert && <ModeleRecuDialog initial={modeleRecu} onFermer={() => setModeleOuvert(false)} />}
+            </div>
+          }
+        />
+      )}
+      {sousEntete && <div className="mb-5">{sousEntete}</div>}
       {/* Coffre verrouillé : les noms sont masqués */}
       {verrou && (
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-gold/40 bg-gold-soft/40 px-4 py-3 text-sm">
@@ -733,24 +823,137 @@ export default function GestionDons({
           value={recherche}
           onChange={(e) => setRecherche(e.target.value)}
           placeholder="Rechercher un donateur…"
-          className={`${inputCls} max-w-[16rem] flex-1`}
+          className={`${inputCls} min-w-[10rem] max-w-[16rem] flex-1`}
         />
-        <LiaisonGlobale dons={dons as unknown as DonCompta[]} verrou={verrou} />
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setMenuPeriode((v) => !v)}
+            className={`rounded-lg border px-3 py-2 text-sm font-medium ${
+              anneeFiltre !== FILTRE_ANNEE_DEFAUT ? "border-accent bg-accent-soft text-accent" : "border-border hover:bg-surface-2"
+            }`}
+          >
+            {libellePeriode} ▾
+          </button>
+          {menuPeriode && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => setMenuPeriode(false)} />
+              <div className="absolute left-0 z-20 mt-1 w-72 max-w-[calc(100vw-2rem)] rounded-lg border border-border bg-surface p-2 shadow-lg">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAnneeFiltre("toutes");
+                    setMenuPeriode(false);
+                  }}
+                  className={`mb-1 w-full rounded-md px-2 py-1.5 text-left text-sm hover:bg-surface-2 ${anneeFiltre === "toutes" ? "font-medium text-accent" : ""}`}
+                >
+                  Toutes les périodes
+                </button>
+                <div className="grid grid-cols-2 gap-2 border-t border-border pt-1">
+                  <div>
+                    <p className="px-2 py-1 text-xs font-medium text-muted">Année</p>
+                    <div className="max-h-64 overflow-y-auto">
+                      {periodes.annees.map((y) => {
+                        const f: FiltreAnnee = `civ:${y}`;
+                        return (
+                          <button
+                            key={y}
+                            type="button"
+                            onClick={() => {
+                              setAnneeFiltre(f);
+                              setMenuPeriode(false);
+                            }}
+                            className={`w-full rounded-md px-2 py-1.5 text-left text-sm tabular-nums hover:bg-surface-2 ${anneeFiltre === f ? "bg-accent-soft font-medium text-accent" : ""}`}
+                          >
+                            {y}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div>
+                    <p className="px-2 py-1 text-xs font-medium text-muted">Exercice</p>
+                    <div className="max-h-64 overflow-y-auto">
+                      {periodes.exercices.map((e) => {
+                        const f: FiltreAnnee = `exo:${e}`;
+                        return (
+                          <button
+                            key={e}
+                            type="button"
+                            onClick={() => {
+                              setAnneeFiltre(f);
+                              setMenuPeriode(false);
+                            }}
+                            className={`w-full rounded-md px-2 py-1.5 text-left text-sm tabular-nums hover:bg-surface-2 ${anneeFiltre === f ? "bg-accent-soft font-medium text-accent" : ""}`}
+                          >
+                            {e}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setMenuCats((v) => !v)}
+            className={`rounded-lg border px-3 py-2 text-sm font-medium ${
+              catsMasquees.length > 0 ? "border-accent bg-accent-soft text-accent" : "border-border hover:bg-surface-2"
+            }`}
+          >
+            Catégories{catsMasquees.length > 0 ? ` (${categoriesPresentes.length - catsMasquees.length}/${categoriesPresentes.length})` : ""} ▾
+          </button>
+          {menuCats && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => setMenuCats(false)} />
+              <div className="absolute left-0 z-20 mt-1 w-60 rounded-lg border border-border bg-surface p-2 shadow-lg">
+                <p className="px-2 py-1 text-xs font-medium text-muted">Catégories affichées</p>
+                {categoriesPresentes.map((c) => (
+                  <label key={c} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-surface-2">
+                    <input
+                      type="checkbox"
+                      checked={!catsMasquees.includes(c)}
+                      onChange={() => setCatsMasquees((m) => (m.includes(c) ? m.filter((x) => x !== c) : [...m, c]))}
+                      className="h-4 w-4"
+                    />
+                    {c}
+                  </label>
+                ))}
+                <div className="mt-1 flex gap-1 border-t border-border pt-1 text-xs text-muted">
+                  <button type="button" onClick={() => setCatsMasquees([])} className="rounded-md px-2 py-1.5 hover:bg-surface-2">
+                    Tout cocher
+                  </button>
+                  <button type="button" onClick={() => setCatsMasquees([...categoriesPresentes])} className="rounded-md px-2 py-1.5 hover:bg-surface-2">
+                    Tout décocher
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+        {nbIncoherents > 0 && (
+          <button
+            type="button"
+            onClick={() => setSoloIncoherents((v) => !v)}
+            title="Dons dont la catégorie ne correspond pas au type de personne (ex. « Association » saisie comme particulier)"
+            className={`rounded-full border px-3 py-1 text-xs font-medium ${
+              soloIncoherents ? "border-gold bg-gold-soft text-gold" : "border-gold/50 text-gold hover:bg-gold-soft/50"
+            }`}
+          >
+            ⚠ Catégorie à corriger ({nbIncoherents})
+          </button>
+        )}
+        <LiaisonGlobale dons={dons as unknown as DonCompta[]} verrou={verrou} sansBouton demande={demandeLiaison} />
         {filtresActifs && (
           <button type="button" onClick={reinitialiser} className="text-xs text-muted underline hover:text-foreground">
             Réinitialiser les filtres
           </button>
         )}
         <div className="ml-auto flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => setVueCorbeille((v) => !v)}
-            className={`rounded-lg border px-3 py-2 text-sm font-medium ${
-              vueCorbeille ? "border-accent bg-accent-soft text-accent" : "border-border hover:bg-surface-2"
-            }`}
-          >
-            🗑 Corbeille{donsSupprimes.length > 0 ? ` (${donsSupprimes.length})` : ""}
-          </button>
           <div className="relative">
             <button
               type="button"
@@ -794,73 +997,7 @@ export default function GestionDons({
           >
             {compact ? "Vue détaillée" : "Vue compacte"}
           </button>
-          <button
-            type="button"
-            onClick={exporterCSV}
-            className="rounded-lg border border-border px-3 py-2 text-sm font-medium hover:bg-surface-2"
-          >
-            Exporter CSV
-          </button>
-          <button
-            type="button"
-            onClick={() => ouvrir("nouveau")}
-            className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-fg transition-opacity hover:opacity-90"
-          >
-            + Nouveau don
-          </button>
         </div>
-      </div>
-
-      {/* Filtres en boutons, groupés par type */}
-      <div className="mb-2 flex flex-wrap items-center gap-1.5">
-        <span className="mr-1 text-xs font-medium uppercase tracking-wide text-muted">Année</span>
-        <FiltreBtn actif={anneeFiltre === "toutes"} onClick={() => setAnneeFiltre("toutes")}>Toutes</FiltreBtn>
-        <FiltreBtn actif={anneeFiltre === FILTRE_ANNEE_DEFAUT} onClick={() => setAnneeFiltre(FILTRE_ANNEE_DEFAUT)}>
-          Exercice {anneeScolaireCourante()}
-        </FiltreBtn>
-        <FiltreBtn
-          actif={anneeFiltre === `civ:${anneeCivileCourante()}`}
-          onClick={() => setAnneeFiltre(`civ:${anneeCivileCourante()}`)}
-        >
-          Année {anneeCivileCourante()}
-        </FiltreBtn>
-        {exercicesAnterieurs.length > 0 && (
-          <select
-            value={anneeFiltre.startsWith("exo:") && anneeFiltre !== FILTRE_ANNEE_DEFAUT ? anneeFiltre : ""}
-            onChange={(e) => e.target.value && setAnneeFiltre(e.target.value as FiltreAnnee)}
-            className={`rounded-full border px-3 py-1 text-xs font-medium ${
-              anneeFiltre.startsWith("exo:") && anneeFiltre !== FILTRE_ANNEE_DEFAUT
-                ? "border-accent bg-accent-soft text-accent"
-                : "border-border bg-surface text-muted hover:bg-surface-2"
-            }`}
-          >
-            <option value="">Autres…</option>
-            {exercicesAnterieurs.map((a) => (
-              <option key={a} value={`exo:${a}`}>
-                Exercice {a}
-              </option>
-            ))}
-          </select>
-        )}
-      </div>
-      <div className="mb-4 flex flex-wrap items-center gap-1.5">
-        <span className="mr-1 text-xs font-medium uppercase tracking-wide text-muted">Catégorie</span>
-        <FiltreBtn actif={catFiltre === "toutes"} onClick={() => setCatFiltre("toutes")}>Toutes</FiltreBtn>
-        {categoriesPresentes.map((c) => (
-          <FiltreBtn key={c} actif={catFiltre === c} onClick={() => setCatFiltre(c)}>{c}</FiltreBtn>
-        ))}
-        {nbIncoherents > 0 && (
-          <button
-            type="button"
-            onClick={() => setCatFiltre(catFiltre === "incoherents" ? "toutes" : "incoherents")}
-            title="Dons dont la catégorie ne correspond pas au type de personne (ex. « Association » saisie comme particulier)"
-            className={`rounded-full border px-3 py-1 text-xs font-medium ${
-              catFiltre === "incoherents" ? "border-gold bg-gold-soft text-gold" : "border-gold/50 text-gold hover:bg-gold-soft/50"
-            }`}
-          >
-            ⚠ Catégorie à corriger ({nbIncoherents})
-          </button>
-        )}
       </div>
 
       {/* Analyse : synthèse de la sélection courante */}
@@ -883,7 +1020,7 @@ export default function GestionDons({
       )}
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        {FILTRES.map((item) => {
+        {FILTRES.filter((item) => plusFiltres || FILTRES_VISIBLES.includes(item.key) || filtreActif(item.key)).map((item) => {
           const n = compteParStatut.get(item.key) ?? 0;
           const actif = filtreActif(item.key);
           return (
@@ -902,6 +1039,14 @@ export default function GestionDons({
             </button>
           );
         })}
+        <button
+          type="button"
+          onClick={() => setPlusFiltres((v) => !v)}
+          aria-expanded={plusFiltres}
+          className="rounded-full border border-dashed border-border px-2.5 py-1 text-xs font-medium text-muted hover:bg-surface-2"
+        >
+          {plusFiltres ? "− de filtres" : "+ de filtres"}
+        </button>
         <BoutonFiltresMultiples actif={filtreMultiple} onClick={basculerFiltreMultiple} nombre={filtres.length} />
         {filtres.length > 0 && (
           <button
@@ -1434,26 +1579,3 @@ export default function GestionDons({
   );
 }
 
-function FiltreBtn({
-  actif,
-  onClick,
-  children,
-}: {
-  actif: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={`inline-flex items-center justify-center rounded-full border px-3 py-1 text-center text-sm transition ${
-        actif
-          ? "border-accent bg-accent-soft font-medium text-accent"
-          : "border-border text-muted hover:bg-surface-2"
-      }`}
-    >
-      {children}
-    </button>
-  );
-}

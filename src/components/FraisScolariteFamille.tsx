@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useState } from "react";
-import JaugeScolarite, { AideReglement, etatJauge } from "@/components/JaugeScolarite";
+import JaugeScolarite, { etatJauge } from "@/components/JaugeScolarite";
 import BoutonFacture from "@/components/BoutonFacture";
 import { formatEurosCourt as formatEuros, formatDate } from "@/lib/format";
 import type { Association, Situation } from "@/lib/espaceFamille";
@@ -238,7 +238,6 @@ export default function FraisScolariteFamille({
                         : s.aReglerFinDeMois > 0
                           ? `−${formatEuros(s.aReglerFinDeMois)}`
                           : formatEuros(s.regle)}
-                      <AideReglement retard={s.retard > 0} finDeMois={s.aReglerFinDeMois > 0} />
                     </td>
                     <td
                       className={`px-3 py-3 text-right tabular-nums whitespace-nowrap ${

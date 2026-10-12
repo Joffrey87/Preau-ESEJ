@@ -1,11 +1,10 @@
-import Link from "next/link";
-import PageHeader from "@/components/PageHeader";
 import GestionDons, { type Don } from "@/components/GestionDons";
 import { createClient } from "@/lib/supabase/server";
 import { emailVue } from "@/lib/vueRoleServeur";
 import { roleByEmail } from "@/lib/roles";
-import ModeleRecuBouton from "@/components/ModeleRecuBouton";
 import type { ModeleRecuRow } from "@/lib/modeleRecu";
+import JaugeDons, { type DonsExercice } from "@/components/JaugeDons";
+import { todayISO } from "@/lib/format";
 
 export default async function DonsPage() {
   const supabase = await createClient();
@@ -37,31 +36,15 @@ export default async function DonsPage() {
     new Set((dons ?? []).map((d) => (d.origine ?? "").trim()).filter(Boolean)),
   ).sort((a, b) => a.localeCompare(b, "fr"));
 
+  // Jauge des dons de l'exercice (la même que dans Relations donateurs) ; le profil Recherche de fonds l'a déjà en haut de chaque onglet.
+  const jauge =
+    roleSlug === "recherche-fonds" ? null : ((await supabase.rpc("dons_exercice_courant")).data as DonsExercice | null);
+
   return (
     <div className="mx-auto max-w-6xl px-5 py-8 md:px-8">
-      <PageHeader
-        title="Dons"
-        subtitle="Suivi des dons reçus et génération des reçus fiscaux."
-        action={
-          <div className="flex flex-wrap items-center gap-2">
-            <ModeleRecuBouton initial={(modeleRecu ?? null) as ModeleRecuRow | null} />
-            <Link
-              href="/dons/depuis-compta"
-              className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-surface-2"
-            >
-              Importer depuis Comptabilité
-            </Link>
-            <Link
-              href="/dons/import"
-              className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-surface-2"
-            >
-              Importer (.xlsx)
-            </Link>
-          </div>
-        }
-      />
       <GestionDons dons={donsNormalises} roleSlug={roleSlug}
-        relations={relations} />
+        relations={relations} modeleRecu={(modeleRecu ?? null) as ModeleRecuRow | null}
+        sousEntete={roleSlug === "recherche-fonds" ? undefined : <JaugeDons donnees={jauge} aujourdhui={todayISO()} />} />
     </div>
   );
 }

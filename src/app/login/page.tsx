@@ -77,10 +77,13 @@ export default function LoginPage() {
       setLoading(false);
       return setError("Indiquez votre nom de famille.");
     }
-    const { error } = await supabase.auth.signInWithPassword({
-      email: espace === "famille" ? emailConnexionFamille(nomFamille) : email,
-      password,
-    });
+    const adresse = espace === "famille" ? emailConnexionFamille(nomFamille) : email;
+    let { error } = await supabase.auth.signInWithPassword({ email: adresse, password });
+    // Profils du bureau : le mot de passe est tolérant aux accents et aux majuscules (« Président » = « president »).
+    if (error && espace !== "famille") {
+      const souple = password.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+      if (souple && souple !== password) ({ error } = await supabase.auth.signInWithPassword({ email: adresse, password: souple }));
+    }
 
     if (error) {
       setError(espace === "famille" ? "Nom de famille ou mot de passe incorrect." : "Rôle ou mot de passe incorrect.");

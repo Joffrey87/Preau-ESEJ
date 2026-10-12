@@ -215,10 +215,13 @@ export function Modal({
   children,
   fermerAuClicExterieur = false,
   enregistrerEnFermant = false,
+  large = false,
 }: {
   title: string;
   onClose: () => void;
   children: React.ReactNode;
+  /** Fenêtre plus large (fiches contenant des tableaux). */
+  large?: boolean;
   /** Un clic en dehors de la fenêtre (ou Échap) la ferme : pour les fiches en lecture, pas pour les formulaires en saisie. */
   fermerAuClicExterieur?: boolean;
   /**
@@ -261,7 +264,8 @@ export function Modal({
         onInput={() => {
           modifie.current = true;
         }}
-        className="max-h-[calc(100dvh-2rem)] w-full max-w-lg overflow-y-auto overscroll-contain rounded-2xl border border-border bg-surface p-6 shadow-xl"
+        // Les cellules de grille et de flex peuvent rétrécir (min-w-0) : sinon un champ ou un tableau élargit la grille et la fenêtre est tronquée.
+        className={`max-h-[calc(100dvh-2rem)] w-full min-w-0 ${large ? "max-w-2xl" : "max-w-lg"} overflow-y-auto overflow-x-hidden overscroll-contain rounded-2xl border border-border bg-surface p-4 shadow-xl sm:p-6 [&_.grid>*]:min-w-0 [&_input]:min-w-0 [&_select]:min-w-0`}
       >
         <div className="mb-4 flex items-center justify-between">
           <h2 className="text-lg font-semibold">{title}</h2>

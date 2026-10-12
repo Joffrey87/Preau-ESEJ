@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { formatEurosCourt as formatEuros, todayISO } from "@/lib/format";
 import { Modal, Field, FormFooter, inputCls } from "./GestionComptes";
-import JaugeScolarite, { AideReglement, etatJauge } from "@/components/JaugeScolarite";
+import JaugeScolarite, { etatJauge } from "@/components/JaugeScolarite";
 import FamilleEnfants, { type FicheFamille } from "@/components/FamilleEnfants";
 import { partJuinNonDue, type Eleve } from "@/lib/eleves";
 import { etatPaiement, moisEchus } from "@/lib/retardScolarite";
@@ -258,6 +258,7 @@ export default function GestionScolarite({
   const versements = versementsDe(affectationsDetail);
   const regleDe = (i: Inscription) => totalRegle(i, source, versements);
   const [basculeEnCours, setBasculeEnCours] = useState(false);
+  const [menuOptions, setMenuOptions] = useState(false);
   async function changerSource(s: SourceScolarite) {
     if (s === source) return;
     setError(null);
@@ -417,7 +418,7 @@ export default function GestionScolarite({
 
   return (
     <>
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <label className="text-sm text-muted">Exercice</label>
           <select
@@ -429,60 +430,73 @@ export default function GestionScolarite({
               <option key={a} value={a}>{a}</option>
             ))}
           </select>
+          {error && !edit && <span className="text-xs text-negative">{error}</span>}
         </div>
-        <button
-          type="button"
-          onClick={() => ouvrir("nouveau")}
-          className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-fg hover:opacity-90"
-        >
-          + Ajouter une famille
-        </button>
-      </div>
-
-      {/* Source des règlements de l'année */}
-      <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-border bg-surface px-4 py-2.5 text-sm">
-        <span className="text-muted">Règlements {annee} lus dans :</span>
-        <div className="inline-flex overflow-hidden rounded-lg border border-border">
-          {(
-            [
-              { v: "compta", l: "Comptabilité" },
-              { v: "classeur", l: "Classeur" },
-            ] as const
-          ).map((o) => (
-            <button
-              key={o.v}
-              type="button"
-              disabled={basculeEnCours}
-              onClick={() => changerSource(o.v)}
-              className={`px-3 py-1 text-xs font-medium ${
-                source === o.v ? "bg-accent text-accent-fg" : "hover:bg-surface-2"
-              }`}
-            >
-              {o.l}
-            </button>
-          ))}
-        </div>
-        <span
-          className="cursor-help text-xs tabular-nums text-muted"
-          title={
-            "Réglé de l'année selon chaque source (report compris, mois d'avance exclus).\n" +
-            "Comptabilité : écritures bancaires rattachées aux familles (mensualités, dons d'association fléchés).\n" +
-            "Classeur : les dix mois saisis à la main.\n" +
-            "Une fois tous les rattachements faits, les deux totaux doivent concorder : l'année peut alors passer en Comptabilité."
-          }
-        >
-          Comptabilité {formatEuros(sumParSource.compta)} · Classeur {formatEuros(sumParSource.classeur)}
-          {Math.abs(sumParSource.compta - sumParSource.classeur) > 0.005 && (
-            <span className="ml-1 text-gold">(écart {formatEuros(sumParSource.compta - sumParSource.classeur)})</span>
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => setMenuOptions((v) => !v)}
+            aria-haspopup="menu"
+            aria-expanded={menuOptions}
+            className="rounded-lg border border-border px-4 py-1.5 text-sm font-medium hover:bg-surface-2"
+          >
+            Options ▾
+          </button>
+          {menuOptions && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => setMenuOptions(false)} />
+              <div role="menu" className="absolute right-0 z-20 mt-1 w-72 max-w-[calc(100vw-2rem)] rounded-lg border border-border bg-surface p-1.5 shadow-lg">
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setMenuOptions(false);
+                    ouvrir("nouveau");
+                  }}
+                  className="block w-full rounded-md px-3 py-2 text-left text-sm font-medium text-accent hover:bg-surface-2"
+                >
+                  + Ajouter une famille
+                </button>
+                <div className="my-1 border-t border-border" />
+                <p className="px-3 py-1 text-xs font-medium text-muted">Règlements {annee} lus dans</p>
+                {(
+                  [
+                    { v: "compta", l: "Comptabilité", t: sumParSource.compta },
+                    { v: "classeur", l: "Classeur", t: sumParSource.classeur },
+                  ] as const
+                ).map((o) => (
+                  <button
+                    key={o.v}
+                    type="button"
+                    role="menuitemradio"
+                    aria-checked={source === o.v}
+                    disabled={basculeEnCours}
+                    onClick={() => {
+                      setMenuOptions(false);
+                      changerSource(o.v);
+                    }}
+                    className={`flex w-full items-center justify-between gap-3 rounded-md px-3 py-2 text-left text-sm hover:bg-surface-2 disabled:opacity-50 ${source === o.v ? "font-medium text-accent" : ""}`}
+                  >
+                    <span>{source === o.v ? "✓ " : ""}{o.l}</span>
+                    <span className="text-xs tabular-nums text-muted">{formatEuros(o.t)}</span>
+                  </button>
+                ))}
+                {Math.abs(sumParSource.compta - sumParSource.classeur) > 0.005 && (
+                  <p className="px-3 pb-1 text-xs text-gold">Écart {formatEuros(sumParSource.compta - sumParSource.classeur)} entre les deux sources.</p>
+                )}
+                <p className="px-3 pb-1 pt-0.5 text-[11px] leading-snug text-muted">
+                  Réglé de l&apos;année selon chaque source (report compris, mois d&apos;avance exclus). Une fois les rattachements faits, les deux totaux doivent concorder : l&apos;année peut alors passer en Comptabilité.
+                </p>
+              </div>
+            </>
           )}
-        </span>
-        {error && !edit && <span className="text-xs text-negative">{error}</span>}
+        </div>
       </div>
 
       {/* Avancement des règlements */}
       {inscriptions.length > 0 && (
-        <div className="mb-4 rounded-xl border border-border bg-surface px-4 py-4">
-          <div className="mb-2 flex flex-wrap items-baseline justify-between gap-2">
+        <div className="mb-3 rounded-xl border border-border bg-surface px-4 py-3">
+          <div className="mb-1.5 flex flex-wrap items-baseline justify-between gap-2">
             <h2 className="text-sm font-semibold">Avancement des règlements · {annee}</h2>
           </div>
           <JaugeScolarite etat={etatGlobal} anneeScolaire={annee} />
@@ -490,7 +504,7 @@ export default function GestionScolarite({
       )}
 
       {/* Synthèse */}
-      <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-3 grid grid-cols-2 gap-2 lg:grid-cols-4">
         {[
           { l: "Total attendu", v: sumDu, c: "" },
           {
@@ -519,14 +533,14 @@ export default function GestionScolarite({
             aideSous: aideMoisAvance,
           },
         ].map((s: { l: string; v: number; c: string; apres?: number; aide?: string; sous?: string; aideSous?: string }) => (
-          <div key={s.l} className="rounded-xl border border-border bg-surface px-4 py-3" title={s.aide}>
-            <div className="text-xs uppercase tracking-wider text-muted">{s.l}</div>
-            <div className={`mt-1 text-xl font-semibold tabular-nums ${s.c}`}>
+          <div key={s.l} className="rounded-lg border border-border bg-surface px-3 py-1.5" title={s.aide}>
+            <div className="text-[11px] uppercase tracking-wider text-muted">{s.l}</div>
+            <div className={`text-base font-semibold leading-snug tabular-nums ${s.c}`}>
               {formatEuros(s.v)}
               {s.apres != null && <span className="font-normal"> / {formatEuros(s.apres)}</span>}
             </div>
             {s.sous && (
-              <div className="mt-0.5 cursor-help text-xs tabular-nums text-muted" title={s.aideSous}>
+              <div className="cursor-help text-[11px] leading-tight tabular-nums text-muted" title={s.aideSous}>
                 {s.sous}
               </div>
             )}
@@ -538,11 +552,11 @@ export default function GestionScolarite({
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border text-left text-muted">
-              <th className="px-3 py-3 font-medium">Famille</th>
-              <th className="px-2 py-3 font-medium text-center">Enfants</th>
-              <th className="px-3 py-3 font-medium text-right">Total dû</th>
+              <th className="px-3 py-2 font-medium">Famille</th>
+              <th className="px-2 py-2 font-medium text-center">Enfants</th>
+              <th className="px-3 py-2 font-medium text-right">Total dû</th>
               <th
-                className="w-px whitespace-nowrap px-2 py-3 text-center font-medium leading-tight"
+                className="w-px whitespace-nowrap px-2 py-2 text-center font-medium leading-tight"
                 title="Dépôt versé une fois par enfant, l'été précédant son entrée ; il éponge le dernier mois de sa scolarité à l'école. Alimenté par la Comptabilité (affectation « mois d'avance »)."
               >
                 Mois
@@ -550,17 +564,17 @@ export default function GestionScolarite({
                 d&apos;avance
               </th>
               <th
-                className="w-px whitespace-nowrap px-2 py-3 text-center font-medium leading-tight"
+                className="w-px whitespace-nowrap px-2 py-2 text-center font-medium leading-tight"
                 title={`${FRAIS_DOSSIER_PAR_ENFANT} € par enfant entrant. Alimenté par la Comptabilité (affectation « frais de dossier »).`}
               >
                 Frais de
                 <br />
                 dossier
               </th>
-              <th className="hidden px-3 py-3 font-medium lg:table-cell">Avancement</th>
-              <th className="px-4 py-3 font-medium text-right">Réglé</th>
-              <th className="px-4 py-3 font-medium text-right">Reste</th>
-              <th className="px-2 py-3 font-medium text-right"><span className="sr-only">Modifier</span></th>
+              <th className="hidden px-3 py-2 font-medium lg:table-cell">Avancement</th>
+              <th className="px-3 py-2 font-medium text-right">Réglé</th>
+              <th className="px-3 py-2 font-medium text-right">Reste</th>
+              <th className="px-2 py-2 font-medium text-right"><span className="sr-only">Modifier</span></th>
             </tr>
           </thead>
           <tbody>
@@ -587,13 +601,13 @@ export default function GestionScolarite({
                     title="Afficher le détail des versements"
                     className={`cursor-pointer border-b border-border last:border-0 hover:bg-surface-2 ${deroulee ? "bg-surface-2" : ""}`}
                   >
-                    <td className="px-4 py-3">
+                    <td className="px-3 py-1.5">
                       <span className={`mr-1.5 inline-block text-muted transition-transform ${deroulee ? "rotate-90" : ""}`}>›</span>
                       {i.famille_nom}
                     </td>
-                    <td className="px-3 py-3 text-center tabular-nums">{i.nb_enfants ?? "—"}</td>
+                    <td className="px-3 py-1.5 text-center tabular-nums">{i.nb_enfants ?? "—"}</td>
                     <td
-                      className="px-3 py-3 text-right tabular-nums whitespace-nowrap"
+                      className="px-3 py-1.5 text-right tabular-nums whitespace-nowrap"
                       title={`Total dû : ${formatEuros(du)}${partJuin(i).montant > 0 ? ` (juin non dû : −${formatEuros(partJuin(i).montant)})` : ""}`}
                     >
                       {formatEuros(Number(i.montant_mensuel))} x10
@@ -601,9 +615,9 @@ export default function GestionScolarite({
                         <span className="block text-[11px] text-muted">−{formatEuros(partJuin(i).montant)} juin</span>
                       )}
                     </td>
-                    <td className="px-2 py-3 text-center">{badgeDepot(i)}</td>
-                    <td className="px-2 py-3 text-center">{badgeFrais(i)}</td>
-                    <td className="hidden px-3 py-3 lg:table-cell">
+                    <td className="px-2 py-1.5 text-center">{badgeDepot(i)}</td>
+                    <td className="px-2 py-1.5 text-center">{badgeFrais(i)}</td>
+                    <td className="hidden px-3 py-1.5 lg:table-cell">
                       <JaugeScolarite
                         etat={etatJauge(Number(i.montant_mensuel), regle, annee)}
                         anneeScolaire={annee}
@@ -611,7 +625,7 @@ export default function GestionScolarite({
                       />
                     </td>
                     <td
-                      className={`px-3 py-3 text-right tabular-nums whitespace-nowrap ${
+                      className={`px-3 py-1.5 text-right tabular-nums whitespace-nowrap ${
                         paiement.retard > 0 ? "font-medium text-negative" : paiement.aReglerFinDeMois > 0 ? "font-medium text-gold" : "text-positive"
                       }`}
                       title={
@@ -629,17 +643,16 @@ export default function GestionScolarite({
                         : paiement.aReglerFinDeMois > 0
                           ? `−${formatEuros(paiement.aReglerFinDeMois)}`
                           : formatEuros(regle)}
-                      <AideReglement retard={paiement.retard > 0} finDeMois={paiement.aReglerFinDeMois > 0} />
                     </td>
                     <td
-                      className={`px-3 py-3 text-right tabular-nums whitespace-nowrap ${
+                      className={`px-3 py-1.5 text-right tabular-nums whitespace-nowrap ${
                         paiement.retard > 0 ? "text-negative" : reste < -0.005 ? "text-positive" : ""
                       }`}
                       title={reste < -0.005 ? "Trop-perçu" : undefined}
                     >
                       {formatEuros(reste)}
                     </td>
-                    <td className="px-2 py-3 text-right">
+                    <td className="px-2 py-1.5 text-right">
                       <button
                         type="button"
                         onClick={(e) => {

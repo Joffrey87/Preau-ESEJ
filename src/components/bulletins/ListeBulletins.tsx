@@ -94,7 +94,7 @@ export default function ListeBulletins({
           })}
         </div>
         <div className="flex flex-wrap items-center gap-1.5 text-[12px]">
-          <button type="button" onClick={() => setFiltre("tous")} className={`rounded-full px-2 py-0.5 ${filtre === "tous" ? "bg-accent text-accent-fg" : "hover:bg-surface-2"}`}>
+          <button type="button" onClick={() => setFiltre("tous")} className={`rounded-full px-2 py-0.5 ${filtre === "tous" ? "bg-accent-soft font-medium text-accent ring-1 ring-inset ring-accent/30" : "text-muted hover:bg-surface-2"}`}>
             Tous {lignes.length}
           </button>
           {STATUTS.map((s) => (
@@ -102,7 +102,7 @@ export default function ListeBulletins({
               key={s.v}
               type="button"
               onClick={() => setFiltre(filtre === s.v ? "tous" : s.v)}
-              className={`rounded-full px-2 py-0.5 ${filtre === s.v ? "ring-2 ring-accent" : ""} ${s.classe}`}
+              className={`rounded-full px-2 py-0.5 ${filtre === s.v ? "ring-2 ring-accent/50" : ""} ${s.classe}`}
             >
               {s.label} {compte(s.v)}
             </button>

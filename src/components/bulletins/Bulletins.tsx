@@ -10,8 +10,9 @@ import ListeBulletins from "./ListeBulletins";
 import FicheBulletin from "./FicheBulletin";
 import SaisieNotes from "./SaisieNotes";
 import ParametresBulletins from "./ParametresBulletins";
+import ConseilClasse from "./ConseilClasse";
 
-export type Onglet = "bulletins" | "notes" | "parametres";
+export type Onglet = "bulletins" | "conseil" | "notes" | "parametres";
 
 /** Ce que le compte peut faire dans la classe affichée (la base le garantit de son côté). */
 export type Droits = {
@@ -38,7 +39,7 @@ export default function Bulletins({
   const [ref, setRef] = useState<Referentiel | null>(null);
   const [classeId, setClasseId] = useState<string | null>(initial.classe ?? null);
   const [periodeId, setPeriodeId] = useState<string | null>(initial.periode ?? null);
-  const [onglet, setOnglet] = useState<Onglet>((["bulletins", "notes", "parametres"].includes(initial.onglet ?? "") ? initial.onglet : "bulletins") as Onglet);
+  const [onglet, setOnglet] = useState<Onglet>((["bulletins", "conseil", "notes", "parametres"].includes(initial.onglet ?? "") ? initial.onglet : "bulletins") as Onglet);
   const [bulletinId, setBulletinId] = useState<string | null>(initial.bulletin ?? null);
   const [ctx, setCtx] = useState<ContexteClasse | null>(null);
   const [chargement, setChargement] = useState(true);
@@ -121,6 +122,7 @@ export default function Bulletins({
   const periodesAnnee = ref.periodes.filter((p) => p.annee_scolaire === annee);
   const onglets: { v: Onglet; label: string }[] = [
     { v: "bulletins", label: "Bulletins" },
+    { v: "conseil", label: "Conseil de classe" },
     { v: "notes", label: "Notes" },
     ...(directrice ? [{ v: "parametres" as Onglet, label: "Paramètres" }] : []),
   ];
@@ -215,6 +217,17 @@ export default function Bulletins({
             />
           ) : !ctx || (chargement && !resultats.length) ? (
             <div className="rounded-xl border border-border bg-surface p-6 text-sm text-muted">Chargement…</div>
+          ) : onglet === "conseil" ? (
+            <ConseilClasse
+              ctx={ctx}
+              resultats={resultats}
+              droits={droits}
+              onMaj={setCtx}
+              onOuvrir={(id) => {
+                setOnglet("bulletins");
+                setBulletinId(id);
+              }}
+            />
           ) : onglet === "notes" ? (
             <SaisieNotes ctx={ctx} resultats={resultats} droits={droits} enseignants={enseignants} onMaj={setCtx} />
           ) : bulletinId && resultats.some((r) => r.bulletin?.id === bulletinId) ? (

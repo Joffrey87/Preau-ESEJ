@@ -97,6 +97,7 @@ export default function ParametresBulletins({
               membres={membres}
               classes={classes}
               onModifier={(p) => ecrire(sb.from("classes").update(p).eq("id", c.id), "tout")}
+              onNomUsage={(eleveId, nom) => ecrire(sb.rpc("eleve_nom_usage", { p_eleve: eleveId, p_nom: nom }))}
               onEleve={(eleveId, dedans) =>
                 ecrire(
                   dedans
@@ -209,6 +210,7 @@ export default function ParametresBulletins({
                   <th className="px-2 py-2 font-medium">Prénom</th>
                   <th className="px-2 py-2 font-medium">Nom</th>
                   <th className="px-2 py-2 font-medium">Connexion</th>
+                  <th className="px-2 py-2 font-medium" title="Nom proposé dans l'onglet Professeurs de l'écran de connexion">Sur l&apos;accueil</th>
                   <th className="px-2 py-2 font-medium">Actif</th>
                 </tr>
               </thead>
@@ -222,6 +224,16 @@ export default function ParametresBulletins({
                     ))}
                     <td className="px-2 py-1 text-[12px] text-muted">
                       {e.identifiant ? `Onglet Professeurs (${e.identifiant})` : e.user_id ? "Compte du bureau" : "Aucun compte — à créer par le Trésorier"}
+                    </td>
+                    <td className="px-2 py-1">
+                      {e.identifiant && (
+                        <input
+                          type="checkbox"
+                          checked={!e.masque_connexion}
+                          onChange={(ev) => ecrire(sb.from("enseignants").update({ masque_connexion: !ev.target.checked }).eq("id", e.id), "tout")}
+                          aria-label={`Proposer ${e.prenom} sur l'écran de connexion`}
+                        />
+                      )}
                     </td>
                     <td className="px-2 py-1">
                       <input type="checkbox" checked={e.actif} onChange={(ev) => ecrire(sb.from("enseignants").update({ actif: ev.target.checked }).eq("id", e.id), "tout")} />
@@ -324,6 +336,7 @@ function CarteClasse({
   classes,
   onModifier,
   onEleve,
+  onNomUsage,
   onSupprimer,
 }: {
   c: Classe;
@@ -333,6 +346,7 @@ function CarteClasse({
   classes: Classe[];
   onModifier: (p: Partial<Classe>) => void;
   onEleve: (eleveId: string, dedans: boolean) => void;
+  onNomUsage: (eleveId: string, nom: string) => void;
   onSupprimer: () => void;
 }) {
   const [elevesOuverts, setElevesOuverts] = useState(false);
@@ -383,7 +397,14 @@ function CarteClasse({
           {scolarises.map((e) => (
             <label key={e.id} className="flex items-center gap-2">
               <input type="checkbox" checked={dedans.has(e.id)} onChange={(ev) => onEleve(e.id, ev.target.checked)} />
-              <span>{nomEleve(e)}</span>
+              <span>{e.prenom}</span>
+              <input
+                defaultValue={e.nom}
+                onBlur={(ev) => ev.target.value.trim() && ev.target.value.trim() !== e.nom && onNomUsage(e.id, ev.target.value.trim())}
+                className="w-32 rounded border border-transparent bg-transparent px-1 text-[13px] outline-none hover:border-border focus:border-accent"
+                title="Nom tel que l'école l'écrit sur le bulletin"
+                aria-label={`Nom de ${e.prenom}`}
+              />
               <span className="text-[11px] text-muted">{niveauDe(e, c.annee_scolaire)}</span>
               {!dedans.has(e.id) && classeDe(e.id) && <span className="text-[10.5px] text-gold">({classeDe(e.id)})</span>}
             </label>

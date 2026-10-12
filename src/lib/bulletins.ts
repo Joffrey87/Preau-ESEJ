@@ -19,7 +19,8 @@ export const STATUTS: { v: Statut; label: string; classe: string }[] = [
   { v: "en_cours", label: "En cours", classe: "bg-gold-soft text-gold" },
   { v: "pret", label: "Prêt", classe: "bg-accent-soft text-accent" },
   { v: "valide", label: "Validé", classe: "bg-positive/10 text-positive" },
-  { v: "publie", label: "Publié", classe: "bg-positive text-white" },
+  // Vert doux et liseré plutôt qu'un aplat : le vert du thème sombre est trop vif en fond plein.
+  { v: "publie", label: "Publié", classe: "bg-positive/20 text-positive font-semibold ring-1 ring-inset ring-positive/40" },
 ];
 export const statutDe = (s: Statut) => STATUTS.find((x) => x.v === s) ?? STATUTS[0];
 
@@ -32,7 +33,17 @@ export const MENTIONS: { v: Mention; label: string }[] = [
 export const mentionLabel = (m: Mention | null | undefined) => MENTIONS.find((x) => x.v === m)?.label ?? null;
 
 export type Periode = { id: string; annee_scolaire: string; libelle: string | null; debut: string; fin: string; trimestre: number | null; ordre: number };
-export type Enseignant = { id: string; civilite: string | null; prenom: string; nom: string; user_id: string | null; identifiant: string | null; actif: boolean };
+export type Enseignant = {
+  id: string;
+  civilite: string | null;
+  prenom: string;
+  nom: string;
+  user_id: string | null;
+  identifiant: string | null;
+  actif: boolean;
+  /** Masqué de la liste de l'écran de connexion (compte et droits conservés). */
+  masque_connexion: boolean;
+};
 export type Classe = {
   id: string;
   annee_scolaire: string;

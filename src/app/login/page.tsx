@@ -9,11 +9,27 @@ import { emailConnexionFamille, identifiantFamille } from "@/lib/identifiantFami
 import { memoriserSession } from "@/lib/basculeEspace";
 
 const DERNIER_PRENOM = "recherche.dernierPrenom";
+// Dernier onglet de connexion utilisé sur cet appareil (Famille par défaut).
+const DERNIER_ESPACE = "connexion.dernierEspace";
+const DERNIER_PROFESSEUR = "connexion.dernierProfesseur";
+type Espace = "famille" | "professeurs" | "bureau";
+const dernierProfesseur = () => {
+  try {
+    return localStorage.getItem(DERNIER_PROFESSEUR) ?? "";
+  } catch {
+    return "";
+  }
+};
+const ONGLETS: { v: Espace; label: string }[] = [
+  { v: "famille", label: "Famille" },
+  { v: "professeurs", label: "Professeurs" },
+  { v: "bureau", label: "Administration" },
+];
 
 export default function LoginPage() {
   const router = useRouter();
   // Bureau : un compte par rôle, choisi dans la liste. Famille : son adresse.
-  const [espace, setEspace] = useState<"bureau" | "famille" | "professeurs">("bureau");
+  const [espace, setEspace] = useState<Espace>("famille");
   // Professeurs : un compte nominatif chacun, choisi dans la liste (liste fournie par la base, sans session).
   const [professeurs, setProfesseurs] = useState<{ libelle: string; email: string }[]>([]);
   useEffect(() => {
@@ -21,7 +37,7 @@ export default function LoginPage() {
       .rpc("professeurs_connexion")
       .then(({ data }) => setProfesseurs((data ?? []) as { libelle: string; email: string }[]));
   }, []);
-  const [email, setEmail] = useState(ROLES[1].email); // Trésorier par défaut
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   // Famille : le nom de famille sert d'identifiant (« Mot de passe oublié » : nom + une adresse connue de l'école).
   const [nomFamille, setNomFamille] = useState("");
@@ -33,8 +49,16 @@ export default function LoginPage() {
   // Le dernier prénom utilisé sur cet appareil est proposé d'office.
   useEffect(() => {
     try {
+      const e = localStorage.getItem(DERNIER_ESPACE) as Espace | null;
+      if (e === "bureau" || e === "professeurs") {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
+        setEspace(e);
+        // Administration : le Trésorier par défaut ; Professeurs : le dernier professeur connecté ici.
+        setEmail(e === "bureau" ? ROLES[1].email : dernierProfesseur());
+      }
+    } catch {}
+    try {
       const p = localStorage.getItem(DERNIER_PRENOM);
-      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (p && MEMBRES.includes(p)) setPrenom(p);
     } catch {}
   }, []);
@@ -104,11 +128,11 @@ export default function LoginPage() {
       return;
     }
 
-    if (avecPrenom) {
-      try {
-        localStorage.setItem(DERNIER_PRENOM, prenom);
-      } catch {}
-    }
+    try {
+      localStorage.setItem(DERNIER_ESPACE, espace);
+      if (espace === "professeurs") localStorage.setItem(DERNIER_PROFESSEUR, email);
+      if (avecPrenom) localStorage.setItem(DERNIER_PRENOM, prenom);
+    } catch {}
     // Session gardée pour le va-et-vient Espace famille ↔ Recherche de fonds (logo en haut à gauche).
     if (espace === "famille") await memoriserSession("famille");
     else if (avecPrenom) await memoriserSession("recherche");
@@ -150,18 +174,18 @@ export default function LoginPage() {
           className="rounded-2xl border border-border bg-surface p-6 shadow-sm"
         >
           <div className="mb-4 grid grid-cols-3 gap-1 rounded-lg bg-surface-2 p-1 text-sm">
-            {(["bureau", "professeurs", "famille"] as const).map((e) => (
+            {ONGLETS.map(({ v: e, label }) => (
               <button
                 key={e}
                 type="button"
                 onClick={() => {
                   setEspace(e);
-                  setEmail(e === "bureau" ? ROLES[1].email : e === "professeurs" ? (professeurs[0]?.email ?? "") : "");
+                  setEmail(e === "bureau" ? ROLES[1].email : e === "professeurs" ? dernierProfesseur() : "");
                   setError(null);
                 }}
                 className={`rounded-md px-2 py-1.5 font-medium ${espace === e ? "bg-surface shadow-sm" : "text-muted"}`}
               >
-                {e === "bureau" ? "Bureau" : e === "professeurs" ? "Professeurs" : "Famille"}
+                {label}
               </button>
             ))}
           </div>

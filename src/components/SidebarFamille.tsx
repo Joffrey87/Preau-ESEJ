@@ -31,7 +31,7 @@ export default function SidebarFamille({
   /** Aperçu du Trésorier : pas de déconnexion ni de changement d'espace. */
   apercu?: boolean;
   /** Espaces reliés : prénom du membre Recherche de fonds de la famille, s'il y en a un ; famille de la Directrice. */
-  bascule?: { prenom: string | null; directrice: boolean };
+  bascule?: { prenom: string | null; directrice: boolean; president?: boolean };
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -39,8 +39,8 @@ export default function SidebarFamille({
   const [choixOuvert, setChoixOuvert] = useState(false);
   const enteteRef = useRef<HTMLDivElement>(null);
   const surTelephone = () => typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
-  const avecChoix = !apercu && !!bascule && (!!bascule.prenom || bascule.directrice);
-  const liens = { famille, prenom: bascule?.prenom ?? null, directrice: !!bascule?.directrice };
+  const avecChoix = !apercu && !!bascule && (!!bascule.prenom || bascule.directrice || !!bascule.president);
+  const liens = { famille, prenom: bascule?.prenom ?? null, directrice: !!bascule?.directrice, president: !!bascule?.president };
 
   useEffect(() => {
     if (!choixOuvert) return;

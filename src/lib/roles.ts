@@ -2,25 +2,29 @@
 // « interne » (non routable, aucun e-mail n'est envoyé) et son mot de passe.
 // L'utilisateur choisit son rôle dans la liste puis saisit le mot de passe.
 
-/** `prenom` : la personne qui tient le profil, saluée sur le Tableau de bord (Recherche de fonds : le prénom de la visite). */
-export type Role = { slug: string; label: string; email: string; prenom?: string };
+/**
+ * `prenom` : la personne qui tient le profil, saluée sur le Tableau de bord (Recherche de fonds : le prénom de la visite).
+ * `titre` : la fonction, affichée sous le salut (« Président de l'ARIL »).
+ */
+export type Role = { slug: string; label: string; email: string; prenom?: string; titre: string };
 
 const DOMAIN = "roles.esej";
 
 export const ROLES: Role[] = [
-  { slug: "president", label: "Président", email: `president@${DOMAIN}`, prenom: "Jean-François" },
-  { slug: "tresorier", label: "Trésorier", email: `tresorier@${DOMAIN}` },
-  { slug: "secretaire", label: "Secrétaire", email: `secretaire@${DOMAIN}`, prenom: "Cécile" },
-  { slug: "administrateur", label: "Administrateur", email: `administrateur@${DOMAIN}` },
-  { slug: "directrice", label: "Directrice", email: `directrice@${DOMAIN}`, prenom: "Marie" },
+  { slug: "president", label: "Président", email: `president@${DOMAIN}`, prenom: "Jean-François", titre: "Président de l'ARIL" },
+  { slug: "tresorier", label: "Trésorier", email: `tresorier@${DOMAIN}`, titre: "Trésorier de l'ARIL" },
+  { slug: "secretaire", label: "Secrétaire", email: `secretaire@${DOMAIN}`, prenom: "Cécile", titre: "Secrétaire de l'ARIL" },
+  { slug: "administrateur", label: "Administrateur", email: `administrateur@${DOMAIN}`, titre: "Administrateur de Préau" },
+  { slug: "directrice", label: "Directrice", email: `directrice@${DOMAIN}`, prenom: "Marie", titre: "Directrice de l'École du Saint-Enfant-Jésus" },
   {
     slug: "directeur-spirituel",
     label: "Directeur spirituel",
     email: `directeur-spirituel@${DOMAIN}`,
     prenom: "Monsieur le Chanoine",
+    titre: "Directeur spirituel de l'École du Saint-Enfant-Jésus",
   },
-  { slug: "resp-mecenat", label: "Resp. Mécénat", email: `resp-mecenat@${DOMAIN}` },
-  { slug: "recherche-fonds", label: "Recherche de fonds", email: `recherche-fonds@${DOMAIN}` },
+  { slug: "resp-mecenat", label: "Resp. Mécénat", email: `resp-mecenat@${DOMAIN}`, titre: "Responsable du mécénat de l'ARIL" },
+  { slug: "recherche-fonds", label: "Recherche de fonds", email: `recherche-fonds@${DOMAIN}`, titre: "Recherche de fonds de l'ARIL" },
 ];
 
 /**
@@ -32,8 +36,9 @@ export const PAGES_RESTREINTES: Record<string, string[]> = {
   "recherche-fonds": ["/", "/recherche/axes", "/recherche/suivi", "/mecenat/pipeline"],
   // Directeur spirituel : lecture du carnet, des dons et des relations donateurs ; bulletins (il enseigne le catéchisme).
   "directeur-spirituel": ["/", "/carnet", "/dons", "/mecenat/pipeline", "/bulletins"],
-  // Président : Tableau de bord, Comptabilité (lecture), Relations donateurs, et l'Espace famille de sa famille (sans bulletins).
-  president: ["/", "/comptabilite", "/mecenat/pipeline", "/ma-famille/accueil", "/ma-famille/paiements", "/ma-famille/fiche"],
+  // Président : Tableau de bord, Comptabilité (lecture), Budget, Frais de scolarité, Dons, Relations donateurs. Son
+  // Espace famille s'ouvre par le logo (bascule vers le compte de la famille Antona), comme pour les autres familles.
+  president: ["/", "/comptabilite", "/budget", "/scolarite", "/dons", "/mecenat/pipeline"],
   // Profils pas encore configurés : rien de visible (une page d'attente) tant que leurs accès ne sont pas définis.
   secretaire: ["/en-attente"],
   administrateur: ["/en-attente"],
@@ -54,6 +59,8 @@ export const ROLES_PRENOM_A_L_ACCES = ["recherche-fonds"];
 export const PAGES_RESERVEES: { prefixe: string; roles: string[] }[] = [
   { prefixe: "/recherche", roles: ["president", "tresorier", "recherche-fonds"] },
   { prefixe: "/courriers", roles: ["secretaire", "tresorier", "president", "administrateur"] },
+  // Accès des familles à leur espace (comptes, invitations) : Administrateur (aujourd'hui le Trésorier).
+  { prefixe: "/acces-familles", roles: ["tresorier", "administrateur"] },
   // Comptabilité : le Président la consulte seulement (pas d'import de relevé ni de règles de correspondance).
   { prefixe: "/comptabilite/import", roles: ["tresorier", "administrateur"] },
   { prefixe: "/comptabilite/correspondances", roles: ["tresorier", "administrateur"] },

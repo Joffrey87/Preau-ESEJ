@@ -66,9 +66,9 @@ export default function LoginPage() {
       setEspace("famille");
       setEmail("");
       setNomFamille(q.get("nom") ?? "");
-    } else if (voulu === "directrice") {
+    } else if (voulu === "directrice" || voulu === "president") {
       setEspace("bureau");
-      setEmail(ROLES.find((r) => r.slug === "directrice")?.email ?? ROLES[1].email);
+      setEmail(ROLES.find((r) => r.slug === voulu)?.email ?? ROLES[1].email);
     } else if (voulu === "recherche") {
       setEspace("bureau");
       setEmail(ROLES.find((r) => r.slug === "recherche-fonds")?.email ?? ROLES[1].email);
@@ -137,6 +137,7 @@ export default function LoginPage() {
     if (espace === "famille") await memoriserSession("famille");
     else if (avecPrenom) await memoriserSession("recherche");
     else if (adresse === ROLES.find((r) => r.slug === "directrice")?.email) await memoriserSession("directrice");
+    else if (adresse === ROLES.find((r) => r.slug === "president")?.email) await memoriserSession("president");
 
     // Prénom de la visite : cookie de session (sans durée), effacé à la fermeture du navigateur.
     document.cookie = avecPrenom

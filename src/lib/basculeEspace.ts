@@ -8,10 +8,10 @@
 import { createClient } from "@/lib/supabase/client";
 import { COOKIE_PRENOM } from "@/lib/roles";
 
-export type Espace = "famille" | "recherche" | "directrice";
+export type Espace = "famille" | "recherche" | "directrice" | "president";
 
 /** Page d'arrivée de chaque espace. */
-const ACCUEIL: Record<Espace, string> = { famille: "/espace", recherche: "/", directrice: "/" };
+const ACCUEIL: Record<Espace, string> = { famille: "/espace", recherche: "/", directrice: "/", president: "/" };
 
 const CLE = "preau.sessions";
 type Session = { access_token: string; refresh_token: string };
@@ -80,8 +80,8 @@ export async function basculerVers(vers: Espace, quitte: Espace, infos: { prenom
   const q = new URLSearchParams(
     vers === "famille"
       ? { espace: "famille", ...(infos.famille ? { nom: infos.famille } : {}) }
-      : vers === "directrice"
-        ? { espace: "directrice" }
+      : vers === "directrice" || vers === "president"
+        ? { espace: vers }
         : { espace: "recherche", ...(infos.prenom ? { prenom: infos.prenom } : {}) },
   );
   window.location.assign(`/login?${q.toString()}`);

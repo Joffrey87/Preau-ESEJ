@@ -48,6 +48,10 @@ export default async function AppLayout({
   } else if (slugReel === "directrice") {
     const { data: f } = await supabase.from("familles").select("nom, membre_recherche").eq("directrice_liee", true).maybeSingle();
     if (f) bascule = { famille: f.nom as string, prenom: (f.membre_recherche as string | null) ?? null, directrice: true };
+  } else if (slugReel === "president") {
+    // Président : le logo ouvre l'Espace de sa famille (familles.profil_lie), comme pour les autres familles.
+    const { data: f } = await supabase.from("familles").select("nom, membre_recherche").eq("profil_lie", "president").maybeSingle();
+    if (f) bascule = { famille: f.nom as string, prenom: (f.membre_recherche as string | null) ?? null, directrice: false, president: true };
   }
   const jauge = rechercheFonds ? ((await supabase.rpc("dons_exercice_courant")).data as DonsExercice) : null;
 

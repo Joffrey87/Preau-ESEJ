@@ -223,7 +223,18 @@ export function alertes(espace: EspaceFamille, s: Situation | null, aujourdhui: 
     }
   }
   const f = espace.famille;
-  const manques = [!f.adresse && "adresse", !f.telephone && "téléphone"].filter(Boolean);
+  // Tout ce que « Ma famille » demande et qui manque encore (un parent sans aucune coordonnée : nommé en bloc).
+  const parent = (qui: string, p: "parent1" | "parent2") => {
+    const champs: [string, string | null | undefined][] = [
+      ["prénom", f[`${p}_prenom`]],
+      ["nom", f[`${p}_nom`]],
+      ["téléphone", f[`${p}_telephone`]],
+      ["courriel", f[`${p}_courriel`]],
+    ];
+    const vides = champs.filter(([, v]) => !v?.trim()).map(([l]) => l);
+    return vides.length === champs.length ? [`coordonnées de ${qui}`] : vides.map((l) => `${l} de ${qui}`);
+  };
+  const manques = [!f.adresse?.trim() && "adresse", !f.cp_ville?.trim() && "code postal et ville", ...parent("Monsieur", "parent1"), ...parent("Madame", "parent2")].filter(Boolean);
   if (manques.length > 0) out.push({ ton: "info", titre: "Fiche famille à compléter", detail: `Manque : ${manques.join(", ")}.`, lien: "/espace/famille" });
   if (s && scolarises(espace.eleves, s.annee).length === 0) out.push({ ton: "info", titre: "Enfants non encore renseignés", detail: "L'école complétera la liste de vos enfants." });
   return out;

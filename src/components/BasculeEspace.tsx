@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import Icon from "@/components/Icon";
 import { basculerVers, memoriserSession, type Espace } from "@/lib/basculeEspace";
 
-/** Espaces reliés d'une famille : son Espace famille, la Recherche de fonds (prénom du membre), le profil Directrice. */
-export type LiensEspace = { famille: string; prenom: string | null; directrice: boolean };
+/** Espaces reliés d'une famille : son Espace famille, la Recherche de fonds (prénom du membre), le profil Directrice ou Président. */
+export type LiensEspace = { famille: string; prenom: string | null; directrice: boolean; president?: boolean };
 
 /**
  * Choix entre les espaces d'une famille qui a plusieurs profils (Espace famille, Recherche de fonds, Directrice).
@@ -24,6 +24,7 @@ export function PanneauBascule({ actuel, liens }: { actuel: Espace; liens: Liens
     { espace: "famille", titre: "Espace famille", detail: `Famille ${famille}`, icone: "maison" },
     ...(prenom ? [{ espace: "recherche" as Espace, titre: "Recherche de fonds", detail: prenom, icone: "users" }] : []),
     ...(liens.directrice ? [{ espace: "directrice" as Espace, titre: "Directrice", detail: "Bulletins", icone: "graduation" }] : []),
+    ...(liens.president ? [{ espace: "president" as Espace, titre: "Président", detail: "Administration de l'ARIL", icone: "ledger" }] : []),
   ];
   return (
     <div className="grid gap-1.5">

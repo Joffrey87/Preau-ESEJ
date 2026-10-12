@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { inputCls } from "./GestionComptes";
 import { CLASSES, classeEn, depuis, prenomEleve, termineEnJuin, type Classe, type Eleve } from "@/lib/eleves";
+import { roleByEmail } from "@/lib/roles";
 
 export type FicheFamille = {
   id: string;
@@ -64,6 +65,13 @@ export default function FamilleEnfants({
   const [erreur, setErreur] = useState<string | null>(null);
   const [courrielCompte, setCourrielCompte] = useState("");
   const [messageCompte, setMessageCompte] = useState<string | null>(null);
+  // Accès des familles à leur espace (aperçu, rattachement du compte) : Administrateur, aujourd'hui le Trésorier.
+  const [gereAcces, setGereAcces] = useState(false);
+  useEffect(() => {
+    createClient()
+      .auth.getUser()
+      .then(({ data }) => setGereAcces(["tresorier", "administrateur"].includes(roleByEmail(data.user?.email)?.slug ?? "")));
+  }, []);
 
   if (!famille) return <p className="text-xs text-muted">Famille non reliée : enregistrez-la à nouveau.</p>;
 
@@ -256,31 +264,33 @@ export default function FamilleEnfants({
         {erreur && <p className="mt-1 text-xs text-negative">{erreur}</p>}
       </div>
 
-      <div>
-        <div className="flex items-center justify-between">
-          <h4 className="text-xs font-semibold uppercase tracking-wide text-muted">Espace famille</h4>
-          <a href={`/apercu-famille/${famille.id}`} className="text-xs font-medium text-accent hover:underline">
-            Voir son espace (aperçu) →
-          </a>
+      {gereAcces && (
+        <div>
+          <div className="flex items-center justify-between">
+            <h4 className="text-xs font-semibold uppercase tracking-wide text-muted">Espace famille</h4>
+            <a href={`/apercu-famille/${famille.id}`} className="text-xs font-medium text-accent hover:underline">
+              Voir son espace (aperçu) →
+            </a>
+          </div>
+          <p className="mt-1 text-[11px] text-muted">
+            Invitez la famille depuis Supabase (Authentication → Invite user) : elle choisira son mot de passe via le lien reçu.
+            Rattachez ensuite son adresse ici.
+          </p>
+          <div className="mt-1 flex gap-1.5">
+            <input
+              type="email"
+              value={courrielCompte}
+              onChange={(e) => setCourrielCompte(e.target.value)}
+              placeholder="Adresse du compte famille"
+              className={`${inputCls} py-1 text-xs`}
+            />
+            <button type="button" onClick={rattacherCompte} className="rounded-lg border border-border px-2 text-xs font-medium hover:bg-surface-2">
+              Rattacher
+            </button>
+          </div>
+          {messageCompte && <p className="mt-1 text-[11px] text-muted">{messageCompte}</p>}
         </div>
-        <p className="mt-1 text-[11px] text-muted">
-          Invitez la famille depuis Supabase (Authentication → Invite user) : elle choisira son mot de passe via le lien reçu.
-          Rattachez ensuite son adresse ici.
-        </p>
-        <div className="mt-1 flex gap-1.5">
-          <input
-            type="email"
-            value={courrielCompte}
-            onChange={(e) => setCourrielCompte(e.target.value)}
-            placeholder="Adresse du compte famille"
-            className={`${inputCls} py-1 text-xs`}
-          />
-          <button type="button" onClick={rattacherCompte} className="rounded-lg border border-border px-2 text-xs font-medium hover:bg-surface-2">
-            Rattacher
-          </button>
-        </div>
-        {messageCompte && <p className="mt-1 text-[11px] text-muted">{messageCompte}</p>}
-      </div>
+      )}
     </div>
   );
 }

@@ -53,7 +53,7 @@ export default async function Home() {
             {role ? <span className="font-normal text-muted"> · {role.label}</span> : null}
           </h1>
           <p className="mt-1 text-sm text-muted">
-            {finances && exercice ? `Trésorerie de l'ARIL · ${exercice.libelle}` : "ARIL · École du Saint-Enfant-Jésus"}
+            {[role?.titre ?? "ARIL · École du Saint-Enfant-Jésus", finances && exercice ? exercice.libelle : null].filter(Boolean).join(" · ")}
           </p>
         </div>
       </div>

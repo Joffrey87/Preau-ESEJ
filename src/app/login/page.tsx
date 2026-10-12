@@ -158,8 +158,8 @@ export default function LoginPage() {
             alt="Préau"
             className="mb-4 h-44 w-44 rounded-full object-contain"
           />
-          <h1 className="text-xl font-semibold">Préau</h1>
-          <p className="mt-1 text-sm text-muted">
+          <h1 className="sr-only">Préau</h1>
+          <p className="text-sm text-muted">
             ARIL · École du Saint-Enfant-Jésus
           </p>
         </div>

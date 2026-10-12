@@ -2,172 +2,43 @@ import Link from "next/link";
 import Icon from "@/components/Icon";
 import AccesFamilles from "@/components/AccesFamilles";
 import { createClient } from "@/lib/supabase/server";
-import { formatEuros } from "@/lib/format";
-import { regleDesFamilles } from "@/lib/regleScolarite";
-import { sansLignesVentilees } from "@/lib/operations";
+import { todayISO } from "@/lib/format";
 import { emailVue } from "@/lib/vueRoleServeur";
 import { roleByEmail } from "@/lib/roles";
-import { recuEnvoye, champsImportantsManquants, sansRecu } from "@/lib/statutDon";
+import { chargerTableauDeBord, type Ton } from "@/lib/tableauDeBord";
 
-type Op = {
-  id: string;
-  type: "recette" | "depense";
-  montant: number;
-  date_operation: string;
-  parent_id: string | null;
-  est_ventilee: boolean;
-};
-type DonRow = {
-  envoi_prefere?: string | null;
-  recu_etat: string | null;
-  recu_numero: string | null;
-  est_personne_morale: boolean;
-  donateur_nom: string;
-  donateur_prenom: string | null;
-  raison_sociale: string | null;
-  adresse: string | null;
-  cp_ville: string | null;
-  courriel: string | null;
-  date_don: string;
-  mode_paiement: string | null;
-};
+// Tableau de bord : page d'accueil de chaque profil d'Administration. Les priorités du jour, puis une tuile par onglet
+// du profil avec ses chiffres essentiels (voir lib/tableauDeBord.ts).
 
-type Tone = "red" | "amber" | "blue" | "violet" | "green";
-type Prio = { title: string; detail: string; href: string; icon: string; tone: Tone };
-
-const TONE: Record<Tone, { dot: string; ring: string }> = {
-  red: { dot: "bg-negative", ring: "hover:border-negative/50" },
-  amber: { dot: "bg-gold", ring: "hover:border-gold/60" },
-  blue: { dot: "bg-accent", ring: "hover:border-accent" },
-  violet: { dot: "bg-violet-500", ring: "hover:border-violet-400" },
-  green: { dot: "bg-positive", ring: "hover:border-positive/50" },
+const POINT: Record<Ton, string> = { rouge: "bg-negative", ambre: "bg-gold", bleu: "bg-accent", vert: "bg-positive", neutre: "bg-muted" };
+const BORD: Record<Ton, string> = {
+  rouge: "hover:border-negative/50",
+  ambre: "hover:border-gold/60",
+  bleu: "hover:border-accent",
+  vert: "hover:border-positive/50",
+  neutre: "hover:border-accent",
 };
+const TEXTE: Record<Ton, string> = { rouge: "text-negative", ambre: "text-gold", bleu: "text-accent", vert: "text-positive", neutre: "text-foreground" };
 
 export default async function Home() {
   const supabase = await createClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const role = roleByEmail(await emailVue(user?.email));
-  const meta = (user?.user_metadata ?? {}) as { prenom?: string; nom?: string };
+  const email = await emailVue(user?.email);
+  const role = roleByEmail(email);
+  const meta = (user?.user_metadata ?? {}) as { prenom?: string };
   const prenom = (meta.prenom ?? "").trim();
-  const slug = role?.slug ?? "";
-  const estFinance = ["tresorier", "president", "administrateur"].includes(slug);
-  const estMecenat = slug === "resp-mecenat";
-  const estEcole = ["secretaire", "directrice", "directeur-spirituel"].includes(slug);
-
-  const { data: exercice } = await supabase
-    .from("exercices")
-    .select("id, libelle")
-    .eq("actif", true)
-    .order("date_debut", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  const [comptesRes, opsRes, budgetRes, donsRes, scoAnneeRes] = await Promise.all([
-    supabase.from("comptes").select("solde_initial").eq("archive", false),
-    exercice
-      ? supabase
-          .from("operations")
-          .select("id, type, montant, date_operation, parent_id, est_ventilee")
-          .eq("exercice_id", exercice.id)
-      : Promise.resolve({ data: [] as Op[] }),
-    exercice
-      ? supabase.from("budget_lignes").select("montant_prevu, categories(type)").eq("exercice_id", exercice.id)
-      : Promise.resolve({ data: [] as { montant_prevu: number; categories: { type: string } | null }[] }),
-    supabase
-      .from("dons")
-      .select(
-        "recu_etat, recu_numero, envoi_prefere, est_personne_morale, donateur_nom, donateur_prenom, raison_sociale, adresse, cp_ville, courriel, date_don, mode_paiement",
-      ),
-    supabase
-      .from("scolarite_inscriptions")
-      .select("annee_scolaire")
-      .order("annee_scolaire", { ascending: false })
-      .limit(1)
-      .maybeSingle(),
-  ]);
-
-  const anneeSco = (scoAnneeRes.data as { annee_scolaire: string } | null)?.annee_scolaire ?? null;
-  // Modifications de coordonnées faites par les familles, pas encore relues (le bureau qui valide seulement).
-  const { data: modifsFamilles } = await supabase.from("familles_modifications").select("famille_id").is("vu_le", null);
-  const famillesAValider = new Set((modifsFamilles ?? []).map((m) => m.famille_id as string)).size;
-  const sco = anneeSco ? await regleDesFamilles(supabase, anneeSco) : [];
-
-  // Finances
-  const soldeInitial = (comptesRes.data ?? []).reduce((s, c) => s + Number(c.solde_initial), 0);
-  // Sous-écritures plutôt que lignes ventilées, sinon double comptage.
-  const ops = sansLignesVentilees((opsRes.data ?? []) as Op[]);
-  const sum = (arr: Op[], t: Op["type"]) =>
-    arr.filter((o) => o.type === t).reduce((s, o) => s + Number(o.montant), 0);
-  const solde = soldeInitial + sum(ops, "recette") - sum(ops, "depense");
-  const budgetPrevuDep = (budgetRes.data ?? [])
-    .filter((b) => {
-      const cat = Array.isArray(b.categories) ? b.categories[0] : b.categories;
-      return cat?.type === "depense";
-    })
-    .reduce((s, b) => s + Number(b.montant_prevu), 0);
-  const budgetConsomme = budgetPrevuDep > 0 ? (sum(ops, "depense") / budgetPrevuDep) * 100 : null;
-
-  // Dons
-  const dons = (donsRes.data ?? []) as DonRow[];
-  const recusAEnvoyer = dons.filter((d) => !recuEnvoye(d) && !sansRecu(d)).length;
-  // Sans reçu demandé, seule l'identité du donateur compte (adresse et courriel ne servent qu'au reçu).
-  const donsIncomplets = dons.filter((d) =>
-    champsImportantsManquants(d).some((c) => !sansRecu(d) || c === "nom" || c === "nom de l'organisme"),
-  ).length;
-
-  // Scolarité — reste à payer = dû − réglé (calcul commun : lib/regleScolarite)
-  const resteFamille = (r: (typeof sco)[number]) => r.du - r.regle;
-  const famImpayees = sco.filter((r) => resteFamille(r) > 0.005);
-  const resteTotal = famImpayees.reduce((s, r) => s + resteFamille(r), 0);
-
-  // Priorités du jour (filtrées par rôle)
-  const prios: Prio[] = [];
-  if (famillesAValider > 0) {
-    prios.push({ title: `À valider : Modification Famille (${famillesAValider})`, detail: "Coordonnées modifiées par des familles dans leur espace", href: "/scolarite", icon: "graduation", tone: "amber" });
-  }
-  if (estFinance && solde < 0)
-    prios.push({ title: "Solde de trésorerie négatif", detail: formatEuros(solde), href: "/comptabilite", icon: "ledger", tone: "red" });
-  if (estFinance && budgetConsomme !== null && budgetConsomme > 100)
-    prios.push({ title: "Budget dépassé", detail: `${Math.round(budgetConsomme)} % du prévu consommé`, href: "/budget", icon: "chart", tone: "amber" });
-  if ((estFinance || estMecenat) && donsIncomplets > 0)
-    prios.push({ title: `${donsIncomplets} don${donsIncomplets > 1 ? "s" : ""} à compléter`, detail: "Info importante manquante (nom, adresse, courriel…)", href: "/dons", icon: "gift", tone: "red" });
-  if ((estFinance || estMecenat) && recusAEnvoyer > 0)
-    prios.push({ title: `${recusAEnvoyer} reçu${recusAEnvoyer > 1 ? "s" : ""} fiscal${recusAEnvoyer > 1 ? "s" : ""} à envoyer`, detail: "Dons sans reçu encore envoyé", href: "/recus-fiscaux", icon: "receipt", tone: "blue" });
-  if ((estFinance || estEcole) && famImpayees.length > 0)
-    prios.push({ title: `${famImpayees.length} famille${famImpayees.length > 1 ? "s" : ""} avec un reste à régler`, detail: `${formatEuros(resteTotal)} au total · scolarité ${anneeSco}`, href: "/scolarite", icon: "graduation", tone: "amber" });
-
-  // Accès rapide selon le rôle
-  const RACCOURCIS: Record<string, { href: string; icon: string; title: string; desc: string }> = {
-    comptabilite: { href: "/comptabilite", icon: "ledger", title: "Comptabilité", desc: "Saisir et suivre recettes et dépenses." },
-    budget: { href: "/budget", icon: "chart", title: "Budget", desc: "Réalisé vs prévisionnel." },
-    dons: { href: "/dons", icon: "gift", title: "Dons", desc: "Suivi des dons et statuts." },
-    recus: { href: "/recus-fiscaux", icon: "receipt", title: "Reçus fiscaux", desc: "Générer les reçus annuels." },
-    scolarite: { href: "/scolarite", icon: "graduation", title: "Frais de scolarité", desc: "Paiements par famille." },
-    carnet: { href: "/carnet", icon: "contact", title: "Carnet d'adresses", desc: "Contacts de l'association." },
-    parametres: { href: "/parametres", icon: "settings", title: "Paramètres", desc: "Association, comptes, catégories." },
-  };
-  const raccourcis = estFinance
-    ? ["comptabilite", "budget", "dons", "scolarite", "carnet", "parametres"]
-    : estMecenat
-      ? ["dons", "recus", "carnet"]
-      : estEcole
-        ? ["scolarite", "carnet"]
-        : ["carnet"];
+  const { exercice, tuiles, priorites } = await chargerTableauDeBord(supabase, email, todayISO());
+  const finances = tuiles.some((t) => t.href === "/comptabilite");
 
   const now = new Date();
-  const dateStr = new Intl.DateTimeFormat("fr-FR", {
-    weekday: "long",
-    day: "numeric",
-    month: "long",
-    year: "numeric",
-  }).format(now);
+  const dateStr = new Intl.DateTimeFormat("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(now);
   const salut = now.getHours() < 18 ? "Bonjour" : "Bonsoir";
 
   return (
     <div className="mx-auto max-w-6xl px-5 py-8 md:px-8">
-      {/* Hero personnalisé */}
+      {/* En-tête personnalisé */}
       <div className="mb-8 flex items-center gap-5">
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/logo.webp" alt="Préau" className="h-20 w-20 shrink-0 rounded-full object-contain sm:h-24 sm:w-24" />
@@ -176,21 +47,21 @@ export default async function Home() {
           <h1 className="mt-0.5 text-2xl font-semibold tracking-tight sm:text-3xl">
             {salut}
             {prenom ? ` ${prenom}` : ""}
-            {role ? <span className="text-muted font-normal"> · {role.label}</span> : null}
+            {role ? <span className="font-normal text-muted"> · {role.label}</span> : null}
           </h1>
           <p className="mt-1 text-sm text-muted">
-            {exercice ? `Trésorerie de l'ARIL · ${exercice.libelle}` : "Trésorerie de l'ARIL"}
+            {finances && exercice ? `Trésorerie de l'ARIL · ${exercice.libelle}` : "ARIL · École du Saint-Enfant-Jésus"}
           </p>
         </div>
       </div>
 
-      {/* Priorités du jour */}
+      {/* Priorités du jour : ce qui attend une action, dans les onglets du profil. */}
       <section className="mb-9">
         <h2 className="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted">
           <Icon name="check" className="h-4 w-4 text-gold" />
           Vos priorités du jour
         </h2>
-        {prios.length === 0 ? (
+        {priorites.length === 0 ? (
           <div className="flex items-center gap-3 rounded-lg border border-border bg-surface px-4 py-3 text-sm text-muted">
             <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-positive/10 text-positive">
               <Icon name="check" className="h-5 w-5" />
@@ -199,15 +70,11 @@ export default async function Home() {
           </div>
         ) : (
           <div className="grid gap-3 sm:grid-cols-2">
-            {prios.map((p) => (
-              <Link
-                key={p.title}
-                href={p.href}
-                className={`group flex items-start gap-2.5 rounded-lg border border-border bg-surface px-3 py-2 transition-colors ${TONE[p.tone].ring}`}
-              >
-                <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${TONE[p.tone].dot}`} />
+            {priorites.map((p) => (
+              <Link key={p.titre} href={p.href} className={`group flex items-start gap-2.5 rounded-lg border border-border bg-surface px-3 py-2 transition-colors ${BORD[p.ton]}`}>
+                <span className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${POINT[p.ton]}`} />
                 <span className="min-w-0 flex-1">
-                  <span className="block font-medium">{p.title}</span>
+                  <span className="block font-medium">{p.titre}</span>
                   <span className="mt-0.5 block text-sm text-muted">{p.detail}</span>
                 </span>
                 <Icon name="transfer" className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted opacity-0 transition-opacity group-hover:opacity-100" />
@@ -220,29 +87,36 @@ export default async function Home() {
       {/* Accès des familles (visible du Trésorier et des administrateurs seulement) */}
       <AccesFamilles />
 
-      {/* Accès rapide */}
+      {/* Vos onglets en bref : une tuile par onglet, ses chiffres essentiels. */}
       <section>
-        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted">Accès rapide</h2>
+        <h2 className="mb-3 text-sm font-semibold uppercase tracking-wider text-muted">Vos onglets en bref</h2>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {raccourcis.map((k) => {
-            const s = RACCOURCIS[k];
-            return (
-              <Link
-                key={s.href}
-                href={s.href}
-                title={s.desc}
-                className="group flex items-center gap-2.5 rounded-lg border border-border bg-surface px-3 py-2 transition-colors hover:border-accent"
-              >
-                <div className="grid h-11 w-11 shrink-0 place-items-center rounded-lg bg-accent-soft text-accent">
-                  <Icon name={s.icon} className="h-5 w-5" />
+          {tuiles.map((t) => (
+            <Link key={t.href} href={t.href} className="group flex flex-col rounded-xl border border-border bg-surface p-4 transition-colors hover:border-accent">
+              <div className="flex items-center gap-2.5">
+                <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-accent-soft text-accent">
+                  <Icon name={t.icone} className="h-[18px] w-[18px]" />
                 </div>
-                <div>
-                  <div className="font-medium group-hover:text-accent">{s.title}</div>
-                  <div className="mt-0.5 text-sm text-muted">{s.desc}</div>
+                <div className="min-w-0">
+                  <div className="font-medium group-hover:text-accent">{t.titre}</div>
+                  {t.sousTitre && <div className="truncate text-[11.5px] text-muted">{t.sousTitre}</div>}
                 </div>
-              </Link>
-            );
-          })}
+                <Icon name="transfer" className="ml-auto h-3.5 w-3.5 shrink-0 text-muted opacity-0 transition-opacity group-hover:opacity-100" />
+              </div>
+              {t.chiffres.length > 0 ? (
+                <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-2">
+                  {t.chiffres.map((c) => (
+                    <div key={c.label} className="min-w-0">
+                      <dt className="truncate text-[11px] text-muted">{c.label}</dt>
+                      <dd className={`text-[15px] font-semibold tabular-nums ${TEXTE[c.ton ?? "neutre"]}`}>{c.valeur}</dd>
+                    </div>
+                  ))}
+                </dl>
+              ) : (
+                <p className="mt-2 text-sm text-muted">{t.description ?? "Ouvrir l’onglet."}</p>
+              )}
+            </Link>
+          ))}
         </div>
       </section>
     </div>

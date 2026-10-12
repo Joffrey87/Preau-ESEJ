@@ -11,7 +11,7 @@ import { COOKIE_PRENOM } from "@/lib/roles";
 export type Espace = "famille" | "recherche" | "directrice";
 
 /** Page d'arrivée de chaque espace. */
-const ACCUEIL: Record<Espace, string> = { famille: "/espace", recherche: "/recherche/axes", directrice: "/bulletins" };
+const ACCUEIL: Record<Espace, string> = { famille: "/espace", recherche: "/", directrice: "/" };
 
 const CLE = "preau.sessions";
 type Session = { access_token: string; refresh_token: string };

@@ -15,10 +15,11 @@ export type NavSection = {
 // Navigation par modules. `ready: false` = module prévu mais pas encore construit
 // (affiché grisé avec un badge « Bientôt »). V1 = Tableau de bord, Comptabilité, Budget.
 export const NAV: NavSection[] = [
+  // Tableau de bord : toujours tout en haut, hors section (page d'accueil de chaque profil).
+  { title: "", items: [{ href: "/", label: "Tableau de bord", icon: "dashboard", ready: true }] },
   {
     title: "Comptabilité",
     items: [
-      { href: "/", label: "Tableau de bord", icon: "dashboard", ready: true },
       { href: "/comptabilite", label: "Comptabilité", icon: "ledger", ready: true },
       { href: "/budget", label: "Budget", icon: "chart", ready: true },
       { href: "/scolarite", label: "Frais de scolarité", icon: "graduation", ready: true },

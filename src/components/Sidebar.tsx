@@ -190,10 +190,12 @@ export default function Sidebar({
           </button>
         )}
         {navDe(userEmail).map((section, i) => (
-          <div key={section.title} className={i === 0 ? "" : "mt-2 border-t border-border/70 pt-2"}>
-            <div className="px-2 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted/70">
-              {section.title}
-            </div>
+          <div key={section.title || "accueil"} className={i === 0 ? "" : "mt-2 border-t border-border/70 pt-2"}>
+            {section.title && (
+              <div className="px-2 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted/70">
+                {section.title}
+              </div>
+            )}
             <ul>
               {section.items.map((item) => {
                 const active =

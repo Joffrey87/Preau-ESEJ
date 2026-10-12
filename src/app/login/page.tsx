@@ -22,7 +22,7 @@ const dernierProfesseur = () => {
 // Accueil : trois grands boutons ; la boîte de connexion de l'espace choisi s'ouvre en dessous.
 const ESPACES: { v: Espace; label: string; icone: string }[] = [
   { v: "famille", label: "Famille", icone: "maison" },
-  { v: "professeurs", label: "Professeurs", icone: "graduation" },
+  { v: "professeurs", label: "Professeur", icone: "graduation" },
   { v: "bureau", label: "Administration", icone: "ledger" },
 ];
 

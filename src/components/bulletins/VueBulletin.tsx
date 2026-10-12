@@ -1,6 +1,6 @@
 "use client";
 
-import { mentionLabel, note20, rangTexte, type Synthese } from "@/lib/bulletins";
+import { mentionLabel, note20, rangTexte, titrePeriode, type Synthese } from "@/lib/bulletins";
 
 /** Bulletin tel que la famille le lit (synthèse figée) : même présentation que le PDF. */
 export default function VueBulletin({ s }: { s: Synthese }) {
@@ -9,7 +9,8 @@ export default function VueBulletin({ s }: { s: Synthese }) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <div className="text-[11px] font-semibold uppercase tracking-wider text-gold">{s.periode.libelle}</div>
+          <div className="text-[13px] font-semibold text-gold">{titrePeriode(s.periode)}</div>
+          {s.periode.numero && <div className="text-[11px] text-muted">{s.periode.libelle}</div>}
           <h2 className="text-lg font-semibold">
             {s.eleve.prenom} {s.eleve.nom}
           </h2>

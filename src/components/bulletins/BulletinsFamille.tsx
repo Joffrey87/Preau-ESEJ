@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { note20, type Synthese } from "@/lib/bulletins";
+import { note20, titrePeriode, type Synthese } from "@/lib/bulletins";
 import { telechargerBulletins } from "@/lib/bulletinPdf";
 import VueBulletin from "./VueBulletin";
 
@@ -61,8 +61,9 @@ export default function BulletinsFamille({ bulletins, apercu }: { bulletins: Bul
         <div key={b.id} className="overflow-hidden rounded-xl border border-border bg-surface">
           <div className="flex flex-wrap items-center gap-3 px-4 py-3">
             <button type="button" onClick={() => ouvrir(b)} className="flex min-w-0 flex-1 flex-wrap items-center gap-x-3 gap-y-0.5 text-left">
-              <span className="font-medium">{b.synthese.periode.libelle}</span>
+              <span className="font-semibold">{titrePeriode(b.synthese.periode)}</span>
               <span className="text-[12px] text-muted">
+                {b.synthese.periode.numero ? `${b.synthese.periode.libelle} · ` : ""}
                 {b.synthese.eleve.prenom} · {b.synthese.classe.nom}
               </span>
               <span className="text-[13px] tabular-nums">

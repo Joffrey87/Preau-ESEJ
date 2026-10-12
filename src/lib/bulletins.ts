@@ -95,7 +95,7 @@ export type Synthese = {
   source?: string | null;
   eleve: { prenom: string; nom: string; niveau: string | null };
   classe: { nom: string; titulaire: string | null };
-  periode: { libelle: string; annee: string; trimestre: number | null };
+  periode: { libelle: string; annee: string; trimestre: number | null; numero?: number };
   afficherRang: boolean;
   general: Chiffre;
   groupes: { nom: string; chiffre: Chiffre; matieres: { nom: string; enseignants: string; chiffre: Chiffre; commentaire: string | null }[] }[];
@@ -277,7 +277,7 @@ export function construireSynthese(r: ResultatEleve, ctx: { classe: Classe; peri
     source: b?.source ?? null,
     eleve: { prenom: r.eleve.prenom ?? "", nom: r.eleve.nom, niveau: r.niveau },
     classe: { nom: ctx.classe.nom, titulaire: ctx.titulaire },
-    periode: { libelle: libellePeriode(ctx.periode), annee: ctx.classe.annee_scolaire, trimestre: ctx.periode.trimestre },
+    periode: { libelle: libellePeriode(ctx.periode), annee: ctx.classe.annee_scolaire, trimestre: ctx.periode.trimestre, numero: ctx.periode.ordre },
     afficherRang: ctx.classe.afficher_rang,
     general: { ...r.general, moy: arrondi(r.general.moy), moyClasse: arrondi(r.general.moyClasse) },
     groupes: r.groupes.map((g) => ({
@@ -302,5 +302,9 @@ export function construireSynthese(r: ResultatEleve, ctx: { classe: Classe; peri
 /** Une synthèse complète (publiée) ou seulement des chiffres repris ? */
 export const estSynthese = (s: Bulletin["synthese"]): s is Synthese => !!s && (s as Synthese).v === 1;
 
+/** « Période 2 · 1er trimestre » : le titre lisible ; les dates viennent en second. */
+export const titrePeriode = (p: Synthese["periode"]) =>
+  [p.numero ? `Période ${p.numero}` : p.libelle, p.trimestre ? `${p.trimestre === 1 ? "1er" : `${p.trimestre}e`} trimestre` : null].filter(Boolean).join(" · ");
+
 export const nomFichierBulletin = (s: Synthese) =>
-  `Bulletin ${s.eleve.prenom} ${s.eleve.nom} - ${s.periode.libelle}`.replace(/[\\/:*?"<>|]/g, "-") + ".pdf";
+  `Bulletin ${s.eleve.prenom} ${s.eleve.nom} - ${s.periode.numero ? `Période ${s.periode.numero}` : s.periode.libelle}`.replace(/[\\/:*?"<>|]/g, "-") + ".pdf";

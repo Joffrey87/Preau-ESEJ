@@ -4,7 +4,7 @@
 
 import type { PDFFont, PDFPage, RGB } from "pdf-lib";
 import { chargerRessources, assainir } from "@/lib/recuPdf";
-import { mentionLabel, nomFichierBulletin, note20, rangTexte, type Synthese } from "@/lib/bulletins";
+import { mentionLabel, nomFichierBulletin, note20, rangTexte, titrePeriode, type Synthese } from "@/lib/bulletins";
 
 const W = 595.28, H = 841.89, M = 40;
 
@@ -49,7 +49,7 @@ export async function construireBulletinsPdf(syntheses: Synthese[]): Promise<Uin
     const nouvellePage = () => {
       page = doc.addPage([W, H]);
       top = M;
-      texte(`${s.eleve.prenom} ${s.eleve.nom} — ${s.periode.libelle} (suite)`, M, top + 8, italic, 8.5, GRIS);
+      texte(`${s.eleve.prenom} ${s.eleve.nom} — ${titrePeriode(s.periode)} (suite)`, M, top + 8, italic, 8.5, GRIS);
       top += 22;
     };
     const place = (h: number) => {
@@ -60,7 +60,7 @@ export async function construireBulletinsPdf(syntheses: Synthese[]): Promise<Uin
     page.drawImage(logo, { x: M, y: y(top + 62), width: 63, height: 62 });
     texte("École du Saint-Enfant-Jésus", M + 76, top + 18, semi, 13);
     texte(`Bulletin scolaire · Année ${s.periode.annee}`, M + 76, top + 35, regular, 9.5, GRIS);
-    texte(s.periode.libelle + (s.periode.trimestre ? ` · ${["", "1er", "2e", "3e"][s.periode.trimestre]} trimestre` : ""), M + 76, top + 51, semi, 9.5, OR);
+    texte(titrePeriode(s.periode) + (s.periode.numero ? `  —  ${s.periode.libelle}` : ""), M + 76, top + 51, semi, 9.5, OR);
     const bx = W - M - 190;
     rect(bx, top, 190, 62, CREME);
     page.drawRectangle({ x: bx, y: y(top + 62), width: 2.5, height: 62, color: OR });
@@ -134,7 +134,6 @@ export async function construireBulletinsPdf(syntheses: Synthese[]): Promise<Uin
     texte("La Directrice", W - M - 160, top + 10, semi, 9);
     if (s.classe.titulaire) texte(s.classe.titulaire, M, top + 10, semi, 9);
     texte(s.classe.titulaire ? "Titulaire de la classe" : "", M, top + 22, regular, 8, GRIS);
-    // Pied de page sur chaque page.
   }
   const pages = doc.getPages();
   pages.forEach((p, i) => {

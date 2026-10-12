@@ -27,7 +27,8 @@ export const ROLES: Role[] = [
  */
 export const PAGES_RESTREINTES: Record<string, string[]> = {
   "recherche-fonds": ["/recherche/axes", "/recherche/suivi", "/mecenat/pipeline"],
-  "directeur-spirituel": ["/carnet", "/dons", "/bulletins"],
+  // Directeur spirituel : lecture du carnet, des dons et des relations donateurs ; bulletins (il enseigne le catéchisme).
+  "directeur-spirituel": ["/carnet", "/dons", "/mecenat/pipeline", "/bulletins"],
   // Président : Comptabilité, Budget, Frais de scolarité, Dons, Carnet (ni Tableau de bord, ni En cours).
   president: ["/comptabilite", "/budget", "/scolarite", "/dons", "/carnet"],
   // Profils pas encore configurés : rien de visible (une page d'attente) tant que leurs accès ne sont pas définis.

@@ -41,6 +41,13 @@ export const NAV: NavSection[] = [
     ],
   },
   {
+    title: "École",
+    items: [
+      // Directrice, Directeur spirituel (catéchisme) et Professeurs ; aucun autre profil du bureau (données d'élèves).
+      { href: "/bulletins", label: "Bulletins", icon: "book", ready: true, roles: ["directrice", "directeur-spirituel"] },
+    ],
+  },
+  {
     title: "Vie associative",
     items: [
       { href: "/carnet", label: "Carnet d'adresses", icon: "contact", ready: true },

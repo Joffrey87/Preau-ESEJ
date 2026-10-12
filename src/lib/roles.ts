@@ -27,13 +27,13 @@ export const ROLES: Role[] = [
  */
 export const PAGES_RESTREINTES: Record<string, string[]> = {
   "recherche-fonds": ["/recherche/axes", "/recherche/suivi", "/mecenat/pipeline"],
-  "directeur-spirituel": ["/carnet", "/dons"],
+  "directeur-spirituel": ["/carnet", "/dons", "/bulletins"],
   // Président : Comptabilité, Budget, Frais de scolarité, Dons, Carnet (ni Tableau de bord, ni En cours).
   president: ["/comptabilite", "/budget", "/scolarite", "/dons", "/carnet"],
   // Profils pas encore configurés : rien de visible (une page d'attente) tant que leurs accès ne sont pas définis.
   secretaire: ["/en-attente"],
   administrateur: ["/en-attente"],
-  directrice: ["/en-attente"],
+  directrice: ["/bulletins"],
   "resp-mecenat": ["/en-attente"],
 };
 
@@ -59,8 +59,14 @@ export function pageReserveeInterdite(email: string | null | undefined, chemin: 
   );
 }
 
+/** Comptes nominatifs des professeurs : <identifiant>@professeurs.esej, cantonnés aux bulletins. */
+export const DOMAINE_PROFESSEURS = "professeurs.esej";
+export const estProfesseur = (email?: string | null) => !!email?.endsWith(`@${DOMAINE_PROFESSEURS}`);
+export const PAGES_PROFESSEURS = ["/bulletins"];
+
 /** Pages autorisées pour ce compte ; null = pas de restriction. */
 export function pagesAutorisees(email?: string | null): string[] | null {
+  if (estProfesseur(email)) return PAGES_PROFESSEURS;
   const slug = roleByEmail(email)?.slug;
   return (slug && PAGES_RESTREINTES[slug]) || null;
 }

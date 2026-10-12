@@ -24,7 +24,25 @@ export default async function TableauDeBordFamille() {
   const aujourdhui = todayISO();
   const annee = anneeCourante(espace, aujourdhui);
   const s = annee ? situation(espace, annee, aujourdhui) : null;
-  const liste = alertes(espace, s, aujourdhui);
+  // Bulletins publiés pas encore ouverts : une tuile « À noter » (la base ne renvoie que ceux de la famille).
+  const { count: bulletinsNonLus } = await supabase
+    .from("bulletins")
+    .select("id", { count: "exact", head: true })
+    .eq("statut", "publie")
+    .is("lu_le", null);
+  const liste = [
+    ...(bulletinsNonLus
+      ? [
+          {
+            ton: "info" as const,
+            titre: bulletinsNonLus > 1 ? `${bulletinsNonLus} nouveaux bulletins` : "Un nouveau bulletin",
+            detail: "Publié par la Directrice, à lire dans l'onglet Bulletins.",
+            lien: "/espace/bulletins",
+          },
+        ]
+      : []),
+    ...alertes(espace, s, aujourdhui),
+  ];
   const activitesDues = espace.activites.filter((a) => !a.paye_le && a.annee_scolaire === annee);
 
   return (

@@ -13,7 +13,14 @@ const DERNIER_PRENOM = "recherche.dernierPrenom";
 export default function LoginPage() {
   const router = useRouter();
   // Bureau : un compte par rôle, choisi dans la liste. Famille : son adresse.
-  const [espace, setEspace] = useState<"bureau" | "famille">("bureau");
+  const [espace, setEspace] = useState<"bureau" | "famille" | "professeurs">("bureau");
+  // Professeurs : un compte nominatif chacun, choisi dans la liste (liste fournie par la base, sans session).
+  const [professeurs, setProfesseurs] = useState<{ libelle: string; email: string }[]>([]);
+  useEffect(() => {
+    createClient()
+      .rpc("professeurs_connexion")
+      .then(({ data }) => setProfesseurs((data ?? []) as { libelle: string; email: string }[]));
+  }, []);
   const [email, setEmail] = useState(ROLES[1].email); // Trésorier par défaut
   const [password, setPassword] = useState("");
   // Famille : le nom de famille sert d'identifiant (« Mot de passe oublié » : nom + une adresse connue de l'école).
@@ -86,7 +93,13 @@ export default function LoginPage() {
     }
 
     if (error) {
-      setError(espace === "famille" ? "Nom de famille ou mot de passe incorrect." : "Rôle ou mot de passe incorrect.");
+      setError(
+        espace === "famille"
+          ? "Nom de famille ou mot de passe incorrect."
+          : espace === "professeurs"
+            ? "Professeur ou mot de passe incorrect."
+            : "Rôle ou mot de passe incorrect.",
+      );
       setLoading(false);
       return;
     }
@@ -136,19 +149,19 @@ export default function LoginPage() {
           onSubmit={handleSubmit}
           className="rounded-2xl border border-border bg-surface p-6 shadow-sm"
         >
-          <div className="mb-4 grid grid-cols-2 gap-1 rounded-lg bg-surface-2 p-1 text-sm">
-            {(["bureau", "famille"] as const).map((e) => (
+          <div className="mb-4 grid grid-cols-3 gap-1 rounded-lg bg-surface-2 p-1 text-sm">
+            {(["bureau", "professeurs", "famille"] as const).map((e) => (
               <button
                 key={e}
                 type="button"
                 onClick={() => {
                   setEspace(e);
-                  setEmail(e === "bureau" ? ROLES[1].email : "");
+                  setEmail(e === "bureau" ? ROLES[1].email : e === "professeurs" ? (professeurs[0]?.email ?? "") : "");
                   setError(null);
                 }}
-                className={`rounded-md px-3 py-1.5 font-medium ${espace === e ? "bg-surface shadow-sm" : "text-muted"}`}
+                className={`rounded-md px-2 py-1.5 font-medium ${espace === e ? "bg-surface shadow-sm" : "text-muted"}`}
               >
-                {e === "bureau" ? "Bureau" : "Espace famille"}
+                {e === "bureau" ? "Bureau" : e === "professeurs" ? "Professeurs" : "Famille"}
               </button>
             ))}
           </div>
@@ -191,6 +204,26 @@ export default function LoginPage() {
                   </select>
                 </>
               )}
+            </>
+          ) : espace === "professeurs" ? (
+            <>
+              <label className="mb-1 block text-sm font-medium" htmlFor="professeur">
+                Professeur
+              </label>
+              <select
+                id="professeur"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="mb-4 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent"
+              >
+                <option value="">— Choisir —</option>
+                {professeurs.map((p) => (
+                  <option key={p.email} value={p.email}>
+                    {p.libelle}
+                  </option>
+                ))}
+              </select>
             </>
           ) : (
             <>
@@ -237,7 +270,7 @@ export default function LoginPage() {
           </button>
         </form>
 
-        {espace !== "bureau" && (
+        {espace === "famille" && (
           <div className="mt-4 space-y-3 text-center text-xs text-muted">
             <p>
               Un seul mot de passe par famille : <strong>le même pour Monsieur et pour Madame</strong>. L&apos;adresse électronique ne sert qu&apos;à la

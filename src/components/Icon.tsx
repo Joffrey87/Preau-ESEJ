@@ -21,6 +21,9 @@ const PATHS: Record<string, string> = {
   calendar:
     "M4 5h16v16H4V5Zm0 5h16M8 3v4M16 3v4",
   book: "M4 4h11a3 3 0 0 1 3 3v13H7a3 3 0 0 0-3 3V4Zm14 3v13",
+  // Bulletin scolaire : feuille, lignes et sceau à rubans.
+  bulletin:
+    "M5 3h14v18H5V3Zm3 4h8M8 10.5h5M15 17.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Zm-1.6-.5-.6 3.5 2.2-1.1 2.2 1.1-.6-3.5",
   logout: "M15 3h5v18h-5M11 16l4-4-4-4M15 12H3",
   contact:
     "M4 5h16v14H4V5Zm4.5 6.5a1.75 1.75 0 1 0 0-3.5 1.75 1.75 0 0 0 0 3.5ZM6 16c0-1.6 1.2-2.5 2.5-2.5S11 14.4 11 16M14 9.5h4M14 13h3",

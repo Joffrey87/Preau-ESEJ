@@ -4,7 +4,8 @@ import AccesFamilles from "@/components/AccesFamilles";
 import { createClient } from "@/lib/supabase/server";
 import { todayISO } from "@/lib/format";
 import { emailVue } from "@/lib/vueRoleServeur";
-import { roleByEmail } from "@/lib/roles";
+import { cookies } from "next/headers";
+import { COOKIE_PRENOM, ROLES_PRENOM_A_L_ACCES, roleByEmail } from "@/lib/roles";
 import { chargerTableauDeBord, type Ton } from "@/lib/tableauDeBord";
 
 // Tableau de bord : page d'accueil de chaque profil d'Administration. Les priorités du jour, puis une tuile par onglet
@@ -27,8 +28,10 @@ export default async function Home() {
   } = await supabase.auth.getUser();
   const email = await emailVue(user?.email);
   const role = roleByEmail(email);
+  // Prénom salué : celui du profil (Président, Directrice…), ou, pour un profil partagé, celui choisi à la visite.
   const meta = (user?.user_metadata ?? {}) as { prenom?: string };
-  const prenom = (meta.prenom ?? "").trim();
+  const prenomVisite = decodeURIComponent((await cookies()).get(COOKIE_PRENOM)?.value ?? "");
+  const prenom = (ROLES_PRENOM_A_L_ACCES.includes(role?.slug ?? "") && prenomVisite ? prenomVisite : (role?.prenom ?? meta.prenom ?? "")).trim();
   const { exercice, tuiles, priorites } = await chargerTableauDeBord(supabase, email, todayISO());
   const finances = tuiles.some((t) => t.href === "/comptabilite");
 

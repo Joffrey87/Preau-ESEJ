@@ -2,20 +2,22 @@
 // « interne » (non routable, aucun e-mail n'est envoyé) et son mot de passe.
 // L'utilisateur choisit son rôle dans la liste puis saisit le mot de passe.
 
-export type Role = { slug: string; label: string; email: string };
+/** `prenom` : la personne qui tient le profil, saluée sur le Tableau de bord (Recherche de fonds : le prénom de la visite). */
+export type Role = { slug: string; label: string; email: string; prenom?: string };
 
 const DOMAIN = "roles.esej";
 
 export const ROLES: Role[] = [
-  { slug: "president", label: "Président", email: `president@${DOMAIN}` },
+  { slug: "president", label: "Président", email: `president@${DOMAIN}`, prenom: "Jean-François" },
   { slug: "tresorier", label: "Trésorier", email: `tresorier@${DOMAIN}` },
-  { slug: "secretaire", label: "Secrétaire", email: `secretaire@${DOMAIN}` },
+  { slug: "secretaire", label: "Secrétaire", email: `secretaire@${DOMAIN}`, prenom: "Cécile" },
   { slug: "administrateur", label: "Administrateur", email: `administrateur@${DOMAIN}` },
-  { slug: "directrice", label: "Directrice", email: `directrice@${DOMAIN}` },
+  { slug: "directrice", label: "Directrice", email: `directrice@${DOMAIN}`, prenom: "Marie" },
   {
     slug: "directeur-spirituel",
     label: "Directeur spirituel",
     email: `directeur-spirituel@${DOMAIN}`,
+    prenom: "Monsieur le Chanoine",
   },
   { slug: "resp-mecenat", label: "Resp. Mécénat", email: `resp-mecenat@${DOMAIN}` },
   { slug: "recherche-fonds", label: "Recherche de fonds", email: `recherche-fonds@${DOMAIN}` },

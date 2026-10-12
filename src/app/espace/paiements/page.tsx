@@ -1,5 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
-import { familleEnApercu } from "@/lib/apercuFamille";
+import { familleConsultee } from "@/lib/apercuFamille";
 import { formatEurosCourt as formatEuros, formatDate, todayISO } from "@/lib/format";
 import { prenomEleve } from "@/lib/eleves";
 import { PastilleMaj } from "@/components/PageHeader";
@@ -13,7 +13,7 @@ export default async function PaiementsFamille({ searchParams }: { searchParams:
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const apercu = await familleEnApercu(user);
+  const apercu = await familleConsultee(user);
   const { espace, association, erreur } = await chargerEspace(supabase, apercu);
   if (!espace) return <p className="text-sm text-negative">{erreur ?? "Espace indisponible."}</p>;
 

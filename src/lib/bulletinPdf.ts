@@ -56,18 +56,57 @@ export async function construireBulletinsPdf(syntheses: Synthese[]): Promise<Uin
       if (top + h > H - M - 30) nouvellePage();
     };
 
-    // En-tête : logo, école, période ; cartouche de l'élève à droite.
+    // Taille de police qui fait tenir `str` dans `w` (sans descendre sous `min`).
+    const ajuste = (str: string, font: PDFFont, size: number, w: number, min: number) => {
+      let t = size;
+      while (t > min && largeur(str, font, t) > w) t -= 0.25;
+      return t;
+    };
+
+    // En-tête : logo, école, période (dates sur leur propre ligne) ; cartouche de l'élève à droite, séparé du
+    // bloc de gauche par une gouttière, et dont la hauteur suit le nom (prénom au-dessus, nom réduit puis coupé
+    // s'il est long : jamais de débordement).
+    const CW = 196, bx = W - M - CW, gx = M + 76, gw = bx - 18 - gx, iw = CW - 26;
     page.drawImage(logo, { x: M, y: y(top + 62), width: 63, height: 62 });
-    texte("École du Saint-Enfant-Jésus", M + 76, top + 18, semi, 13);
-    texte(`Bulletin scolaire · Année ${s.periode.annee}`, M + 76, top + 35, regular, 9.5, GRIS);
-    texte(titrePeriode(s.periode) + (s.periode.numero ? `  —  ${s.periode.libelle}` : ""), M + 76, top + 51, semi, 9.5, OR);
-    const bx = W - M - 190;
-    rect(bx, top, 190, 62, CREME);
-    page.drawRectangle({ x: bx, y: y(top + 62), width: 2.5, height: 62, color: OR });
-    texte(`${s.eleve.prenom} ${s.eleve.nom.toUpperCase()}`, bx + 12, top + 19, semi, 11.5);
-    texte(`${s.classe.nom}${s.eleve.niveau ? ` · ${s.eleve.niveau}` : ""}`, bx + 12, top + 35, regular, 9);
-    if (s.classe.titulaire) texte(`Titulaire : ${s.classe.titulaire}`, bx + 12, top + 50, regular, 8.5, GRIS);
-    top += 80;
+    texte("École du Saint-Enfant-Jésus", gx, top + 16, semi, ajuste("École du Saint-Enfant-Jésus", semi, 13, gw, 10));
+    const sousTitre = `Bulletin scolaire · Année ${s.periode.annee}`;
+    texte(sousTitre, gx, top + 31, regular, ajuste(sousTitre, regular, 9.5, gw, 8), GRIS);
+    const titre = titrePeriode(s.periode);
+    texte(titre, gx, top + 47, semi, ajuste(titre, semi, 10, gw, 8), OR);
+    if (s.periode.numero && s.periode.libelle) texte(s.periode.libelle, gx, top + 60, regular, ajuste(s.periode.libelle, regular, 8.5, gw, 7), GRIS);
+
+    // Nom : réduit jusqu'à 10,5 pt ; au-delà, coupé aux espaces et aux traits d'union (le trait reste en fin
+    // de ligne), puis chaque ligne encore trop large réduit l'ensemble.
+    const nom = s.eleve.nom.toUpperCase();
+    let tNom = ajuste(nom, semi, 13, iw, 10.5);
+    let lignesNom = [nom];
+    if (largeur(nom, semi, tNom) > iw) {
+      lignesNom = [];
+      let ligne = "";
+      for (const morceau of nom.match(/[^\s-]+(?:-|\s+|$)/g) ?? [nom]) {
+        const essai = ligne + morceau;
+        if (ligne && largeur(essai.trimEnd(), semi, tNom) > iw) {
+          lignesNom.push(ligne.trimEnd());
+          ligne = morceau;
+        } else ligne = essai;
+      }
+      if (ligne.trim()) lignesNom.push(ligne.trimEnd());
+      tNom = Math.min(...lignesNom.map((l) => ajuste(l, semi, tNom, iw, 7)));
+    }
+    // Lignes de base : prénom à 16, nom(s) tous les tNom + 3, classe 15 plus bas, titulaire 13 plus bas ; 9 de marge.
+    const hCart = 16 + lignesNom.length * (tNom + 3) + 15 + (s.classe.titulaire ? 13 : 0) + 9;
+    rect(bx, top, CW, hCart, CREME);
+    page.drawRectangle({ x: bx, y: y(top + hCart), width: 2.5, height: hCart, color: OR });
+    let tc = top + 16;
+    texte(s.eleve.prenom, bx + 14, tc, regular, ajuste(s.eleve.prenom, regular, 10.5, iw, 8.5));
+    for (const l of lignesNom) {
+      tc += tNom + 3;
+      texte(l, bx + 14, tc, semi, tNom);
+    }
+    tc += 15;
+    texte(`${s.classe.nom}${s.eleve.niveau ? ` · ${s.eleve.niveau}` : ""}`, bx + 14, tc, regular, 9);
+    if (s.classe.titulaire) texte(`Titulaire : ${s.classe.titulaire}`, bx + 14, tc + 13, regular, 8.5, GRIS);
+    top += Math.max(62, hCart) + 18;
 
     // Tableau.
     const avecRang = s.afficherRang;

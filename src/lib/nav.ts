@@ -26,6 +26,13 @@ export const NAV: NavSection[] = [
     ],
   },
   {
+    title: "École",
+    items: [
+      // Directrice, Directeur spirituel (catéchisme) et Professeurs ; aucun autre profil du bureau (données d'élèves).
+      { href: "/bulletins", label: "Bulletins", icon: "book", ready: true, roles: ["directrice", "directeur-spirituel"] },
+    ],
+  },
+  {
     title: "Financement",
     items: [
       { href: "/dons", label: "Dons", icon: "gift", ready: true },
@@ -39,13 +46,6 @@ export const NAV: NavSection[] = [
       { href: "/acces-familles", label: "Accès des familles", icon: "users", ready: true, roles: ["tresorier", "administrateur"] },
       { href: "/mails", label: "Mails", icon: "mail", ready: true },
       { href: "/courriers", label: "Courriers à confirmer", icon: "receipt", ready: true, roles: ["secretaire", "tresorier", "president", "administrateur"] },
-    ],
-  },
-  {
-    title: "École",
-    items: [
-      // Directrice, Directeur spirituel (catéchisme) et Professeurs ; aucun autre profil du bureau (données d'élèves).
-      { href: "/bulletins", label: "Bulletins", icon: "book", ready: true, roles: ["directrice", "directeur-spirituel"] },
     ],
   },
   {

@@ -18,6 +18,9 @@ export type Chiffre = { label: string; valeur: string; ton?: Ton };
 export type Tuile = { href: string; titre: string; icone: string; sousTitre?: string; chiffres: Chiffre[]; description?: string };
 export type Priorite = { titre: string; detail: string; href: string; icone: string; ton: Ton };
 
+/** Onglets en lecture seule pour un profil : ses tuiles s'affichent, mais pas de priorité (il ne peut pas agir). */
+const LECTURE_SEULE: Record<string, string[]> = { "directeur-spirituel": ["/dons", "/mecenat/pipeline", "/carnet"] };
+
 /** Onglets du menu visibles pour ce profil (même règle que la barre latérale), hors tableau de bord. */
 export function ongletsDuProfil(email?: string | null): NavItem[] {
   const pages = pagesAutorisees(email);
@@ -234,7 +237,8 @@ const CALCULS: Record<string, (c: Contexte) => Promise<Omit<Tuile, "href" | "tit
 /** Tuiles et priorités du profil. */
 export async function chargerTableauDeBord(sb: SupabaseClient, email: string | null | undefined, aujourdhui: string) {
   const { data: exercice } = await sb.from("exercices").select("id, libelle").eq("actif", true).order("date_debut", { ascending: false }).limit(1).maybeSingle();
-  const c: Contexte = { sb, aujourdhui, exercice: (exercice as Contexte["exercice"]) ?? null, slug: roleByEmail(email)?.slug ?? "", priorites: [] };
+  const slug = roleByEmail(email)?.slug ?? "";
+  const c: Contexte = { sb, aujourdhui, exercice: (exercice as Contexte["exercice"]) ?? null, slug, priorites: [] };
   const onglets = ongletsDuProfil(email);
   const tuiles = await Promise.all(
     onglets.map(async (o): Promise<Tuile> => {
@@ -249,5 +253,7 @@ export async function chargerTableauDeBord(sb: SupabaseClient, email: string | n
     }),
   );
   const ordre: Ton[] = ["rouge", "ambre", "bleu", "vert", "neutre"];
-  return { exercice: c.exercice, tuiles, priorites: c.priorites.sort((a, b) => ordre.indexOf(a.ton) - ordre.indexOf(b.ton)) };
+  const lecture = LECTURE_SEULE[slug] ?? [];
+  const priorites = c.priorites.filter((p) => !lecture.includes(p.href)).sort((a, b) => ordre.indexOf(a.ton) - ordre.indexOf(b.ton));
+  return { exercice: c.exercice, tuiles, priorites };
 }

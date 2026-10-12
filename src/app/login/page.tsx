@@ -7,10 +7,9 @@ import { COOKIE_PRENOM, ROLES, ROLES_PRENOM_A_L_ACCES } from "@/lib/roles";
 import { MEMBRES } from "@/lib/rechercheFonds";
 import { emailConnexionFamille, identifiantFamille } from "@/lib/identifiantFamille";
 import { memoriserSession } from "@/lib/basculeEspace";
+import Icon from "@/components/Icon";
 
 const DERNIER_PRENOM = "recherche.dernierPrenom";
-// Dernier onglet de connexion utilisé sur cet appareil (Famille par défaut).
-const DERNIER_ESPACE = "connexion.dernierEspace";
 const DERNIER_PROFESSEUR = "connexion.dernierProfesseur";
 type Espace = "famille" | "professeurs" | "bureau";
 const dernierProfesseur = () => {
@@ -20,16 +19,17 @@ const dernierProfesseur = () => {
     return "";
   }
 };
-const ONGLETS: { v: Espace; label: string }[] = [
-  { v: "famille", label: "Famille" },
-  { v: "professeurs", label: "Professeurs" },
-  { v: "bureau", label: "Administration" },
+// Accueil : trois grands boutons ; la boîte de connexion de l'espace choisi s'ouvre en dessous.
+const ESPACES: { v: Espace; label: string; icone: string }[] = [
+  { v: "famille", label: "Famille", icone: "maison" },
+  { v: "professeurs", label: "Professeurs", icone: "graduation" },
+  { v: "bureau", label: "Administration", icone: "ledger" },
 ];
 
 export default function LoginPage() {
   const router = useRouter();
   // Bureau : un compte par rôle, choisi dans la liste. Famille : son adresse.
-  const [espace, setEspace] = useState<Espace>("famille");
+  const [espace, setEspace] = useState<Espace | null>(null);
   // Professeurs : un compte nominatif chacun, choisi dans la liste (liste fournie par la base, sans session).
   const [professeurs, setProfesseurs] = useState<{ libelle: string; email: string }[]>([]);
   useEffect(() => {
@@ -49,16 +49,8 @@ export default function LoginPage() {
   // Le dernier prénom utilisé sur cet appareil est proposé d'office.
   useEffect(() => {
     try {
-      const e = localStorage.getItem(DERNIER_ESPACE) as Espace | null;
-      if (e === "bureau" || e === "professeurs") {
-        // eslint-disable-next-line react-hooks/set-state-in-effect
-        setEspace(e);
-        // Administration : le Trésorier par défaut ; Professeurs : le dernier professeur connecté ici.
-        setEmail(e === "bureau" ? ROLES[1].email : dernierProfesseur());
-      }
-    } catch {}
-    try {
       const p = localStorage.getItem(DERNIER_PRENOM);
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       if (p && MEMBRES.includes(p)) setPrenom(p);
     } catch {}
   }, []);
@@ -88,6 +80,15 @@ export default function LoginPage() {
       setDepuisBascule(true);
     }
   }, []);
+
+  /** Ouvre (ou referme) la boîte de connexion d'un espace. Administration : le Trésorier par défaut ;
+   *  Professeurs : le dernier professeur connecté sur cet appareil. */
+  function choisirEspace(e: Espace) {
+    setError(null);
+    if (espace === e) return setEspace(null);
+    setEspace(e);
+    setEmail(e === "bureau" ? ROLES[1].email : e === "professeurs" ? dernierProfesseur() : "");
+  }
 
   /** « Mot de passe oublié » : demande enregistrée pour le bureau (réponse toujours identique, rien n'est divulgué). */
   async function demanderReinitialisation(e: React.FormEvent) {
@@ -133,7 +134,6 @@ export default function LoginPage() {
     }
 
     try {
-      localStorage.setItem(DERNIER_ESPACE, espace);
       if (espace === "professeurs") localStorage.setItem(DERNIER_PROFESSEUR, email);
       if (avecPrenom) localStorage.setItem(DERNIER_PRENOM, prenom);
     } catch {}
@@ -153,8 +153,8 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="grid min-h-screen place-items-center px-5">
-      <div className="w-full max-w-sm">
+    <div className="grid min-h-screen place-items-center px-5 py-8">
+      <div className="w-full max-w-md">
         <div className="mb-6 flex flex-col items-center text-center">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
@@ -174,137 +174,138 @@ export default function LoginPage() {
           </p>
         )}
 
-        <form
-          onSubmit={handleSubmit}
-          className="rounded-2xl border border-border bg-surface p-6 shadow-sm"
-        >
-          <div className="mb-4 grid grid-cols-3 gap-1 rounded-lg bg-surface-2 p-1 text-sm">
-            {ONGLETS.map(({ v: e, label }) => (
-              <button
-                key={e}
-                type="button"
-                onClick={() => {
-                  setEspace(e);
-                  setEmail(e === "bureau" ? ROLES[1].email : e === "professeurs" ? dernierProfesseur() : "");
-                  setError(null);
-                }}
-                className={`rounded-md px-2 py-1.5 font-medium ${espace === e ? "bg-surface shadow-sm" : "text-muted"}`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+        <div className="mb-4 grid grid-cols-3 gap-3">
+          {ESPACES.map(({ v, label, icone }) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => choisirEspace(v)}
+              aria-pressed={espace === v}
+              className={`flex flex-col items-center justify-center gap-2 rounded-2xl border px-2 py-5 text-sm font-medium shadow-sm transition-colors ${
+                espace === v ? "border-accent bg-accent-soft text-accent" : "border-border bg-surface hover:border-accent/60 hover:bg-surface-2"
+              }`}
+            >
+              <Icon name={icone} className="h-9 w-9" />
+              {label}
+            </button>
+          ))}
+        </div>
 
-          {espace === "bureau" ? (
-            <>
-              <label className="mb-1 block text-sm font-medium" htmlFor="role">
-                Rôle
-              </label>
-              <select
-                id="role"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="mb-4 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent"
-              >
-                {ROLES.map((r) => (
-                  <option key={r.slug} value={r.email}>
-                    {r.label}
-                  </option>
-                ))}
-              </select>
-              {avecPrenom && (
-                <>
-                  <label className="mb-1 block text-sm font-medium" htmlFor="prenom">
-                    Prénom
-                  </label>
-                  <select
-                    id="prenom"
-                    required
-                    value={prenom}
-                    onChange={(e) => setPrenom(e.target.value)}
-                    className="mb-4 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent"
-                  >
-                    <option value="">— Choisir —</option>
-                    {MEMBRES.map((m) => (
-                      <option key={m} value={m}>
-                        {m}
-                      </option>
-                    ))}
-                  </select>
-                </>
-              )}
-            </>
-          ) : espace === "professeurs" ? (
-            <>
-              <label className="mb-1 block text-sm font-medium" htmlFor="professeur">
-                Professeur
-              </label>
-              <select
-                id="professeur"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="mb-4 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent"
-              >
-                <option value="">— Choisir —</option>
-                {professeurs.map((p) => (
-                  <option key={p.email} value={p.email}>
-                    {p.libelle}
-                  </option>
-                ))}
-              </select>
-            </>
-          ) : (
-            <>
-              <label className="mb-1 block text-sm font-medium" htmlFor="nomFamille">
-                Nom de famille
-              </label>
-              <input
-                id="nomFamille"
-                type="text"
-                autoComplete="username"
-                required
-                value={nomFamille}
-                onChange={(e) => setNomFamille(e.target.value)}
-                className="mb-4 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent"
-              />
-            </>
-          )}
-
-          <label className="mb-1 block text-sm font-medium" htmlFor="password">
-            Mot de passe
-          </label>
-          <input
-            id="password"
-            type="password"
-            autoComplete="current-password"
-            required
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            className="mb-4 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent"
-          />
-
-          {error && (
-            <p className="mb-4 rounded-lg bg-negative/10 px-3 py-2 text-sm text-negative">
-              {error}
-            </p>
-          )}
-
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-accent-fg transition-opacity hover:opacity-90 disabled:opacity-50"
+        {espace && (
+          <form
+            onSubmit={handleSubmit}
+            className="rounded-2xl border border-border bg-surface p-6 shadow-sm"
           >
-            {loading ? "Accès…" : "Accéder"}
-          </button>
-        </form>
+            {espace === "bureau" ? (
+              <>
+                <label className="mb-1 block text-sm font-medium" htmlFor="role">
+                  Rôle
+                </label>
+                <select
+                  id="role"
+                  autoFocus
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="mb-4 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent"
+                >
+                  {ROLES.map((r) => (
+                    <option key={r.slug} value={r.email}>
+                      {r.label}
+                    </option>
+                  ))}
+                </select>
+                {avecPrenom && (
+                  <>
+                    <label className="mb-1 block text-sm font-medium" htmlFor="prenom">
+                      Prénom
+                    </label>
+                    <select
+                      id="prenom"
+                      required
+                      value={prenom}
+                      onChange={(e) => setPrenom(e.target.value)}
+                      className="mb-4 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent"
+                    >
+                      <option value="">— Choisir —</option>
+                      {MEMBRES.map((m) => (
+                        <option key={m} value={m}>
+                          {m}
+                        </option>
+                      ))}
+                    </select>
+                  </>
+                )}
+              </>
+            ) : espace === "professeurs" ? (
+              <>
+                <label className="mb-1 block text-sm font-medium" htmlFor="professeur">
+                  Professeur
+                </label>
+                <select
+                  id="professeur"
+                  autoFocus
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="mb-4 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent"
+                >
+                  <option value="">— Choisir —</option>
+                  {professeurs.map((p) => (
+                    <option key={p.email} value={p.email}>
+                      {p.libelle}
+                    </option>
+                  ))}
+                </select>
+              </>
+            ) : (
+              <>
+                <label className="mb-1 block text-sm font-medium" htmlFor="nomFamille">
+                  Nom de famille
+                </label>
+                <input
+                  id="nomFamille"
+                  autoFocus
+                  type="text"
+                  autoComplete="username"
+                  required
+                  value={nomFamille}
+                  onChange={(e) => setNomFamille(e.target.value)}
+                  className="mb-4 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent"
+                />
+              </>
+            )}
+
+            <label className="mb-1 block text-sm font-medium" htmlFor="password">
+              Mot de passe
+            </label>
+            <input
+              id="password"
+              type="password"
+              autoComplete="current-password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="mb-4 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent"
+            />
+
+            {error && (
+              <p className="mb-4 rounded-lg bg-negative/10 px-3 py-2 text-sm text-negative">
+                {error}
+              </p>
+            )}
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full rounded-lg bg-accent px-4 py-2.5 text-sm font-medium text-accent-fg transition-opacity hover:opacity-90 disabled:opacity-50"
+            >
+              {loading ? "Accès…" : "Accéder"}
+            </button>
+          </form>
+        )}
 
         {espace === "famille" && (
           <div className="mt-4 space-y-3 text-center text-xs text-muted">
-            <p>
-              Un seul mot de passe par famille : <strong>le même pour Monsieur et pour Madame</strong>. L&apos;adresse électronique ne sert qu&apos;à la
-              première connexion (lien pour choisir votre mot de passe) et à retrouver un mot de passe oublié.
-            </p>
             <button type="button" onClick={() => setOubli((o) => !o)} className="text-accent underline-offset-2 hover:underline">
               Mot de passe oublié ?
             </button>

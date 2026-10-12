@@ -26,6 +26,7 @@ export default function ParametresBulletins({
   const [message, setMessage] = useState<string | null>(null);
   const [eleves, setEleves] = useState<EleveBulletin[]>([]);
   const [membres, setMembres] = useState<{ classe_id: string; eleve_id: string }[]>([]);
+  const [familles, setFamilles] = useState<{ id: string; nom: string }[]>([]);
   const [groupes, setGroupes] = useState<Groupe[]>([]);
   const [matieres, setMatieres] = useState<Matiere[]>([]);
   const [classeMatieres, setClasseMatieres] = useState<string | null>(classeId);
@@ -34,16 +35,18 @@ export default function ParametresBulletins({
 
   async function chargerDetails() {
     const ids = referentiel.classes.filter((c) => c.annee_scolaire === annee).map((c) => c.id);
-    const [e, ce, g, m] = await Promise.all([
+    const [e, ce, g, m, f] = await Promise.all([
       sb.rpc("eleves_bulletins", { p_annee: annee }),
       ids.length ? sb.from("classe_eleves").select("classe_id, eleve_id").in("classe_id", ids) : Promise.resolve({ data: [] }),
       ids.length ? sb.from("matieres_groupes").select("*").in("classe_id", ids).order("ordre") : Promise.resolve({ data: [] }),
       ids.length ? sb.from("matieres").select("*").in("classe_id", ids).order("ordre") : Promise.resolve({ data: [] }),
+      sb.from("familles").select("id, nom").order("nom"),
     ]);
     setEleves((e.data ?? []) as EleveBulletin[]);
     setMembres((ce.data ?? []) as { classe_id: string; eleve_id: string }[]);
     setGroupes((g.data ?? []) as Groupe[]);
     setMatieres((m.data ?? []) as Matiere[]);
+    setFamilles((f.data ?? []) as { id: string; nom: string }[]);
   }
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement initial des détails
@@ -96,6 +99,12 @@ export default function ParametresBulletins({
               eleves={eleves}
               membres={membres}
               classes={classes}
+              familles={familles}
+              onAjouterEleve={(p) =>
+                ecrire(
+                  sb.rpc("eleve_ajouter", { p_famille: p.famille, p_prenom: p.prenom, p_nom: p.nom, p_niveau: p.niveau, p_annee: annee, p_classe: c.id }),
+                )
+              }
               onModifier={(p) => ecrire(sb.from("classes").update(p).eq("id", c.id), "tout")}
               onNomUsage={(eleveId, nom) => ecrire(sb.rpc("eleve_nom_usage", { p_eleve: eleveId, p_nom: nom }))}
               onEleve={(eleveId, dedans) =>
@@ -334,6 +343,8 @@ function CarteClasse({
   eleves,
   membres,
   classes,
+  familles,
+  onAjouterEleve,
   onModifier,
   onEleve,
   onNomUsage,
@@ -344,12 +355,15 @@ function CarteClasse({
   eleves: EleveBulletin[];
   membres: { classe_id: string; eleve_id: string }[];
   classes: Classe[];
+  familles: { id: string; nom: string }[];
+  onAjouterEleve: (p: { famille: string; prenom: string; nom: string; niveau: string }) => Promise<boolean>;
   onModifier: (p: Partial<Classe>) => void;
   onEleve: (eleveId: string, dedans: boolean) => void;
   onNomUsage: (eleveId: string, nom: string) => void;
   onSupprimer: () => void;
 }) {
   const [elevesOuverts, setElevesOuverts] = useState(false);
+  const [ajout, setAjout] = useState<{ famille: string; prenom: string; nom: string; niveau: string } | null>(null);
   const dedans = new Set(membres.filter((m) => m.classe_id === c.id).map((m) => m.eleve_id));
   const classeDe = (id: string) => classes.find((x) => x.id === membres.find((m) => m.eleve_id === id && m.classe_id !== c.id)?.classe_id)?.nom;
   const scolarises = eleves.filter((e) => niveauDe(e, c.annee_scolaire) !== null);
@@ -409,6 +423,28 @@ function CarteClasse({
               {!dedans.has(e.id) && classeDe(e.id) && <span className="text-[10.5px] text-gold">({classeDe(e.id)})</span>}
             </label>
           ))}
+          <div className="col-span-full mt-1">
+            {ajout ? (
+              <AjoutEleve
+                ajout={ajout}
+                familles={familles}
+                niveaux={c.niveaux.length ? c.niveaux : [...CLASSES]}
+                onChange={setAjout}
+                onAnnuler={() => setAjout(null)}
+                onValider={async () => {
+                  if (await onAjouterEleve(ajout)) setAjout(null);
+                }}
+              />
+            ) : (
+              <button
+                type="button"
+                onClick={() => setAjout({ famille: "", prenom: "", nom: "", niveau: c.niveaux[0] ?? "PS" })}
+                className="text-[12.5px] text-accent hover:underline"
+              >
+                + Ajouter un élève
+              </button>
+            )}
+          </div>
         </div>
       )}
       {!elevesOuverts && (
@@ -419,6 +455,91 @@ function CarteClasse({
             .join(", ") || "Aucun élève."}
         </p>
       )}
+    </div>
+  );
+}
+
+/**
+ * Nouvel élève : toujours rattaché à une famille existante (celle de la scolarité et de l'Espace famille, qui
+ * voit ainsi ses bulletins), inscrit dans cette classe, au niveau choisi pour l'année.
+ */
+function AjoutEleve({
+  ajout,
+  familles,
+  niveaux,
+  onChange,
+  onAnnuler,
+  onValider,
+}: {
+  ajout: { famille: string; prenom: string; nom: string; niveau: string };
+  familles: { id: string; nom: string }[];
+  niveaux: string[];
+  onChange: (a: { famille: string; prenom: string; nom: string; niveau: string }) => void;
+  onAnnuler: () => void;
+  onValider: () => void;
+}) {
+  const [envoi, setEnvoi] = useState(false);
+  const pret = ajout.famille && ajout.prenom.trim() && ajout.niveau;
+  return (
+    <div className="flex flex-wrap items-end gap-2 rounded-lg border border-border bg-surface-2/50 p-2">
+      <label className="grid gap-0.5 text-[11px] text-muted">
+        Famille
+        <select
+          value={ajout.famille}
+          onChange={(e) => {
+            const f = familles.find((x) => x.id === e.target.value);
+            // Le nom suit la famille tant qu'il n'a pas été changé à la main.
+            const nomSuit = !ajout.nom || familles.some((x) => x.nom === ajout.nom);
+            onChange({ ...ajout, famille: e.target.value, nom: nomSuit ? (f?.nom ?? "") : ajout.nom });
+          }}
+          className={classeChamp}
+        >
+          <option value="">Choisir la famille…</option>
+          {familles.map((f) => (
+            <option key={f.id} value={f.id}>
+              {f.nom}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="grid gap-0.5 text-[11px] text-muted">
+        Prénom
+        <input value={ajout.prenom} onChange={(e) => onChange({ ...ajout, prenom: e.target.value })} className={`${classeChamp} w-32`} />
+      </label>
+      <label className="grid gap-0.5 text-[11px] text-muted" title="Nom tel que l'école l'écrit sur le bulletin (celui de la famille par défaut)">
+        Nom
+        <input value={ajout.nom} onChange={(e) => onChange({ ...ajout, nom: e.target.value })} className={`${classeChamp} w-40`} />
+      </label>
+      <label className="grid gap-0.5 text-[11px] text-muted">
+        Niveau
+        <select value={ajout.niveau} onChange={(e) => onChange({ ...ajout, niveau: e.target.value })} className={classeChamp}>
+          {niveaux.map((n) => (
+            <option key={n} value={n}>
+              {n}
+            </option>
+          ))}
+        </select>
+      </label>
+      <div className="flex gap-2 pb-0.5">
+        <button type="button" onClick={onAnnuler} className="text-[12px] text-muted hover:underline">
+          Annuler
+        </button>
+        <button
+          type="button"
+          disabled={!pret || envoi}
+          onClick={async () => {
+            setEnvoi(true);
+            await onValider();
+            setEnvoi(false);
+          }}
+          className="rounded-md bg-accent px-3 py-1 text-[12.5px] font-medium text-accent-fg disabled:opacity-50"
+        >
+          Ajouter
+        </button>
+      </div>
+      <p className="w-full text-[11px] text-muted">
+        La famille doit déjà exister dans Préau (Frais de scolarité) : l&apos;élève apparaît aussitôt dans son Espace famille.
+      </p>
     </div>
   );
 }

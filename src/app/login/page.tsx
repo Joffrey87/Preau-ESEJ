@@ -58,7 +58,6 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   // Arrivée depuis le logo (changement d'espace) : l'espace voulu est présélectionné.
-  const [depuisBascule, setDepuisBascule] = useState(false);
   useEffect(() => {
     const q = new URLSearchParams(window.location.search);
     const voulu = q.get("espace");
@@ -67,17 +66,14 @@ export default function LoginPage() {
       setEspace("famille");
       setEmail("");
       setNomFamille(q.get("nom") ?? "");
-      setDepuisBascule(true);
     } else if (voulu === "directrice") {
       setEspace("bureau");
       setEmail(ROLES.find((r) => r.slug === "directrice")?.email ?? ROLES[1].email);
-      setDepuisBascule(true);
     } else if (voulu === "recherche") {
       setEspace("bureau");
       setEmail(ROLES.find((r) => r.slug === "recherche-fonds")?.email ?? ROLES[1].email);
       const p = q.get("prenom");
       if (p && MEMBRES.includes(p)) setPrenom(p);
-      setDepuisBascule(true);
     }
   }, []);
 
@@ -167,12 +163,6 @@ export default function LoginPage() {
             ARIL · École du Saint-Enfant-Jésus
           </p>
         </div>
-
-        {depuisBascule && (
-          <p className="mb-3 rounded-lg bg-accent-soft px-3 py-2 text-center text-xs text-accent">
-            Première ouverture de cet espace sur cet appareil : connectez-vous une fois, le passage de l&apos;un à l&apos;autre sera ensuite direct (logo en haut à gauche).
-          </p>
-        )}
 
         <div className="mb-4 grid grid-cols-3 gap-3">
           {ESPACES.map(({ v, label, icone }) => (

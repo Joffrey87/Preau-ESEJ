@@ -18,6 +18,15 @@ export type LiensEspace = {
   retourLiee?: Partial<Record<Espace, string>>;
 };
 
+/** Libellé membre Événement (« Marie W. ») → prénom seul pour le sous-titre du basculeur. */
+function prenomDuLibelle(libelle: string): string {
+  const t = libelle.trim();
+  if (!t) return t;
+  // « Marie W. » / « Marie A » → « Marie » ; un prénom seul reste inchangé.
+  const sansInitiale = t.replace(/\s+[A-Za-z]\.?$/, "").trim();
+  return sansInitiale || t.split(/\s+/)[0] || t;
+}
+
 /**
  * Choix entre les espaces d'une famille qui a plusieurs profils (Espace famille, Recherche de fonds, Directrice).
  * Après une première connexion à chacun sur cet appareil, le passage de l'un à l'autre est direct.
@@ -36,7 +45,7 @@ export function PanneauBascule({ actuel, liens }: { actuel: Espace; liens: Liens
     ...(prenom ? [{ espace: "recherche" as Espace, titre: "Recherche de fonds", detail: prenom, icone: "users" }] : []),
     ...(liens.directrice ? [{ espace: "directrice" as Espace, titre: "Directrice", detail: "Bulletins", icone: "graduation" }] : []),
     ...(liens.president ? [{ espace: "president" as Espace, titre: "Président", detail: "Administration de l'ARIL", icone: "ledger" }] : []),
-    ...(liens.evenement ? [{ espace: "evenement" as Espace, titre: "Événement", detail: liens.evenement.libelle, icone: "calendar" }] : []),
+    ...(liens.evenement ? [{ espace: "evenement" as Espace, titre: "Événement", detail: prenomDuLibelle(liens.evenement.libelle), icone: "calendar" }] : []),
   ];
   return (
     <div className="grid gap-1.5">

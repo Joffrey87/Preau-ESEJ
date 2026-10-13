@@ -13,6 +13,7 @@ import { createClient } from "@/lib/supabase/client";
 import Icon from "./Icon";
 import BasculeTheme from "./BasculeTheme";
 import { PanneauBascule, type LiensEspace } from "./BasculeEspace";
+import { PastilleNonLus, useNonLus } from "./messagerie/NonLus";
 import { oublierSessions, type Espace } from "@/lib/basculeEspace";
 
 /** Espace de bascule du profil connecté (Directrice, Président ; sinon Recherche de fonds). */
@@ -67,6 +68,8 @@ export default function Sidebar({
     };
   }, [choixOuvert]);
 
+  const nonLus = useNonLus();
+
   async function handleLogout() {
     const supabase = createClient();
     await supabase.auth.signOut();
@@ -91,7 +94,7 @@ export default function Sidebar({
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/logo.webp" alt="Préau" className="h-9 w-9 shrink-0 rounded-full object-contain" />
         <div className="leading-tight">
-          <div className="text-sm font-semibold">Préau</div>
+          <div className="flex items-center gap-1.5 text-sm font-semibold">Préau <PastilleNonLus n={nonLus} /></div>
           <div className="text-[10px] text-muted">Saint-Enfant-Jésus</div>
         </div>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={`ml-auto h-4 w-4 shrink-0 text-muted transition-transform ${choixOuvert || menuOuvert ? "rotate-180" : ""}`} aria-hidden="true">
@@ -113,7 +116,7 @@ export default function Sidebar({
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img src="/logo.webp" alt="Préau" className="h-9 w-9 shrink-0 rounded-full object-contain" />
         <div className="leading-tight">
-          <div className="text-sm font-semibold">Préau</div>
+          <div className="flex items-center gap-1.5 text-sm font-semibold">Préau <PastilleNonLus n={nonLus} /></div>
           <div className="text-[10px] text-muted">Saint-Enfant-Jésus</div>
         </div>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={`ml-auto h-4 w-4 shrink-0 text-muted transition-transform md:hidden ${menuOuvert ? "rotate-180" : ""}`} aria-hidden="true">
@@ -248,6 +251,7 @@ export default function Sidebar({
                     >
                       <Icon name={item.icon} className="h-4 w-4 shrink-0" />
                       <span className="truncate">{item.label}</span>
+                      {item.href === "/messagerie" && <PastilleNonLus n={nonLus} className="ml-auto" />}
                     </Link>
                   </li>
                 );

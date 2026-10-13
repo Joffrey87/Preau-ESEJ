@@ -47,6 +47,8 @@ export const NAV: NavSection[] = [
   {
     title: "Communication",
     items: [
+      // Messagerie interne : ouverte à tous les profils (réglable dans la grille Webmestre).
+      { href: "/messagerie", label: "Messagerie", icon: "bulles", ready: true },
       { href: "/acces-familles", label: "Accès des familles", icon: "users", ready: true, roles: ["tresorier", "administrateur"] },
       { href: "/mails", label: "Mails", icon: "mail", ready: true },
       { href: "/courriers", label: "Courriers à confirmer", icon: "receipt", ready: true, roles: ["secretaire", "tresorier", "president", "administrateur"] },

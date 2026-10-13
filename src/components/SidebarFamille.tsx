@@ -8,6 +8,7 @@ import { oublierSessions } from "@/lib/basculeEspace";
 import Icon from "./Icon";
 import BasculeTheme from "./BasculeTheme";
 import { PanneauBascule, type LiensEspace } from "./BasculeEspace";
+import { PastilleNonLus, useNonLus } from "./messagerie/NonLus";
 
 type Lien = { href: string; label: string; icon: string; exact: boolean };
 /** Menu par sections : Tableau de bord seul en haut, puis École, Finance, Informations. */
@@ -21,6 +22,7 @@ const NAV: { titre: string | null; liens: Lien[] }[] = [
     ],
   },
   { titre: "Finance", liens: [{ href: "/espace/paiements", label: "Paiements", icon: "invoice", exact: false }] },
+  { titre: "Communication", liens: [{ href: "/espace/messagerie", label: "Messagerie", icon: "bulles", exact: false }] },
   { titre: "Informations", liens: [{ href: "/espace/famille", label: "Ma famille", icon: "maison", exact: false }] },
 ];
 
@@ -62,6 +64,7 @@ export default function SidebarFamille({
     };
   }, [choixOuvert]);
 
+  const nonLus = useNonLus();
   async function deconnecter() {
     await createClient().auth.signOut();
     oublierSessions();
@@ -74,7 +77,7 @@ export default function SidebarFamille({
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img src="/logo.webp" alt="Préau" className="h-9 w-9 shrink-0 rounded-full object-contain" />
       <div className="leading-tight">
-        <div className="text-sm font-semibold">Préau</div>
+        <div className="flex items-center gap-1.5 text-sm font-semibold">Préau <PastilleNonLus n={nonLus} /></div>
         <div className="text-[10px] text-muted">Famille {famille}</div>
       </div>
       <svg
@@ -140,6 +143,7 @@ export default function SidebarFamille({
                 >
                   <Icon name={item.icon} className="h-4 w-4 shrink-0" />
                   <span className="truncate">{item.label}</span>
+                  {item.href === "/espace/messagerie" && <PastilleNonLus n={nonLus} className="ml-auto" />}
                 </Link>
               </li>
             );

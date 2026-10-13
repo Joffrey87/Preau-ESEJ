@@ -50,6 +50,8 @@ export default function LoginPage() {
   const [password, setPassword] = useState("");
   // Famille : le nom de famille sert d'identifiant (« Mot de passe oublié » : nom + une adresse connue de l'école).
   const [nomFamille, setNomFamille] = useState("");
+  // Arrivée par la bascule du logo : une famille réservée à la bascule (familles.masquee_connexion) est acceptée.
+  const [viaBascule, setViaBascule] = useState(false);
   const [oubli, setOubli] = useState(false);
   const [courrielOubli, setCourrielOubli] = useState("");
   const [infoOubli, setInfoOubli] = useState<string | null>(null);
@@ -75,6 +77,7 @@ export default function LoginPage() {
       setEspace("famille");
       setEmail("");
       setNomFamille(q.get("nom") ?? "");
+      setViaBascule(q.get("via") === "bascule");
     } else if (voulu === "directrice" || voulu === "president") {
       setEspace("bureau");
       setEmail(ROLES.find((r) => r.slug === voulu)?.email ?? ROLES[1].email);
@@ -122,6 +125,14 @@ export default function LoginPage() {
     if (espace === "famille" && !identifiantFamille(nomFamille)) {
       setLoading(false);
       return setError("Indiquez votre nom de famille.");
+    }
+    // Famille réservée à la bascule : pas de connexion directe depuis l'accueil (même message qu'un nom inconnu).
+    if (espace === "famille" && !viaBascule) {
+      const { data: masquee } = await supabase.rpc("famille_masquee_connexion", { p_identifiant: identifiantFamille(nomFamille) });
+      if (masquee) {
+        setLoading(false);
+        return setError("Nom de famille ou mot de passe incorrect.");
+      }
     }
     const adresse = espace === "famille" ? emailConnexionFamille(nomFamille) : email;
     let { error } = await supabase.auth.signInWithPassword({ email: adresse, password });

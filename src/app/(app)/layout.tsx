@@ -66,7 +66,8 @@ export default async function AppLayout({
         famille: l.famille,
         prenom: l.membre_recherche,
         directrice: l.directrice,
-        president: l.president,
+        // Depuis un compte Événement : jamais le profil Président (Marie A. → Espace famille Antona seulement).
+        president: false,
         evenement: { libelle: (moi?.libelle as string) ?? "", email: user.email ?? "" },
       };
   }

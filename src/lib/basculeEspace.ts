@@ -79,7 +79,7 @@ export async function basculerVers(vers: Espace, quitte: Espace, infos: { prenom
   cookiePrenom(null);
   const q = new URLSearchParams(
     vers === "famille"
-      ? { espace: "famille", ...(infos.famille ? { nom: infos.famille } : {}) }
+      ? { espace: "famille", via: "bascule", ...(infos.famille ? { nom: infos.famille } : {}) }
       : vers === "directrice" || vers === "president"
         ? { espace: vers }
         : vers === "evenement"

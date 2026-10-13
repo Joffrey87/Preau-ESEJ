@@ -34,6 +34,8 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
+  // Démo publique du dépôt de chèques (données fictives, aucune écriture).
+  if (request.nextUrl.pathname === "/cheques/demo") return response;
   const isAuthRoute = request.nextUrl.pathname.startsWith("/login");
   // Page où une famille invitée choisit son mot de passe (lien reçu par courriel).
   const isMotDePasse =

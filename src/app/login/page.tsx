@@ -20,12 +20,12 @@ const dernierChoix = (cle: string) => {
     return "";
   }
 };
-// Accueil : trois grands boutons ; la boîte de connexion de l'espace choisi s'ouvre en dessous.
+// Accueil : quatre grands boutons ; la boîte de connexion de l'espace choisi s'ouvre en dessous.
 const ESPACES: { v: Espace; label: string; icone: string }[] = [
   { v: "famille", label: "Famille", icone: "maison" },
   { v: "professeurs", label: "Professeur", icone: "graduation" },
-  { v: "bureau", label: "Administration", icone: "ledger" },
   { v: "evenement", label: "Événement", icone: "calendar" },
+  { v: "bureau", label: "Administration", icone: "ledger" },
 ];
 
 export default function LoginPage() {
@@ -165,7 +165,7 @@ export default function LoginPage() {
 
   return (
     <div className="grid min-h-screen place-items-center px-5 py-8">
-      <div className="w-full max-w-md">
+      <div className="w-full max-w-md sm:max-w-lg">
         <div className="mb-6 flex flex-col items-center text-center">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
@@ -186,12 +186,15 @@ export default function LoginPage() {
               type="button"
               onClick={() => choisirEspace(v)}
               aria-pressed={espace === v}
-              className={`flex flex-col items-center justify-center gap-2 rounded-2xl border px-2 py-5 text-sm font-medium shadow-sm transition-colors ${
+              className={`flex min-w-0 flex-col items-center justify-center gap-2 rounded-2xl border px-3 py-5 text-center text-sm leading-tight font-medium shadow-sm transition-colors sm:px-2 sm:text-xs ${
                 espace === v ? "border-accent bg-accent-soft text-accent" : "border-border bg-surface hover:border-accent/60 hover:bg-surface-2"
               }`}
             >
-              <Icon name={icone} className="h-9 w-9" />
-              {label}
+              <Icon name={icone} className="h-9 w-9 shrink-0" />
+              {/* Libellé centré, coupé proprement (césure française) plutôt que collé aux bords de la tuile. */}
+              <span lang="fr" className="w-full hyphens-auto">
+                {label}
+              </span>
             </button>
           ))}
         </div>

@@ -4,7 +4,8 @@
 
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import type { Espace } from "@/lib/basculeEspace";
-import { ROLES, estEvenement, roleByEmail } from "@/lib/roles";
+import { ROLES, estEvenement, estProfesseur, roleByEmail } from "@/lib/roles";
+import { MEMBRES } from "@/lib/rechercheFonds";
 import { emailConnexionFamille } from "@/lib/identifiantFamille";
 
 /** Compte cible d'une bascule : son adresse de connexion, et le prénom de visite (Recherche de fonds). */
@@ -12,9 +13,9 @@ export type Cible = { email: string; prenom?: string | null };
 
 const emailRole = (slug: string) => ROLES.find((r) => r.slug === slug)?.email ?? null;
 
-type Liens = { famille: string | null; prenom: string | null; directrice: boolean; president: boolean; evenement: string | null };
+type Liens = { famille: string | null; prenom: string | null; directrice: boolean; president: boolean; evenement: string | null; professeur?: string | null };
 
-async function liensDuCompte(supabase: SupabaseClient, user: User, prenomVisite: string): Promise<Liens | null> {
+async function liensDeBase(supabase: SupabaseClient, user: User, prenomVisite: string): Promise<Liens | null> {
   const slug = roleByEmail(user.email)?.slug;
   const espace = (user.app_metadata as { espace?: string } | undefined)?.espace;
   const evenementLie = async (p: string | null) =>
@@ -46,6 +47,34 @@ async function liensDuCompte(supabase: SupabaseClient, user: User, prenomVisite:
   return null;
 }
 
+/** Accès donnés par le Webmestre (mes_acces_lies) : ils s'ajoutent aux liens d'origine, sans en retirer — comme dans le logo. */
+type LiensWebmestre = {
+  famille: string | null;
+  recherche: string | null;
+  directrice: boolean;
+  president: boolean;
+  evenement: { email: string } | null;
+  professeur: { email: string } | null;
+};
+
+async function liensDuCompte(supabase: SupabaseClient, user: User, prenomVisite: string): Promise<Liens | null> {
+  const base = await liensDeBase(supabase, user, prenomVisite);
+  const w = (await supabase.rpc("mes_acces_lies", { p_prenom: prenomVisite || null })).data as LiensWebmestre | null;
+  // Professeur : son propre compte nominatif (l'espace en cours) fait partie de ses liens.
+  const moiProf = estProfesseur(user.email) ? (user.email ?? null) : null;
+  if (!w) return base ?? (moiProf ? { famille: null, prenom: null, directrice: false, president: false, evenement: null, professeur: moiProf } : null);
+  const prenomRecherche = w.recherche && MEMBRES.includes(w.recherche) ? w.recherche : null;
+  const b: Liens = base ?? { famille: null, prenom: null, directrice: false, president: false, evenement: null };
+  return {
+    famille: b.famille ?? w.famille,
+    prenom: b.prenom ?? prenomRecherche,
+    directrice: b.directrice || w.directrice,
+    president: b.president || w.president,
+    evenement: b.evenement ?? w.evenement?.email ?? null,
+    professeur: b.professeur ?? w.professeur?.email ?? moiProf,
+  };
+}
+
 /** Compte vers lequel le connecté peut basculer, ou null si `vers` ne lui est pas relié. */
 export async function cibleBascule(supabase: SupabaseClient, user: User, prenomVisite: string, vers: Espace): Promise<Cible | null> {
   const l = await liensDuCompte(supabase, user, prenomVisite);
@@ -56,5 +85,6 @@ export async function cibleBascule(supabase: SupabaseClient, user: User, prenomV
   else if (vers === "directrice" && l.directrice) email = emailRole("directrice");
   else if (vers === "president" && l.president) email = emailRole("president");
   else if (vers === "evenement" && l.evenement) email = l.evenement;
+  else if (vers === "professeur" && l.professeur) email = l.professeur;
   return email ? { email, prenom: null } : null;
 }

@@ -33,17 +33,17 @@ export const ROLES: Role[] = [
  */
 export const PAGES_RESTREINTES: Record<string, string[]> = {
   // Chaque profil arrive sur son Tableau de bord (« / »), qui résume ses onglets.
-  "recherche-fonds": ["/", "/recherche/axes", "/recherche/suivi", "/mecenat/pipeline"],
+  "recherche-fonds": ["/", "/recherche/axes", "/recherche/suivi", "/mecenat/pipeline", "/messagerie"],
   // Directeur spirituel : lecture du carnet, des dons et des relations donateurs ; bulletins (il enseigne le catéchisme).
-  "directeur-spirituel": ["/", "/carnet", "/dons", "/mecenat/pipeline", "/bulletins"],
+  "directeur-spirituel": ["/", "/carnet", "/dons", "/mecenat/pipeline", "/bulletins", "/messagerie"],
   // Président : Tableau de bord, Comptabilité (lecture), Budget, Frais de scolarité, Dons, Relations donateurs. Son
   // Espace famille s'ouvre par le logo (bascule vers le compte de la famille Antona), comme pour les autres familles.
-  president: ["/", "/comptabilite", "/budget", "/scolarite", "/cheques", "/dons", "/mecenat/pipeline", "/remerciements"],
+  president: ["/", "/comptabilite", "/budget", "/scolarite", "/cheques", "/dons", "/mecenat/pipeline", "/remerciements", "/messagerie"],
   // Profils pas encore configurés : rien de visible (une page d'attente) tant que leurs accès ne sont pas définis.
-  secretaire: ["/en-attente"],
-  administrateur: ["/en-attente"],
-  directrice: ["/", "/bulletins", "/cheques"],
-  "resp-mecenat": ["/en-attente"],
+  secretaire: ["/en-attente", "/messagerie"],
+  administrateur: ["/en-attente", "/messagerie"],
+  directrice: ["/", "/bulletins", "/cheques", "/messagerie"],
+  "resp-mecenat": ["/en-attente", "/messagerie"],
 };
 
 /**
@@ -79,12 +79,12 @@ export function pageReserveeInterdite(email: string | null | undefined, chemin: 
 /** Comptes nominatifs des professeurs : <identifiant>@professeurs.esej, cantonnés aux bulletins. */
 export const DOMAINE_PROFESSEURS = "professeurs.esej";
 export const estProfesseur = (email?: string | null) => !!email?.endsWith(`@${DOMAINE_PROFESSEURS}`);
-export const PAGES_PROFESSEURS = ["/bulletins"];
+export const PAGES_PROFESSEURS = ["/bulletins", "/messagerie"];
 
 /** Comptes du profil Événement : <identifiant>@evenement.esej, cantonnés à leurs quatre onglets. */
 export const DOMAINE_EVENEMENT = "evenement.esej";
 export const estEvenement = (email?: string | null) => !!email?.endsWith(`@${DOMAINE_EVENEMENT}`);
-export const PAGES_EVENEMENT = ["/evenement", "/evenement/membres", "/evenement/facturation", "/evenement/carnet"];
+export const PAGES_EVENEMENT = ["/evenement", "/evenement/membres", "/evenement/facturation", "/evenement/carnet", "/messagerie"];
 
 /** Pages autorisées pour ce compte ; null = pas de restriction. */
 export function pagesAutorisees(email?: string | null): string[] | null {

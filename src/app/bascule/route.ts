@@ -6,7 +6,7 @@ import { COOKIE_VUE } from "@/lib/vueRole";
 import { cibleBascule } from "@/lib/liensBascule";
 import type { Espace } from "@/lib/basculeEspace";
 
-const ESPACES: Espace[] = ["famille", "recherche", "directrice", "president", "evenement"];
+const ESPACES: Espace[] = ["famille", "recherche", "directrice", "president", "evenement", "professeur"];
 const ACCUEIL: Record<Espace, string> = { famille: "/espace", recherche: "/", directrice: "/", president: "/", evenement: "/evenement", professeur: "/bulletins" };
 
 /**

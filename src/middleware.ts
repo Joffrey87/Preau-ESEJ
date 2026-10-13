@@ -64,7 +64,9 @@ export async function middleware(request: NextRequest) {
   if (user && request.nextUrl.pathname === "/bascule") return response;
   // Hors de l'Espace famille, le mode « famille reliée » se referme de lui-même.
   if (enFamilleLiee) response.cookies.delete("famille_liee");
-  if (user && estEvenement && !versEvenement) {
+  // Messagerie interne : ouverte aussi au profil Événement (la base identifie chaque membre).
+  const versMessagerie = request.nextUrl.pathname === "/messagerie" || request.nextUrl.pathname.startsWith("/messagerie/");
+  if (user && estEvenement && !versEvenement && !versMessagerie) {
     return NextResponse.redirect(Object.assign(request.nextUrl.clone(), { pathname: "/evenement", search: "" }));
   }
   if (user && estEvenement) return response;

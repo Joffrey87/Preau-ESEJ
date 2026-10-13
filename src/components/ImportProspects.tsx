@@ -9,7 +9,8 @@ import { createClient } from "@/lib/supabase/client";
 import { Modal, inputCls } from "@/components/GestionComptes";
 import { useDonsDechiffres } from "@/lib/donsChiffre";
 import { NOM_NEUTRE, estListeChiffree, nomComplet, type ProspectLisible } from "@/lib/prospectsChiffres";
-import { lignesDuClasseur, type LigneListe } from "@/lib/listeProspects";
+import type { LigneListe } from "@/lib/listeProspects";
+import { CHAMPS, convertir, lireFichier, tableauDesFeuilles, type Champ, type Tableau } from "@/lib/importProspectsColonnes";
 import { jetonsNom } from "@/lib/foyers";
 import { prenomsDuCouple, estCouple } from "@/lib/couple";
 import { normaliser } from "@/lib/reconciliation";
@@ -25,6 +26,7 @@ type Analyse = {
   doublonsProspects: LigneListe[];
   dejaDonateurs: LigneListe[];
   doublonsFichier: LigneListe[];
+  invalides: { source: string; raison: string }[];
   total: number;
 };
 
@@ -41,9 +43,9 @@ export default function ImportProspects({ prospects, dons }: { prospects: Prospe
         type="button"
         onClick={() => setOuvert(true)}
         className="rounded-lg border border-border px-3 py-1.5 text-sm font-medium hover:bg-surface-2"
-        title="Importer une liste de prospects depuis un fichier Excel"
+        title="Importer des prospects depuis un fichier Excel ou CSV"
       >
-        📥 Importer une liste
+        📥 Importer
       </button>
       {ouvert && <Fenetre prospects={prospects} dons={dons} onClose={() => setOuvert(false)} />}
     </>
@@ -55,7 +57,15 @@ function Fenetre({ prospects, dons, onClose }: { prospects: ProspectLisible[]; d
   const coffre = useCoffre();
   const { dons: clairs, verrou } = useDonsDechiffres(dons);
   const [liste, setListe] = useState("Liste Axel");
-  const [lignes, setLignes] = useState<LigneListe[] | null>(null);
+  // Étapes : fichier → correspondance des colonnes → aperçu (lignes converties) → import.
+  const [tableau, setTableau] = useState<Tableau | null>(null);
+  const [champs, setChamps] = useState<Champ[]>([]);
+  const [apercu, setApercu] = useState(false);
+  const converties = useMemo(() => (tableau && apercu ? convertir(tableau, champs) : null), [tableau, champs, apercu]);
+  const lignes: LigneListe[] | null = useMemo(
+    () => (converties ? converties.flatMap((c) => ("ligne" in c ? [c.ligne] : [])) : null),
+    [converties],
+  );
   const [fichier, setFichier] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; t: string } | null>(null);
@@ -77,7 +87,8 @@ function Fenetre({ prospects, dons, onClose }: { prospects: ProspectLisible[]; d
   const analyse: Analyse | null = useMemo(() => {
     if (!lignes) return null;
     const vus = new Set<string>();
-    const a: Analyse = { nouveaux: [], doublonsProspects: [], dejaDonateurs: [], doublonsFichier: [], total: lignes.length };
+    const invalides = (converties ?? []).flatMap((c) => ("invalide" in c ? [{ source: c.source, raison: c.invalide }] : []));
+    const a: Analyse = { nouveaux: [], doublonsProspects: [], dejaDonateurs: [], doublonsFichier: [], invalides, total: converties?.length ?? lignes.length };
     for (const l of lignes) {
       const k = cle(l.nom, l.prenom);
       if (vus.has(k)) a.doublonsFichier.push(l);
@@ -87,25 +98,23 @@ function Fenetre({ prospects, dons, onClose }: { prospects: ProspectLisible[]; d
       vus.add(k);
     }
     return a;
-  }, [lignes, clesProspects, clesDonateurs]);
+  }, [lignes, converties, clesProspects, clesDonateurs]);
 
   async function lire(e: React.ChangeEvent<HTMLInputElement>) {
     const f = e.target.files?.[0];
     e.target.value = "";
     if (!f) return;
     setMessage(null);
+    setApercu(false);
     try {
-      const XLSX = await import("xlsx");
-      const wb = XLSX.read(await f.arrayBuffer(), { type: "array" });
-      const feuilles: Record<string, unknown[][]> = {};
-      for (const nom of wb.SheetNames) {
-        feuilles[nom] = XLSX.utils.sheet_to_json(wb.Sheets[nom], { header: 1, defval: "", raw: true }) as unknown[][];
-      }
-      setLignes(lignesDuClasseur(feuilles));
+      const t = tableauDesFeuilles(await lireFichier(f));
+      if (t.lignes.length === 0) throw new Error("vide");
+      setTableau(t);
+      setChamps(t.champs);
       setFichier(f.name);
     } catch {
-      setLignes(null);
-      setMessage({ ok: false, t: "Lecture impossible : fichier Excel invalide." });
+      setTableau(null);
+      setMessage({ ok: false, t: "Lecture impossible : fichier Excel ou CSV invalide, ou sans ligne de données." });
     }
   }
 
@@ -147,8 +156,13 @@ function Fenetre({ prospects, dons, onClose }: { prospects: ProspectLisible[]; d
       faits += lot.length;
     }
     setBusy(false);
-    setMessage({ ok: true, t: `${faits} prospect${faits > 1 ? "s" : ""} importé${faits > 1 ? "s" : ""}${etiquette ? ` (« ${etiquette} »)` : ""}.` });
-    setLignes(null);
+    const ecartes = analyse.total - faits;
+    setMessage({
+      ok: true,
+      t: `${faits} prospect${faits > 1 ? "s" : ""} ajouté${faits > 1 ? "s" : ""}${etiquette ? ` (« ${etiquette} »)` : ""}, ${ecartes} ligne${ecartes > 1 ? "s" : ""} écartée${ecartes > 1 ? "s" : ""} (doublons ou invalides).`,
+    });
+    setTableau(null);
+    setApercu(false);
     router.refresh();
   }
 
@@ -184,15 +198,66 @@ function Fenetre({ prospects, dons, onClose }: { prospects: ProspectLisible[]; d
         </label>
         <div>
           <label className="inline-flex cursor-pointer items-center rounded-lg border border-border px-3 py-1.5 hover:bg-surface-2">
-            Choisir le fichier (.xls / .xlsx)
-            <input type="file" accept=".xlsx,.xls" onChange={lire} className="hidden" />
+            Choisir le fichier (.xlsx / .xls / .csv)
+            <input type="file" accept=".xlsx,.xls,.csv,text/csv" onChange={lire} className="hidden" />
           </label>
           {fichier && <span className="ml-2 text-xs text-muted">{fichier}</span>}
           <p className="mt-1 text-xs text-muted">
-            Une feuille par lettre, avec les colonnes NOM, PRENOM, ADRESSE, CP, VILLE (civilité dans la première colonne). Nom, prénom et
-            adresse sont repris ; l&apos;annotation à droite de la ville (ex. « patron de … ») passe en notes.
+            Toutes les feuilles sont lues ; les en-têtes (nom, prénom, adresse, CP, ville, email, téléphone, notes…) sont reconnus
+            automatiquement et se corrigent à l&apos;étape suivante. L&apos;email et le téléphone sont repris dans les notes.
           </p>
         </div>
+
+        {tableau && !apercu && (
+          <div className="space-y-2">
+            <p className="font-medium">Correspondance des colonnes ({tableau.lignes.length} lignes lues)</p>
+            <div className="overflow-x-auto rounded-lg border border-border">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-border text-left text-muted">
+                    <th className="px-2 py-1 font-medium">Colonne du fichier</th>
+                    <th className="px-2 py-1 font-medium">Exemple</th>
+                    <th className="px-2 py-1 font-medium">Champ du prospect</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tableau.entetes.map((h, i) => (
+                    <tr key={i} className="border-b border-border last:border-0">
+                      <td className="px-2 py-1">{h}</td>
+                      <td className="max-w-40 truncate px-2 py-1 text-muted">{tableau.lignes.find((l) => l.cellules[i])?.cellules[i] ?? "—"}</td>
+                      <td className="px-2 py-1">
+                        <select
+                          value={champs[i] ?? ""}
+                          onChange={(e) => setChamps((c) => c.map((x, j) => (j === i ? (e.target.value as Champ) : x)))}
+                          aria-label={`Champ pour ${h}`}
+                          className="rounded-md border border-border bg-background px-1 py-0.5"
+                        >
+                          <option value="">— Ignorer —</option>
+                          {CHAMPS.map((c) => (
+                            <option key={c.key} value={c.key}>
+                              {c.label}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {!champs.includes("nom") && <p className="text-xs text-negative">Choisissez la colonne du nom.</p>}
+            <div className="flex justify-end">
+              <button
+                type="button"
+                disabled={!champs.includes("nom")}
+                onClick={() => setApercu(true)}
+                className="rounded-lg border border-border px-3 py-1.5 font-medium hover:bg-surface-2 disabled:opacity-50"
+              >
+                Aperçu →
+              </button>
+            </div>
+          </div>
+        )}
 
         {analyse && !verrou && (
           <>
@@ -202,6 +267,21 @@ function Fenetre({ prospects, dons, onClose }: { prospects: ProspectLisible[]; d
             {liste3("Déjà prospects (non recréés)", analyse.doublonsProspects)}
             {liste3("Déjà donateurs (non recréés)", analyse.dejaDonateurs)}
             {liste3("Répétés dans le fichier (une seule fois)", analyse.doublonsFichier)}
+            {analyse.invalides.length > 0 && (
+              <details className="rounded-lg border border-negative/40 px-3 py-2">
+                <summary className="cursor-pointer text-sm text-negative">Lignes invalides, non importées ({analyse.invalides.length})</summary>
+                <ul className="mt-1 space-y-0.5 text-xs text-muted">
+                  {analyse.invalides.map((x, k) => (
+                    <li key={k}>
+                      {x.source} : {x.raison}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+            <button type="button" onClick={() => setApercu(false)} className="text-xs text-accent hover:underline">
+              ← Modifier la correspondance des colonnes
+            </button>
           </>
         )}
         {analyse && verrou && <p className="text-xs text-muted">Déverrouillez le coffre pour détecter les donateurs déjà connus.</p>}

@@ -18,7 +18,7 @@ export type LigneListe = {
 
 const MOTS_PETITS = new Set(["en", "de", "du", "des", "la", "le", "les", "sur", "sous", "lès", "les", "et", "aux", "au", "d", "l"]);
 
-const texte = (v: unknown): string => (v == null ? "" : String(v).replace(/\s+/g, " ").trim());
+export const texte = (v: unknown): string => (v == null ? "" : String(v).replace(/\s+/g, " ").trim());
 
 /** « REIMS » → « Reims », « CHÂLONS EN CHAMPAGNE » → « Châlons en Champagne », « VILLERS-ALLERAND » → « Villers-Allerand ». */
 export function formaterVille(ville: string): string {
@@ -47,13 +47,13 @@ export function villeEtDepartement(cpVille: string | null | undefined): string {
 }
 
 /** « 02200 » (déjà texte) ou 51100 (nombre) ; un code de 4 chiffres perd son zéro initial dans Excel. */
-function codePostal(v: unknown): string {
+export function codePostal(v: unknown): string {
   const t = texte(v).replace(/\.0$/, "");
   return /^\d{4}$/.test(t) ? "0" + t : t;
 }
 
 /** Civilité de la liste : « M MME » = le couple, « M » = monsieur, « MME » = madame. */
-function titreDe(c: string): string | null {
+export function titreDe(c: string): string | null {
   const t = normaliser(c);
   if (t === "m mme" || t === "m et mme" || t === "mr mme") return "M. & Mme";
   if (t === "m" || t === "mr") return "M.";
@@ -62,7 +62,7 @@ function titreDe(c: string): string | null {
 }
 
 /** Prénom : espaces et casse nettoyés (« phillippe », « Éric » inchangés ; « JEAN LUC » → « Jean Luc »). */
-function formaterPrenom(p: string): string {
+export function formaterPrenom(p: string): string {
   const t = texte(p);
   return t && t === t.toLocaleUpperCase("fr-FR")
     ? t.toLocaleLowerCase("fr-FR").replace(/(^|[\s-])(\S)/g, (_, a, b) => a + b.toLocaleUpperCase("fr-FR"))

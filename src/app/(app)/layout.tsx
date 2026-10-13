@@ -71,6 +71,11 @@ export default async function AppLayout({
         evenement: { libelle: (moi?.libelle as string) ?? "", email: user.email ?? "" },
       };
   }
+  // Famille réservée à la bascule (ex. : Antona) : ouverte sans changer de compte ni mot de passe.
+  if (bascule) {
+    const liee = (((await supabase.rpc("ma_famille_liee")).data ?? []) as { id: string; nom: string }[])[0];
+    if (liee && liee.nom === bascule.famille) bascule = { ...bascule, familleLiee: true };
+  }
   const jauge = rechercheFonds ? ((await supabase.rpc("dons_exercice_courant")).data as DonsExercice) : null;
 
   return (

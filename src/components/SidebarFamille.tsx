@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { oublierSessions } from "@/lib/basculeEspace";
 import Icon from "./Icon";
 import BasculeTheme from "./BasculeTheme";
-import { PanneauBascule } from "./BasculeEspace";
+import { PanneauBascule, type LiensEspace } from "./BasculeEspace";
 
 const NAV = [
   { href: "/espace", label: "Tableau de bord", icon: "dashboard", exact: true },
@@ -31,7 +31,7 @@ export default function SidebarFamille({
   /** Aperçu du Trésorier : pas de déconnexion ni de changement d'espace. */
   apercu?: boolean;
   /** Espaces reliés : prénom du membre Recherche de fonds de la famille, s'il y en a un ; famille de la Directrice. */
-  bascule?: { prenom: string | null; directrice: boolean; president?: boolean; evenement?: { libelle: string; email: string } | null };
+  bascule?: Omit<LiensEspace, "famille">;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -40,7 +40,7 @@ export default function SidebarFamille({
   const enteteRef = useRef<HTMLDivElement>(null);
   const surTelephone = () => typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
   const avecChoix = !apercu && !!bascule && (!!bascule.prenom || bascule.directrice || !!bascule.president || !!bascule.evenement);
-  const liens = { famille, prenom: bascule?.prenom ?? null, directrice: !!bascule?.directrice, president: !!bascule?.president, evenement: bascule?.evenement ?? null };
+  const liens: LiensEspace = { ...bascule, famille, prenom: bascule?.prenom ?? null, directrice: !!bascule?.directrice, president: !!bascule?.president, evenement: bascule?.evenement ?? null };
 
   useEffect(() => {
     if (!choixOuvert) return;

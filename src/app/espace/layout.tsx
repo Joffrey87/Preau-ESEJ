@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { familleEnApercu } from "@/lib/apercuFamille";
+import { enFamilleLiee, familleEnApercu } from "@/lib/apercuFamille";
+import { estEvenement, roleByEmail } from "@/lib/roles";
+import type { LiensEspace } from "@/components/BasculeEspace";
 import AideFlottante from "@/components/AideFlottante";
 import SidebarFamille from "@/components/SidebarFamille";
 
@@ -15,20 +17,47 @@ export default async function EspaceLayout({ children }: { children: React.React
   // Compte famille : sa famille. Bureau : uniquement en aperçu d'une famille.
   const apercu = await familleEnApercu(user);
   const estFamille = (user.app_metadata as { espace?: string } | undefined)?.espace === "famille";
-  if (!estFamille && !apercu) redirect("/");
+  // Famille réservée ouverte depuis un compte relié (Président, membre Événement) : la base dit laquelle.
+  const liee = !estFamille && !apercu && (await enFamilleLiee(user))
+    ? ((((await supabase.rpc("ma_famille_liee")).data ?? []) as { id: string; nom: string }[])[0] ?? null)
+    : null;
+  if (!estFamille && !apercu && !liee) redirect("/");
 
-  const { data: famille } = apercu
+  const { data: famille } = liee
+    ? await supabase.from("familles").select("id, nom, revalide_annee, membre_recherche, directrice_liee, profil_lie").eq("id", liee.id).maybeSingle()
+    : apercu
     ? await supabase.from("familles").select("id, nom, revalide_annee, membre_recherche, directrice_liee, profil_lie").eq("id", apercu).maybeSingle()
     : await supabase.from("familles").select("id, nom, revalide_annee, membre_recherche, directrice_liee, profil_lie").maybeSingle();
   // Campagne annuelle de revalidation des coordonnées (1er août → 30 septembre).
   const { data: campagne } = await supabase.rpc("annee_revalidation");
   // Membre Événement relié à la famille : le logo propose aussi son espace Événement.
-  const evenement = apercu ? null : ((((await supabase.rpc("membres_evenement_lies")).data ?? []) as { libelle: string; email: string }[])[0] ?? null);
+  const evenement = apercu || liee ? null : ((((await supabase.rpc("membres_evenement_lies")).data ?? []) as { libelle: string; email: string }[])[0] ?? null);
+  // Retour vers l'espace du compte relié, dans la même session.
+  let basculeLiee: Omit<LiensEspace, "famille"> | undefined;
+  if (liee) {
+    if (estEvenement(user.email)) {
+      const moi = (await supabase.from("evenement_membres").select("libelle").eq("user_id", user.id).maybeSingle()).data;
+      basculeLiee = {
+        prenom: null,
+        directrice: false,
+        evenement: { libelle: (moi?.libelle as string) ?? "", email: user.email ?? "" },
+        retourLiee: { evenement: "/famille-liee/quitter?vers=/evenement" },
+      };
+    } else {
+      const slug = roleByEmail(user.email)?.slug;
+      basculeLiee = {
+        prenom: null,
+        directrice: slug === "directrice",
+        president: slug === "president",
+        retourLiee: { directrice: "/famille-liee/quitter?vers=/", president: "/famille-liee/quitter?vers=/" },
+      };
+    }
+  }
   const aRevalider = !apercu && campagne != null && famille?.revalide_annee !== campagne;
 
   return (
     <div className="flex min-h-full flex-col bg-background md:flex-row">
-      <SidebarFamille famille={famille?.nom ?? ""} apercu={!!apercu} bascule={!apercu && famille ? { prenom: famille.membre_recherche ?? null, directrice: !!famille.directrice_liee, president: famille.profil_lie === "president", evenement } : undefined} />
+      <SidebarFamille famille={famille?.nom ?? ""} apercu={!!apercu} bascule={basculeLiee ?? (!apercu && famille ? { prenom: famille.membre_recherche ?? null, directrice: !!famille.directrice_liee, president: famille.profil_lie === "president", evenement } : undefined)} />
       <div className="min-w-0 flex-1">
         {apercu && (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-gold/40 bg-gold/15 px-5 py-2 text-[13px] md:px-8">

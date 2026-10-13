@@ -53,6 +53,12 @@ export async function middleware(request: NextRequest) {
   // Profil Événement : uniquement /evenement (la base le garantit aussi : RLS). Côté bureau : Trésorier, Président et Directrice (lecture).
   const estEvenement = (user?.app_metadata as { espace?: string } | undefined)?.espace === "evenement";
   const versEvenement = request.nextUrl.pathname === "/evenement" || request.nextUrl.pathname.startsWith("/evenement/");
+  // Famille reliée ouverte sans changer de compte (cookie sans droit propre : la base filtre).
+  const enFamilleLiee = !!user && !estFamille && request.cookies.get("famille_liee")?.value === "1";
+  const cheminLiee = request.nextUrl.pathname.startsWith("/famille-liee/");
+  if (user && (cheminLiee || (enFamilleLiee && versEspace))) return response;
+  // Hors de l'Espace famille, le mode « famille reliée » se referme de lui-même.
+  if (enFamilleLiee) response.cookies.delete("famille_liee");
   if (user && estEvenement && !versEvenement) {
     return NextResponse.redirect(Object.assign(request.nextUrl.clone(), { pathname: "/evenement", search: "" }));
   }

@@ -12,6 +12,10 @@ export type LiensEspace = {
   president?: boolean;
   /** Membre Événement relié à la famille : son compte Événement (adresse interne) et son libellé. */
   evenement?: { libelle: string; email: string } | null;
+  /** Famille réservée à la bascule : son espace s'ouvre sans changer de compte ni mot de passe. */
+  familleLiee?: boolean;
+  /** Depuis l'espace de la famille reliée : retour direct à l'espace du compte (même session). */
+  retourLiee?: Partial<Record<Espace, string>>;
 };
 
 /**
@@ -45,6 +49,8 @@ export function PanneauBascule({ actuel, liens }: { actuel: Espace; liens: Liens
             disabled={actif || busy !== null}
             onClick={async () => {
               setBusy(o.espace);
+              const direct = liens.retourLiee?.[o.espace] ?? (o.espace === "famille" && liens.familleLiee ? "/famille-liee/entrer" : null);
+              if (direct) return window.location.assign(direct);
               await basculerVers(o.espace, actuel, { prenom, famille, evenement: liens.evenement?.email ?? null });
             }}
             className={`flex items-center gap-2.5 rounded-lg border px-3 py-2 text-left text-[13px] leading-tight transition-colors ${

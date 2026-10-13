@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { emailVue } from "@/lib/vueRoleServeur";
 import { roleByEmail } from "@/lib/roles";
 import { toutesLesOperations } from "@/lib/operations";
-import { COLONNES_CHEQUE, type ActiviteCandidate, type Cheque, type FamilleCandidate, type InscriptionCandidate, type OpRemise, type ParticipationCandidate, type Remise } from "@/lib/depotCheques";
+import { COLONNES_CHEQUE, type ActiviteCandidate, type CategorieRecette, type Cheque, type FamilleCandidate, type InscriptionCandidate, type OpRemise, type ParticipationCandidate, type Remise } from "@/lib/depotCheques";
 
 export default async function DepotChequesPage() {
   const supabase = await createClient();
@@ -13,9 +13,11 @@ export default async function DepotChequesPage() {
   } = await supabase.auth.getUser();
   const roleSlug = roleByEmail(await emailVue(user?.email))?.slug ?? null;
 
-  const [{ data: remises, error }, { data: cheques }] = await Promise.all([
+  const [{ data: remises, error }, { data: cheques }, { data: cats }] = await Promise.all([
     supabase.from("remises_cheques").select("id, date_remise, photo_path, notes, operation_id, lien_operation, created_at").order("date_remise", { ascending: false }),
     supabase.from("cheques_remis").select(COLONNES_CHEQUE).order("created_at"),
+    // Les catégories d'un chèque = les catégories de recette de la Comptabilité.
+    supabase.from("categories").select("id, nom").eq("type", "recette").eq("archive", false).order("ordre").order("nom"),
   ]);
 
   // Rapprochement : réservé au Trésorier (la Directrice et le Président déposent et consultent).
@@ -73,6 +75,7 @@ export default async function DepotChequesPage() {
           familles={familles}
           activites={activites}
           participations={participations}
+          categories={(cats ?? []) as CategorieRecette[]}
           peutLier={peutLier}
         />
       )}

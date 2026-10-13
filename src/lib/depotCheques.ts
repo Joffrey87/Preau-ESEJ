@@ -11,20 +11,23 @@
 
 import { joursEcart, normaliser } from "@/lib/reconciliation";
 
-export type MotifCheque = "don" | "frais_scolarite" | "frais_dossier" | "fourniture" | "activite" | "evenement" | "autre" | "inconnu";
+export type MotifCheque = "don" | "frais_scolarite" | "frais_dossier" | "mois_avance" | "fourniture" | "activite" | "evenement" | "autre" | "inconnu";
 
-export const MOTIFS: { v: MotifCheque; l: string }[] = [
-  { v: "don", l: "Don" },
-  { v: "frais_scolarite", l: "Frais de scolarité" },
-  { v: "frais_dossier", l: "Frais de dossier" },
-  { v: "fourniture", l: "Fournitures" },
-  { v: "activite", l: "Activité" },
-  { v: "evenement", l: "Événement" },
-  { v: "autre", l: "Autre" },
-  { v: "inconnu", l: "Inconnu" },
-];
+/** Catégorie de recette de la Comptabilité (table categories) : c'est la liste proposée pour un chèque. */
+export type CategorieRecette = { id: string; nom: string };
+/** Valeur du choix « Inconnu » (pas de catégorie). */
+export const INCONNU = "";
 
-export const libelleMotif = (m: string) => MOTIFS.find((x) => x.v === m)?.l ?? m;
+/** Libellés des comportements internes (le motif est déduit de la catégorie, en base). */
+const LIBELLES_MOTIF: Record<MotifCheque, string> = {
+  don: "Don", frais_scolarite: "Frais de scolarité : Mensualités", frais_dossier: "Frais de scolarité : Dossier",
+  mois_avance: "Frais de scolarité : Mois d'avance", fourniture: "Fournitures", activite: "Activité",
+  evenement: "Événement", autre: "Autre", inconnu: "Inconnu",
+};
+export const libelleMotif = (m: string) => LIBELLES_MOTIF[m as MotifCheque] ?? m;
+/** Libellé d'un chèque : sa catégorie de Comptabilité, sinon « Inconnu ». */
+export const libelleCategorie = (id: string | null, cats: CategorieRecette[]) =>
+  (id && cats.find((c) => c.id === id)?.nom) || "Inconnu";
 
 export type Lien = "auto" | "manuel" | null;
 
@@ -45,6 +48,7 @@ export type Cheque = {
   emetteur: string;
   date_cheque: string | null;
   motif: MotifCheque;
+  categorie_id: string | null;
   doute: boolean;
   don_id: string | null;
   inscription_id: string | null;
@@ -56,12 +60,13 @@ export type Cheque = {
 };
 
 export const COLONNES_CHEQUE =
-  "id, remise_id, montant, emetteur, date_cheque, motif, doute, don_id, inscription_id, famille_id, activite_id, affectation_id, participations_payees, lien";
+  "id, remise_id, montant, emetteur, date_cheque, motif, categorie_id, doute, don_id, inscription_id, famille_id, activite_id, affectation_id, participations_payees, lien";
 
 /** Ce que chaque catégorie met à jour dans le suivi (fait en base, par déclencheur, une fois la remise reliée à son crédit). */
 export const SUIVI_MOTIF: Partial<Record<MotifCheque, string>> = {
   frais_scolarite: "Compté dans le suivi des frais de scolarité de la famille",
   frais_dossier: "Compté en frais de dossier dans le suivi de scolarité",
+  mois_avance: "Compté en mois d'avance dans le suivi de scolarité",
   activite: "Participations non payées des enfants marquées payées",
   fourniture: "Pas de suivi des fournitures : le chèque en garde la trace",
 };

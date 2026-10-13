@@ -6,13 +6,19 @@ import ChequesCompacts, { type LigneCompacte } from "@/components/ChequesCompact
 import { formatEuros, todayISO } from "@/lib/format";
 
 const TOTAL_BORDEREAU = 195;
+// Démo hors connexion : copie des catégories de recette de la Comptabilité (en vrai, lues dans la table categories).
+const CATEGORIES = [
+  "Don", "Ventes diverses au profit de l'école", "Frais de scolarité : Mensualités", "Ventes diverses",
+  "Rentes vie de l'école (passif en achat fournitures)", "Rentes périscolaire", "Don d'Association",
+  "Frais de scolarité : Dossier", "Frais de scolarité : Mois d'avance", "Remboursement IJSS",
+].map((nom) => ({ id: nom, nom }));
 const montantDe = (s: string) => Number(s.replace(",", ".").replace(/\s/g, "")) || 0;
 
 export default function DemoCheques() {
   const [lignes, setLignes] = useState<LigneCompacte[]>([
-    { emetteur: "Martin Claire", montant: "45,00", date_cheque: "2026-10-02", motif: "don", doute: false },
-    { emetteur: "Durand Paul", montant: "120,00", date_cheque: "2026-10-05", motif: "don", doute: false },
-    { emetteur: "Lefebvre Sophie", montant: "30,00", date_cheque: "2026-10-08", motif: "don", doute: false },
+    { emetteur: "Martin Claire", montant: "45,00", date_cheque: "2026-10-02", categorie_id: "Don", doute: false },
+    { emetteur: "Durand Paul", montant: "120,00", date_cheque: "2026-10-05", categorie_id: "Don", doute: false },
+    { emetteur: "Lefebvre Sophie", montant: "30,00", date_cheque: "2026-10-08", categorie_id: "Don", doute: false },
   ]);
   const total = Math.round(lignes.reduce((s, l) => s + montantDe(l.montant), 0) * 100) / 100;
   const ok = Math.abs(total - TOTAL_BORDEREAU) < 0.005;
@@ -39,7 +45,7 @@ export default function DemoCheques() {
         <div className="text-xs text-muted">
           Date de la remise <span className="text-sm text-foreground">Aujourd&apos;hui · {todayISO().split("-").reverse().join("/")}</span>
         </div>
-        <ChequesCompacts lignes={lignes} onChange={(i, p) => setLignes((ls) => ls.map((l, j) => (j === i ? { ...l, ...p } : l)))} />
+        <ChequesCompacts lignes={lignes} categories={CATEGORIES} onChange={(i, p) => setLignes((ls) => ls.map((l, j) => (j === i ? { ...l, ...p } : l)))} />
         <div className="flex items-center justify-between">
           <button type="button" disabled className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-fg opacity-50">
             Enregistrer la remise (démo)

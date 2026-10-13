@@ -10,7 +10,9 @@ import { formatDate, formatEuros, todayISO } from "@/lib/format";
 import {
   BUCKET_CHEQUES,
   anneeScolaire,
-  MOTIFS,
+  INCONNU,
+  libelleCategorie,
+  type CategorieRecette,
   candidatsActivite,
   candidatsDon,
   candidatsFamille,
@@ -35,9 +37,9 @@ import {
 
 export type DonDepot = DonChiffrable & { id: string; montant: number; date_don: string; operation_id: string | null };
 
-type Ligne = { montant: string; emetteur: string; date_cheque: string; motif: MotifCheque; doute: boolean };
+type Ligne = { montant: string; emetteur: string; date_cheque: string; categorie_id: string; doute: boolean };
 type ChampsLien = Partial<Pick<Cheque, "don_id" | "inscription_id" | "famille_id" | "activite_id">>;
-const ligneVide = (): Ligne => ({ montant: "", emetteur: "", motif: "don", doute: false, date_cheque: todayISO() });
+const ligneVide = (): Ligne => ({ montant: "", emetteur: "", categorie_id: INCONNU, doute: false, date_cheque: todayISO() });
 
 const champ = "w-full rounded-md border border-border bg-surface px-2 py-1.5 text-sm";
 const btnPrimaire = "rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-fg hover:opacity-90 disabled:opacity-50";
@@ -92,6 +94,7 @@ export default function DepotCheques({
   familles,
   activites,
   participations,
+  categories,
   peutLier,
 }: {
   remisesInit: Remise[];
@@ -102,6 +105,7 @@ export default function DepotCheques({
   familles: FamilleCandidate[];
   activites: ActiviteCandidate[];
   participations: ParticipationCandidate[];
+  categories: CategorieRecette[];
   peutLier: boolean;
 }) {
   const [remises, setRemises] = useState(remisesInit);
@@ -240,7 +244,7 @@ export default function DepotCheques({
           lies.add(candidats[0].id);
           majCheques.push({ id: c.id, don_id: candidats[0].id, inscription_id: null });
         }
-      } else if (c.motif === "frais_scolarite" || c.motif === "frais_dossier") {
+      } else if (c.motif === "frais_scolarite" || c.motif === "frais_dossier" || c.motif === "mois_avance") {
         autoFait.current.add(c.id);
         const { candidats, evident } = candidatsInscription(c, date, inscriptions);
         if (evident) majCheques.push({ id: c.id, inscription_id: candidats[0].id });
@@ -312,7 +316,7 @@ export default function DepotCheques({
             montant: montantDe(l.montant),
             emetteur: l.emetteur.trim(),
             date_cheque: l.date_cheque || null,
-            motif: l.motif,
+            categorie_id: l.categorie_id || null, // le motif est déduit en base
             doute: l.doute,
           })),
         )
@@ -446,7 +450,7 @@ export default function DepotCheques({
             <DateCompacte valeur={dateRemise} onChange={setDateRemise} libelle="Date de la remise" />
           </div>
           {photo && !saisie ? (
-            <ChequesCompacts lignes={lignes} onChange={majLigne} onRetirer={(i) => setLignes((ls) => ls.filter((_, j) => j !== i))} />
+            <ChequesCompacts lignes={lignes} categories={categories} onChange={majLigne} onRetirer={(i) => setLignes((ls) => ls.filter((_, j) => j !== i))} />
           ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -455,7 +459,7 @@ export default function DepotCheques({
                   <th className="py-1 pr-2 font-medium">Montant (€)</th>
                   <th className="py-1 pr-2 font-medium">Émetteur</th>
                   <th className="py-1 pr-2 font-medium">Date du chèque</th>
-                  <th className="py-1 pr-2 font-medium">Motif</th>
+                  <th className="py-1 pr-2 font-medium">Catégorie</th>
                   <th />
                   <th />
                 </tr>
@@ -473,12 +477,13 @@ export default function DepotCheques({
                       <DateCompacte valeur={l.date_cheque} onChange={(v) => majLigne(i, { date_cheque: v })} libelle="Date du chèque" />
                     </td>
                     <td className="py-1 pr-2">
-                      <select className={champ} value={l.motif} onChange={(e) => majLigne(i, { motif: e.target.value as MotifCheque })}>
-                        {MOTIFS.map((m) => (
-                          <option key={m.v} value={m.v}>
-                            {m.l}
+                      <select className={champ} value={l.categorie_id} onChange={(e) => majLigne(i, { categorie_id: e.target.value })}>
+                        {categories.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.nom}
                           </option>
                         ))}
+                        <option value={INCONNU}>Inconnu</option>
                       </select>
                     </td>
                     <td className="py-1 pr-2">
@@ -593,7 +598,7 @@ export default function DepotCheques({
                   <tr>
                     <th className="py-1 pr-2 font-medium">Émetteur</th>
                     <th className="py-1 pr-2 font-medium">Date</th>
-                    <th className="py-1 pr-2 font-medium">Motif</th>
+                    <th className="py-1 pr-2 font-medium">Catégorie</th>
                     <th className="py-1 pr-2 text-right font-medium">Montant</th>
                     <th className="py-1 pl-3 font-medium">Comptabilité</th>
                   </tr>
@@ -604,7 +609,7 @@ export default function DepotCheques({
                       <td className="py-1.5 pr-2">{c.emetteur}</td>
                       <td className="py-1.5 pr-2 text-muted">{c.date_cheque ? formatDate(c.date_cheque) : "—"}</td>
                       <td className="py-1.5 pr-2">
-                        {libelleMotif(c.motif)}
+                        {libelleCategorie(c.categorie_id, categories)}
                         {c.doute && (
                           <span className="ml-1.5 rounded-full bg-gold-soft px-1.5 py-0.5 text-[10px] font-medium text-gold" title="Doute : jamais relié automatiquement">
                             Doute
@@ -690,7 +695,7 @@ function LienCheque({
     let suivi: string | undefined = SUIVI_MOTIF[c.motif];
     if (c.motif === "activite" && remiseReliee)
       suivi = c.participations_payees.length > 0 ? `${c.participations_payees.length} participation(s) marquée(s) payée(s)` : "Participations déjà payées : rien changé";
-    else if ((c.motif === "frais_scolarite" || c.motif === "frais_dossier" || c.motif === "activite") && !remiseReliee)
+    else if ((c.motif === "frais_scolarite" || c.motif === "frais_dossier" || c.motif === "mois_avance" || c.motif === "activite") && !remiseReliee)
       suivi = "Suivi mis à jour quand la remise sera reliée à son crédit bancaire";
     return (
       <span className="flex flex-col gap-0.5">
@@ -722,7 +727,7 @@ function LienCheque({
       </select>
     );
   }
-  if (c.motif === "frais_scolarite" || c.motif === "frais_dossier") {
+  if (c.motif === "frais_scolarite" || c.motif === "frais_dossier" || c.motif === "mois_avance") {
     const { candidats } = candidatsInscription(c, dateRemise, inscriptions);
     const liste = candidats.length > 0 ? candidats : inscriptions.filter((i) => i.annee_scolaire >= anneeScolaire(dateRemise));
     return (
@@ -785,6 +790,6 @@ function LienCheque({
       </select>
     );
   }
-  if (c.motif === "inconnu") return <span className="text-muted">Motif inconnu : pas de rapprochement automatique</span>;
-  return <span className="text-muted">Pas de rapprochement pour ce motif</span>;
+  if (c.motif === "inconnu") return <span className="text-muted">Catégorie inconnue : pas de rapprochement automatique</span>;
+  return <span className="text-muted">Pas de rapprochement pour cette catégorie</span>;
 }

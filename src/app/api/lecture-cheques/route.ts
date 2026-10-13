@@ -30,7 +30,12 @@ export async function POST(req: Request) {
     const b64 = Buffer.from(await f.arrayBuffer()).toString("base64");
     return NextResponse.json(await lireAvecClaude(cle, b64, f.type));
   } catch (e) {
-    console.error("lecture-cheques : échec", e instanceof Error ? e.message : "inconnu");
-    return NextResponse.json({ erreur: "La lecture automatique a échoué. Saisissez les chèques à la main ou réessayez." }, { status: 502 });
+    const msg = e instanceof Error ? e.message : "inconnu";
+    console.error("lecture-cheques : échec", msg);
+    // Détail technique (statut et message de l'API, jamais la clé ni l'image) pour le diagnostic.
+    return NextResponse.json(
+      { erreur: "La lecture automatique a échoué. Saisissez les chèques à la main ou réessayez.", detail: msg.slice(0, 300) },
+      { status: 502 },
+    );
   }
 }

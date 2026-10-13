@@ -7,7 +7,7 @@ import { cibleBascule } from "@/lib/liensBascule";
 import type { Espace } from "@/lib/basculeEspace";
 
 const ESPACES: Espace[] = ["famille", "recherche", "directrice", "president", "evenement"];
-const ACCUEIL: Record<Espace, string> = { famille: "/espace", recherche: "/", directrice: "/", president: "/", evenement: "/evenement" };
+const ACCUEIL: Record<Espace, string> = { famille: "/espace", recherche: "/", directrice: "/", president: "/", evenement: "/evenement", professeur: "/bulletins" };
 
 /**
  * Bascule par le logo vers un profil RELIÉ au compte connecté, sans mot de passe, sur n'importe quel appareil.

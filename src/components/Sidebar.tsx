@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { NAV } from "@/lib/nav";
 import type { Niveau } from "@/lib/acces";
-import { estEvenement, pagesAutorisees, roleByEmail } from "@/lib/roles";
+import { estEvenement, estProfesseur, pagesAutorisees, roleByEmail } from "@/lib/roles";
 import { ICONES_ROLES, PROFILS_VUE } from "@/lib/vueRole";
 import { MISES_A_JOUR, titreEnAmbre } from "@/lib/misesAJour";
 import { todayISO } from "@/lib/format";
@@ -17,7 +17,7 @@ import { oublierSessions, type Espace } from "@/lib/basculeEspace";
 
 /** Espace de bascule du profil connecté (Directrice, Président ; sinon Recherche de fonds). */
 const espaceDuRole = (slug?: string, email?: string): Espace =>
-  estEvenement(email) ? "evenement" : slug === "directrice" ? "directrice" : slug === "president" ? "president" : "recherche";
+  estEvenement(email) ? "evenement" : estProfesseur(email) ? "professeur" : slug === "directrice" ? "directrice" : slug === "president" ? "president" : "recherche";
 
 // Agencement « rail dense » : menu compact, sections réduites à un fin libellé,
 // tous les liens visibles sans barre de défilement, pas de bandeau supérieur.

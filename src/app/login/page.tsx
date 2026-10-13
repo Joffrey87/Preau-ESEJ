@@ -84,6 +84,10 @@ export default function LoginPage() {
     } else if (voulu === "evenement") {
       setEspace("evenement");
       setEmail(q.get("membre") ?? "");
+    } else if (voulu === "professeurs") {
+      // Accès Professeurs donné par le Webmestre (bascule par le logo).
+      setEspace("professeurs");
+      setEmail(q.get("membre") ?? "");
     } else if (voulu === "recherche") {
       setEspace("bureau");
       setEmail(ROLES.find((r) => r.slug === "recherche-fonds")?.email ?? ROLES[1].email);
@@ -165,6 +169,7 @@ export default function LoginPage() {
     if (espace === "famille") await memoriserSession("famille");
     else if (avecPrenom) await memoriserSession("recherche");
     else if (espace === "evenement") await memoriserSession("evenement");
+    else if (espace === "professeurs") await memoriserSession("professeur");
     else if (adresse === ROLES.find((r) => r.slug === "directrice")?.email) await memoriserSession("directrice");
     else if (adresse === ROLES.find((r) => r.slug === "president")?.email) await memoriserSession("president");
 

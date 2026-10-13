@@ -68,9 +68,6 @@ export async function middleware(request: NextRequest) {
     return NextResponse.redirect(Object.assign(request.nextUrl.clone(), { pathname: "/evenement", search: "" }));
   }
   if (user && estEvenement) return response;
-  if (user && versEvenement && !["tresorier", "president", "directrice"].includes(roleByEmail(user.email)?.slug ?? "")) {
-    return NextResponse.redirect(Object.assign(request.nextUrl.clone(), { pathname: "/", search: "" }));
-  }
 
   // Profil partagé sans prénom choisi pour cette visite : la session est fermée
   // et l'on repasse par l'écran d'accueil.
@@ -106,6 +103,10 @@ export async function middleware(request: NextRequest) {
   const versWebmestre = chemin0 === PAGE_WEBMESTRE || chemin0.startsWith(PAGE_WEBMESTRE + "/");
   // Page du catalogue (ou page Webmestre) : la base décide ; sinon, règles du code.
   const parBase = !!user && !estFamille && (niveau !== null || versWebmestre);
+  // Pages Événement côté bureau : la grille Webmestre décide ; hors catalogue (repli), Trésorier, Président et Directrice seulement.
+  if (user && versEvenement && !parBase && !["tresorier", "president", "directrice"].includes(roleByEmail(emailVue)?.slug ?? "")) {
+    return NextResponse.redirect(Object.assign(request.nextUrl.clone(), { pathname: "/", search: "" }));
+  }
   if (user && !estFamille && versWebmestre && !acces?.webmestre) {
     return NextResponse.redirect(Object.assign(request.nextUrl.clone(), { pathname: "/", search: "" }));
   }

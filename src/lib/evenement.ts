@@ -71,3 +71,37 @@ export const recettes = (e: EvenementCaisse) =>
 export const champ = "w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent";
 export const bouton = "rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-fg hover:opacity-90 disabled:opacity-50";
 export const nombre = (v: string) => (v.trim() === "" ? null : Number(v.replace(",", ".")));
+
+export type ModeRecette = "cheque" | "carte" | "autre";
+export const MODES_RECETTE: { v: ModeRecette; l: string }[] = [
+  { v: "cheque", l: "Chèque" },
+  { v: "carte", l: "Carte" },
+  { v: "autre", l: "Autre" },
+];
+export type RecetteEvenement = {
+  id: string;
+  evenement_id: string;
+  mode: ModeRecette;
+  montant: number;
+  date: string;
+  libelle: string | null;
+  operation_id: string | null;
+};
+export type OperationCandidate = { id: string; date_operation: string; libelle: string; libelle_origine: string | null; montant: number };
+
+/** Opérations bancaires proposées pour valider une recette : même montant, date proche, libellé selon le mode. */
+export function candidatsRecette(r: RecetteEvenement, ops: OperationCandidate[], dejaLiees: Set<string>, jours = 30) {
+  const ecart = (a: string, b: string) => Math.abs(Date.parse(a) - Date.parse(b)) / 86400000;
+  const motif = r.mode === "carte" ? /sumup/i : r.mode === "cheque" ? /rem\w*\s*ch(q|e)/i : null;
+  return ops
+    .filter((o) => !dejaLiees.has(o.id) && Number(o.montant) > 0 && ecart(o.date_operation, r.date) <= jours)
+    .map((o) => {
+      const txt = `${o.libelle} ${o.libelle_origine ?? ""}`;
+      const score = (Number(o.montant) === Number(r.montant) ? 2 : 0) + (motif && motif.test(txt) ? 1 : 0);
+      return { o, score, e: ecart(o.date_operation, r.date) };
+    })
+    .filter((x) => x.score > 0 && (!motif || x.score >= 1))
+    .sort((a, b) => b.score - a.score || a.e - b.e)
+    .slice(0, 5)
+    .map((x) => x.o);
+}

@@ -12,7 +12,7 @@ export default async function EvenementsPage() {
   ]);
   return (
     <div className="mx-auto max-w-5xl px-5 py-8 md:px-8">
-      <PageHeader title="Événements" subtitle="Les événements et leur caisse : les recettes = caisse après − caisse avant." />
+      <PageHeader title="Événements" />
       <ListeEvenements
         peutModifier={peutModifier}
         membres={(membres ?? []).map((m) => ({ ...m, famille: null })) as MembreEvenement[]}

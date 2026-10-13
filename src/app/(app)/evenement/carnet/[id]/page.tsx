@@ -25,6 +25,13 @@ export default async function FicheFournisseurPage({ params }: { params: Promise
     estTresorier && idsOps.length
       ? await supabase.from("operations").select("id, date_operation, libelle, montant").in("id", idsOps).order("date_operation", { ascending: false })
       : { data: [] };
+  const evs = (evenements ?? []) as Pick<EvenementCaisse, "id" | "nom" | "date">[];
+  const historique = evs
+    .map((ev) => {
+      const fs = liste.filter((f) => f.evenement_id === ev.id);
+      return { ...ev, n: fs.length, total: fs.reduce((t, f) => t + Number(f.montant), 0) };
+    })
+    .filter((h) => h.n > 0);
   const total = (s: string) => liste.filter((f) => f.statut === s).reduce((t, f) => t + Number(f.montant), 0);
   return (
     <div className="mx-auto max-w-5xl space-y-6 px-5 py-8 md:px-8">
@@ -41,6 +48,37 @@ export default async function FicheFournisseurPage({ params }: { params: Promise
           </div>
         ))}
       </div>
+      {historique.length > 0 && (
+        <section>
+          <h2 className="mb-2 font-semibold">Événements</h2>
+          <div className="overflow-x-auto rounded-2xl border border-border bg-surface shadow-sm">
+            <table className="w-full text-sm">
+              <thead className="text-left text-muted">
+                <tr>
+                  <th className="px-4 py-2">Date</th>
+                  <th className="px-4 py-2">Événement</th>
+                  <th className="px-4 py-2 text-right">Factures</th>
+                  <th className="px-4 py-2 text-right">Montant</th>
+                </tr>
+              </thead>
+              <tbody>
+                {historique.map((h) => (
+                  <tr key={h.id} className="border-t border-border">
+                    <td className="px-4 py-2">{formatDate(h.date)}</td>
+                    <td className="px-4 py-2 font-medium">
+                      <Link href={`/evenement/${h.id}`} className="text-accent hover:underline">
+                        {h.nom}
+                      </Link>
+                    </td>
+                    <td className="px-4 py-2 text-right">{h.n}</td>
+                    <td className="px-4 py-2 text-right">{formatEuros(h.total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
       <h2 className="font-semibold">Factures</h2>
       <FacturesFournisseurs
         peutModifier={peutModifier}

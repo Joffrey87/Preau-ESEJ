@@ -65,9 +65,15 @@ export const NAV: NavSection[] = [
     title: "Événements",
     items: [
       { href: "/evenement", label: "Événements", icon: "calendar", ready: true, roles: ["tresorier", "president", "directrice"] },
-      { href: "/evenement/membres", label: "Membres", icon: "users", ready: true, roles: ["tresorier", "president", "directrice"] },
       { href: "/evenement/facturation", label: "Facturation", icon: "receipt", ready: true, roles: ["tresorier", "president", "directrice"] },
       { href: "/evenement/carnet", label: "Carnet d'adresses", icon: "contact", ready: true, roles: ["tresorier", "president", "directrice"] },
+    ],
+  },
+  {
+    // Sous le menu Événement : bénévoles, séparés comme « Financement » des autres sections.
+    title: "Organisation",
+    items: [
+      { href: "/evenement/membres", label: "Bénévoles", icon: "users", ready: true, roles: ["tresorier", "president", "directrice"] },
     ],
   },
   {

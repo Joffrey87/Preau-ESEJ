@@ -3,7 +3,7 @@ import ListeMembres from "@/components/evenement/ListeMembres";
 import { sessionEvenement } from "@/lib/evenementServeur";
 import type { MembreEvenement } from "@/lib/evenement";
 
-/** Membres du profil Événement : liste, ajout (crée le compte), modification du nom et du courriel. */
+/** Bénévoles du profil Événement : liste, ajout (crée le compte), modification du nom et du courriel. */
 export default async function MembresEvenementPage() {
   const { supabase, peutModifier } = await sessionEvenement();
   // La famille reliée passe par une fonction : le profil Événement ne lit pas la table familles.
@@ -20,7 +20,7 @@ export default async function MembresEvenementPage() {
   });
   return (
     <div className="mx-auto max-w-4xl px-5 py-8 md:px-8">
-      <PageHeader title="Membres" subtitle="Chaque membre se connecte avec le bouton « Événement », son prénom et son prénom comme mot de passe." />
+      <PageHeader title="Bénévoles" />
       <ListeMembres peutModifier={peutModifier} membres={membres as MembreEvenement[]} />
     </div>
   );

@@ -358,6 +358,29 @@ export default function DepotCheques({
 
   const majLigne = (i: number, p: Partial<Ligne>) => setLignes((ls) => ls.map((l, j) => (j === i ? { ...l, ...p } : l)));
 
+  /** True dès qu'une saisie manuelle est ouverte, qu'un fichier est importé, ou qu'une ligne/note a été remplie. */
+  const aDuContenu =
+    saisie ||
+    !!photo ||
+    lecture === "en_cours" ||
+    !!erreurLecture ||
+    totalBordereau != null ||
+    notes.trim() !== "" ||
+    lignes.some((l) => l.montant.trim() !== "" || l.emetteur.trim() !== "" || l.doute || l.categorie_id !== INCONNU);
+
+  /** Revient à l'état initial : 2 tuiles d'import + « Saisie manuelle », sans fermer la section. */
+  function annulerFormulaire() {
+    numLecture.current++;
+    setSaisie(false);
+    setDateRemise(todayISO());
+    setNotes("");
+    setLignes([ligneVide()]);
+    setTotalBordereau(null);
+    setErreurLecture(null);
+    setLecture(null);
+    choisirPhoto(null);
+  }
+
   return (
     <div className="space-y-5">
       {message && (
@@ -411,14 +434,9 @@ export default function DepotCheques({
           </div>
 
           {!saisie && !photo && (
-            <div className="flex gap-2">
-              <button type="button" className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-surface-2" onClick={() => setSaisie(true)}>
-                Saisie manuelle
-              </button>
-              <button type="button" className="rounded-lg px-4 py-2 text-sm text-muted hover:bg-surface-2" onClick={() => { setOuvert(false); setSaisie(false); choisirPhoto(null); setLignes([ligneVide()]); }}>
-                Annuler
-              </button>
-            </div>
+            <button type="button" className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-surface-2" onClick={() => setSaisie(true)}>
+              Saisie manuelle
+            </button>
           )}
 
           {lecture === "en_cours" && (
@@ -521,11 +539,20 @@ export default function DepotCheques({
             <button type="button" className={btnPrimaire} disabled={busy === "nouvelle"} onClick={enregistrer}>
               {busy === "nouvelle" ? "Enregistrement…" : "Enregistrer la remise"}
             </button>
-            <button type="button" className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-surface-2" onClick={() => { setOuvert(false); setSaisie(false); choisirPhoto(null); setLignes([ligneVide()]); }}>
-              Annuler
-            </button>
+            {aDuContenu && (
+              <button type="button" className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-surface-2" onClick={annulerFormulaire}>
+                Annuler
+              </button>
+            )}
           </div>
           </>
+          )}
+
+          {/* Annuler pendant la lecture (fichier importé, champs pas encore affichés). */}
+          {photo && lecture === "en_cours" && !saisie && (
+            <button type="button" className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-surface-2" onClick={annulerFormulaire}>
+              Annuler
+            </button>
           )}
         </section>
       )}

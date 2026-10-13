@@ -383,6 +383,7 @@ export default function FacturesFournisseurs({
                 <button type="submit" disabled={occupe || lecture} className={bouton}>
                   {edition ? "Enregistrer" : "Ajouter"}
                 </button>
+                {/* Visible seulement après saisie manuelle, import, ou édition (formulaireVisible). */}
                 <button type="button" onClick={reinitialiser} className="text-sm text-muted hover:underline">
                   Annuler
                 </button>

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { formatDate, formatEuros } from "@/lib/format";
@@ -109,7 +110,11 @@ export default function ListeEvenements({
               return (
                 <tr key={e.id} className="border-t border-border">
                   <td className="px-4 py-2">{formatDate(e.date)}</td>
-                  <td className="px-4 py-2 font-medium">{e.nom}</td>
+                  <td className="px-4 py-2 font-medium">
+                    <Link href={`/evenement/${e.id}`} className="text-accent hover:underline">
+                      {e.nom}
+                    </Link>
+                  </td>
                   <td className="px-4 py-2">{libelle(e.responsable_id)}</td>
                   <td className="px-4 py-2 text-right">{e.caisse_avant == null ? "—" : formatEuros(Number(e.caisse_avant))}</td>
                   <td className="px-4 py-2 text-right">{e.caisse_apres == null ? "—" : formatEuros(Number(e.caisse_apres))}</td>

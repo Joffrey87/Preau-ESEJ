@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRef, useState } from "react";
 import { compresserPhoto } from "@/lib/compresserPhoto";
 import { createClient } from "@/lib/supabase/client";
@@ -56,6 +57,21 @@ export type CategorieDepense = { id: string; nom: string };
  * Import d'une facture (photo ou fichier) lue automatiquement, puis tout reste modifiable.
  * « Payée » n'est jamais choisi à la main : la base le pose quand le Trésorier relie l'opération bancaire.
  */
+/** Événement par défaut d'une facture : celui dont la date est la plus proche d'aujourd'hui (avant ou après). */
+export function evenementLePlusProche(evenements: Pick<EvenementCaisse, "id" | "date">[]): string {
+  const auj = Date.parse(new Date().toISOString().slice(0, 10));
+  let meilleur = "";
+  let ecart = Infinity;
+  for (const e of evenements) {
+    const d = Math.abs(Date.parse(e.date) - auj);
+    if (d < ecart) {
+      ecart = d;
+      meilleur = e.id;
+    }
+  }
+  return meilleur;
+}
+
 export default function FacturesFournisseurs({
   peutModifier,
   estTresorier,
@@ -63,6 +79,7 @@ export default function FacturesFournisseurs({
   fournisseurs,
   evenements,
   fournisseurFixe,
+  evenementFixe,
   categories = [],
 }: {
   peutModifier: boolean;
@@ -71,6 +88,7 @@ export default function FacturesFournisseurs({
   fournisseurs: ContactEvenement[];
   evenements: Pick<EvenementCaisse, "id" | "nom" | "date">[];
   fournisseurFixe?: string;
+  evenementFixe?: string;
   categories?: CategorieDepense[];
 }) {
   const supabase = createClient();
@@ -87,7 +105,7 @@ export default function FacturesFournisseurs({
     libelle: "",
     categorie_id: categorieDefaut,
     doute: false,
-    evenement_id: "",
+    evenement_id: evenementFixe ?? evenementLePlusProche(evenements),
     statut: "pas_importee",
     notes: "",
   });
@@ -339,7 +357,7 @@ export default function FacturesFournisseurs({
                 </label>
               </div>
               <select aria-label="Événement" value={f.evenement_id} onChange={(e) => setF({ ...f, evenement_id: e.target.value })} className={champ}>
-                <option value="">Événement (facultatif)…</option>
+                <option value="">Aucun événement</option>
                 {evenements.map((ev) => (
                   <option key={ev.id} value={ev.id}>
                     {ev.nom} · {formatDate(ev.date)}
@@ -410,7 +428,15 @@ export default function FacturesFournisseurs({
                       {x.doute && <span className="ml-1 rounded bg-gold-soft px-1 text-foreground">Doute</span>}
                     </span>
                   </td>
-                  <td className="px-4 py-2">{nomEv(x.evenement_id)}</td>
+                  <td className="px-4 py-2">
+                    {x.evenement_id && !evenementFixe ? (
+                      <Link href={`/evenement/${x.evenement_id}`} className="text-accent hover:underline">
+                        {nomEv(x.evenement_id)}
+                      </Link>
+                    ) : (
+                      nomEv(x.evenement_id)
+                    )}
+                  </td>
                   <td className="px-4 py-2 text-right">{formatEuros(Number(x.montant))}</td>
                   <td className="px-4 py-2">
                     <span className={`rounded-full px-2 py-0.5 text-xs ${st?.cls ?? ""}`}>{st?.l ?? x.statut}</span>

@@ -38,7 +38,7 @@ export const PAGES_RESTREINTES: Record<string, string[]> = {
   "directeur-spirituel": ["/", "/carnet", "/dons", "/mecenat/pipeline", "/bulletins"],
   // Président : Tableau de bord, Comptabilité (lecture), Budget, Frais de scolarité, Dons, Relations donateurs. Son
   // Espace famille s'ouvre par le logo (bascule vers le compte de la famille Antona), comme pour les autres familles.
-  president: ["/", "/comptabilite", "/budget", "/scolarite", "/dons", "/mecenat/pipeline"],
+  president: ["/", "/comptabilite", "/budget", "/scolarite", "/dons", "/mecenat/pipeline", "/remerciements"],
   // Profils pas encore configurés : rien de visible (une page d'attente) tant que leurs accès ne sont pas définis.
   secretaire: ["/en-attente"],
   administrateur: ["/en-attente"],
@@ -59,6 +59,7 @@ export const ROLES_PRENOM_A_L_ACCES = ["recherche-fonds"];
 export const PAGES_RESERVEES: { prefixe: string; roles: string[] }[] = [
   { prefixe: "/recherche", roles: ["president", "tresorier", "recherche-fonds"] },
   { prefixe: "/courriers", roles: ["secretaire", "tresorier", "president", "administrateur"] },
+  { prefixe: "/remerciements", roles: ["president", "tresorier", "administrateur"] },
   // Accès des familles à leur espace (comptes, invitations) : Administrateur (aujourd'hui le Trésorier).
   { prefixe: "/acces-familles", roles: ["tresorier", "administrateur"] },
   // Comptabilité : le Président la consulte seulement (pas d'import de relevé ni de règles de correspondance).

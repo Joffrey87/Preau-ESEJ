@@ -237,6 +237,11 @@ export type OptionsRecu = {
   lettre?: boolean;
   /** Ouvrir le PDF dans un nouvel onglet du navigateur au lieu de le télécharger. */
   ouvrir?: boolean;
+  /**
+   * Lettre de remerciement seule (onglet Remerciements) : même en-tête, ces paragraphes, signée par le Président,
+   * sans reçu fiscal.
+   */
+  remerciement?: { paragraphes: string[]; fin: string };
 };
 
 export async function construireRecuPdf(don: DonPourRecu, options: OptionsRecu = {}): Promise<Uint8Array> {
@@ -268,7 +273,8 @@ export async function construireRecuPdf(don: DonPourRecu, options: OptionsRecu =
 
   // Reçu à poster : page 1 = lettre d'accompagnement, page 2 = reçu fiscal. Reçu envoyé par courriel :
   // le reçu seul (le courriel tient lieu de lettre). Puis, au besoin, l'annexe.
-  const avecLettre = options.lettre ?? don.envoi_prefere === "courrier";
+  const remerciement = options.remerciement ?? null;
+  const avecLettre = !!remerciement || (options.lettre ?? don.envoi_prefere === "courrier");
   let page = doc.addPage([A4.w, A4.h]);
   const NAVY = rgb(0.12, 0.11, 0.31);
   const OR = rgb(0.863, 0.686, 0.353);
@@ -376,29 +382,41 @@ export async function construireRecuPdf(don: DonPourRecu, options: OptionsRecu =
       .replace(/^1 /, "1er ")}`;
     texte(lieuDate, 535.5 - largeur(lieuDate, regular, 10.5), 190, regular, 10.5);
 
-    texte("Objet : Lettre de remerciement", 67.5, 222, semi, 10.5, NOIR);
+    texte(remerciement ? "Objet : Remerciements" : "Objet : Lettre de remerciement", 67.5, 222, semi, 10.5, NOIR);
 
     const contactNom = pm ? (contactDistinct ? don.donateur_nom : "") : don.donateur_nom;
     texte(appelLettre(pm ? titreContact : don.donateur_titre, contactNom), 67.5, 254, regular, 10.5);
 
     let ligneCourrier = 286;
-    for (const para of COURRIER) {
+    for (const para of remerciement?.paragraphes ?? COURRIER) {
       const n = paragraphe(page, [{ t: para.replace("{annee}", String(annee)) }], fonts, 67.5, ligneCourrier, 468, courrier);
       ligneCourrier += courrier.interligne * n + 9;
     }
     ligneCourrier += 4;
-    texte(COURRIER_FIN, 67.5, ligneCourrier, regular, 10.5);
+    if (remerciement) {
+      const n = paragraphe(page, [{ t: remerciement.fin }], fonts, 67.5, ligneCourrier, 468, courrier);
+      ligneCourrier += courrier.interligne * (n - 1);
+    } else texte(COURRIER_FIN, 67.5, ligneCourrier, regular, 10.5);
 
-    const tresorierCourrier = `${modele.tresorierNom}, Trésorier de l'ARIL`;
+    // Lettre de remerciement : signée par le Président ; lettre d'accompagnement du reçu : par le Trésorier.
+    const signataire = remerciement ? `${modele.presidentNom}, Président de l'ARIL` : `${modele.tresorierNom}, Trésorier de l'ARIL`;
+    const signature = remerciement ? signPresident : signTresorier;
     ligneCourrier += 46;
-    texte(tresorierCourrier, 535.5 - largeur(tresorierCourrier, regular, 10.5), ligneCourrier, regular, 10.5);
-    if (signTresorier) image(signTresorier, 535.5 - 109 - 10, ligneCourrier - 48, 109, 37.5);
+    texte(signataire, 535.5 - largeur(signataire, regular, 10.5), ligneCourrier, regular, 10.5);
+    if (signature) image(signature, 535.5 - 109 - 10, ligneCourrier - 48, 109, 37.5);
 
     // Pied de la lettre : filet or, puis l'identité de l'association.
     rect(67, 772, 469, 1.5);
     const pied = `Association Remoise pour l'Instruction Libre - ${modele.adresseRue}, ${modele.adresseCpVille}`;
     texte(pied, (A4.w - largeur(pied, semi, 8)) / 2, 790, semi, 8, NOIR);
 
+  }
+
+  if (remerciement) {
+    doc.setTitle(`Remerciements - ${identiteSimple || raison || identite}`);
+    doc.setAuthor("ARIL");
+    doc.setProducer("Préau");
+    return doc.save();
   }
 
   // ---- Page 2 : le reçu fiscal, tel que le modèle ESEJ -----------------------

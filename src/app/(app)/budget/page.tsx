@@ -85,25 +85,30 @@ export default async function BudgetPage() {
   const recettes = toutes.filter((l) => l.categories?.type === "recette");
   const depenses = toutes.filter((l) => l.categories?.type === "depense");
 
-  const renderRows = (rows: BudgetLigne[]) =>
+  // Écart et couleur selon le sens : une recette au-delà du prévu est un gain (vert, jamais rouge) ; une dépense
+  // au-delà du prévu est un dépassement (rouge). Recettes : « % réalisé » ; dépenses : « % consommé ».
+  const ecartDe = (recette: boolean, prevu: number, realise: number) => (recette ? realise - prevu : prevu - realise);
+  const couleurEcart = (recette: boolean, ecart: number) =>
+    recette ? (ecart > 0 ? "text-positive" : "text-muted") : ecart < 0 ? "text-negative" : "text-muted";
+  const couleurPct = (recette: boolean, pct: number | null) =>
+    pct === null ? "text-muted" : recette ? (pct >= 100 ? "text-positive" : "text-muted") : pct > 100 ? "text-negative" : "text-muted";
+
+  const renderRows = (rows: BudgetLigne[], recette: boolean) =>
     rows.map((l) => {
       const prevu = Number(l.montant_prevu);
       const realise = realiseParCat.get(l.categorie_id) ?? 0;
-      const ecart = prevu - realise;
+      const ecart = ecartDe(recette, prevu, realise);
       const pct = prevu > 0 ? Math.round((realise / prevu) * 100) : null;
       return (
         <tr key={l.id} className="border-b border-border last:border-0">
           <td className="px-4 py-3">{l.categories?.nom ?? "—"}</td>
           <td className="px-4 py-3 text-right tabular-nums">{formatEuros(prevu)}</td>
           <td className="px-4 py-3 text-right tabular-nums">{formatEuros(realise)}</td>
-          <td
-            className={`px-4 py-3 text-right tabular-nums ${
-              ecart < 0 ? "text-negative" : "text-muted"
-            }`}
-          >
+          <td className={`px-4 py-3 text-right tabular-nums ${couleurEcart(recette, ecart)}`}>
+            {recette && ecart > 0 ? "+" : ""}
             {formatEuros(ecart)}
           </td>
-          <td className="px-4 py-3 text-right tabular-nums text-muted">
+          <td className={`px-4 py-3 text-right tabular-nums ${couleurPct(recette, pct)}`}>
             {pct === null ? "—" : `${pct} %`}
           </td>
         </tr>
@@ -149,7 +154,8 @@ export default async function BudgetPage() {
               (s, l) => s + (realiseParCat.get(l.categorie_id) ?? 0),
               0,
             );
-            const totalEcart = totalPrevu - totalRealise;
+            const recette = grp.title === "Recettes";
+            const totalEcart = ecartDe(recette, totalPrevu, totalRealise);
             const totalPct =
               totalPrevu > 0 ? Math.round((totalRealise / totalPrevu) * 100) : null;
             return (
@@ -165,7 +171,7 @@ export default async function BudgetPage() {
                         <th className="px-4 py-3 font-medium text-right">Prévu</th>
                         <th className="px-4 py-3 font-medium text-right">Réalisé</th>
                         <th className="px-4 py-3 font-medium text-right">Écart</th>
-                        <th className="px-4 py-3 font-medium text-right">Consommé</th>
+                        <th className="px-4 py-3 font-medium text-right">{recette ? "Réalisé (%)" : "Consommé (%)"}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -176,7 +182,7 @@ export default async function BudgetPage() {
                           </td>
                         </tr>
                       ) : (
-                        renderRows(grp.rows)
+                        renderRows(grp.rows, recette)
                       )}
                     </tbody>
                     {grp.rows.length > 0 && (
@@ -189,14 +195,11 @@ export default async function BudgetPage() {
                           <td className="px-4 py-3 text-right tabular-nums">
                             {formatEuros(totalRealise)}
                           </td>
-                          <td
-                            className={`px-4 py-3 text-right tabular-nums ${
-                              totalEcart < 0 ? "text-negative" : "text-muted"
-                            }`}
-                          >
+                          <td className={`px-4 py-3 text-right tabular-nums ${couleurEcart(recette, totalEcart)}`}>
+                            {recette && totalEcart > 0 ? "+" : ""}
                             {formatEuros(totalEcart)}
                           </td>
-                          <td className="px-4 py-3 text-right tabular-nums text-muted">
+                          <td className={`px-4 py-3 text-right tabular-nums ${couleurPct(recette, totalPct)}`}>
                             {totalPct === null ? "—" : `${totalPct} %`}
                           </td>
                         </tr>

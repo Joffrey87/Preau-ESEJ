@@ -12,6 +12,7 @@ import { sansLignesVentilees } from "@/lib/operations";
 import { recuEnvoye, champsImportantsManquants, sansRecu } from "@/lib/statutDon";
 import { libellePeriode, type Periode } from "@/lib/bulletins";
 import { periodeCourante } from "@/lib/bulletinsDonnees";
+import { SEUIL_REMERCIEMENT } from "@/lib/seuilRemerciement";
 
 export type Ton = "rouge" | "ambre" | "bleu" | "vert" | "neutre";
 export type Chiffre = { label: string; valeur: string; ton?: Ton };
@@ -99,7 +100,8 @@ const CALCULS: Record<string, (c: Contexte) => Promise<Omit<Tuile, "href" | "tit
       sousTitre: c.exercice.libelle,
       chiffres: [
         { label: "Dépenses / prévu", valeur: pct(dep), ton: dep !== null && dep > 100 ? "ambre" : "neutre" },
-        { label: "Recettes / prévu", valeur: pct(rec) },
+        // Recettes : % réalisé ; au-delà du prévu, c'est un gain (vert).
+        { label: "Recettes réalisées", valeur: pct(rec), ton: rec !== null && rec >= 100 ? "vert" : "neutre" },
       ],
     };
   },
@@ -119,6 +121,27 @@ const CALCULS: Record<string, (c: Contexte) => Promise<Omit<Tuile, "href" | "tit
         { label: "Familles à jour", valeur: `${sco.length - impayees.length} / ${sco.length}`, ton: impayees.length ? "neutre" : "vert" },
         { label: "Reste à régler", valeur: formatEuros(reste), ton: reste > 0 ? "ambre" : "vert" },
         ...(aValider ? [{ label: "Coordonnées à valider", valeur: String(aValider), ton: "ambre" as Ton }] : []),
+      ],
+    };
+  },
+  "/remerciements": async (c) => {
+    const { data } = await c.sb
+      .from("dons")
+      .select("date_don, remerciement_envoye_le")
+      .is("supprime_le", null)
+      .eq("don_boursier", false)
+      .gte("montant", SEUIL_REMERCIEMENT);
+    const lignes = (data ?? []) as { date_don: string; remerciement_envoye_le: string | null }[];
+    const debut = c.exercice ? c.exercice.libelle.match(/\d{4}/)?.[0] : null;
+    const exo = debut ? lignes.filter((d) => d.date_don >= `${debut}-09-01` && d.date_don < `${Number(debut) + 1}-09-01`) : lignes;
+    const attente = exo.filter((d) => !d.remerciement_envoye_le).length;
+    if (attente && c.slug === "president")
+      c.priorites.push({ titre: `${n(attente, "remerciement")} à envoyer`, detail: `Dons de ${SEUIL_REMERCIEMENT} € et plus de l'exercice`, href: "/remerciements", icone: "mail", ton: "ambre" });
+    return {
+      sousTitre: c.exercice?.libelle,
+      chiffres: [
+        { label: "À remercier", valeur: String(attente), ton: attente ? "ambre" : "vert" },
+        { label: "Remerciés", valeur: String(exo.length - attente) },
       ],
     };
   },

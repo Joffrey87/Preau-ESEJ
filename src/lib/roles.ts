@@ -38,11 +38,11 @@ export const PAGES_RESTREINTES: Record<string, string[]> = {
   "directeur-spirituel": ["/", "/carnet", "/dons", "/mecenat/pipeline", "/bulletins"],
   // Président : Tableau de bord, Comptabilité (lecture), Budget, Frais de scolarité, Dons, Relations donateurs. Son
   // Espace famille s'ouvre par le logo (bascule vers le compte de la famille Antona), comme pour les autres familles.
-  president: ["/", "/evenement", "/comptabilite", "/budget", "/scolarite", "/dons", "/mecenat/pipeline", "/remerciements"],
+  president: ["/", "/evenement", "/evenement/membres", "/evenement/facturation", "/evenement/carnet", "/comptabilite", "/budget", "/scolarite", "/dons", "/mecenat/pipeline", "/remerciements"],
   // Profils pas encore configurés : rien de visible (une page d'attente) tant que leurs accès ne sont pas définis.
   secretaire: ["/en-attente"],
   administrateur: ["/en-attente"],
-  directrice: ["/", "/bulletins", "/evenement"],
+  directrice: ["/", "/bulletins", "/evenement", "/evenement/membres", "/evenement/facturation", "/evenement/carnet"],
   "resp-mecenat": ["/en-attente"],
 };
 
@@ -79,9 +79,15 @@ export const DOMAINE_PROFESSEURS = "professeurs.esej";
 export const estProfesseur = (email?: string | null) => !!email?.endsWith(`@${DOMAINE_PROFESSEURS}`);
 export const PAGES_PROFESSEURS = ["/bulletins"];
 
+/** Comptes du profil Événement : <identifiant>@evenement.esej, cantonnés à leurs quatre onglets. */
+export const DOMAINE_EVENEMENT = "evenement.esej";
+export const estEvenement = (email?: string | null) => !!email?.endsWith(`@${DOMAINE_EVENEMENT}`);
+export const PAGES_EVENEMENT = ["/evenement", "/evenement/membres", "/evenement/facturation", "/evenement/carnet"];
+
 /** Pages autorisées pour ce compte ; null = pas de restriction. */
 export function pagesAutorisees(email?: string | null): string[] | null {
   if (estProfesseur(email)) return PAGES_PROFESSEURS;
+  if (estEvenement(email)) return PAGES_EVENEMENT;
   const slug = roleByEmail(email)?.slug;
   return (slug && PAGES_RESTREINTES[slug]) || null;
 }

@@ -6,7 +6,9 @@ import { createClient } from "@/lib/supabase/client";
 import { formatEuros, todayISO } from "@/lib/format";
 import { Modal, Field, FormFooter, inputCls } from "@/components/GestionComptes";
 import { AjoutSuivi, CellulesSuivi, HistoriqueSuivi } from "@/components/SuiviDonateur";
-import { suiviParCle, type SuiviAction } from "@/lib/suiviDonateurs";
+import { dernierCommentaire, etatCourant, suiviParCle, type SuiviAction } from "@/lib/suiviDonateurs";
+import { trierListe, useTri } from "@/components/TriColonnes";
+import RelationEnLigne from "@/components/RelationEnLigne";
 import { nomCliquableCls } from "@/lib/ui";
 import { useCoffre } from "@/components/CoffreProvider";
 import DeverrouillerCoffre from "@/components/DeverrouillerCoffre";
@@ -47,13 +49,22 @@ type Form = {
   prochaine_action: string;
   prochaine_action_date: string;
   notes: string;
+  email: string;
+  telephone: string;
+  relation: string;
 };
+
+type ColTriP =
+  | "prospect" | "relation" | "suivi" | "suiviDate" | "etat" | "commentaire" | "reserve"
+  | "etape" | "responsable" | "action" | "cible" | "obtenu";
+const ETAPE_ORDRE: Etape[] = ["identifie", "qualifie", "contacte", "rencontre", "sollicite", "don_recu", "remercie", "fidelise", "perdu"];
 
 const vide: Form = {
   civilite: "", prenom: "", adresse: "", cp_ville: "",
   nom: "", segment: "particulier", etape: "identifie", capacite: "",
   montant_cible: "", montant_obtenu: "", responsable: "",
   prochaine_action: "", prochaine_action_date: "", notes: "",
+  email: "", telephone: "", relation: "",
 };
 
 const eur = (s: string) => Number((s.trim() || "0").replace(/\s/g, "").replace(",", ".")) || 0;
@@ -67,6 +78,7 @@ export default function GestionPipeline({
   suivi = [],
   peutSuivre = false,
   auteurSuivi = null,
+  peutEcrire = false,
 }: {
   prospects: Prospect[];
   dons: Don[];
@@ -81,6 +93,8 @@ export default function GestionPipeline({
   /** Ajout d'actions et réservation : Recherche de fonds, Trésorier, Administrateur. */
   peutSuivre?: boolean;
   auteurSuivi?: string | null;
+  /** Écriture sur les prospects (même règle que la base : bureau et Recherche de fonds). */
+  peutEcrire?: boolean;
 }) {
   const router = useRouter();
   const coffre = useCoffre();
@@ -109,12 +123,41 @@ export default function GestionPipeline({
     const ql = q.trim().toLowerCase();
     return prospects.filter(
       (p) =>
-        (!ql || [p.affiche, p.adresse, p.cp_ville, p.responsable].some((v) => (v ?? "").toLowerCase().includes(ql))) &&
+        (!ql || [p.affiche, p.adresse, p.cp_ville, p.responsable, p.email, p.telephone, p.relation].some((v) => (v ?? "").toLowerCase().includes(ql))) &&
         (!fEtape || p.etape === fEtape) &&
         (!fSegment || p.segment === fSegment) &&
         (fListes.length === 0 || (!!p.liste && fListes.includes(p.liste))),
     );
   }, [prospects, q, fEtape, fSegment, fListes]);
+
+  const relationsConnues = useMemo(
+    () => [...new Set(prospects.map((p) => (p.relation ?? "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr")),
+    [prospects],
+  );
+  // Tri des colonnes ; à l'ouverture, la dernière action de suivi la plus récente d'abord.
+  const { tri, bouton, ariaSort } = useTri<ColTriP>({ col: "suiviDate", dir: "desc" }, ["suiviDate", "action", "cible", "obtenu"]);
+  const thTri = (col: ColTriP, label: string, droite = false) => (
+    <th className={`px-4 py-3 font-medium ${droite ? "text-right" : ""}`} aria-sort={ariaSort(col)}>
+      {bouton(col, label)}
+    </th>
+  );
+  const tries = trierListe(filtres, tri, (p, col): string | number | null => {
+    const h = suiviProspect.get(p.id);
+    switch (col) {
+      case "prospect": return p.verrouille ? null : nomComplet({ titre: null, prenom: p.prenom, nom: p.nom }) || null;
+      case "relation": return p.relation?.trim() || null;
+      case "suivi": return h?.[0]?.actions.join(", ") || null;
+      case "suiviDate": return h?.[0]?.cree_le ?? null;
+      case "etat": return etatCourant(h);
+      case "commentaire": return dernierCommentaire(h);
+      case "reserve": return p.reserve_a || null;
+      case "etape": return ETAPE_ORDRE.indexOf(p.etape);
+      case "responsable": return p.responsable || null;
+      case "action": return p.prochaine_action_date || null;
+      case "cible": return p.montant_cible ?? null;
+      case "obtenu": return obtenus[p.id]?.montant ?? null;
+    }
+  });
 
   // Analyse (sur la sélection filtrée).
   const actifs = filtres.filter((p) => p.etape !== "perdu");
@@ -139,6 +182,7 @@ export default function GestionPipeline({
         montant_obtenu: p.montant_obtenu ? String(p.montant_obtenu).replace(".", ",") : "",
         responsable: p.responsable ?? "", prochaine_action: p.prochaine_action ?? "",
         prochaine_action_date: p.prochaine_action_date ?? "", notes: p.notes ?? "",
+        email: p.email ?? "", telephone: p.telephone ?? "", relation: p.relation ?? "",
       });
     setEdit(p);
   }
@@ -188,6 +232,9 @@ export default function GestionPipeline({
       prochaine_action: form.prochaine_action.trim() || null,
       prochaine_action_date: form.prochaine_action_date || null,
       notes: form.notes.trim() || null,
+      email: form.email.trim() || null,
+      telephone: form.telephone.trim() || null,
+      relation: form.relation.trim() || null,
       updated_at: new Date().toISOString(),
     };
     const { error: err } =
@@ -295,13 +342,20 @@ export default function GestionPipeline({
             Réinitialiser
           </button>
         )}
-        <ImportProspects prospects={prospects} dons={dons} />
-        <button type="button" onClick={() => ouvrir("nouveau")} className="rounded-lg bg-accent px-4 py-1.5 text-sm font-medium text-accent-fg hover:opacity-90">
-          <span className="inline-flex items-center gap-1.5">
-            <Icon name="plus" className="h-4 w-4" />
-            Ajouter un prospect
-          </span>
-        </button>
+        {peutEcrire && <ImportProspects prospects={prospects} dons={dons} />}
+        {peutEcrire && (
+          <button type="button" onClick={() => ouvrir("nouveau")} className="rounded-lg bg-accent px-4 py-1.5 text-sm font-medium text-accent-fg hover:opacity-90">
+            <span className="inline-flex items-center gap-1.5">
+              <Icon name="plus" className="h-4 w-4" />
+              Ajouter un prospect
+            </span>
+          </button>
+        )}
+        <datalist id="relations-prospects">
+          {relationsConnues.map((r) => (
+            <option key={r} value={r} />
+          ))}
+        </datalist>
       </div>
 
       {listes.length > 0 && (
@@ -382,24 +436,30 @@ export default function GestionPipeline({
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border text-left text-muted">
-              <th className="px-4 py-3 font-medium">Prospect</th>
-              <th className="px-4 py-3 font-medium">Suivi</th>
-              <th className="px-4 py-3 font-medium">État</th>
-              <th className="px-4 py-3 font-medium">Commentaire</th>
-              <th className="px-4 py-3 font-medium">Réservé à</th>
-              <th className="px-4 py-3 font-medium">Étape</th>
-              <th className="px-4 py-3 font-medium">Responsable</th>
-              <th className="px-4 py-3 font-medium">Prochaine action</th>
-              <th className="px-4 py-3 text-right font-medium">Cible</th>
-              <th className="px-4 py-3 text-right font-medium">Obtenu</th>
+              {thTri("prospect", "Prospect")}
+              {thTri("relation", "Relation")}
+              <th className="px-4 py-3 font-medium" aria-sort={ariaSort("suivi", "suiviDate")}>
+                <span className="inline-flex items-center gap-1">
+                  {bouton("suivi", "Suivi", "Trier par action")}
+                  {bouton("suiviDate", "date", "Trier par date de la dernière action")}
+                </span>
+              </th>
+              {thTri("etat", "État")}
+              {thTri("commentaire", "Commentaire")}
+              {thTri("reserve", "Réservé à")}
+              {thTri("etape", "Étape")}
+              {thTri("responsable", "Responsable")}
+              {thTri("action", "Prochaine action")}
+              {thTri("cible", "Cible", true)}
+              {thTri("obtenu", "Obtenu", true)}
               <th className="px-4 py-3 text-right font-medium">Actions</th>
             </tr>
           </thead>
           <tbody>
             {filtres.length === 0 ? (
-              <tr><td colSpan={11} className="px-4 py-10 text-center text-muted">Aucun prospect. Commencez par « Ajouter un prospect ».</td></tr>
+              <tr><td colSpan={12} className="px-4 py-10 text-center text-muted">Aucun prospect. Commencez par « Ajouter un prospect ».</td></tr>
             ) : (
-              filtres.map((p) => {
+              tries.map((p) => {
                 const suite = etapeSuivante(p.etape);
                 const retard = p.prochaine_action_date && p.prochaine_action_date < today;
                 return (
@@ -409,6 +469,13 @@ export default function GestionPipeline({
                         {!p.verrouille ? nomComplet({ titre: p.titre, prenom: p.prenom, nom: p.nom }) : p.affiche}
                       </button>
                       {p.cp_ville && <div className="text-xs text-muted">{villeEtDepartement(p.cp_ville)}</div>}
+                      {(p.email || p.telephone) && (
+                        <div className="text-xs text-muted">
+                          {p.email && <a href={`mailto:${p.email}`} className="hover:underline">{p.email}</a>}
+                          {p.email && p.telephone && " · "}
+                          {p.telephone && <a href={`tel:${p.telephone.replace(/\s/g, "")}`} className="hover:underline">{p.telephone}</a>}
+                        </div>
+                      )}
                       <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted">
                         {/* Prospects de la Liste Axel : tous des particuliers, segment non modifiable depuis le tableau. */}
                         {!estListeChiffree(p.liste) && (
@@ -423,6 +490,20 @@ export default function GestionPipeline({
                           </select>
                         )}
                       </div>
+                    </td>
+                    <td className="px-4 py-3 text-muted">
+                      <RelationEnLigne
+                        valeur={p.relation ?? null}
+                        modifiable={peutEcrire}
+                        liste="relations-prospects"
+                        nom={p.affiche}
+                        onEnregistrer={async (v) => {
+                          const { data, error: e } = await createClient().from("prospects").update({ relation: v, updated_at: new Date().toISOString() }).eq("id", p.id).select("id");
+                          if (e || !data?.length) return e?.message ?? "modification refusée";
+                          router.refresh();
+                          return null;
+                        }}
+                      />
                     </td>
                     <CellulesSuivi
                       historique={suiviProspect.get(p.id)}
@@ -568,8 +649,19 @@ export default function GestionPipeline({
                 <input type="text" value={form.cp_ville} onChange={(e) => setForm({ ...form, cp_ville: e.target.value })} className={inputCls} placeholder="51100 Reims" />
               </Field>
             </div>
+            <div className="grid grid-cols-3 gap-3">
+              <Field label="Email">
+                <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className={inputCls} />
+              </Field>
+              <Field label="Téléphone">
+                <input type="tel" value={form.telephone} onChange={(e) => setForm({ ...form, telephone: e.target.value })} className={inputCls} />
+              </Field>
+              <Field label="Relation (qui l'a amené)">
+                <input type="text" list="relations-prospects" value={form.relation} onChange={(e) => setForm({ ...form, relation: e.target.value })} className={inputCls} />
+              </Field>
+            </div>
             {edit !== "nouveau" && edit?.chiffre && (
-              <p className="-mt-2 text-xs text-muted">Fiche de la « {edit.liste} » : prénom, adresse et civilité sont chiffrés dans le coffre.</p>
+              <p className="-mt-2 text-xs text-muted">Fiche de la « {edit.liste} » : prénom, adresse et civilité sont chiffrés dans le coffre (email, téléphone et relation restent en clair).</p>
             )}
             <div className="grid grid-cols-2 gap-3">
               <Field label="Segment">

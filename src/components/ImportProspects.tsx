@@ -9,8 +9,9 @@ import { createClient } from "@/lib/supabase/client";
 import { Modal, inputCls } from "@/components/GestionComptes";
 import { useDonsDechiffres } from "@/lib/donsChiffre";
 import { NOM_NEUTRE, estListeChiffree, nomComplet, type ProspectLisible } from "@/lib/prospectsChiffres";
-import type { LigneListe } from "@/lib/listeProspects";
-import { CHAMPS, convertir, lireFichier, tableauDesFeuilles, type Champ, type Tableau } from "@/lib/importProspectsColonnes";
+import { CHAMPS, convertir, lireFichier, tableauDesFeuilles, type Champ, type LigneImport, type Tableau } from "@/lib/importProspectsColonnes";
+import { ETAPE_LABEL, SEGMENT_LABEL, type Etape, type Segment } from "@/lib/pipeline";
+import { ChoixReserve } from "@/components/SuiviDonateur";
 import { jetonsNom } from "@/lib/foyers";
 import { prenomsDuCouple, estCouple } from "@/lib/couple";
 import { normaliser } from "@/lib/reconciliation";
@@ -22,11 +23,12 @@ const cle = (nom: string | null, prenom: string | null): string => {
 };
 
 type Analyse = {
-  nouveaux: LigneListe[];
-  doublonsProspects: LigneListe[];
-  dejaDonateurs: LigneListe[];
-  doublonsFichier: LigneListe[];
+  nouveaux: LigneImport[];
+  doublonsProspects: LigneImport[];
+  dejaDonateurs: LigneImport[];
+  doublonsFichier: LigneImport[];
   invalides: { source: string; raison: string }[];
+  avertissements: { source: string; raison: string }[];
   total: number;
 };
 
@@ -62,11 +64,16 @@ function Fenetre({ prospects, dons, onClose }: { prospects: ProspectLisible[]; d
   const [champs, setChamps] = useState<Champ[]>([]);
   const [apercu, setApercu] = useState(false);
   const converties = useMemo(() => (tableau && apercu ? convertir(tableau, champs) : null), [tableau, champs, apercu]);
-  const lignes: LigneListe[] | null = useMemo(
+  const lignes: LigneImport[] | null = useMemo(
     () => (converties ? converties.flatMap((c) => ("ligne" in c ? [c.ligne] : [])) : null),
     [converties],
   );
   const [fichier, setFichier] = useState("");
+  // Valeurs par défaut de l'import (le segment peut aussi venir d'une colonne du fichier).
+  const [segmentDefaut, setSegmentDefaut] = useState<Segment>("particulier");
+  const [etapeDefaut, setEtapeDefaut] = useState<Etape>("identifie");
+  const [reserveDefaut, setReserveDefaut] = useState<string>("");
+  const [majExistants, setMajExistants] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; t: string } | null>(null);
 
@@ -82,13 +89,20 @@ function Fenetre({ prospects, dons, onClose }: { prospects: ProspectLisible[]; d
     }
     return s;
   }, [clairs]);
-  const clesProspects = useMemo(() => new Set(prospects.filter((p) => !p.verrouille).map((p) => cle(p.nom, p.prenom))), [prospects]);
+  // Prospects existants par clé (le premier trouvé), pour les signaler ou les mettre à jour.
+  const prospectParCle = useMemo(() => {
+    const m = new Map<string, ProspectLisible>();
+    for (const p of prospects) if (!p.verrouille && !m.has(cle(p.nom, p.prenom))) m.set(cle(p.nom, p.prenom), p);
+    return m;
+  }, [prospects]);
+  const clesProspects = useMemo(() => new Set(prospectParCle.keys()), [prospectParCle]);
 
   const analyse: Analyse | null = useMemo(() => {
     if (!lignes) return null;
     const vus = new Set<string>();
     const invalides = (converties ?? []).flatMap((c) => ("invalide" in c ? [{ source: c.source, raison: c.invalide }] : []));
-    const a: Analyse = { nouveaux: [], doublonsProspects: [], dejaDonateurs: [], doublonsFichier: [], invalides, total: converties?.length ?? lignes.length };
+    const avertissements = (converties ?? []).flatMap((c) => ("avertissement" in c && c.avertissement ? [{ source: c.source, raison: c.avertissement }] : []));
+    const a: Analyse = { nouveaux: [], doublonsProspects: [], dejaDonateurs: [], doublonsFichier: [], invalides, avertissements, total: converties?.length ?? lignes.length };
     for (const l of lignes) {
       const k = cle(l.nom, l.prenom);
       if (vus.has(k)) a.doublonsFichier.push(l);
@@ -118,56 +132,91 @@ function Fenetre({ prospects, dons, onClose }: { prospects: ProspectLisible[]; d
     }
   }
 
+  /** Champs d'une fiche à créer (chiffrée pour la « Liste Axel », en clair sinon). */
+  async function fiche(l: LigneImport, chiffrer: boolean) {
+    const segment = l.segment ?? segmentDefaut;
+    const nom = segment === "particulier" ? l.nom : l.nomBrut.trim();
+    return {
+      segment,
+      etape: etapeDefaut,
+      reserve_a: reserveDefaut || null,
+      liste: liste.trim() || null,
+      notes: l.note,
+      email: l.email,
+      telephone: l.telephone,
+      relation: l.relation,
+      ...(chiffrer
+        ? {
+            nom: NOM_NEUTRE,
+            pii_chiffre: await coffre.chiffrer(JSON.stringify({ titre: l.titre, nom, prenom: l.prenom, adresse: l.adresse, cp_ville: l.cp_ville })),
+          }
+        : { nom, civilite: l.titre, prenom: l.prenom, adresse: l.adresse, cp_ville: l.cp_ville }),
+    };
+  }
+
+  /** Mise à jour d'un prospect existant : les valeurs du fichier remplacent les siennes, les champs vides du fichier ne l'effacent pas. Étape, segment et réservation ne changent pas. */
+  async function miseAJour(p: ProspectLisible, l: LigneImport) {
+    const notes = l.note && !(p.notes ?? "").includes(l.note) ? [p.notes, l.note].filter(Boolean).join(" · ") : p.notes;
+    const commun = {
+      email: l.email ?? p.email ?? null,
+      telephone: l.telephone ?? p.telephone ?? null,
+      relation: l.relation ?? p.relation ?? null,
+      notes: notes ?? null,
+      updated_at: new Date().toISOString(),
+    };
+    const pii = { titre: l.titre ?? p.titre, nom: p.nom, prenom: l.prenom ?? p.prenom, adresse: l.adresse ?? p.adresse, cp_ville: l.cp_ville ?? p.cp_ville };
+    const patch = p.chiffre
+      ? { ...commun, pii_chiffre: await coffre.chiffrer(JSON.stringify(pii)) }
+      : { ...commun, civilite: pii.titre, prenom: pii.prenom, adresse: pii.adresse, cp_ville: pii.cp_ville };
+    return createClient().from("prospects").update(patch).eq("id", p.id).select("id");
+  }
+
   async function importer() {
-    if (!analyse || analyse.nouveaux.length === 0) return;
-    const chiffrer = estListeChiffree(liste);
+    if (!analyse) return;
+    const aMettreAJour = majExistants ? analyse.doublonsProspects : [];
+    if (analyse.nouveaux.length === 0 && aMettreAJour.length === 0) return;
+    const chiffrer = estListeChiffree(liste) || aMettreAJour.some((l) => prospectParCle.get(cle(l.nom, l.prenom))?.chiffre);
     if (chiffrer && !coffre.estOuvert) return setMessage({ ok: false, t: "Coffre verrouillé : déverrouillez-le pour chiffrer les coordonnées." });
     setBusy(true);
     setMessage(null);
     const supabase = createClient();
-    const etiquette = liste.trim() || null;
     let faits = 0;
+    let majFaites = 0;
+    const echecs: string[] = [];
     for (let i = 0; i < analyse.nouveaux.length; i += 50) {
       const lot = analyse.nouveaux.slice(i, i + 50);
-      // Chiffrées pour la « Liste Axel » seulement ; les autres listes sont enregistrées en clair.
-      const lignesBase = await Promise.all(
-        lot.map(async (l) => ({
-          segment: "particulier",
-          etape: "identifie",
-          liste: etiquette,
-          notes: l.note,
-          ...(chiffrer
-            ? {
-                nom: NOM_NEUTRE,
-                pii_chiffre: await coffre.chiffrer(
-                  JSON.stringify({ titre: l.titre, nom: l.nom, prenom: l.prenom, adresse: l.adresse, cp_ville: l.cp_ville }),
-                ),
-              }
-            : { nom: l.nom, civilite: l.titre, prenom: l.prenom, adresse: l.adresse, cp_ville: l.cp_ville }),
-        })),
-      );
-      const { error } = await supabase.from("prospects").insert(lignesBase);
+      const { error } = await supabase.from("prospects").insert(await Promise.all(lot.map((l) => fiche(l, estListeChiffree(liste)))));
       if (error) {
-        setBusy(false);
-        setMessage({ ok: false, t: `Import interrompu après ${faits} prospect${faits > 1 ? "s" : ""} : ${error.message}` });
-        router.refresh();
-        return;
+        echecs.push(`création interrompue après ${faits} : ${error.message}`);
+        break;
       }
       faits += lot.length;
     }
+    for (const l of aMettreAJour) {
+      const p = prospectParCle.get(cle(l.nom, l.prenom));
+      if (!p) continue;
+      const { data, error } = await miseAJour(p, l);
+      if (error || !data?.length) echecs.push(`${p.affiche} : ${error?.message ?? "modification refusée"}`);
+      else majFaites++;
+    }
     setBusy(false);
-    const ecartes = analyse.total - faits;
+    const ecartes = analyse.total - faits - majFaites;
+    const pl = (n: number, mot: string) => `${n} ${mot}${n > 1 ? "s" : ""}`;
     setMessage({
-      ok: true,
-      t: `${faits} prospect${faits > 1 ? "s" : ""} ajouté${faits > 1 ? "s" : ""}${etiquette ? ` (« ${etiquette} »)` : ""}, ${ecartes} ligne${ecartes > 1 ? "s" : ""} écartée${ecartes > 1 ? "s" : ""} (doublons ou invalides).`,
+      ok: echecs.length === 0,
+      t:
+        `${pl(faits, "prospect")} ajouté${faits > 1 ? "s" : ""}, ${pl(majFaites, "prospect")} mis à jour, ${pl(ecartes, "ligne")} écartée${ecartes > 1 ? "s" : ""} (doublons ou invalides).` +
+        (echecs.length ? ` Erreurs : ${echecs.join(" ; ")}` : ""),
     });
     setTableau(null);
     setApercu(false);
     router.refresh();
   }
 
-  const nommer = (l: LigneListe) => nomComplet({ titre: null, prenom: l.prenom, nom: l.nom });
-  const liste3 = (titre: string, items: LigneListe[]) =>
+  const nbMaj = majExistants ? (analyse?.doublonsProspects.length ?? 0) : 0;
+  const nbTotal = (analyse?.nouveaux.length ?? 0) + nbMaj;
+  const nommer = (l: LigneImport) => nomComplet({ titre: null, prenom: l.prenom, nom: l.nom });
+  const liste3 = (titre: string, items: LigneImport[]) =>
     items.length > 0 && (
       <details className="rounded-lg border border-border px-3 py-2">
         <summary className="cursor-pointer text-sm">
@@ -204,7 +253,7 @@ function Fenetre({ prospects, dons, onClose }: { prospects: ProspectLisible[]; d
           {fichier && <span className="ml-2 text-xs text-muted">{fichier}</span>}
           <p className="mt-1 text-xs text-muted">
             Toutes les feuilles sont lues ; les en-têtes (nom, prénom, adresse, CP, ville, email, téléphone, notes…) sont reconnus
-            automatiquement et se corrigent à l&apos;étape suivante. L&apos;email et le téléphone sont repris dans les notes.
+            automatiquement et se corrigent à l&apos;étape suivante. Email, téléphone, relation et segment ont leurs propres champs.
           </p>
         </div>
 
@@ -264,9 +313,54 @@ function Fenetre({ prospects, dons, onClose }: { prospects: ProspectLisible[]; d
             <p className="rounded-lg bg-surface-2 px-3 py-2">
               <strong>{analyse.nouveaux.length}</strong> prospect{analyse.nouveaux.length > 1 ? "s" : ""} à créer sur {analyse.total} lignes lues.
             </p>
-            {liste3("Déjà prospects (non recréés)", analyse.doublonsProspects)}
+            <div className="grid gap-2 rounded-lg border border-border p-3 sm:grid-cols-3">
+              <label className="text-xs text-muted">
+                Segment par défaut
+                <select value={segmentDefaut} onChange={(e) => setSegmentDefaut(e.target.value as Segment)} className={`${inputCls} mt-0.5`}>
+                  {Object.entries(SEGMENT_LABEL).map(([k, v]) => (
+                    <option key={k} value={k}>
+                      {v}
+                    </option>
+                  ))}
+                </select>
+                {champs.includes("segment") && <span className="mt-0.5 block">Remplacé par la colonne du fichier quand elle est reconnue.</span>}
+              </label>
+              <label className="text-xs text-muted">
+                Étape
+                <select value={etapeDefaut} onChange={(e) => setEtapeDefaut(e.target.value as Etape)} className={`${inputCls} mt-0.5`}>
+                  {Object.entries(ETAPE_LABEL).map(([k, v]) => (
+                    <option key={k} value={k}>
+                      {v}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="text-xs text-muted">
+                Réservé à
+                <div className="mt-0.5">
+                  <ChoixReserve key={reserveDefaut} value={reserveDefaut || null} onChange={setReserveDefaut} label="Réservé à (import)" />
+                </div>
+              </div>
+              <label className="flex items-center gap-2 text-sm sm:col-span-3">
+                <input type="checkbox" checked={majExistants} onChange={(e) => setMajExistants(e.target.checked)} className="h-4 w-4" />
+                Mettre à jour les prospects existants ({analyse.doublonsProspects.length}) : leurs champs sont complétés ou remplacés par ceux du fichier
+              </label>
+            </div>
+            {liste3(majExistants ? "Déjà prospects (mis à jour)" : "Déjà prospects (non recréés)", analyse.doublonsProspects)}
             {liste3("Déjà donateurs (non recréés)", analyse.dejaDonateurs)}
             {liste3("Répétés dans le fichier (une seule fois)", analyse.doublonsFichier)}
+            {analyse.avertissements.length > 0 && (
+              <details className="rounded-lg border border-gold/40 px-3 py-2">
+                <summary className="cursor-pointer text-sm text-gold">Emails mal formés, écartés (ligne gardée) ({analyse.avertissements.length})</summary>
+                <ul className="mt-1 space-y-0.5 text-xs text-muted">
+                  {analyse.avertissements.map((x, k) => (
+                    <li key={k}>
+                      {x.source} : {x.raison}
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
             {analyse.invalides.length > 0 && (
               <details className="rounded-lg border border-negative/40 px-3 py-2">
                 <summary className="cursor-pointer text-sm text-negative">Lignes invalides, non importées ({analyse.invalides.length})</summary>
@@ -295,10 +389,12 @@ function Fenetre({ prospects, dons, onClose }: { prospects: ProspectLisible[]; d
           <button
             type="button"
             onClick={() => void importer()}
-            disabled={busy || verrou || (estListeChiffree(liste) && !coffre.estOuvert) || !analyse || analyse.nouveaux.length === 0}
+            disabled={busy || verrou || (estListeChiffree(liste) && !coffre.estOuvert) || !analyse || nbTotal === 0}
             className="rounded-lg bg-accent px-4 py-2 font-medium text-accent-fg hover:opacity-90 disabled:opacity-50"
           >
-            {busy ? "Import…" : `Importer ${analyse?.nouveaux.length ?? 0} prospect${(analyse?.nouveaux.length ?? 0) > 1 ? "s" : ""}`}
+            {busy
+              ? "Import…"
+              : `Importer ${analyse?.nouveaux.length ?? 0} prospect${(analyse?.nouveaux.length ?? 0) > 1 ? "s" : ""}${nbMaj ? ` et en mettre à jour ${nbMaj}` : ""}`}
           </button>
         </div>
       </div>

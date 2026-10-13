@@ -25,6 +25,10 @@ export type Prospect = {
   notes: string | null;
   /** « Réservé à » (Recherche de fonds, Administration ou nom libre). */
   reserve_a?: string | null;
+  /** Coordonnées et relation (qui a amené ce prospect) : en clair, y compris pour les fiches chiffrées. */
+  email?: string | null;
+  telephone?: string | null;
+  relation?: string | null;
   /** Coordonnées en clair (prospects hors « Liste Axel »). */
   civilite?: string | null;
   prenom?: string | null;

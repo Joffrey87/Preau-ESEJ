@@ -4,8 +4,9 @@
 import { normaliser } from "@/lib/reconciliation";
 import { formaterNomParticulier } from "@/lib/nomPropre";
 import { codePostal, formaterPrenom, formaterVille, texte, titreDe, type LigneListe } from "@/lib/listeProspects";
+import { SEGMENT_LABEL, type Segment } from "@/lib/pipeline";
 
-export type Champ = "" | "civilite" | "nom" | "prenom" | "adresse" | "cp" | "ville" | "cp_ville" | "email" | "telephone" | "notes";
+export type Champ = "" | "civilite" | "nom" | "prenom" | "adresse" | "cp" | "ville" | "cp_ville" | "email" | "telephone" | "relation" | "segment" | "notes";
 
 export const CHAMPS: { key: Exclude<Champ, "">; label: string }[] = [
   { key: "civilite", label: "Civilité" },
@@ -15,15 +16,17 @@ export const CHAMPS: { key: Exclude<Champ, "">; label: string }[] = [
   { key: "cp", label: "Code postal" },
   { key: "ville", label: "Ville" },
   { key: "cp_ville", label: "CP + ville" },
-  { key: "email", label: "Email (en notes)" },
-  { key: "telephone", label: "Téléphone (en notes)" },
+  { key: "email", label: "Email" },
+  { key: "telephone", label: "Téléphone" },
+  { key: "relation", label: "Relation (qui l'a amené)" },
+  { key: "segment", label: "Segment / type" },
   { key: "notes", label: "Notes" },
 ];
 
 /** En-têtes reconnus (normalisés : sans accents, minuscules). */
 const SYNONYMES: Record<Exclude<Champ, "">, string[]> = {
   civilite: ["civilite", "titre", "civ", "m mme", "genre"],
-  nom: ["nom", "nom de famille", "last name", "lastname", "raison sociale", "organisme", "societe", "entreprise"],
+  nom: ["nom", "nom de famille", "last name", "lastname", "raison sociale", "organisme", "societe", "nom ou raison sociale"],
   prenom: ["prenom", "prenoms", "first name", "firstname"],
   adresse: ["adresse", "adresse 1", "adresse1", "rue", "voie", "address"],
   cp: ["cp", "code postal", "codepostal", "zip", "postal"],
@@ -31,6 +34,8 @@ const SYNONYMES: Record<Exclude<Champ, "">, string[]> = {
   cp_ville: ["cp ville", "code postal ville", "cp et ville"],
   email: ["email", "e mail", "mail", "courriel", "adresse email", "adresse mail"],
   telephone: ["telephone", "tel", "portable", "mobile", "phone", "gsm", "tel portable"],
+  relation: ["relation", "apporte par", "amene par", "introduit par", "parrain", "contact de", "recommande par"],
+  segment: ["segment", "type", "categorie", "type de contact", "type de donateur", "particulier entreprise"],
   notes: ["notes", "note", "commentaire", "commentaires", "remarque", "remarques", "observations", "fonction"],
 };
 
@@ -101,11 +106,34 @@ export function tableauDesFeuilles(feuilles: Record<string, unknown[][]>): Table
   return { entetes, champs, lignes };
 }
 
-export type LigneConvertie = { ligne: LigneListe; source: string } | { invalide: string; source: string };
+/** Ligne importée : champs de la liste + coordonnées, relation et segment (null = segment par défaut de l'import). */
+export type LigneImport = LigneListe & {
+  /** Nom tel que dans le fichier (organismes : pas de mise en forme « Nom de famille »). */
+  nomBrut: string;
+  email: string | null;
+  telephone: string | null;
+  relation: string | null;
+  segment: Segment | null;
+};
+
+export type LigneConvertie = { ligne: LigneImport; source: string; avertissement?: string } | { invalide: string; source: string };
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-/** Conversion d'une ligne selon la correspondance des colonnes ; ligne invalide si le nom manque ou n'en est pas un. */
+/** Segment d'après le texte du fichier : libellé ou code du segment, ou mots usuels (« société », « asso »…). */
+export function segmentDe(v: string): Segment | null {
+  const t = normaliser(v);
+  if (!t) return null;
+  for (const [k, l] of Object.entries(SEGMENT_LABEL)) if (t === normaliser(l) || t === normaliser(k)) return k as Segment;
+  if (/(entreprise|societe|sarl|sas|sa |eurl|commerce|pme)/.test(t + " ")) return "entreprise";
+  if (/(fondation|fonds|association|asso)/.test(t)) return "fondation";
+  if (/(paroisse|diocese|congregation|eglise|catho)/.test(t)) return "reseau_catho";
+  if (/(grand donateur|mecene)/.test(t)) return "grand_donateur";
+  if (/(particulier|famille|personne|individu)/.test(t)) return "particulier";
+  return null;
+}
+
+/** Conversion d'une ligne selon la correspondance des colonnes ; ligne invalide si le nom manque ou n'en est pas un. Un email mal formé est écarté, la ligne gardée. */
 export function convertir(t: Tableau, champs: Champ[]): LigneConvertie[] {
   const col = (k: Champ) => champs.map((c, i) => (c === k ? i : -1)).filter((i) => i >= 0);
   const val = (cel: string[], k: Champ) => col(k).map((i) => cel[i] ?? "").filter(Boolean).join(" ").trim();
@@ -114,26 +142,26 @@ export function convertir(t: Tableau, champs: Champ[]): LigneConvertie[] {
     const nom = val(cellules, "nom");
     if (!nom) return { invalide: "nom manquant", source };
     if (/^\d+$/.test(nom) || normaliser(nom) === "total" || normaliser(cellules[0] ?? "") === "total") return { invalide: "ligne de total", source };
-    const email = val(cellules, "email");
-    if (email && !EMAIL.test(email)) return { invalide: `email invalide (« ${email} »)`, source };
+    const emailBrut = val(cellules, "email");
+    const emailOk = !emailBrut || EMAIL.test(emailBrut);
     const cpVille = val(cellules, "cp_ville") || [codePostal(val(cellules, "cp")), formaterVille(val(cellules, "ville"))].filter(Boolean).join(" ");
-    const notes = [
-      col("notes").map((i) => cellules[i] ?? "").filter(Boolean).join(" · "),
-      email && `Email : ${email}`,
-      val(cellules, "telephone") && `Tél. : ${val(cellules, "telephone")}`,
-    ]
-      .filter(Boolean)
-      .join(" · ");
+    const notes = col("notes").map((i) => cellules[i] ?? "").filter(Boolean).join(" · ");
     const prenom = formaterPrenom(val(cellules, "prenom"));
     return {
       source,
+      ...(emailOk ? {} : { avertissement: `email mal formé écarté (« ${emailBrut} »)` }),
       ligne: {
         titre: titreDe(val(cellules, "civilite")),
         nom: formaterNomParticulier(nom),
+        nomBrut: nom,
         prenom: prenom || null,
         adresse: val(cellules, "adresse") || null,
         cp_ville: cpVille || null,
         note: notes && !/^\d+$/.test(notes) ? notes : null,
+        email: emailOk && emailBrut ? emailBrut.toLowerCase() : null,
+        telephone: val(cellules, "telephone") || null,
+        relation: val(cellules, "relation") || null,
+        segment: segmentDe(val(cellules, "segment")),
       },
     };
   });

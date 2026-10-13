@@ -25,6 +25,7 @@ import CarteDonateurs from "@/components/CarteDonateurs";
 import DeverrouillerCoffre from "@/components/DeverrouillerCoffre";
 import BoutonFiltresMultiples, { CasePastille } from "@/components/BoutonFiltresMultiples";
 import { useFiltresMultiples } from "@/lib/filtresMultiples";
+import { trierListe, useTri } from "@/components/TriColonnes";
 import { PARAMS } from "@/lib/segments";
 import { nomCliquableCls } from "@/lib/ui";
 import { inputCls } from "./GestionComptes";
@@ -56,11 +57,12 @@ const correspond = (p: ProfilDonateur, f: SegFiltre) =>
  * « fichier » (synthèse, filtres, tableau) et « campagnes » (campagne de
  * collecte, relances, prochaines actions suggérées).
  */
+type ColTriB = "donateur" | "bourse" | "autres" | "dernier";
+
 type ColTri =
   | "donateur" | "relation" | "suivi" | "suiviDate" | "etat" | "commentaire" | "reserve"
   | "qualification" | "cumul" | "annee" | "dons" | "dernier";
 const NUMERIQUES: ColTri[] = ["cumul", "annee", "dons"];
-const COLLATOR = new Intl.Collator("fr", { sensitivity: "base", numeric: true });
 
 export default function DonateursPipeline({
   donsInit,
@@ -101,15 +103,12 @@ export default function DonateursPipeline({
   const [erreurBourse, setErreurBourse] = useState<string | null>(null);
   // Relation modifiable en ligne : cellule en cours d'édition et état d'enregistrement.
   const [editRelation, setEditRelation] = useState<{ cle: string; valeur: string } | null>(null);
-  const [tri, setTri] = useState<{ col: ColTri; dir: "asc" | "desc" } | null>(null);
-  const trier = (col: ColTri) =>
-    setTri((t) => (t?.col === col ? { col, dir: t.dir === "asc" ? "desc" : "asc" } : { col, dir: col === "suiviDate" || col === "dernier" || NUMERIQUES.includes(col) ? "desc" : "asc" }));
+  // Tri des colonnes ; à l'ouverture, la dernière action de suivi la plus récente d'abord.
+  const { tri, bouton, ariaSort } = useTri<ColTri>({ col: "suiviDate", dir: "desc" }, ["suiviDate", "dernier", ...NUMERIQUES]);
+  const { tri: triB, bouton: boutonB, ariaSort: ariaSortB } = useTri<ColTriB>(null, ["bourse", "autres", "dernier"]);
   const th = (col: ColTri, label: string, centre = false) => (
-    <th className={`px-3 py-1 font-medium ${centre ? "text-center" : ""}`} aria-sort={tri?.col === col ? (tri.dir === "asc" ? "ascending" : "descending") : "none"}>
-      <button type="button" onClick={() => trier(col)} className="inline-flex items-center gap-0.5 hover:text-foreground" title={`Trier par ${label.toLowerCase()}`}>
-        {label}
-        <span className={tri?.col === col ? "text-accent" : "opacity-30"}>{tri?.col === col ? (tri.dir === "asc" ? "▲" : "▼") : "↕"}</span>
-      </button>
+    <th className={`px-3 py-1 font-medium ${centre ? "text-center" : ""}`} aria-sort={ariaSort(col)}>
+      {bouton(col, label)}
     </th>
   );
   const [ajoutCle, setAjoutCle] = useState<string | null>(null);
@@ -185,33 +184,27 @@ export default function DonateursPipeline({
   const rangFamille = (p: ProfilDonateur) => (p.famille === "actuelle" ? 0 : p.famille === "ancienne" ? 1 : 2);
   if (estActif("famille")) affiches.sort((a, b) => rangFamille(a) - rangFamille(b));
   // Tri par colonne (valeurs affichées, déchiffrées) : ordre français, vides toujours en dernier.
-  if (tri) {
-    const val = (p: ProfilDonateur): string | number | null => {
-      const h = suiviCle.get(p.cle);
-      switch (tri.col) {
-        case "donateur": return p.nom || null;
-        case "relation": return p.origine?.trim() || null;
-        case "suivi": return h?.[0]?.actions.join(", ") || null;
-        case "suiviDate": return h?.[0]?.cree_le ?? null;
-        case "etat": return etatCourant(h);
-        case "commentaire": return dernierCommentaire(h);
-        case "reserve": return p.contactReserveA || null;
-        case "qualification": return badgesDe(p).map((b) => b.label).join(", ") || null;
-        case "cumul": return p.cumul;
-        case "annee": return p.cumulAnnee || null;
-        case "dons": return p.nbDons;
-        case "dernier": return p.dernier || null;
-      }
-    };
-    const sens = tri.dir === "asc" ? 1 : -1;
-    affiches.sort((a, b) => {
-      const va = val(a);
-      const vb = val(b);
-      if (va == null || vb == null) return va == null && vb == null ? 0 : va == null ? 1 : -1;
-      return sens * (typeof va === "number" && typeof vb === "number" ? va - vb : COLLATOR.compare(String(va), String(vb)));
-    });
-  }
-  const boursiersAffiches = boursiers.filter(correspondRecherche);
+  const valTri = (p: ProfilDonateur, col: ColTri): string | number | null => {
+    const h = suiviCle.get(p.cle);
+    switch (col) {
+      case "donateur": return p.nom || null;
+      case "relation": return p.origine?.trim() || null;
+      case "suivi": return h?.[0]?.actions.join(", ") || null;
+      case "suiviDate": return h?.[0]?.cree_le ?? null;
+      case "etat": return etatCourant(h);
+      case "commentaire": return dernierCommentaire(h);
+      case "reserve": return p.contactReserveA || null;
+      case "qualification": return badgesDe(p).map((b) => b.label).join(", ") || null;
+      case "cumul": return p.cumul;
+      case "annee": return p.cumulAnnee || null;
+      case "dons": return p.nbDons;
+      case "dernier": return p.dernier || null;
+    }
+  };
+  const affichesTries = trierListe(affiches, tri, valTri);
+  const valTriB = (p: ProfilDonateur, col: ColTriB): string | number | null =>
+    col === "donateur" ? p.nom || null : col === "bourse" ? p.cumulBourse : col === "autres" ? (p.nbDons > p.nbDonsBourse || p.cumulBourse === 0 ? p.cumul : null) : p.dernier || null;
+  const boursiersAffiches = trierListe(boursiers.filter(correspondRecherche), triB, valTriB);
 
   /** Coche / décoche « Donateur Bourse » : aucun don n'est marqué boursier d'office (à cocher ensuite dans la fiche) ; décocher remet tous ses dons en dons ordinaires. */
   async function basculerBourse(p: ProfilDonateur, actif: boolean) {
@@ -438,16 +431,10 @@ export default function DonateursPipeline({
             <tr className="border-b border-border text-center text-xs text-muted">
               {th("donateur", "Donateur")}
               {th("relation", "Relation")}
-              <th className="px-3 py-1 font-medium" aria-sort={tri?.col === "suivi" || tri?.col === "suiviDate" ? (tri.dir === "asc" ? "ascending" : "descending") : "none"}>
+              <th className="px-3 py-1 font-medium" aria-sort={ariaSort("suivi", "suiviDate")}>
                 <span className="inline-flex items-center gap-1">
-                  <button type="button" onClick={() => trier("suivi")} className="inline-flex items-center gap-0.5 hover:text-foreground" title="Trier par action">
-                    Suivi
-                    <span className={tri?.col === "suivi" ? "text-accent" : "opacity-30"}>{tri?.col === "suivi" ? (tri.dir === "asc" ? "▲" : "▼") : "↕"}</span>
-                  </button>
-                  <button type="button" onClick={() => trier("suiviDate")} className="inline-flex items-center gap-0.5 hover:text-foreground" title="Trier par date de la dernière action">
-                    date
-                    <span className={tri?.col === "suiviDate" ? "text-accent" : "opacity-30"}>{tri?.col === "suiviDate" ? (tri.dir === "asc" ? "▲" : "▼") : "↕"}</span>
-                  </button>
+                  {bouton("suivi", "Suivi", "Trier par action")}
+                  {bouton("suiviDate", "date", "Trier par date de la dernière action")}
                 </span>
               </th>
               {th("etat", "État")}
@@ -465,7 +452,7 @@ export default function DonateursPipeline({
             {affiches.length === 0 ? (
               <tr><td colSpan={12} className="px-4 py-10 text-center text-muted">Aucun donateur pour ce filtre.</td></tr>
             ) : (
-              affiches.map((p) => (
+              affichesTries.map((p) => (
                 <tr key={p.cle} className="border-b border-border last:border-0">
                   <td className="px-4 py-3">
                     <button type="button" onClick={() => setFicheCle(p.cle)} className={nomCliquableCls}>
@@ -564,10 +551,10 @@ export default function DonateursPipeline({
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-center text-xs text-muted">
-                  <th className="px-3 py-1 font-medium">Donateur</th>
-                  <th className="px-3 py-1 text-center font-medium">Dons boursiers</th>
-                  <th className="px-3 py-1 text-center font-medium">Autres dons</th>
-                  <th className="px-3 py-1 font-medium">Dernier don</th>
+                  <th className="px-3 py-1 font-medium" aria-sort={ariaSortB("donateur")}>{boutonB("donateur", "Donateur")}</th>
+                  <th className="px-3 py-1 text-center font-medium" aria-sort={ariaSortB("bourse")}>{boutonB("bourse", "Dons boursiers")}</th>
+                  <th className="px-3 py-1 text-center font-medium" aria-sort={ariaSortB("autres")}>{boutonB("autres", "Autres dons")}</th>
+                  <th className="px-3 py-1 font-medium" aria-sort={ariaSortB("dernier")}>{boutonB("dernier", "Dernier don")}</th>
                   <th className="w-20 px-2 py-1 text-center text-xs font-medium leading-tight">Donateur Bourse</th>
                 </tr>
               </thead>

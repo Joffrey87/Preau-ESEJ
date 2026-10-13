@@ -59,6 +59,7 @@ export default async function PipelinePage() {
         suivi={(suiviData ?? []) as SuiviAction[]}
         peutSuivre={ROLES_SUIVI.includes(slugVu)}
         auteurSuivi={ctx.prenomProfil}
+        peutEcrireProspects={["tresorier", "president", "administrateur", "recherche-fonds"].includes(slugVu)}
       />
     </div>
   );

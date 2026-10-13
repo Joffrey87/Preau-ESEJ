@@ -30,6 +30,8 @@ type Props = {
   suivi?: SuiviAction[];
   peutSuivre?: boolean;
   auteurSuivi?: string | null;
+  /** Création / modification des prospects (bureau et Recherche de fonds). */
+  peutEcrireProspects?: boolean;
   peutLier?: boolean;
 };
 
@@ -42,7 +44,7 @@ export default function PipelineTabs(props: Props) {
   return <PipelineTabsContenu key={params.toString()} {...props} />;
 }
 
-function PipelineTabsContenu({ prospects, dons, obtenus, peutLier, peutModifierDons = false, suivi = [], peutSuivre = false, auteurSuivi = null }: Props) {
+function PipelineTabsContenu({ prospects, dons, obtenus, peutLier, peutModifierDons = false, suivi = [], peutSuivre = false, auteurSuivi = null, peutEcrireProspects = false }: Props) {
   const params = useSearchParams();
   const voletParam = params.get("volet");
   const [vue, setVue] = useState<Volet>(
@@ -68,7 +70,7 @@ function PipelineTabsContenu({ prospects, dons, obtenus, peutLier, peutModifierD
       </div>
 
       {vue === "prospections" ? (
-        <GestionPipeline prospects={prospects} dons={dons} obtenus={obtenus} peutLier={peutLier} listeInitiale={params.get("liste")} suivi={suivi} peutSuivre={peutSuivre} auteurSuivi={auteurSuivi} />
+        <GestionPipeline prospects={prospects} dons={dons} obtenus={obtenus} peutLier={peutLier} listeInitiale={params.get("liste")} suivi={suivi} peutSuivre={peutSuivre} auteurSuivi={auteurSuivi} peutEcrire={peutEcrireProspects} />
       ) : (
         <DonateursPipeline donsInit={dons} peutModifierDons={peutModifierDons} suivi={suivi} peutSuivre={peutSuivre} auteurSuivi={auteurSuivi} volet={vue} filtreInitial={filtre} carteInitiale={params.get("carte") === "1"} />
       )}

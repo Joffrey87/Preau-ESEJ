@@ -28,6 +28,9 @@ import { useFiltresMultiples } from "@/lib/filtresMultiples";
 import { PARAMS } from "@/lib/segments";
 import { nomCliquableCls } from "@/lib/ui";
 import { inputCls } from "./GestionComptes";
+import { AjoutSuivi } from "@/components/SuiviDonateur";
+import { PROFILS_RECHERCHE_FONDS } from "@/lib/profilsContact";
+import { dernierCommentaire, etatCourant, formatDateHeure, suiviParCle, type SuiviAction } from "@/lib/suiviDonateurs";
 import { RAYON_ALENTOURS_KM, distanceReims } from "@/lib/geoReims";
 import type { Don } from "@/components/GestionDons";
 
@@ -60,10 +63,19 @@ export default function DonateursPipeline({
   filtreInitial = null,
   carteInitiale = false,
   peutModifierDons = false,
+  suivi = [],
+  peutSuivre = false,
+  auteurSuivi = null,
 }: {
   donsInit: Don[];
   /** Modification de la relation en ligne (Trésorier, comme les dons). */
   peutModifierDons?: boolean;
+  /** Historique des actions de suivi (tous donateurs). */
+  suivi?: SuiviAction[];
+  /** Ajout d'actions et réservation : Recherche de fonds, Trésorier, Administrateur. */
+  peutSuivre?: boolean;
+  /** Signature des actions (prénom Recherche de fonds ou profil). */
+  auteurSuivi?: string | null;
   volet: "fichier" | "campagnes";
   /** Filtre actif à l'ouverture (lien du menu « Mises à jour »). */
   filtreInitial?: string | null;
@@ -84,6 +96,9 @@ export default function DonateursPipeline({
   const [erreurBourse, setErreurBourse] = useState<string | null>(null);
   // Relation modifiable en ligne : cellule en cours d'édition et état d'enregistrement.
   const [editRelation, setEditRelation] = useState<{ cle: string; valeur: string } | null>(null);
+  const [ajoutCle, setAjoutCle] = useState<string | null>(null);
+  const [reserveBusy, setReserveBusy] = useState<string | null>(null);
+  const suiviCle = useMemo(() => suiviParCle(suivi), [suivi]);
   const [relationEtat, setRelationEtat] = useState<{ cle: string; etat: "enregistrement" | "erreur"; message?: string } | null>(null);
 
   const profils = useMemo(
@@ -188,6 +203,16 @@ export default function DonateursPipeline({
     }
     setEditRelation(null);
     setRelationEtat(null);
+    router.refresh();
+  }
+
+  async function reserver(p: ProfilDonateur, valeur: string) {
+    setReserveBusy(p.cle);
+    setErreurBourse(null);
+    const ids = (donsParCle.get(p.cle) ?? []).map((x) => x.id);
+    const { error } = await createClient().rpc("definir_contact_reserve", { p_ids: ids, p_valeur: valeur });
+    setReserveBusy(null);
+    if (error) return setErreurBourse("Enregistrement impossible : " + error.message);
     router.refresh();
   }
 
@@ -365,6 +390,10 @@ export default function DonateursPipeline({
             <tr className="border-b border-border text-center text-xs text-muted">
               <th className="px-3 py-1 font-medium">Donateur</th>
               <th className="px-3 py-1 font-medium">Relation</th>
+              <th className="px-3 py-1 font-medium">Suivi</th>
+              <th className="px-3 py-1 font-medium">État</th>
+              <th className="px-3 py-1 font-medium">Commentaire</th>
+              <th className="px-3 py-1 font-medium">Réservé à</th>
               <th className="px-3 py-1 font-medium">Qualification</th>
               <th className="px-3 py-1 text-center font-medium">Cumul</th>
               <th className="px-3 py-1 text-center font-medium">Cette année</th>
@@ -375,7 +404,7 @@ export default function DonateursPipeline({
           </thead>
           <tbody>
             {affiches.length === 0 ? (
-              <tr><td colSpan={8} className="px-4 py-10 text-center text-muted">Aucun donateur pour ce filtre.</td></tr>
+              <tr><td colSpan={12} className="px-4 py-10 text-center text-muted">Aucun donateur pour ce filtre.</td></tr>
             ) : (
               affiches.map((p) => (
                 <tr key={p.cle} className="border-b border-border last:border-0">
@@ -425,6 +454,71 @@ export default function DonateursPipeline({
                       </div>
                     )}
                   </td>
+                  {(() => {
+                    const h = suiviCle.get(p.cle);
+                    const dernier = h?.[0];
+                    const com = dernierCommentaire(h);
+                    return (
+                      <>
+                        <td className="px-4 py-3">
+                          <div className="flex items-start gap-1">
+                            <div
+                              className="flex flex-wrap gap-1"
+                              title={dernier ? `Dernière action le ${formatDateHeure(dernier.cree_le)} par ${dernier.auteur}` : undefined}
+                            >
+                              {dernier ? (
+                                dernier.actions.map((a) => (
+                                  <span key={a} className="whitespace-nowrap rounded-full bg-surface-2 px-2 py-0.5 text-xs font-medium">
+                                    {a}
+                                  </span>
+                                ))
+                              ) : (
+                                <span className="text-muted">—</span>
+                              )}
+                            </div>
+                            {peutSuivre && (
+                              <button
+                                type="button"
+                                onClick={() => setAjoutCle(p.cle)}
+                                title="Ajouter une action"
+                                aria-label={`Ajouter une action : ${p.nom}`}
+                                className="rounded px-1.5 text-sm font-semibold text-accent hover:bg-accent-soft"
+                              >
+                                +
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                        <td className="whitespace-nowrap px-4 py-3">{etatCourant(h) ?? <span className="text-muted">—</span>}</td>
+                        <td className="max-w-56 px-4 py-3 text-muted">
+                          <span className="line-clamp-2" title={com ?? undefined}>{com ?? "—"}</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          {peutSuivre ? (
+                            <select
+                              value={p.contactReserveA ?? ""}
+                              disabled={reserveBusy === p.cle}
+                              onChange={(e) => void reserver(p, e.target.value)}
+                              aria-label={`Réservé à : ${p.nom}`}
+                              className="rounded-md border border-border bg-background px-1 py-0.5 text-sm"
+                            >
+                              <option value="">—</option>
+                              {p.contactReserveA && !PROFILS_RECHERCHE_FONDS.includes(p.contactReserveA) && (
+                                <option value={p.contactReserveA}>{p.contactReserveA}</option>
+                              )}
+                              {PROFILS_RECHERCHE_FONDS.map((m) => (
+                                <option key={m} value={m}>
+                                  {m}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            p.contactReserveA ?? <span className="text-muted">—</span>
+                          )}
+                        </td>
+                      </>
+                    );
+                  })()}
                   <td className="px-4 py-3">
                     <div className="flex flex-nowrap gap-1 whitespace-nowrap">
                       {badgesDe(p).map((b) => (
@@ -512,8 +606,12 @@ export default function DonateursPipeline({
         <FicheDonateur
           profil={profilParCle.get(ficheCle)!}
           dons={donsParCle.get(ficheCle) ?? []}
+          suivi={suiviCle.get(ficheCle) ?? []}
           onClose={() => setFicheCle(null)}
         />
+      )}
+      {ajoutCle && profilParCle.get(ajoutCle) && (
+        <AjoutSuivi cle={ajoutCle} nom={profilParCle.get(ajoutCle)!.nom} auteur={auteurSuivi} onClose={() => setAjoutCle(null)} />
       )}
     </div>
   );

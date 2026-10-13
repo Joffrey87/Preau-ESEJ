@@ -7,6 +7,8 @@ import { emailVue } from "@/lib/vueRoleServeur";
 import { roleByEmail } from "@/lib/roles";
 import JaugeDons, { type DonsExercice } from "@/components/JaugeDons";
 import { todayISO } from "@/lib/format";
+import { contexteRecherche } from "@/lib/rechercheServeur";
+import { ROLES_SUIVI, type SuiviAction } from "@/lib/suiviDonateurs";
 
 export default async function PipelinePage() {
   const supabase = await createClient();
@@ -30,6 +32,11 @@ export default async function PipelinePage() {
     ((obtenusRes.data ?? []) as { prospect_id: string; montant: number | string; nb: number }[]).map((o) => [o.prospect_id, { montant: Number(o.montant), nb: o.nb }]),
   );
   const slugVu = roleByEmail(await emailVue(user?.email))?.slug ?? "";
+  // Suivi des relations : historique des actions et auteur (prénom Recherche de fonds ou profil).
+  const [{ data: suiviData }, ctx] = await Promise.all([
+    supabase.from("suivi_actions").select("*").eq("cible_type", "donateur").order("cree_le", { ascending: false }),
+    contexteRecherche(supabase),
+  ]);
 
   return (
     <div className="mx-auto max-w-6xl px-5 py-4 md:px-8">
@@ -49,6 +56,9 @@ export default async function PipelinePage() {
         obtenus={obtenus}
         peutLier={["tresorier", "president", "administrateur"].includes(slugVu)}
         peutModifierDons={slugVu === "tresorier"}
+        suivi={(suiviData ?? []) as SuiviAction[]}
+        peutSuivre={ROLES_SUIVI.includes(slugVu)}
+        auteurSuivi={ctx.prenomProfil}
       />
     </div>
   );

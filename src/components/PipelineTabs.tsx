@@ -6,6 +6,7 @@ import GestionPipeline from "@/components/GestionPipeline";
 import DonateursPipeline from "@/components/DonateursPipeline";
 import type { Prospect } from "@/lib/pipeline";
 import type { Don } from "@/components/GestionDons";
+import type { SuiviAction } from "@/lib/suiviDonateurs";
 
 type Volet = "fichier" | "prospections" | "campagnes";
 
@@ -26,6 +27,9 @@ type Props = {
   obtenus?: Record<string, { montant: number; nb: number }>;
   /** Écriture sur les dons (même règle que la base : Trésorier). */
   peutModifierDons?: boolean;
+  suivi?: SuiviAction[];
+  peutSuivre?: boolean;
+  auteurSuivi?: string | null;
   peutLier?: boolean;
 };
 
@@ -38,7 +42,7 @@ export default function PipelineTabs(props: Props) {
   return <PipelineTabsContenu key={params.toString()} {...props} />;
 }
 
-function PipelineTabsContenu({ prospects, dons, obtenus, peutLier, peutModifierDons = false }: Props) {
+function PipelineTabsContenu({ prospects, dons, obtenus, peutLier, peutModifierDons = false, suivi = [], peutSuivre = false, auteurSuivi = null }: Props) {
   const params = useSearchParams();
   const voletParam = params.get("volet");
   const [vue, setVue] = useState<Volet>(
@@ -66,7 +70,7 @@ function PipelineTabsContenu({ prospects, dons, obtenus, peutLier, peutModifierD
       {vue === "prospections" ? (
         <GestionPipeline prospects={prospects} dons={dons} obtenus={obtenus} peutLier={peutLier} listeInitiale={params.get("liste")} />
       ) : (
-        <DonateursPipeline donsInit={dons} peutModifierDons={peutModifierDons} volet={vue} filtreInitial={filtre} carteInitiale={params.get("carte") === "1"} />
+        <DonateursPipeline donsInit={dons} peutModifierDons={peutModifierDons} suivi={suivi} peutSuivre={peutSuivre} auteurSuivi={auteurSuivi} volet={vue} filtreInitial={filtre} carteInitiale={params.get("carte") === "1"} />
       )}
     </div>
   );

@@ -9,6 +9,8 @@ import { TONE_CLASSES } from "@/lib/statutDon";
 import { badgesDe, badgeTemperature, temperatureDe, type ProfilDonateur } from "@/lib/donateurs";
 import type { Don } from "@/components/GestionDons";
 import ModifierDonateur from "@/components/ModifierDonateur";
+import { HistoriqueSuivi } from "@/components/SuiviDonateur";
+import type { SuiviAction } from "@/lib/suiviDonateurs";
 import { PROFILS_BUREAU, PROFILS_RECHERCHE_FONDS } from "@/lib/profilsContact";
 
 /** Recommandation d'action en une phrase, selon le profil. */
@@ -27,9 +29,12 @@ export default function FicheDonateur({
   profil,
   dons,
   onClose,
+  suivi = [],
 }: {
   profil: ProfilDonateur;
   dons: Don[];
+  /** Historique des actions de suivi, du plus récent au plus ancien. */
+  suivi?: SuiviAction[];
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -303,6 +308,8 @@ export default function FicheDonateur({
             </p>
           )}
         </div>
+
+        <HistoriqueSuivi historique={suivi} />
 
         {/* Lecture / interprétation (en bas) */}
         <div className="rounded-lg border border-accent/40 bg-accent-soft/30 p-3 text-sm">

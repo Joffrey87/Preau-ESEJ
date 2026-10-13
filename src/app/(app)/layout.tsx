@@ -4,7 +4,7 @@ import Sidebar from "@/components/Sidebar";
 import CoffreProvider from "@/components/CoffreProvider";
 import { createClient } from "@/lib/supabase/server";
 import AideFlottante from "@/components/AideFlottante";
-import { COOKIE_PRENOM, pagesAutorisees, roleByEmail } from "@/lib/roles";
+import { COOKIE_PRENOM, estEvenement, pagesAutorisees, roleByEmail } from "@/lib/roles";
 import { COOKIE_VUE, peutChangerDeVue } from "@/lib/vueRole";
 import type { ContexteAcces } from "@/lib/acces";
 import { emailVue } from "@/lib/vueRoleServeur";
@@ -60,6 +60,29 @@ export default async function AppLayout({
     // Président : le logo ouvre l'Espace de sa famille (familles.profil_lie), comme pour les autres familles.
     const { data: f } = await supabase.from("familles").select("nom, membre_recherche").eq("profil_lie", "president").maybeSingle();
     if (f) bascule = { famille: f.nom as string, prenom: (f.membre_recherche as string | null) ?? null, directrice: false, president: true };
+  }
+  // Espace Événement : membre relié à la famille (aller), ou retour depuis le compte Événement vers les espaces de sa famille.
+  type Lie = { libelle: string; email: string };
+  if (bascule) {
+    const lies = ((await supabase.rpc("membres_evenement_lies", { p_prenom: prenomVisite || null })).data ?? []) as Lie[];
+    if (lies[0]) bascule = { ...bascule, evenement: lies[0] };
+  } else if (estEvenement(user.email)) {
+    const l = (((await supabase.rpc("mes_liens_evenement")).data ?? []) as { famille: string; membre_recherche: string | null; directrice: boolean; president: boolean }[])[0];
+    const moi = (await supabase.from("evenement_membres").select("libelle").eq("user_id", user.id).maybeSingle()).data;
+    if (l)
+      bascule = {
+        famille: l.famille,
+        prenom: l.membre_recherche,
+        directrice: l.directrice,
+        // Depuis un compte Événement : jamais le profil Président (Marie A. → Espace famille Antona seulement).
+        president: false,
+        evenement: { libelle: (moi?.libelle as string) ?? "", email: user.email ?? "" },
+      };
+  }
+  // Famille réservée à la bascule (ex. : Antona) : ouverte sans changer de compte ni mot de passe.
+  if (bascule) {
+    const liee = (((await supabase.rpc("ma_famille_liee")).data ?? []) as { id: string; nom: string }[])[0];
+    if (liee && liee.nom === bascule.famille) bascule = { ...bascule, familleLiee: true };
   }
   const jauge = rechercheFonds ? ((await supabase.rpc("dons_exercice_courant")).data as DonsExercice) : null;
 

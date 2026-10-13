@@ -58,7 +58,16 @@ export const NAV: NavSection[] = [
       { href: "/carnet", label: "Carnet d'adresses", icon: "contact", ready: true },
       { href: "/taches", label: "Tâches", icon: "check", ready: false },
       { href: "/ca", label: "Conseil d'administration", icon: "users", ready: true },
-      { href: "/evenements", label: "Événements", icon: "calendar", ready: false },
+    ],
+  },
+  {
+    // Profil Événement (et lecture : Président, Directrice ; Trésorier).
+    title: "Événements",
+    items: [
+      { href: "/evenement", label: "Événements", icon: "calendar", ready: true, roles: ["tresorier", "president", "directrice"] },
+      { href: "/evenement/membres", label: "Membres", icon: "users", ready: true, roles: ["tresorier", "president", "directrice"] },
+      { href: "/evenement/facturation", label: "Facturation", icon: "receipt", ready: true, roles: ["tresorier", "president", "directrice"] },
+      { href: "/evenement/carnet", label: "Carnet d'adresses", icon: "contact", ready: true, roles: ["tresorier", "president", "directrice"] },
     ],
   },
   {
@@ -82,6 +91,8 @@ export const NAV: NavSection[] = [
  * Pour les remettre, les replacer dans NAV (En cours : « Comptabilité » ; Financement et Mécénat : « Financement »).
  */
 export const ONGLETS_DE_COTE: NavItem[] = [
+  // Ancien agenda partagé (jamais construit) : remplacé dans le menu par la section « Événements ».
+  { href: "/evenements", label: "Agenda des événements", icon: "calendar", ready: false },
   { href: "/en-cours", label: "En cours", icon: "clock", ready: true },
   { href: "/financement", label: "Financement", icon: "chart", ready: true },
   { href: "/mecenat", label: "Mécénat", icon: "target", ready: true },

@@ -8,10 +8,10 @@
 import { createClient } from "@/lib/supabase/client";
 import { COOKIE_PRENOM } from "@/lib/roles";
 
-export type Espace = "famille" | "recherche" | "directrice" | "president";
+export type Espace = "famille" | "recherche" | "directrice" | "president" | "evenement";
 
 /** Page d'arrivée de chaque espace. */
-const ACCUEIL: Record<Espace, string> = { famille: "/espace", recherche: "/", directrice: "/", president: "/" };
+const ACCUEIL: Record<Espace, string> = { famille: "/espace", recherche: "/", directrice: "/", president: "/", evenement: "/evenement" };
 
 const CLE = "preau.sessions";
 type Session = { access_token: string; refresh_token: string };
@@ -53,9 +53,9 @@ const cookiePrenom = (prenom: string | null) => {
 /**
  * Passe de l'espace `quitte` à l'espace `vers`. `prenom` : prénom du membre Recherche de fonds (pour aller vers la
  * Recherche de fonds) ; `famille` : nom de la famille (pour préremplir la connexion quand l'espace n'a pas encore été
- * ouvert ici).
+ * ouvert ici) ; `evenement` : adresse interne du compte Événement du membre relié.
  */
-export async function basculerVers(vers: Espace, quitte: Espace, infos: { prenom?: string | null; famille?: string | null }) {
+export async function basculerVers(vers: Espace, quitte: Espace, infos: { prenom?: string | null; famille?: string | null; evenement?: string | null }) {
   const supabase = createClient();
   await memoriserSession(quitte);
 
@@ -79,9 +79,11 @@ export async function basculerVers(vers: Espace, quitte: Espace, infos: { prenom
   cookiePrenom(null);
   const q = new URLSearchParams(
     vers === "famille"
-      ? { espace: "famille", ...(infos.famille ? { nom: infos.famille } : {}) }
+      ? { espace: "famille", via: "bascule", ...(infos.famille ? { nom: infos.famille } : {}) }
       : vers === "directrice" || vers === "president"
         ? { espace: vers }
+        : vers === "evenement"
+          ? { espace: "evenement", ...(infos.evenement ? { membre: infos.evenement } : {}) }
         : { espace: "recherche", ...(infos.prenom ? { prenom: infos.prenom } : {}) },
   );
   window.location.assign(`/login?${q.toString()}`);

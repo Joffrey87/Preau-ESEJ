@@ -34,6 +34,7 @@ export type CategorieSlug =
   | "bureau"
   | "vendeur"
   | "partenaire"
+  | "evenement"
   | "autre";
 
 export type Tone = "blue" | "green" | "amber" | "violet" | "coral" | "teal" | "gray";
@@ -45,6 +46,7 @@ export const CATEGORIES: { slug: CategorieSlug; label: string; tone: Tone }[] = 
   { slug: "bureau", label: "Bureau ARIL", tone: "green" },
   { slug: "vendeur", label: "Vendeur / prestataire", tone: "amber" },
   { slug: "partenaire", label: "Partenaire", tone: "coral" },
+  { slug: "evenement", label: "Contact événements", tone: "teal" },
   { slug: "autre", label: "Autre contact", tone: "gray" },
 ];
 
@@ -74,7 +76,7 @@ export const ACCES_PAR_ROLE: Record<string, Acces> = {
   tresorier: ALL,
   administrateur: ALL,
   "resp-mecenat": ["donateur", "partenaire", "bureau", "autre"],
-  secretaire: ["parent", "enseignant", "bureau", "vendeur", "partenaire", "autre"],
+  secretaire: ["parent", "enseignant", "bureau", "vendeur", "partenaire", "evenement", "autre"],
   directrice: ["parent", "enseignant", "bureau", "autre"],
   "directeur-spirituel": ["bureau", "enseignant", "autre"],
 };

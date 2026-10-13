@@ -23,6 +23,8 @@ export type Prospect = {
   prochaine_action_date: string | null;
   contact_id: string | null;
   notes: string | null;
+  /** « Réservé à » (Recherche de fonds, Administration ou nom libre). */
+  reserve_a?: string | null;
   /** Coordonnées en clair (prospects hors « Liste Axel »). */
   civilite?: string | null;
   prenom?: string | null;

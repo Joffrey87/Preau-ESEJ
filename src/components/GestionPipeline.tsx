@@ -5,6 +5,9 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { formatEuros, todayISO } from "@/lib/format";
 import { Modal, Field, FormFooter, inputCls } from "@/components/GestionComptes";
+import { AjoutSuivi, CellulesSuivi, HistoriqueSuivi } from "@/components/SuiviDonateur";
+import { suiviParCle, type SuiviAction } from "@/lib/suiviDonateurs";
+import { nomCliquableCls } from "@/lib/ui";
 import { useCoffre } from "@/components/CoffreProvider";
 import DeverrouillerCoffre from "@/components/DeverrouillerCoffre";
 import ImportProspects from "@/components/ImportProspects";
@@ -61,6 +64,9 @@ export default function GestionPipeline({
   obtenus = {},
   peutLier = false,
   listeInitiale = null,
+  suivi = [],
+  peutSuivre = false,
+  auteurSuivi = null,
 }: {
   prospects: Prospect[];
   dons: Don[];
@@ -70,6 +76,11 @@ export default function GestionPipeline({
   peutLier?: boolean;
   /** Liste filtrée à l'ouverture (lien du menu « Mises à jour »). */
   listeInitiale?: string | null;
+  /** Historique des actions de suivi (tous). */
+  suivi?: SuiviAction[];
+  /** Ajout d'actions et réservation : Recherche de fonds, Trésorier, Administrateur. */
+  peutSuivre?: boolean;
+  auteurSuivi?: string | null;
 }) {
   const router = useRouter();
   const coffre = useCoffre();
@@ -80,6 +91,11 @@ export default function GestionPipeline({
   const today = todayISO();
   const [edit, setEdit] = useState<ProspectLisible | "nouveau" | null>(null);
   const [liaison, setLiaison] = useState<ProspectLisible | null>(null);
+  // Suivi des actions : ajout, historique, réservation.
+  const [ajoutSuivi, setAjoutSuivi] = useState<ProspectLisible | null>(null);
+  const [histoSuivi, setHistoSuivi] = useState<ProspectLisible | null>(null);
+  const [erreurReserve, setErreurReserve] = useState<string | null>(null);
+  const suiviProspect = useMemo(() => suiviParCle(suivi), [suivi]);
   const [form, setForm] = useState<Form>(vide);
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
@@ -192,6 +208,15 @@ export default function GestionPipeline({
     setBusy(p.id);
     await createClient().from("prospects").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", p.id);
     setBusy(null);
+    router.refresh();
+  }
+
+  async function reserverProspect(p: ProspectLisible, valeur: string) {
+    setBusy(p.id);
+    setErreurReserve(null);
+    const { error } = await createClient().rpc("definir_reserve_prospect", { p_id: p.id, p_valeur: valeur });
+    setBusy(null);
+    if (error) return setErreurReserve("Enregistrement impossible : " + error.message);
     router.refresh();
   }
 
@@ -322,12 +347,46 @@ export default function GestionPipeline({
         </div>
       )}
 
+      {erreurReserve && <p className="text-sm text-negative">{erreurReserve}</p>}
+      {ajoutSuivi && (
+        <AjoutSuivi
+          cibleType="prospect"
+          cle={ajoutSuivi.id}
+          nom={!ajoutSuivi.verrouille ? nomComplet({ titre: ajoutSuivi.titre, prenom: ajoutSuivi.prenom, nom: ajoutSuivi.nom }) : ajoutSuivi.affiche}
+          auteur={auteurSuivi}
+          onClose={() => setAjoutSuivi(null)}
+        />
+      )}
+      {histoSuivi && (
+        <Modal title={`Suivi — ${!histoSuivi.verrouille ? nomComplet({ titre: histoSuivi.titre, prenom: histoSuivi.prenom, nom: histoSuivi.nom }) : histoSuivi.affiche}`} onClose={() => setHistoSuivi(null)} fermerAuClicExterieur>
+          <div className="space-y-3">
+            <HistoriqueSuivi historique={suiviProspect.get(histoSuivi.id) ?? []} />
+            {peutSuivre && (
+              <button
+                type="button"
+                onClick={() => {
+                  setAjoutSuivi(histoSuivi);
+                  setHistoSuivi(null);
+                }}
+                className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-surface-2"
+              >
+                + Ajouter une action
+              </button>
+            )}
+          </div>
+        </Modal>
+      )}
+
       {/* Table */}
       <div className="overflow-x-auto rounded-xl border border-border bg-surface">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border text-left text-muted">
               <th className="px-4 py-3 font-medium">Prospect</th>
+              <th className="px-4 py-3 font-medium">Suivi</th>
+              <th className="px-4 py-3 font-medium">État</th>
+              <th className="px-4 py-3 font-medium">Commentaire</th>
+              <th className="px-4 py-3 font-medium">Réservé à</th>
               <th className="px-4 py-3 font-medium">Étape</th>
               <th className="px-4 py-3 font-medium">Responsable</th>
               <th className="px-4 py-3 font-medium">Prochaine action</th>
@@ -338,7 +397,7 @@ export default function GestionPipeline({
           </thead>
           <tbody>
             {filtres.length === 0 ? (
-              <tr><td colSpan={7} className="px-4 py-10 text-center text-muted">Aucun prospect. Commencez par « Ajouter un prospect ».</td></tr>
+              <tr><td colSpan={11} className="px-4 py-10 text-center text-muted">Aucun prospect. Commencez par « Ajouter un prospect ».</td></tr>
             ) : (
               filtres.map((p) => {
                 const suite = etapeSuivante(p.etape);
@@ -346,9 +405,9 @@ export default function GestionPipeline({
                 return (
                   <tr key={p.id} className={`border-b border-border last:border-0 ${p.etape === "perdu" ? "opacity-50" : ""}`}>
                     <td className="px-4 py-3">
-                      <div className="font-medium">
+                      <button type="button" onClick={() => setHistoSuivi(p)} title="Voir le suivi des actions" className={`${nomCliquableCls} font-medium`}>
                         {!p.verrouille ? nomComplet({ titre: p.titre, prenom: p.prenom, nom: p.nom }) : p.affiche}
-                      </div>
+                      </button>
                       {p.cp_ville && <div className="text-xs text-muted">{villeEtDepartement(p.cp_ville)}</div>}
                       <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted">
                         {/* Prospects de la Liste Axel : tous des particuliers, segment non modifiable depuis le tableau. */}
@@ -365,6 +424,15 @@ export default function GestionPipeline({
                         )}
                       </div>
                     </td>
+                    <CellulesSuivi
+                      historique={suiviProspect.get(p.id)}
+                      peutSuivre={peutSuivre}
+                      onAjouter={() => setAjoutSuivi(p)}
+                      reserve={p.reserve_a ?? null}
+                      reserveBusy={busy === p.id}
+                      onReserver={(v) => void reserverProspect(p, v)}
+                      nom={!p.verrouille ? nomComplet({ titre: p.titre, prenom: p.prenom, nom: p.nom }) : p.affiche}
+                    />
                     <td className="px-4 py-3">
                       <select
                         value={p.etape}

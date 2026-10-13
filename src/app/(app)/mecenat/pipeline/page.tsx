@@ -34,7 +34,7 @@ export default async function PipelinePage() {
   const slugVu = roleByEmail(await emailVue(user?.email))?.slug ?? "";
   // Suivi des relations : historique des actions et auteur (prénom Recherche de fonds ou profil).
   const [{ data: suiviData }, ctx] = await Promise.all([
-    supabase.from("suivi_actions").select("*").eq("cible_type", "donateur").order("cree_le", { ascending: false }),
+    supabase.from("suivi_actions").select("*").order("cree_le", { ascending: false }),
     contexteRecherche(supabase),
   ]);
 

@@ -68,7 +68,7 @@ function PipelineTabsContenu({ prospects, dons, obtenus, peutLier, peutModifierD
       </div>
 
       {vue === "prospections" ? (
-        <GestionPipeline prospects={prospects} dons={dons} obtenus={obtenus} peutLier={peutLier} listeInitiale={params.get("liste")} />
+        <GestionPipeline prospects={prospects} dons={dons} obtenus={obtenus} peutLier={peutLier} listeInitiale={params.get("liste")} suivi={suivi} peutSuivre={peutSuivre} auteurSuivi={auteurSuivi} />
       ) : (
         <DonateursPipeline donsInit={dons} peutModifierDons={peutModifierDons} suivi={suivi} peutSuivre={peutSuivre} auteurSuivi={auteurSuivi} volet={vue} filtreInitial={filtre} carteInitiale={params.get("carte") === "1"} />
       )}

@@ -28,9 +28,8 @@ import { useFiltresMultiples } from "@/lib/filtresMultiples";
 import { PARAMS } from "@/lib/segments";
 import { nomCliquableCls } from "@/lib/ui";
 import { inputCls } from "./GestionComptes";
-import { AjoutSuivi } from "@/components/SuiviDonateur";
-import { PROFILS_RECHERCHE_FONDS } from "@/lib/profilsContact";
-import { dernierCommentaire, etatCourant, formatDateHeure, suiviParCle, type SuiviAction } from "@/lib/suiviDonateurs";
+import { AjoutSuivi, CellulesSuivi } from "@/components/SuiviDonateur";
+import { suiviParDonateur, type SuiviAction } from "@/lib/suiviDonateurs";
 import { RAYON_ALENTOURS_KM, distanceReims } from "@/lib/geoReims";
 import type { Don } from "@/components/GestionDons";
 
@@ -98,7 +97,6 @@ export default function DonateursPipeline({
   const [editRelation, setEditRelation] = useState<{ cle: string; valeur: string } | null>(null);
   const [ajoutCle, setAjoutCle] = useState<string | null>(null);
   const [reserveBusy, setReserveBusy] = useState<string | null>(null);
-  const suiviCle = useMemo(() => suiviParCle(suivi), [suivi]);
   const [relationEtat, setRelationEtat] = useState<{ cle: string; etat: "enregistrement" | "erreur"; message?: string } | null>(null);
 
   const profils = useMemo(
@@ -119,6 +117,12 @@ export default function DonateursPipeline({
     }
     return m;
   }, [dons]);
+  // Historique de suivi rattaché aux dons (lien stable quand le nom change ou que des fiches sont regroupées).
+  const suiviCle = useMemo(() => {
+    const cleDeDon = new Map<string, string>();
+    for (const [cle, liste] of donsParCle) for (const d of liste) cleDeDon.set(d.id, cle);
+    return suiviParDonateur(suivi, cleDeDon);
+  }, [suivi, donsParCle]);
   // Campagnes et actions suggérées : jamais ceux qui ne souhaitent pas être sollicités.
   const sollicitables = useMemo(() => ordinaires.filter((p) => !p.nePasSolliciter), [ordinaires]);
   const suggestions = useMemo(() => suggestionsDonateurs(sollicitables, today), [sollicitables, today]);
@@ -454,71 +458,15 @@ export default function DonateursPipeline({
                       </div>
                     )}
                   </td>
-                  {(() => {
-                    const h = suiviCle.get(p.cle);
-                    const dernier = h?.[0];
-                    const com = dernierCommentaire(h);
-                    return (
-                      <>
-                        <td className="px-4 py-3">
-                          <div className="flex items-start gap-1">
-                            <div
-                              className="flex flex-wrap gap-1"
-                              title={dernier ? `Dernière action le ${formatDateHeure(dernier.cree_le)} par ${dernier.auteur}` : undefined}
-                            >
-                              {dernier ? (
-                                dernier.actions.map((a) => (
-                                  <span key={a} className="whitespace-nowrap rounded-full bg-surface-2 px-2 py-0.5 text-xs font-medium">
-                                    {a}
-                                  </span>
-                                ))
-                              ) : (
-                                <span className="text-muted">—</span>
-                              )}
-                            </div>
-                            {peutSuivre && (
-                              <button
-                                type="button"
-                                onClick={() => setAjoutCle(p.cle)}
-                                title="Ajouter une action"
-                                aria-label={`Ajouter une action : ${p.nom}`}
-                                className="rounded px-1.5 text-sm font-semibold text-accent hover:bg-accent-soft"
-                              >
-                                +
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                        <td className="whitespace-nowrap px-4 py-3">{etatCourant(h) ?? <span className="text-muted">—</span>}</td>
-                        <td className="max-w-56 px-4 py-3 text-muted">
-                          <span className="line-clamp-2" title={com ?? undefined}>{com ?? "—"}</span>
-                        </td>
-                        <td className="px-4 py-3">
-                          {peutSuivre ? (
-                            <select
-                              value={p.contactReserveA ?? ""}
-                              disabled={reserveBusy === p.cle}
-                              onChange={(e) => void reserver(p, e.target.value)}
-                              aria-label={`Réservé à : ${p.nom}`}
-                              className="rounded-md border border-border bg-background px-1 py-0.5 text-sm"
-                            >
-                              <option value="">—</option>
-                              {p.contactReserveA && !PROFILS_RECHERCHE_FONDS.includes(p.contactReserveA) && (
-                                <option value={p.contactReserveA}>{p.contactReserveA}</option>
-                              )}
-                              {PROFILS_RECHERCHE_FONDS.map((m) => (
-                                <option key={m} value={m}>
-                                  {m}
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            p.contactReserveA ?? <span className="text-muted">—</span>
-                          )}
-                        </td>
-                      </>
-                    );
-                  })()}
+                  <CellulesSuivi
+                    historique={suiviCle.get(p.cle)}
+                    peutSuivre={peutSuivre}
+                    onAjouter={() => setAjoutCle(p.cle)}
+                    reserve={p.contactReserveA}
+                    reserveBusy={reserveBusy === p.cle}
+                    onReserver={(v) => void reserver(p, v)}
+                    nom={p.nom}
+                  />
                   <td className="px-4 py-3">
                     <div className="flex flex-nowrap gap-1 whitespace-nowrap">
                       {badgesDe(p).map((b) => (
@@ -611,7 +559,7 @@ export default function DonateursPipeline({
         />
       )}
       {ajoutCle && profilParCle.get(ajoutCle) && (
-        <AjoutSuivi cle={ajoutCle} nom={profilParCle.get(ajoutCle)!.nom} auteur={auteurSuivi} onClose={() => setAjoutCle(null)} />
+        <AjoutSuivi cle={ajoutCle} donsIds={(donsParCle.get(ajoutCle) ?? []).map((d) => d.id)} nom={profilParCle.get(ajoutCle)!.nom} auteur={auteurSuivi} onClose={() => setAjoutCle(null)} />
       )}
     </div>
   );

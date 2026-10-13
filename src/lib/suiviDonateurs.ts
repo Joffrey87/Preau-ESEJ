@@ -29,15 +29,36 @@ export type SuiviAction = {
   note: string | null;
   auteur: string;
   cree_le: string;
+  /** Dons du donateur au moment de l'action : lien stable (renommage, regroupement de fiches). */
+  dons_ids?: string[];
 };
+
+/** Profils d'Administration proposés dans « Réservé à » (après les prénoms de la Recherche de fonds). */
+export const PROFILS_ADMIN_RESERVE = ["Directeur spirituel", "Président", "Trésorier"];
+
+/**
+ * Historique par donateur : une entrée suit les dons qu'elle référence (dons_ids), quel que soit le nom actuel ;
+ * à défaut (dons supprimés), la clé du donateur enregistrée. Du plus récent au plus ancien.
+ */
+export function suiviParDonateur(lignes: SuiviAction[], cleDeDon: Map<string, string>): Map<string, SuiviAction[]> {
+  const m = new Map<string, SuiviAction[]>();
+  for (const l of [...lignes].sort((a, b) => b.cree_le.localeCompare(a.cree_le))) {
+    if (l.cible_type !== "donateur") continue;
+    const cles = new Set((l.dons_ids ?? []).map((id) => cleDeDon.get(id)).filter((c): c is string => !!c));
+    if (cles.size === 0) cles.add(l.cible_cle);
+    for (const c of cles) (m.get(c) ?? m.set(c, []).get(c)!).push(l);
+  }
+  return m;
+}
 
 /** Rôles qui ajoutent des actions (même règle que la base : peut_suivre_donateurs). */
 export const ROLES_SUIVI = ["recherche-fonds", "tresorier", "administrateur"];
 
-/** Historique par clé, du plus récent au plus ancien. */
+/** Historique par prospect (clé = id du prospect), du plus récent au plus ancien. */
 export function suiviParCle(lignes: SuiviAction[]): Map<string, SuiviAction[]> {
   const m = new Map<string, SuiviAction[]>();
   for (const l of [...lignes].sort((a, b) => b.cree_le.localeCompare(a.cree_le))) {
+    if (l.cible_type !== "prospect") continue;
     (m.get(l.cible_cle) ?? m.set(l.cible_cle, []).get(l.cible_cle)!).push(l);
   }
   return m;

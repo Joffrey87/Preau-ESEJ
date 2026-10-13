@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useDonsDechiffres, type DonChiffrable } from "@/lib/donsChiffre";
 import { nomDonateur } from "@/lib/statutDon";
+import { compresserPhoto } from "@/lib/compresserPhoto";
 import { formatDate, formatEuros, todayISO } from "@/lib/format";
 import {
   BUCKET_CHEQUES,
@@ -20,6 +21,7 @@ import {
   candidatsInscription,
   candidatsRemise,
   libelleMotif,
+  sansLienAuto,
   totalCheques,
   type Cheque,
   type DonCandidat,
@@ -32,9 +34,9 @@ import {
 
 export type DonDepot = DonChiffrable & { id: string; montant: number; date_don: string; operation_id: string | null };
 
-type Ligne = { montant: string; emetteur: string; date_cheque: string; motif: MotifCheque };
+type Ligne = { montant: string; emetteur: string; date_cheque: string; motif: MotifCheque; doute: boolean };
 type ChampsLien = Partial<Pick<Cheque, "don_id" | "inscription_id" | "famille_id" | "activite_id">>;
-const ligneVide = (): Ligne => ({ montant: "", emetteur: "", date_cheque: "", motif: "don" });
+const ligneVide = (): Ligne => ({ montant: "", emetteur: "", date_cheque: "", motif: "don", doute: false });
 
 const champ = "w-full rounded-md border border-border bg-surface px-2 py-1.5 text-sm";
 const btnPrimaire = "rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-fg hover:opacity-90 disabled:opacity-50";
@@ -85,6 +87,14 @@ export default function DepotCheques({
   const [dateRemise, setDateRemise] = useState(todayISO());
   const [notes, setNotes] = useState("");
   const [photo, setPhoto] = useState<File | null>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
+  const apercu = useMemo(() => (photo && photo.type.startsWith("image/") ? URL.createObjectURL(photo) : null), [photo]);
+  useEffect(() => () => { if (apercu) URL.revokeObjectURL(apercu); }, [apercu]);
+  function choisirPhoto(f: File | null) {
+    setPhoto(f);
+    if (fichierRef.current) fichierRef.current.value = "";
+    if (cameraRef.current) cameraRef.current.value = "";
+  }
   const [lignes, setLignes] = useState<Ligne[]>([ligneVide()]);
   const fichierRef = useRef<HTMLInputElement>(null);
   const totalSaisi = Math.round(lignes.reduce((s, l) => s + montantDe(l.montant), 0) * 100) / 100;
@@ -148,7 +158,7 @@ export default function DepotCheques({
     }
     const dateDe = new Map(remises.map((r) => [r.id, r.date_remise]));
     for (const c of cheques) {
-      if (c.lien || autoFait.current.has(c.id)) continue;
+      if (c.lien || sansLienAuto(c) || autoFait.current.has(c.id)) continue;
       const date = dateDe.get(c.remise_id) ?? todayISO();
       if (c.motif === "don") {
         // Les noms ne sont lisibles qu'une fois le coffre ouvert : on attend qu'ils le soient.
@@ -210,11 +220,17 @@ export default function DepotCheques({
       if (error || !r) throw new Error(error?.message ?? "Création de la remise impossible.");
       let remise = r as Remise;
       if (photo) {
-        const ext = (photo.name.split(".").pop() || "jpg").toLowerCase();
+        const fichier = await compresserPhoto(photo);
+        const ext = (fichier.name.split(".").pop() || "jpg").toLowerCase();
         const path = `${remise.id}/remise.${ext}`;
-        const up = await supabase.storage.from(BUCKET_CHEQUES).upload(path, photo, { contentType: photo.type, upsert: true });
+        const up = await supabase.storage.from(BUCKET_CHEQUES).upload(path, fichier, {
+          contentType: fichier.type,
+          upsert: true,
+          // Métadonnées pour un futur rattachement en pièce comptable à l'opération bancaire.
+          metadata: { piece_comptable: "remise_cheques", remise_id: remise.id, date_remise: remise.date_remise },
+        });
         if (up.error) throw new Error(`Remise créée, mais envoi de la photo impossible : ${up.error.message}`);
-        await supabase.from("remises_cheques").update({ photo_path: path }).eq("id", remise.id);
+        await supabase.from("remises_cheques").update({ photo_path: path, photo_type: fichier.type, photo_octets: fichier.size }).eq("id", remise.id);
         remise = { ...remise, photo_path: path };
       }
       const { data: cs, error: e2 } = await supabase
@@ -226,6 +242,7 @@ export default function DepotCheques({
             emetteur: l.emetteur.trim(),
             date_cheque: l.date_cheque || null,
             motif: l.motif,
+            doute: l.doute,
           })),
         )
         .select(COLONNES_CHEQUE);
@@ -234,8 +251,7 @@ export default function DepotCheques({
       setCheques((x) => [...x, ...((cs ?? []) as Cheque[])]);
       setLignes([ligneVide()]);
       setNotes("");
-      setPhoto(null);
-      if (fichierRef.current) fichierRef.current.value = "";
+      choisirPhoto(null);
       setOuvert(false);
       setMessage({ ok: true, t: `Remise du ${formatDate(remise.date_remise)} enregistrée : ${valides.length} chèque(s), ${formatEuros(totalSaisi)}.` });
     } catch (e) {
@@ -286,17 +302,37 @@ export default function DepotCheques({
               Date de la remise
               <input type="date" className={champ} value={dateRemise} onChange={(e) => setDateRemise(e.target.value)} />
             </label>
-            <label className="text-xs text-muted sm:col-span-2">
-              Photo des chèques ou du bordereau de remise
-              <input
-                ref={fichierRef}
-                type="file"
-                accept="image/*,application/pdf"
-                capture="environment"
-                className={champ}
-                onChange={(e) => setPhoto(e.target.files?.[0] ?? null)}
-              />
-            </label>
+            <div className="sm:col-span-2">
+              <p id="photo-remise-titre" className="mb-1 text-xs text-muted">Photo des chèques ou du bordereau de remise</p>
+              <div className="grid grid-cols-2 gap-3" role="group" aria-labelledby="photo-remise-titre">
+                <label className="flex cursor-pointer flex-col items-center gap-2 rounded-xl bg-accent px-4 py-6 text-center text-accent-fg shadow-md hover:opacity-90 focus-within:ring-2 focus-within:ring-gold focus-within:ring-offset-2">
+                  <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="sr-only" onChange={(e) => choisirPhoto(e.target.files?.[0] ?? null)} />
+                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-10 w-10"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" /><circle cx="12" cy="13" r="3.5" /></svg>
+                  <span className="text-sm font-semibold">Prendre une photo</span>
+                  <span className="text-xs opacity-80">Appareil photo</span>
+                </label>
+                <label className="flex cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-border bg-surface px-4 py-6 text-center text-accent hover:bg-surface-2 focus-within:ring-2 focus-within:ring-gold focus-within:ring-offset-2">
+                  <input ref={fichierRef} type="file" accept="image/*,application/pdf" className="sr-only" onChange={(e) => choisirPhoto(e.target.files?.[0] ?? null)} />
+                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-10 w-10"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
+                  <span className="text-sm font-semibold">Choisir un fichier</span>
+                  <span className="text-xs text-muted">Image ou PDF</span>
+                </label>
+              </div>
+              {photo && (
+                <div className="mt-2 flex items-center gap-3 rounded-lg border border-border bg-surface-2 p-2 text-sm" aria-live="polite">
+                  {apercu ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={apercu} alt="Aperçu de la photo choisie" className="h-14 w-14 rounded object-cover" />
+                  ) : (
+                    <span className="flex h-14 w-14 items-center justify-center rounded bg-surface text-xs font-semibold text-muted">PDF</span>
+                  )}
+                  <span className="min-w-0 flex-1 truncate">{photo.name}</span>
+                  <button type="button" className={btnDiscret} onClick={() => choisirPhoto(null)}>
+                    Retirer
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
 
           <div className="overflow-x-auto">
@@ -307,6 +343,7 @@ export default function DepotCheques({
                   <th className="py-1 pr-2 font-medium">Émetteur</th>
                   <th className="py-1 pr-2 font-medium">Date du chèque</th>
                   <th className="py-1 pr-2 font-medium">Motif</th>
+                  <th />
                   <th />
                 </tr>
               </thead>
@@ -330,6 +367,12 @@ export default function DepotCheques({
                           </option>
                         ))}
                       </select>
+                    </td>
+                    <td className="py-1 pr-2">
+                      <label className="flex items-center gap-1 whitespace-nowrap text-xs text-muted" title="Doute : jamais relié automatiquement">
+                        <input type="checkbox" checked={l.doute} onChange={(e) => majLigne(i, { doute: e.target.checked })} />
+                        Doute
+                      </label>
                     </td>
                     <td className="py-1">
                       {lignes.length > 1 && (
@@ -444,7 +487,14 @@ export default function DepotCheques({
                     <tr key={c.id} className="border-t border-border align-top">
                       <td className="py-1.5 pr-2">{c.emetteur}</td>
                       <td className="py-1.5 pr-2 text-muted">{c.date_cheque ? formatDate(c.date_cheque) : "—"}</td>
-                      <td className="py-1.5 pr-2">{libelleMotif(c.motif)}</td>
+                      <td className="py-1.5 pr-2">
+                        {libelleMotif(c.motif)}
+                        {c.doute && (
+                          <span className="ml-1.5 rounded-full bg-gold-soft px-1.5 py-0.5 text-[10px] font-medium text-gold" title="Doute : jamais relié automatiquement">
+                            Doute
+                          </span>
+                        )}
+                      </td>
                       <td className="py-1.5 pr-2 text-right tabular-nums">{formatEuros(Number(c.montant))}</td>
                       <td className="py-1.5 pl-3 text-xs">
                         <LienCheque
@@ -619,5 +669,6 @@ function LienCheque({
       </select>
     );
   }
+  if (c.motif === "inconnu") return <span className="text-muted">Motif inconnu : pas de rapprochement automatique</span>;
   return <span className="text-muted">Pas de rapprochement pour ce motif</span>;
 }

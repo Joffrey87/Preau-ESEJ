@@ -11,7 +11,7 @@
 
 import { joursEcart, normaliser } from "@/lib/reconciliation";
 
-export type MotifCheque = "don" | "frais_scolarite" | "frais_dossier" | "fourniture" | "activite" | "evenement" | "autre";
+export type MotifCheque = "don" | "frais_scolarite" | "frais_dossier" | "fourniture" | "activite" | "evenement" | "autre" | "inconnu";
 
 export const MOTIFS: { v: MotifCheque; l: string }[] = [
   { v: "don", l: "Don" },
@@ -21,6 +21,7 @@ export const MOTIFS: { v: MotifCheque; l: string }[] = [
   { v: "activite", l: "Activité" },
   { v: "evenement", l: "Événement" },
   { v: "autre", l: "Autre" },
+  { v: "inconnu", l: "Inconnu" },
 ];
 
 export const libelleMotif = (m: string) => MOTIFS.find((x) => x.v === m)?.l ?? m;
@@ -44,6 +45,7 @@ export type Cheque = {
   emetteur: string;
   date_cheque: string | null;
   motif: MotifCheque;
+  doute: boolean;
   don_id: string | null;
   inscription_id: string | null;
   famille_id: string | null;
@@ -54,7 +56,7 @@ export type Cheque = {
 };
 
 export const COLONNES_CHEQUE =
-  "id, remise_id, montant, emetteur, date_cheque, motif, don_id, inscription_id, famille_id, activite_id, affectation_id, participations_payees, lien";
+  "id, remise_id, montant, emetteur, date_cheque, motif, doute, don_id, inscription_id, famille_id, activite_id, affectation_id, participations_payees, lien";
 
 /** Ce que chaque catégorie met à jour dans le suivi (fait en base, par déclencheur, une fois la remise reliée à son crédit). */
 export const SUIVI_MOTIF: Partial<Record<MotifCheque, string>> = {
@@ -202,3 +204,6 @@ export function candidatsActivite(
   const exactes = candidats.filter((a) => Math.abs((du.get(a.id) ?? 0) - Number(cheque.montant)) < 0.005);
   return { candidats: [...exactes, ...candidats.filter((a) => !exactes.includes(a))], evident: exactes.length === 1 };
 }
+
+/** Un chèque au motif inconnu ou en doute n'est jamais relié automatiquement. */
+export const sansLienAuto = (c: { motif: string; doute: boolean }) => c.doute || c.motif === "inconnu";

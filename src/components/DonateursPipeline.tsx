@@ -335,6 +335,7 @@ export default function DonateursPipeline({
           <thead>
             <tr className="border-b border-border text-center text-xs text-muted">
               <th className="px-3 py-1 font-medium">Donateur</th>
+              <th className="px-3 py-1 font-medium">Relation</th>
               <th className="px-3 py-1 font-medium">Qualification</th>
               <th className="px-3 py-1 text-center font-medium">Cumul</th>
               <th className="px-3 py-1 text-center font-medium">Cette année</th>
@@ -345,7 +346,7 @@ export default function DonateursPipeline({
           </thead>
           <tbody>
             {affiches.length === 0 ? (
-              <tr><td colSpan={7} className="px-4 py-10 text-center text-muted">Aucun donateur pour ce filtre.</td></tr>
+              <tr><td colSpan={8} className="px-4 py-10 text-center text-muted">Aucun donateur pour ce filtre.</td></tr>
             ) : (
               affiches.map((p) => (
                 <tr key={p.cle} className="border-b border-border last:border-0">
@@ -355,6 +356,7 @@ export default function DonateursPipeline({
                     </button>
                     {alentours && <div className="text-xs text-muted">≈ {distanceDe(p.cle)} km de Reims</div>}
                   </td>
+                  <td className="px-4 py-3 text-muted">{p.origine?.trim() || "—"}</td>
                   <td className="px-4 py-3">
                     <div className="flex flex-nowrap gap-1 whitespace-nowrap">
                       {badgesDe(p).map((b) => (

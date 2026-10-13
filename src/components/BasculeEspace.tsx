@@ -12,6 +12,8 @@ export type LiensEspace = {
   president?: boolean;
   /** Membre Événement relié à la famille : son compte Événement (adresse interne) et son libellé. */
   evenement?: { libelle: string; email: string } | null;
+  /** Accès Professeurs donné par le Webmestre : compte nominatif du professeur. */
+  professeur?: { libelle: string; email: string } | null;
   /** Famille réservée à la bascule : son espace s'ouvre sans changer de compte ni mot de passe. */
   familleLiee?: boolean;
   /** Depuis l'espace de la famille reliée : retour direct à l'espace du compte (même session). */
@@ -32,11 +34,13 @@ export function PanneauBascule({ actuel, liens }: { actuel: Espace; liens: Liens
   }, [actuel]);
 
   const options: { espace: Espace; titre: string; detail: string; icone: string }[] = [
-    { espace: "famille", titre: "Espace famille", detail: `Famille ${famille}`, icone: "maison" },
+    // Personne sans famille reliée (ex. professeur) : pas d'Espace famille proposé.
+    ...(famille ? [{ espace: "famille" as Espace, titre: "Espace famille", detail: `Famille ${famille}`, icone: "maison" }] : []),
     ...(prenom ? [{ espace: "recherche" as Espace, titre: "Recherche de fonds", detail: prenom, icone: "users" }] : []),
     ...(liens.directrice ? [{ espace: "directrice" as Espace, titre: "Directrice", detail: "Bulletins", icone: "graduation" }] : []),
     ...(liens.president ? [{ espace: "president" as Espace, titre: "Président", detail: "Administration de l'ARIL", icone: "ledger" }] : []),
     ...(liens.evenement ? [{ espace: "evenement" as Espace, titre: "Événement", detail: liens.evenement.libelle, icone: "calendar" }] : []),
+    ...(liens.professeur ? [{ espace: "professeur" as Espace, titre: "Professeur", detail: liens.professeur.libelle, icone: "graduation" }] : []),
   ];
   return (
     <div className="grid gap-1.5">
@@ -51,7 +55,7 @@ export function PanneauBascule({ actuel, liens }: { actuel: Espace; liens: Liens
               setBusy(o.espace);
               const direct = liens.retourLiee?.[o.espace] ?? (o.espace === "famille" && liens.familleLiee ? "/famille-liee/entrer" : null);
               if (direct) return window.location.assign(direct);
-              await basculerVers(o.espace, actuel, { prenom, famille, evenement: liens.evenement?.email ?? null });
+              await basculerVers(o.espace, actuel, { prenom, famille, evenement: liens.evenement?.email ?? null, professeur: liens.professeur?.email ?? null });
             }}
             className={`flex items-center gap-2.5 rounded-lg border px-3 py-2 text-left text-[13px] leading-tight transition-colors ${
               actif ? "border-accent bg-accent-soft font-medium text-accent" : "border-border hover:bg-surface-2 disabled:opacity-60"

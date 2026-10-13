@@ -12,6 +12,7 @@ import Icon from "@/components/Icon";
 import JaugeDons, { type DonsExercice } from "@/components/JaugeDons";
 import { todayISO } from "@/lib/format";
 import type { LiensEspace } from "@/components/BasculeEspace";
+import { MEMBRES } from "@/lib/rechercheFonds";
 
 export default async function AppLayout({
   children,
@@ -78,6 +79,35 @@ export default async function AppLayout({
         president: false,
         evenement: { libelle: (moi?.libelle as string) ?? "", email: user.email ?? "" },
       };
+  }
+  // Accès donnés par le Webmestre (acces_personne_profils) : ils s'ajoutent aux liens ci-dessus, sans en retirer.
+  // Le profil vu « en tant que » par le Webmestre n'en tient pas compte (seulement le compte réel).
+  if (!enVue) {
+    type Lies = {
+      famille: string | null;
+      recherche: string | null;
+      directrice: boolean;
+      president: boolean;
+      evenement: { libelle: string; email: string } | null;
+      professeur: { libelle: string; email: string } | null;
+    };
+    const w = (await supabase.rpc("mes_acces_lies", { p_prenom: prenomVisite || null })).data as Lies | null;
+    if (w) {
+      const prenomRecherche = w.recherche && MEMBRES.includes(w.recherche) ? w.recherche : null;
+      const ajoute = !!(prenomRecherche || w.directrice || w.president || w.evenement || w.professeur || (w.famille && !bascule));
+      if (ajoute) {
+        const b: LiensEspace = bascule ?? { famille: w.famille ?? "", prenom: null, directrice: false };
+        bascule = {
+          ...b,
+          famille: b.famille || (w.famille ?? ""),
+          prenom: b.prenom ?? prenomRecherche,
+          directrice: b.directrice || w.directrice,
+          president: (b.president ?? false) || w.president,
+          evenement: b.evenement ?? w.evenement,
+          professeur: b.professeur ?? w.professeur,
+        };
+      }
+    }
   }
   // Famille réservée à la bascule (ex. : Antona) : ouverte sans changer de compte ni mot de passe.
   if (bascule) {

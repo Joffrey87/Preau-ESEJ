@@ -8,10 +8,10 @@
 import { createClient } from "@/lib/supabase/client";
 import { COOKIE_PRENOM } from "@/lib/roles";
 
-export type Espace = "famille" | "recherche" | "directrice" | "president" | "evenement";
+export type Espace = "famille" | "recherche" | "directrice" | "president" | "evenement" | "professeur";
 
 /** Page d'arrivée de chaque espace. */
-const ACCUEIL: Record<Espace, string> = { famille: "/espace", recherche: "/", directrice: "/", president: "/", evenement: "/evenement" };
+const ACCUEIL: Record<Espace, string> = { famille: "/espace", recherche: "/", directrice: "/", president: "/", evenement: "/evenement", professeur: "/bulletins" };
 
 const CLE = "preau.sessions";
 type Session = { access_token: string; refresh_token: string };
@@ -55,7 +55,7 @@ const cookiePrenom = (prenom: string | null) => {
  * Recherche de fonds) ; `famille` : nom de la famille (pour préremplir la connexion quand l'espace n'a pas encore été
  * ouvert ici) ; `evenement` : adresse interne du compte Événement du membre relié.
  */
-export async function basculerVers(vers: Espace, quitte: Espace, infos: { prenom?: string | null; famille?: string | null; evenement?: string | null }) {
+export async function basculerVers(vers: Espace, quitte: Espace, infos: { prenom?: string | null; famille?: string | null; evenement?: string | null; professeur?: string | null }) {
   const supabase = createClient();
   await memoriserSession(quitte);
 
@@ -84,6 +84,8 @@ export async function basculerVers(vers: Espace, quitte: Espace, infos: { prenom
         ? { espace: vers }
         : vers === "evenement"
           ? { espace: "evenement", ...(infos.evenement ? { membre: infos.evenement } : {}) }
+        : vers === "professeur"
+          ? { espace: "professeurs", ...(infos.professeur ? { membre: infos.professeur } : {}) }
         : { espace: "recherche", ...(infos.prenom ? { prenom: infos.prenom } : {}) },
   );
   window.location.assign(`/login?${q.toString()}`);

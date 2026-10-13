@@ -50,14 +50,14 @@ export async function middleware(request: NextRequest) {
   const estFamille = (user?.app_metadata as { espace?: string } | undefined)?.espace === "famille";
   const versEspace = request.nextUrl.pathname.startsWith("/espace");
 
-  // Profil Événement : uniquement /evenement (la base le garantit aussi : RLS). Côté bureau, seul le Trésorier y entre.
+  // Profil Événement : uniquement /evenement (la base le garantit aussi : RLS). Côté bureau : Trésorier, Président et Directrice (lecture).
   const estEvenement = (user?.app_metadata as { espace?: string } | undefined)?.espace === "evenement";
   const versEvenement = request.nextUrl.pathname === "/evenement" || request.nextUrl.pathname.startsWith("/evenement/");
   if (user && estEvenement && !versEvenement) {
     return NextResponse.redirect(Object.assign(request.nextUrl.clone(), { pathname: "/evenement", search: "" }));
   }
   if (user && estEvenement) return response;
-  if (user && versEvenement && roleByEmail(user.email)?.slug !== "tresorier") {
+  if (user && versEvenement && !["tresorier", "president", "directrice"].includes(roleByEmail(user.email)?.slug ?? "")) {
     return NextResponse.redirect(Object.assign(request.nextUrl.clone(), { pathname: "/", search: "" }));
   }
 

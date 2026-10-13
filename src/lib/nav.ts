@@ -39,6 +39,7 @@ export const NAV: NavSection[] = [
       { href: "/mecenat/pipeline", label: "Relations donateurs", icon: "funnel", ready: true },
       { href: "/recus-fiscaux", label: "Reçus fiscaux", icon: "receipt", ready: true },
       // Lettres du Président pour les dons de 500 € et plus.
+      { href: "/evenement", label: "Événements", icon: "calendar", ready: true, roles: ["tresorier", "president", "directrice"] },
       { href: "/remerciements", label: "Remerciements", icon: "mail", ready: true, roles: ["president", "tresorier", "administrateur"] },
     ],
   },

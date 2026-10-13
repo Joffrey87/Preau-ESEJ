@@ -5,7 +5,14 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { formatDate, formatEuros } from "@/lib/format";
 
-export type MembreEvenement = { id: string; libelle: string; prenom: string; nom: string | null; courriel: string | null };
+export type MembreEvenement = {
+  id: string;
+  libelle: string;
+  prenom: string;
+  nom: string | null;
+  courriel: string | null;
+  famille: { nom: string; membre_recherche: string | null } | null;
+};
 export type EvenementCaisse = {
   id: string;
   nom: string;
@@ -24,10 +31,12 @@ export const recettes = (e: EvenementCaisse) =>
   e.caisse_avant == null || e.caisse_apres == null ? null : Number(e.caisse_apres) - Number(e.caisse_avant);
 
 export default function EspaceEvenement({
+  peutModifier,
   prenom,
   membres,
   evenements,
 }: {
+  peutModifier: boolean;
   prenom: string | null;
   membres: MembreEvenement[];
   evenements: EvenementCaisse[];
@@ -39,6 +48,7 @@ export default function EspaceEvenement({
   const [ev, setEv] = useState({ nom: "", date: "", responsable_id: "", caisse_avant: "", caisse_apres: "" });
   const [edition, setEdition] = useState<string | null>(null);
   const [mb, setMb] = useState({ prenom: "", nom: "", courriel: "" });
+  const [modif, setModif] = useState<{ id: string; nom: string; courriel: string } | null>(null);
   const [info, setInfo] = useState<string | null>(null);
   const libelle = (id: string | null) => membres.find((m) => m.id === id)?.libelle ?? "—";
 
@@ -85,6 +95,15 @@ export default function EspaceEvenement({
     }
   }
 
+  async function enregistrerMembre(e: React.FormEvent) {
+    e.preventDefault();
+    if (!modif) return;
+    const ok = await executer(() =>
+      supabase.rpc("modifier_membre_evenement", { p_id: modif.id, p_nom: modif.nom, p_courriel: modif.courriel }),
+    );
+    if (ok) setModif(null);
+  }
+
   async function deconnexion() {
     await supabase.auth.signOut();
     router.push("/login");
@@ -105,6 +124,7 @@ export default function EspaceEvenement({
 
       {erreur && <p className="rounded-lg bg-negative/10 px-3 py-2 text-sm text-negative">{erreur}</p>}
 
+      {peutModifier && (
       <section className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
         <h2 className="mb-3 font-semibold">{edition ? "Modifier l'événement" : "Nouvel événement"}</h2>
         <form onSubmit={enregistrerEvenement} className="grid gap-3 sm:grid-cols-2">
@@ -141,6 +161,7 @@ export default function EspaceEvenement({
           </div>
         </form>
       </section>
+      )}
 
       <section className="overflow-x-auto rounded-2xl border border-border bg-surface shadow-sm">
         <table className="w-full text-sm">
@@ -174,6 +195,7 @@ export default function EspaceEvenement({
                   <td className="px-4 py-2 text-right">{e.caisse_apres == null ? "—" : formatEuros(Number(e.caisse_apres))}</td>
                   <td className="px-4 py-2 text-right font-semibold">{r == null ? "—" : formatEuros(r)}</td>
                   <td className="px-4 py-2 text-right">
+                    {peutModifier && (
                     <button
                       type="button"
                       onClick={() => {
@@ -190,6 +212,7 @@ export default function EspaceEvenement({
                     >
                       Modifier
                     </button>
+                    )}
                   </td>
                 </tr>
               );
@@ -201,14 +224,47 @@ export default function EspaceEvenement({
       <section className="rounded-2xl border border-border bg-surface p-5 shadow-sm">
         <h2 className="mb-3 font-semibold">Membres</h2>
         <ul className="mb-4 grid gap-1 text-sm sm:grid-cols-2">
-          {membres.map((m) => (
-            <li key={m.id}>
-              <span className="font-medium">{m.libelle}</span>
-              {m.nom && <span> {m.nom}</span>}
-              {m.courriel && <span className="text-muted"> · {m.courriel}</span>}
-            </li>
-          ))}
+          {membres.map((m) =>
+            modif?.id === m.id ? (
+              <li key={m.id} className="sm:col-span-2">
+                <form onSubmit={enregistrerMembre} className="flex flex-wrap items-center gap-2">
+                  <span className="font-medium">{m.libelle}</span>
+                  <input placeholder="Nom" value={modif.nom} onChange={(e) => setModif({ ...modif, nom: e.target.value })} className={`${champ} max-w-40`} />
+                  <input type="email" placeholder="Courriel (facultatif)" value={modif.courriel} onChange={(e) => setModif({ ...modif, courriel: e.target.value })} className={`${champ} max-w-64`} />
+                  <button type="submit" disabled={occupe} className={bouton}>
+                    Enregistrer
+                  </button>
+                  <button type="button" onClick={() => setModif(null)} className="text-sm text-muted hover:underline">
+                    Annuler
+                  </button>
+                </form>
+              </li>
+            ) : (
+              <li key={m.id}>
+                <span className="font-medium">{m.libelle}</span>
+                {m.nom && <span> {m.nom}</span>}
+                {m.courriel && <span className="text-muted"> · {m.courriel}</span>}
+                {m.famille && (
+                  <span className="text-muted">
+                    {" "}
+                    · famille {m.famille.nom}
+                    {m.famille.membre_recherche && ` (Recherche de fonds : ${m.famille.membre_recherche})`}
+                  </span>
+                )}
+                {peutModifier && (
+                  <button
+                    type="button"
+                    onClick={() => setModif({ id: m.id, nom: m.nom ?? "", courriel: m.courriel ?? "" })}
+                    className="ml-2 text-xs text-accent hover:underline"
+                  >
+                    Modifier
+                  </button>
+                )}
+              </li>
+            ),
+          )}
         </ul>
+        {peutModifier && (
         <form onSubmit={ajouterMembre} className="grid gap-3 sm:grid-cols-4">
           <input required placeholder="Prénom" value={mb.prenom} onChange={(e) => setMb({ ...mb, prenom: e.target.value })} className={champ} />
           <input required placeholder="Nom" value={mb.nom} onChange={(e) => setMb({ ...mb, nom: e.target.value })} className={champ} />
@@ -217,6 +273,7 @@ export default function EspaceEvenement({
             Ajouter un membre
           </button>
         </form>
+        )}
         {info && <p className="mt-3 rounded-lg bg-positive/10 px-3 py-2 text-sm text-positive">{info}</p>}
       </section>
     </main>

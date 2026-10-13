@@ -47,14 +47,23 @@ export async function lireAvecClaude(cle: string, base64: string, mediaType: str
   const bloc = mediaType === "application/pdf" ? { type: "document", source } : { type: "image", source };
   const rep = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
-    headers: { "x-api-key": cle, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+    headers: {
+      "x-api-key": cle,
+      "anthropic-version": "2023-06-01",
+      "content-type": "application/json",
+      // Nécessaire si la clé n'est pas rattachée à un espace de travail Anthropic.
+      ...(process.env.ANTHROPIC_WORKSPACE_ID ? { "anthropic-workspace-id": process.env.ANTHROPIC_WORKSPACE_ID } : {}),
+    },
     body: JSON.stringify({
       model: MODELE_LECTURE,
       max_tokens: 2000,
       messages: [{ role: "user", content: [bloc, { type: "text", text: CONSIGNE }] }],
     }),
   });
-  if (!rep.ok) throw new Error(`API ${rep.status}`);
+  if (!rep.ok) {
+    const detail = ((await rep.json().catch(() => null)) as { error?: { message?: string } } | null)?.error?.message ?? "";
+    throw new Error(`API ${rep.status} ${detail.slice(0, 200)}`);
+  }
   const d = (await rep.json()) as { content?: { type: string; text?: string }[] };
   const texte = (d.content ?? []).filter((b) => b.type === "text").map((b) => b.text).join("");
   return analyserReponse(texte);

@@ -92,7 +92,7 @@ export default function Sidebar({
         <img src="/logo.webp" alt="Préau" className="h-9 w-9 shrink-0 rounded-full object-contain" />
         <div className="leading-tight">
           <div className="text-sm font-semibold">Préau</div>
-          <div className="text-[10px] text-muted">ARIL · Saint-Enfant-Jésus</div>
+          <div className="text-[10px] text-muted">Saint-Enfant-Jésus</div>
         </div>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={`ml-auto h-4 w-4 shrink-0 text-muted transition-transform ${choixOuvert || menuOuvert ? "rotate-180" : ""}`} aria-hidden="true">
               <path d="m6 9 6 6 6-6" />
@@ -114,7 +114,7 @@ export default function Sidebar({
         <img src="/logo.webp" alt="Préau" className="h-9 w-9 shrink-0 rounded-full object-contain" />
         <div className="leading-tight">
           <div className="text-sm font-semibold">Préau</div>
-          <div className="text-[10px] text-muted">ARIL · Saint-Enfant-Jésus</div>
+          <div className="text-[10px] text-muted">Saint-Enfant-Jésus</div>
         </div>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className={`ml-auto h-4 w-4 shrink-0 text-muted transition-transform md:hidden ${menuOuvert ? "rotate-180" : ""}`} aria-hidden="true">
               <path d="m6 9 6 6 6-6" />

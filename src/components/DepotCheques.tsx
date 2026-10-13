@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { useDonsDechiffres, type DonChiffrable } from "@/lib/donsChiffre";
 import { nomDonateur } from "@/lib/statutDon";
+import ChequesCompacts from "@/components/ChequesCompacts";
 import { compresserPhoto } from "@/lib/compresserPhoto";
 import { formatDate, formatEuros, todayISO } from "@/lib/format";
 import {
@@ -36,12 +37,38 @@ export type DonDepot = DonChiffrable & { id: string; montant: number; date_don: 
 
 type Ligne = { montant: string; emetteur: string; date_cheque: string; motif: MotifCheque; doute: boolean };
 type ChampsLien = Partial<Pick<Cheque, "don_id" | "inscription_id" | "famille_id" | "activite_id">>;
-const ligneVide = (): Ligne => ({ montant: "", emetteur: "", date_cheque: "", motif: "don", doute: false });
+const ligneVide = (): Ligne => ({ montant: "", emetteur: "", motif: "don", doute: false, date_cheque: todayISO() });
 
 const champ = "w-full rounded-md border border-border bg-surface px-2 py-1.5 text-sm";
 const btnPrimaire = "rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-fg hover:opacity-90 disabled:opacity-50";
 const btnDiscret = "rounded border border-border px-2 py-0.5 text-xs hover:bg-surface-2 disabled:opacity-50";
 const montantDe = (s: string) => Number(s.replace(",", ".").replace(/\s/g, "")) || 0;
+
+/** Date affichée en compact (« Aujourd'hui, 13/10/2026 ») avec un petit lien « changer ». */
+function DateCompacte({ valeur, onChange, libelle }: { valeur: string; onChange: (v: string) => void; libelle: string }) {
+  const [edition, setEdition] = useState(false);
+  if (edition)
+    return (
+      <input
+        type="date"
+        autoFocus
+        aria-label={libelle}
+        className="block rounded-md border border-border bg-surface px-1.5 py-0.5 text-xs text-foreground"
+        value={valeur}
+        onChange={(e) => onChange(e.target.value || todayISO())}
+        onBlur={() => setEdition(false)}
+      />
+    );
+  return (
+    <span className="block whitespace-nowrap text-sm text-foreground">
+      {valeur === todayISO() ? "Aujourd\u2019hui, " : ""}
+      {valeur ? formatDate(valeur) : "—"}{" "}
+      <button type="button" className="text-xs text-muted underline hover:text-accent" aria-label={`Changer : ${libelle}`} onClick={() => setEdition(true)}>
+        changer
+      </button>
+    </span>
+  );
+}
 
 function PastilleLien({ lien }: { lien: Lien }) {
   if (!lien) return null;
@@ -86,14 +113,58 @@ export default function DepotCheques({
   const [ouvert, setOuvert] = useState(remisesInit.length === 0);
   const [dateRemise, setDateRemise] = useState(todayISO());
   const [notes, setNotes] = useState("");
+  const [saisie, setSaisie] = useState(false);
   const [photo, setPhoto] = useState<File | null>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
   const apercu = useMemo(() => (photo && photo.type.startsWith("image/") ? URL.createObjectURL(photo) : null), [photo]);
   useEffect(() => () => { if (apercu) URL.revokeObjectURL(apercu); }, [apercu]);
+  const [lecture, setLecture] = useState<"en_cours" | null>(null);
+  const [erreurLecture, setErreurLecture] = useState<string | null>(null);
+  const [totalBordereau, setTotalBordereau] = useState<number | null>(null);
+  const numLecture = useRef(0);
   function choisirPhoto(f: File | null) {
-    setPhoto(f);
     if (fichierRef.current) fichierRef.current.value = "";
     if (cameraRef.current) cameraRef.current.value = "";
+    setErreurLecture(null);
+    setTotalBordereau(null);
+    numLecture.current++;
+    if (!f) {
+      setPhoto(null);
+      setLecture(null);
+      return;
+    }
+    void preparerEtLire(f, numLecture.current);
+  }
+  // Compression puis lecture automatique par Claude (route serveur : la clé reste côté serveur).
+  async function preparerEtLire(f: File, n: number) {
+    setLecture("en_cours");
+    setPhoto(f);
+    try {
+      const fichier = await compresserPhoto(f);
+      if (n !== numLecture.current) return;
+      setPhoto(fichier);
+      const fd = new FormData();
+      fd.append("photo", fichier);
+      const rep = await fetch("/api/lecture-cheques", { method: "POST", body: fd });
+      const d = await rep.json().catch(() => ({}));
+      if (n !== numLecture.current) return;
+      if (!rep.ok) throw new Error(d.erreur ?? "La lecture automatique a échoué.");
+      const lus = (d.cheques ?? []) as { montant: number | null; emetteur: string | null; date: string | null }[];
+      if (lus.length === 0) throw new Error("Aucun chèque reconnu sur la photo : saisissez-les à la main.");
+      setLignes(
+        lus.map((c) => ({
+          ...ligneVide(),
+          montant: c.montant != null ? String(c.montant).replace(".", ",") : "",
+          emetteur: c.emetteur ?? "",
+          date_cheque: c.date ?? todayISO(),
+        })),
+      );
+      setTotalBordereau(typeof d.total_bordereau === "number" ? d.total_bordereau : null);
+    } catch (e) {
+      if (n === numLecture.current) setErreurLecture(e instanceof Error ? e.message : "La lecture automatique a échoué.");
+    } finally {
+      if (n === numLecture.current) setLecture(null);
+    }
   }
   const [lignes, setLignes] = useState<Ligne[]>([ligneVide()]);
   const fichierRef = useRef<HTMLInputElement>(null);
@@ -220,7 +291,7 @@ export default function DepotCheques({
       if (error || !r) throw new Error(error?.message ?? "Création de la remise impossible.");
       let remise = r as Remise;
       if (photo) {
-        const fichier = await compresserPhoto(photo);
+        const fichier = photo; // déjà compressée au choix
         const ext = (fichier.name.split(".").pop() || "jpg").toLowerCase();
         const path = `${remise.id}/remise.${ext}`;
         const up = await supabase.storage.from(BUCKET_CHEQUES).upload(path, fichier, {
@@ -251,6 +322,7 @@ export default function DepotCheques({
       setCheques((x) => [...x, ...((cs ?? []) as Cheque[])]);
       setLignes([ligneVide()]);
       setNotes("");
+      setSaisie(false);
       choisirPhoto(null);
       setOuvert(false);
       setMessage({ ok: true, t: `Remise du ${formatDate(remise.date_remise)} enregistrée : ${valides.length} chèque(s), ${formatEuros(totalSaisi)}.` });
@@ -297,12 +369,8 @@ export default function DepotCheques({
       ) : (
         <section className="space-y-4 rounded-xl border border-border bg-surface p-4">
           <h2 className="text-sm font-semibold">Nouvelle remise de chèques</h2>
-          <div className="grid gap-3 sm:grid-cols-3">
-            <label className="text-xs text-muted">
-              Date de la remise
-              <input type="date" className={champ} value={dateRemise} onChange={(e) => setDateRemise(e.target.value)} />
-            </label>
-            <div className="sm:col-span-2">
+          <div>
+            <div>
               <p id="photo-remise-titre" className="mb-1 text-xs text-muted">Photo des chèques ou du bordereau de remise</p>
               <div className="grid grid-cols-2 gap-3" role="group" aria-labelledby="photo-remise-titre">
                 <label className="flex cursor-pointer flex-col items-center gap-2 rounded-xl bg-accent px-4 py-6 text-center text-accent-fg shadow-md hover:opacity-90 focus-within:ring-2 focus-within:ring-gold focus-within:ring-offset-2">
@@ -335,6 +403,48 @@ export default function DepotCheques({
             </div>
           </div>
 
+          {!saisie && !photo && (
+            <div className="flex gap-2">
+              <button type="button" className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-surface-2" onClick={() => setSaisie(true)}>
+                Saisie manuelle
+              </button>
+              <button type="button" className="rounded-lg px-4 py-2 text-sm text-muted hover:bg-surface-2" onClick={() => { setOuvert(false); setSaisie(false); choisirPhoto(null); setLignes([ligneVide()]); }}>
+                Annuler
+              </button>
+            </div>
+          )}
+
+          {lecture === "en_cours" && (
+            <p className="flex items-center gap-2 rounded-lg bg-accent-soft px-3 py-2 text-sm text-accent" role="status">
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent" aria-hidden="true" />
+              Lecture des chèques en cours…
+            </p>
+          )}
+          {erreurLecture && (
+            <p className="rounded-lg bg-surface-2 px-3 py-2 text-sm text-negative" role="alert">
+              {erreurLecture}
+            </p>
+          )}
+          {totalBordereau != null && lecture === null && (
+            <p
+              className={`rounded-lg px-3 py-2 text-sm ${Math.abs(totalBordereau - totalSaisi) < 0.005 ? "bg-surface-2 text-positive" : "bg-gold-soft text-foreground"}`}
+              role="status"
+            >
+              {Math.abs(totalBordereau - totalSaisi) < 0.005
+                ? `Total du bordereau ${formatEuros(totalBordereau)} : la somme des chèques correspond.`
+                : `⚠ Total du bordereau ${formatEuros(totalBordereau)}, mais la somme des chèques est ${formatEuros(totalSaisi)} (écart ${formatEuros(Math.round((totalSaisi - totalBordereau) * 100) / 100)}). Vérifiez les montants.`}
+            </p>
+          )}
+
+          {(saisie || (photo && lecture === null)) && (
+          <>
+          <div className="text-xs text-muted">
+            Date de la remise
+            <DateCompacte valeur={dateRemise} onChange={setDateRemise} libelle="Date de la remise" />
+          </div>
+          {photo && !saisie ? (
+            <ChequesCompacts lignes={lignes} onChange={majLigne} onRetirer={(i) => setLignes((ls) => ls.filter((_, j) => j !== i))} />
+          ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-left text-xs text-muted">
@@ -357,7 +467,7 @@ export default function DepotCheques({
                       <input className={champ} placeholder="Nom sur le chèque" value={l.emetteur} onChange={(e) => majLigne(i, { emetteur: e.target.value })} />
                     </td>
                     <td className="py-1 pr-2">
-                      <input type="date" className={champ} value={l.date_cheque} onChange={(e) => majLigne(i, { date_cheque: e.target.value })} />
+                      <DateCompacte valeur={l.date_cheque} onChange={(v) => majLigne(i, { date_cheque: v })} libelle="Date du chèque" />
                     </td>
                     <td className="py-1 pr-2">
                       <select className={champ} value={l.motif} onChange={(e) => majLigne(i, { motif: e.target.value as MotifCheque })}>
@@ -386,6 +496,7 @@ export default function DepotCheques({
               </tbody>
             </table>
           </div>
+          )}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <button type="button" className={btnDiscret} onClick={() => setLignes((ls) => [...ls, ligneVide()])}>
               + Ajouter un chèque
@@ -402,10 +513,12 @@ export default function DepotCheques({
             <button type="button" className={btnPrimaire} disabled={busy === "nouvelle"} onClick={enregistrer}>
               {busy === "nouvelle" ? "Enregistrement…" : "Enregistrer la remise"}
             </button>
-            <button type="button" className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-surface-2" onClick={() => setOuvert(false)}>
+            <button type="button" className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-surface-2" onClick={() => { setOuvert(false); setSaisie(false); choisirPhoto(null); setLignes([ligneVide()]); }}>
               Annuler
             </button>
           </div>
+          </>
+          )}
         </section>
       )}
 

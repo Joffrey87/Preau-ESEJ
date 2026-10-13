@@ -60,6 +60,8 @@ export async function middleware(request: NextRequest) {
   const enFamilleLiee = !!user && !estFamille && request.cookies.get("famille_liee")?.value === "1";
   const cheminLiee = request.nextUrl.pathname.startsWith("/famille-liee/");
   if (user && (cheminLiee || (enFamilleLiee && versEspace))) return response;
+  // Bascule par le logo (la route vérifie elle-même le lien entre les comptes).
+  if (user && request.nextUrl.pathname === "/bascule") return response;
   // Hors de l'Espace famille, le mode « famille reliée » se referme de lui-même.
   if (enFamilleLiee) response.cookies.delete("famille_liee");
   if (user && estEvenement && !versEvenement) {

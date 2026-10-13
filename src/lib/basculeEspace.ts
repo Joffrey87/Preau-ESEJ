@@ -3,7 +3,8 @@
 //
 // Les profils sont des comptes distincts. Après s'être connecté une fois à chacun sur cet appareil, la session de
 // l'espace laissé de côté est gardée dans le navigateur (localStorage) : le logo bascule alors de l'un à l'autre sans
-// ressaisir de mot de passe. Un espace jamais ouvert sur cet appareil renvoie à la connexion. La déconnexion efface tout.
+// ressaisir de mot de passe. Désormais, la route serveur /bascule ouvre directement tout profil relié (clé de
+// service SUPABASE_SERVICE_ROLE_KEY) ; la session gardée sert de repli si la clé manque. Un espace jamais ouvert sur cet appareil renvoie à la connexion. La déconnexion efface tout.
 
 import { createClient } from "@/lib/supabase/client";
 import { COOKIE_PRENOM } from "@/lib/roles";
@@ -58,6 +59,18 @@ const cookiePrenom = (prenom: string | null) => {
 export async function basculerVers(vers: Espace, quitte: Espace, infos: { prenom?: string | null; famille?: string | null; evenement?: string | null }) {
   const supabase = createClient();
   await memoriserSession(quitte);
+
+  // Profil relié : le serveur ouvre directement sa session, sans mot de passe, sur n'importe quel appareil.
+  try {
+    const r = await fetch("/bascule", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ vers }) });
+    if (r.ok) {
+      const { url } = (await r.json()) as { url: string };
+      await memoriserSession(vers);
+      window.location.assign(url);
+      return;
+    }
+  } catch {}
+  // Sinon (clé de service absente, erreur) : ancien fonctionnement.
 
   const session = lire()[vers];
   if (session) {

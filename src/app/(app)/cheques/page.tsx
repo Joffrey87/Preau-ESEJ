@@ -60,7 +60,6 @@ export default async function DepotChequesPage() {
     <div className="mx-auto max-w-5xl px-5 py-8 md:px-8">
       <PageHeader
         title="Dépôt de chèques"
-        subtitle="Photo de la remise (plusieurs chèques ou bordereau), puis une ligne par chèque. Préau relie la remise au crédit bancaire et chaque chèque au don ou à la famille quand c'est évident ; sinon, le Trésorier confirme."
       />
       {error ? (
         <p className="rounded-xl border border-negative/40 bg-negative/10 px-4 py-3 text-sm text-negative">Lecture impossible : {error.message}</p>

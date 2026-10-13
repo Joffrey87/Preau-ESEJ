@@ -67,6 +67,7 @@ export const ONGLETS: { href: string; label: string; famille?: boolean }[] = [
   { href: "/scolarite/activites", label: "Frais de scolarité · Activités" },
   { href: "/financement", label: "Financement" },
   { href: "/dons", label: "Dons" },
+  { href: "/cheques", label: "Dépôt de chèques" },
   { href: "/dons/import", label: "Dons · Import" },
   { href: "/dons/depuis-compta", label: "Dons · Depuis la Comptabilité" },
   { href: "/mecenat", label: "Mécénat" },

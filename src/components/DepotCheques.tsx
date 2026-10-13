@@ -371,19 +371,22 @@ export default function DepotCheques({
           <h2 className="text-sm font-semibold">Nouvelle remise de chèques</h2>
           <div>
             <div>
-              <p id="photo-remise-titre" className="mb-1 text-xs text-muted">Photo des chèques ou du bordereau de remise</p>
-              <div className="grid grid-cols-2 gap-3" role="group" aria-labelledby="photo-remise-titre">
-                <label className="flex cursor-pointer flex-col items-center gap-2 rounded-xl bg-accent px-4 py-6 text-center text-accent-fg shadow-md hover:opacity-90 focus-within:ring-2 focus-within:ring-gold focus-within:ring-offset-2">
+              <div className="grid grid-cols-2 gap-3" role="group" aria-label="Photo des chèques ou du bordereau de remise">
+                <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-accent px-3 py-3 text-left text-accent-fg shadow-md hover:opacity-90 focus-within:ring-2 focus-within:ring-gold focus-within:ring-offset-2">
                   <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="sr-only" onChange={(e) => choisirPhoto(e.target.files?.[0] ?? null)} />
-                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-10 w-10"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" /><circle cx="12" cy="13" r="3.5" /></svg>
-                  <span className="text-sm font-semibold">Prendre une photo</span>
-                  <span className="text-xs opacity-80">Appareil photo</span>
+                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-7 w-7 shrink-0"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" /><circle cx="12" cy="13" r="3.5" /></svg>
+                  <span className="flex flex-col leading-tight">
+                    <span className="text-sm font-semibold">Prendre une photo</span>
+                    <span className="text-xs opacity-80">Appareil photo</span>
+                  </span>
                 </label>
-                <label className="flex cursor-pointer flex-col items-center gap-2 rounded-xl border-2 border-border bg-surface px-4 py-6 text-center text-accent hover:bg-surface-2 focus-within:ring-2 focus-within:ring-gold focus-within:ring-offset-2">
+                <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border-2 border-border bg-surface px-3 py-3 text-left text-accent hover:bg-surface-2 focus-within:ring-2 focus-within:ring-gold focus-within:ring-offset-2">
                   <input ref={fichierRef} type="file" accept="image/*,application/pdf" className="sr-only" onChange={(e) => choisirPhoto(e.target.files?.[0] ?? null)} />
-                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-10 w-10"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
-                  <span className="text-sm font-semibold">Choisir un fichier</span>
-                  <span className="text-xs text-muted">Image ou PDF</span>
+                  <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-7 w-7 shrink-0"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
+                  <span className="flex flex-col leading-tight">
+                    <span className="text-sm font-semibold">Choisir un fichier</span>
+                    <span className="text-xs text-muted">Image ou PDF</span>
+                  </span>
                 </label>
               </div>
               {photo && (

@@ -7,7 +7,6 @@ export type MembreEvenement = {
   prenom: string;
   nom: string | null;
   courriel: string | null;
-  famille: { nom: string; membre_recherche: string | null } | null;
 };
 
 export type EvenementCaisse = {

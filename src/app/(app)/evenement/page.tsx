@@ -15,7 +15,7 @@ export default async function EvenementsPage() {
       <PageHeader title="Événements" />
       <ListeEvenements
         peutModifier={peutModifier}
-        membres={(membres ?? []).map((m) => ({ ...m, famille: null })) as MembreEvenement[]}
+        membres={(membres ?? []) as MembreEvenement[]}
         evenements={(evenements ?? []) as EvenementCaisse[]}
       />
     </div>

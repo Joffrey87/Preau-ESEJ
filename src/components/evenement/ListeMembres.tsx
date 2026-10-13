@@ -43,7 +43,6 @@ export default function ListeMembres({ peutModifier, membres }: { peutModifier: 
               <th className="px-4 py-2">Prénom</th>
               <th className="px-4 py-2">Nom</th>
               <th className="px-4 py-2">Courriel</th>
-              <th className="px-4 py-2">Famille</th>
               <th />
             </tr>
           </thead>
@@ -58,7 +57,6 @@ export default function ListeMembres({ peutModifier, membres }: { peutModifier: 
                   <td className="px-4 py-2">
                     <input type="email" placeholder="Courriel (facultatif)" value={modif.courriel} onChange={(e) => setModif({ ...modif, courriel: e.target.value })} className={champ} />
                   </td>
-                  <td className="px-4 py-2" />
                   <td className="whitespace-nowrap px-4 py-2 text-right">
                     <form onSubmit={enregistrerMembre} className="inline">
                       <button type="submit" disabled={occupe} className={bouton}>
@@ -75,9 +73,6 @@ export default function ListeMembres({ peutModifier, membres }: { peutModifier: 
                   <td className="px-4 py-2 font-medium">{m.libelle}</td>
                   <td className="px-4 py-2">{m.nom ?? "—"}</td>
                   <td className="px-4 py-2 text-muted">{m.courriel ?? "—"}</td>
-                  <td className="px-4 py-2 text-muted">
-                    {m.famille ? `${m.famille.nom}${m.famille.membre_recherche ? ` (Recherche de fonds : ${m.famille.membre_recherche})` : ""}` : "—"}
-                  </td>
                   <td className="px-4 py-2 text-right">
                     {peutModifier && (
                       <button

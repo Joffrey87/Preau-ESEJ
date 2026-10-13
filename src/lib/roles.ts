@@ -38,11 +38,11 @@ export const PAGES_RESTREINTES: Record<string, string[]> = {
   "directeur-spirituel": ["/", "/carnet", "/dons", "/mecenat/pipeline", "/bulletins"],
   // Président : Tableau de bord, Comptabilité (lecture), Budget, Frais de scolarité, Dons, Relations donateurs. Son
   // Espace famille s'ouvre par le logo (bascule vers le compte de la famille Antona), comme pour les autres familles.
-  president: ["/", "/evenement", "/evenement/membres", "/evenement/facturation", "/evenement/carnet", "/comptabilite", "/budget", "/scolarite", "/cheques", "/dons", "/mecenat/pipeline", "/remerciements"],
+  president: ["/", "/comptabilite", "/budget", "/scolarite", "/cheques", "/dons", "/mecenat/pipeline", "/remerciements"],
   // Profils pas encore configurés : rien de visible (une page d'attente) tant que leurs accès ne sont pas définis.
   secretaire: ["/en-attente"],
   administrateur: ["/en-attente"],
-  directrice: ["/", "/bulletins", "/cheques", "/evenement", "/evenement/membres", "/evenement/facturation", "/evenement/carnet"],
+  directrice: ["/", "/bulletins", "/cheques"],
   "resp-mecenat": ["/en-attente"],
 };
 

@@ -18,6 +18,13 @@ export const NAV: NavSection[] = [
   // Tableau de bord : toujours tout en haut, hors section (page d'accueil de chaque profil).
   { title: "", items: [{ href: "/", label: "Tableau de bord", icon: "dashboard", ready: true }] },
   {
+    title: "École",
+    items: [
+      // Directrice, Directeur spirituel (catéchisme) et Professeurs ; aucun autre profil du bureau (données d'élèves).
+      { href: "/bulletins", label: "Bulletins", icon: "bulletin", ready: true, roles: ["directrice", "directeur-spirituel"] },
+    ],
+  },
+  {
     title: "Comptabilité",
     items: [
       { href: "/comptabilite", label: "Comptabilité", icon: "ledger", ready: true },
@@ -25,13 +32,6 @@ export const NAV: NavSection[] = [
       { href: "/scolarite", label: "Frais de scolarité", icon: "graduation", ready: true },
       // Photo d'une remise de chèques, saisie des chèques et lien avec la comptabilité.
       { href: "/cheques", label: "Dépôt de chèques", icon: "billets", ready: true, roles: ["tresorier", "president", "directrice"] },
-    ],
-  },
-  {
-    title: "École",
-    items: [
-      // Directrice, Directeur spirituel (catéchisme) et Professeurs ; aucun autre profil du bureau (données d'élèves).
-      { href: "/bulletins", label: "Bulletins", icon: "bulletin", ready: true, roles: ["directrice", "directeur-spirituel"] },
     ],
   },
   {

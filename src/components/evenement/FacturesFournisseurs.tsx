@@ -20,7 +20,7 @@ import { useEnregistrer } from "./useEnregistrer";
 
 const NOUVEAU = "__nouveau__";
 /** Catégorie de dépense proposée par défaut (si elle existe dans la Comptabilité). */
-const CATEGORIE_DEFAUT = "achat fournisseur";
+const CATEGORIE_DEFAUT = "fournitures pour ventes diverses";
 const normaliser = (t: string | null | undefined) =>
   (t ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 

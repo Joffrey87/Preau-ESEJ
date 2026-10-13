@@ -54,6 +54,9 @@ export type FactureFournisseur = {
   statut: StatutFacture;
   operation_id: string | null;
   notes: string | null;
+  libelle: string | null;
+  categorie_id: string | null;
+  doute: boolean;
 };
 
 export const BUCKET_FACTURES = "factures-fournisseurs";

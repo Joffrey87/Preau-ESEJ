@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import PageHeader from "@/components/PageHeader";
 import FicheContactEvenement from "@/components/evenement/FicheContactEvenement";
-import FacturesFournisseurs from "@/components/evenement/FacturesFournisseurs";
+import FacturesFournisseurs, { type CategorieDepense } from "@/components/evenement/FacturesFournisseurs";
 import { sessionEvenement } from "@/lib/evenementServeur";
 import { formatDate, formatEuros } from "@/lib/format";
 import { STATUTS_FACTURE, nomContact, type ContactEvenement, type EvenementCaisse, type FactureFournisseur } from "@/lib/evenement";
@@ -13,9 +13,10 @@ export default async function FicheFournisseurPage({ params }: { params: Promise
   const { supabase, peutModifier, estTresorier } = await sessionEvenement();
   const { data: contact } = await supabase.from("contacts_evenement").select("*").eq("id", id).maybeSingle();
   if (!contact) notFound();
-  const [{ data: factures }, { data: evenements }] = await Promise.all([
+  const [{ data: factures }, { data: evenements }, { data: categories }] = await Promise.all([
     supabase.from("factures_fournisseurs").select("*").eq("fournisseur_id", id).order("date", { ascending: false }),
     supabase.from("evenements_caisse").select("id, nom, date").order("date", { ascending: false }),
+    supabase.rpc("categories_depense_facture"),
   ]);
   const liste = (factures ?? []) as FactureFournisseur[];
   // Opérations bancaires liées : la base ne les montre qu'au bureau (le profil Événement n'en voit aucune).
@@ -48,6 +49,7 @@ export default async function FicheFournisseurPage({ params }: { params: Promise
         fournisseurs={[contact as ContactEvenement]}
         evenements={(evenements ?? []) as Pick<EvenementCaisse, "id" | "nom" | "date">[]}
         fournisseurFixe={id}
+        categories={(categories ?? []) as CategorieDepense[]}
       />
       {estTresorier && (
         <section>

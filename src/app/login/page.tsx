@@ -11,10 +11,11 @@ import Icon from "@/components/Icon";
 
 const DERNIER_PRENOM = "recherche.dernierPrenom";
 const DERNIER_PROFESSEUR = "connexion.dernierProfesseur";
-type Espace = "famille" | "professeurs" | "bureau";
-const dernierProfesseur = () => {
+type Espace = "famille" | "professeurs" | "bureau" | "evenement";
+const DERNIER_EVENEMENT = "connexion.dernierEvenement";
+const dernierChoix = (cle: string) => {
   try {
-    return localStorage.getItem(DERNIER_PROFESSEUR) ?? "";
+    return localStorage.getItem(cle) ?? "";
   } catch {
     return "";
   }
@@ -24,6 +25,7 @@ const ESPACES: { v: Espace; label: string; icone: string }[] = [
   { v: "famille", label: "Famille", icone: "maison" },
   { v: "professeurs", label: "Professeur", icone: "graduation" },
   { v: "bureau", label: "Administration", icone: "ledger" },
+  { v: "evenement", label: "Événement", icone: "calendar" },
 ];
 
 export default function LoginPage() {
@@ -36,6 +38,13 @@ export default function LoginPage() {
     createClient()
       .rpc("professeurs_connexion")
       .then(({ data }) => setProfesseurs((data ?? []) as { libelle: string; email: string }[]));
+  }, []);
+  // Événement : comptes simples (identifiant et mot de passe = prénom), liste fournie par la base.
+  const [membresEvenement, setMembresEvenement] = useState<{ libelle: string; email: string }[]>([]);
+  useEffect(() => {
+    createClient()
+      .rpc("evenement_connexion")
+      .then(({ data }) => setMembresEvenement((data ?? []) as { libelle: string; email: string }[]));
   }, []);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -83,7 +92,9 @@ export default function LoginPage() {
     setError(null);
     if (espace === e) return setEspace(null);
     setEspace(e);
-    setEmail(e === "bureau" ? ROLES[1].email : e === "professeurs" ? dernierProfesseur() : "");
+    setEmail(
+      e === "bureau" ? ROLES[1].email : e === "professeurs" ? dernierChoix(DERNIER_PROFESSEUR) : e === "evenement" ? dernierChoix(DERNIER_EVENEMENT) : "",
+    );
   }
 
   /** « Mot de passe oublié » : demande enregistrée pour le bureau (réponse toujours identique, rien n'est divulgué). */
@@ -123,6 +134,8 @@ export default function LoginPage() {
           ? "Nom de famille ou mot de passe incorrect."
           : espace === "professeurs"
             ? "Professeur ou mot de passe incorrect."
+            : espace === "evenement"
+              ? "Prénom ou mot de passe incorrect."
             : "Rôle ou mot de passe incorrect.",
       );
       setLoading(false);
@@ -131,6 +144,7 @@ export default function LoginPage() {
 
     try {
       if (espace === "professeurs") localStorage.setItem(DERNIER_PROFESSEUR, email);
+      if (espace === "evenement") localStorage.setItem(DERNIER_EVENEMENT, email);
       if (avecPrenom) localStorage.setItem(DERNIER_PRENOM, prenom);
     } catch {}
     // Session gardée pour le va-et-vient Espace famille ↔ Recherche de fonds (logo en haut à gauche).
@@ -145,7 +159,7 @@ export default function LoginPage() {
       : `${COOKIE_PRENOM}=; path=/; max-age=0; SameSite=Lax`;
 
     // Le middleware oriente chaque compte vers son espace.
-    router.push(espace === "famille" ? "/espace" : "/");
+    router.push(espace === "famille" ? "/espace" : espace === "evenement" ? "/evenement" : "/");
     router.refresh();
   }
 
@@ -165,7 +179,7 @@ export default function LoginPage() {
           </p>
         </div>
 
-        <div className="mb-4 grid grid-cols-3 gap-3">
+        <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
           {ESPACES.map(({ v, label, icone }) => (
             <button
               key={v}
@@ -226,6 +240,27 @@ export default function LoginPage() {
                     </select>
                   </>
                 )}
+              </>
+            ) : espace === "evenement" ? (
+              <>
+                <label className="mb-1 block text-sm font-medium" htmlFor="membreEvenement">
+                  Prénom
+                </label>
+                <select
+                  id="membreEvenement"
+                  autoFocus
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="mb-4 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-accent"
+                >
+                  <option value="">— Choisir —</option>
+                  {membresEvenement.map((m) => (
+                    <option key={m.email} value={m.email}>
+                      {m.libelle}
+                    </option>
+                  ))}
+                </select>
               </>
             ) : espace === "professeurs" ? (
               <>

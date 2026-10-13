@@ -50,6 +50,17 @@ export async function middleware(request: NextRequest) {
   const estFamille = (user?.app_metadata as { espace?: string } | undefined)?.espace === "famille";
   const versEspace = request.nextUrl.pathname.startsWith("/espace");
 
+  // Profil Événement : uniquement /evenement (la base le garantit aussi : RLS). Côté bureau, seul le Trésorier y entre.
+  const estEvenement = (user?.app_metadata as { espace?: string } | undefined)?.espace === "evenement";
+  const versEvenement = request.nextUrl.pathname === "/evenement" || request.nextUrl.pathname.startsWith("/evenement/");
+  if (user && estEvenement && !versEvenement) {
+    return NextResponse.redirect(Object.assign(request.nextUrl.clone(), { pathname: "/evenement", search: "" }));
+  }
+  if (user && estEvenement) return response;
+  if (user && versEvenement && roleByEmail(user.email)?.slug !== "tresorier") {
+    return NextResponse.redirect(Object.assign(request.nextUrl.clone(), { pathname: "/", search: "" }));
+  }
+
   // Profil partagé sans prénom choisi pour cette visite : la session est fermée
   // et l'on repasse par l'écran d'accueil.
   const sansPrenom =

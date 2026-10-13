@@ -22,11 +22,13 @@ export default async function EspaceLayout({ children }: { children: React.React
     : await supabase.from("familles").select("id, nom, revalide_annee, membre_recherche, directrice_liee, profil_lie").maybeSingle();
   // Campagne annuelle de revalidation des coordonnées (1er août → 30 septembre).
   const { data: campagne } = await supabase.rpc("annee_revalidation");
+  // Membre Événement relié à la famille : le logo propose aussi son espace Événement.
+  const evenement = apercu ? null : ((((await supabase.rpc("membres_evenement_lies")).data ?? []) as { libelle: string; email: string }[])[0] ?? null);
   const aRevalider = !apercu && campagne != null && famille?.revalide_annee !== campagne;
 
   return (
     <div className="flex min-h-full flex-col bg-background md:flex-row">
-      <SidebarFamille famille={famille?.nom ?? ""} apercu={!!apercu} bascule={!apercu && famille ? { prenom: famille.membre_recherche ?? null, directrice: !!famille.directrice_liee, president: famille.profil_lie === "president" } : undefined} />
+      <SidebarFamille famille={famille?.nom ?? ""} apercu={!!apercu} bascule={!apercu && famille ? { prenom: famille.membre_recherche ?? null, directrice: !!famille.directrice_liee, president: famille.profil_lie === "president", evenement } : undefined} />
       <div className="min-w-0 flex-1">
         {apercu && (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-gold/40 bg-gold/15 px-5 py-2 text-[13px] md:px-8">

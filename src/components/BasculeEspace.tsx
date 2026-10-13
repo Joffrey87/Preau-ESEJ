@@ -5,7 +5,14 @@ import Icon from "@/components/Icon";
 import { basculerVers, memoriserSession, type Espace } from "@/lib/basculeEspace";
 
 /** Espaces reliés d'une famille : son Espace famille, la Recherche de fonds (prénom du membre), le profil Directrice ou Président. */
-export type LiensEspace = { famille: string; prenom: string | null; directrice: boolean; president?: boolean };
+export type LiensEspace = {
+  famille: string;
+  prenom: string | null;
+  directrice: boolean;
+  president?: boolean;
+  /** Membre Événement relié à la famille : son compte Événement (adresse interne) et son libellé. */
+  evenement?: { libelle: string; email: string } | null;
+};
 
 /**
  * Choix entre les espaces d'une famille qui a plusieurs profils (Espace famille, Recherche de fonds, Directrice).
@@ -25,6 +32,7 @@ export function PanneauBascule({ actuel, liens }: { actuel: Espace; liens: Liens
     ...(prenom ? [{ espace: "recherche" as Espace, titre: "Recherche de fonds", detail: prenom, icone: "users" }] : []),
     ...(liens.directrice ? [{ espace: "directrice" as Espace, titre: "Directrice", detail: "Bulletins", icone: "graduation" }] : []),
     ...(liens.president ? [{ espace: "president" as Espace, titre: "Président", detail: "Administration de l'ARIL", icone: "ledger" }] : []),
+    ...(liens.evenement ? [{ espace: "evenement" as Espace, titre: "Événement", detail: liens.evenement.libelle, icone: "calendar" }] : []),
   ];
   return (
     <div className="grid gap-1.5">
@@ -37,7 +45,7 @@ export function PanneauBascule({ actuel, liens }: { actuel: Espace; liens: Liens
             disabled={actif || busy !== null}
             onClick={async () => {
               setBusy(o.espace);
-              await basculerVers(o.espace, actuel, { prenom, famille });
+              await basculerVers(o.espace, actuel, { prenom, famille, evenement: liens.evenement?.email ?? null });
             }}
             className={`flex items-center gap-2.5 rounded-lg border px-3 py-2 text-left text-[13px] leading-tight transition-colors ${
               actif ? "border-accent bg-accent-soft font-medium text-accent" : "border-border hover:bg-surface-2 disabled:opacity-60"

@@ -7,7 +7,7 @@ import type { EvenementCaisse, MembreEvenement } from "@/lib/evenement";
 export default async function EvenementsPage() {
   const { supabase, peutModifier } = await sessionEvenement();
   const [{ data: membres }, { data: evenements }] = await Promise.all([
-    supabase.from("evenement_membres").select("id, libelle, prenom, nom, courriel, famille:familles(nom, membre_recherche)").order("libelle"),
+    supabase.from("evenement_membres").select("id, libelle, prenom, nom, courriel").order("libelle"),
     supabase.from("evenements_caisse").select("id, nom, date, responsable_id, caisse_avant, caisse_apres").order("date", { ascending: false }),
   ]);
   return (
@@ -15,7 +15,7 @@ export default async function EvenementsPage() {
       <PageHeader title="Événements" subtitle="Les événements et leur caisse : les recettes = caisse après − caisse avant." />
       <ListeEvenements
         peutModifier={peutModifier}
-        membres={(membres ?? []) as unknown as MembreEvenement[]}
+        membres={(membres ?? []).map((m) => ({ ...m, famille: null })) as MembreEvenement[]}
         evenements={(evenements ?? []) as EvenementCaisse[]}
       />
     </div>

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { NAV } from "@/lib/nav";
-import { pagesAutorisees, roleByEmail } from "@/lib/roles";
+import { estEvenement, pagesAutorisees, roleByEmail } from "@/lib/roles";
 import { ICONES_ROLES, PROFILS_VUE } from "@/lib/vueRole";
 import { MISES_A_JOUR, titreEnAmbre } from "@/lib/misesAJour";
 import { todayISO } from "@/lib/format";
@@ -15,7 +15,8 @@ import { PanneauBascule, type LiensEspace } from "./BasculeEspace";
 import { oublierSessions, type Espace } from "@/lib/basculeEspace";
 
 /** Espace de bascule du profil connecté (Directrice, Président ; sinon Recherche de fonds). */
-const espaceDuRole = (slug?: string): Espace => (slug === "directrice" ? "directrice" : slug === "president" ? "president" : "recherche");
+const espaceDuRole = (slug?: string, email?: string): Espace =>
+  estEvenement(email) ? "evenement" : slug === "directrice" ? "directrice" : slug === "president" ? "president" : "recherche";
 
 // Agencement « rail dense » : menu compact, sections réduites à un fin libellé,
 // tous les liens visibles sans barre de défilement, pas de bandeau supérieur.
@@ -117,7 +118,7 @@ export default function Sidebar({
         {!peutChanger && bascule && choixOuvert && (
           <div className="absolute left-2 right-2 top-full z-30 mt-1 rounded-xl border border-border bg-surface p-2 shadow-lg md:w-[19rem] md:right-auto">
             <div className="px-1.5 pb-1.5 text-[11px] text-muted">Changer d’espace</div>
-            <PanneauBascule actuel={espaceDuRole(roleByEmail(userEmail)?.slug)} liens={bascule} />
+            <PanneauBascule actuel={espaceDuRole(roleByEmail(userEmail)?.slug, userEmail)} liens={bascule} />
           </div>
         )}
 
@@ -179,7 +180,7 @@ export default function Sidebar({
       <nav onClick={(e) => (e.target as HTMLElement).closest("a") && setMenuOuvert(false)} className={`${menuOuvert ? "" : "max-md:hidden"} flex-1 overscroll-contain px-2 pt-2 pb-8 md:min-h-0 md:overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden`}>
         {!peutChanger && bascule && (
           <div className="mb-2 md:hidden">
-            <PanneauBascule actuel={espaceDuRole(roleByEmail(userEmail)?.slug)} liens={bascule} />
+            <PanneauBascule actuel={espaceDuRole(roleByEmail(userEmail)?.slug, userEmail)} liens={bascule} />
           </div>
         )}
         {peutChanger && (

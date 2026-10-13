@@ -78,6 +78,9 @@ export default function LoginPage() {
     } else if (voulu === "directrice" || voulu === "president") {
       setEspace("bureau");
       setEmail(ROLES.find((r) => r.slug === voulu)?.email ?? ROLES[1].email);
+    } else if (voulu === "evenement") {
+      setEspace("evenement");
+      setEmail(q.get("membre") ?? "");
     } else if (voulu === "recherche") {
       setEspace("bureau");
       setEmail(ROLES.find((r) => r.slug === "recherche-fonds")?.email ?? ROLES[1].email);
@@ -150,6 +153,7 @@ export default function LoginPage() {
     // Session gardée pour le va-et-vient Espace famille ↔ Recherche de fonds (logo en haut à gauche).
     if (espace === "famille") await memoriserSession("famille");
     else if (avecPrenom) await memoriserSession("recherche");
+    else if (espace === "evenement") await memoriserSession("evenement");
     else if (adresse === ROLES.find((r) => r.slug === "directrice")?.email) await memoriserSession("directrice");
     else if (adresse === ROLES.find((r) => r.slug === "president")?.email) await memoriserSession("president");
 

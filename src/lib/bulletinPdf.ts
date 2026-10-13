@@ -119,7 +119,7 @@ export async function construireBulletinsPdf(syntheses: Synthese[]): Promise<Uin
       centre("Moyenne", cols.moy + 20, top + 12, semi, 8, BLANC);
       centre("Classe", cols.classe + 20, top + 12, semi, 8, BLANC);
       if (avecRang) centre("Rang", cols.rang + 15, top + 12, semi, 8, BLANC);
-      texte("Commentaire", cols.com + 6, top + 12, semi, 8, BLANC);
+      texte("Appréciation", cols.com + 6, top + 12, semi, 8, BLANC);
       top += 18;
     };
     const chiffres = (c: Synthese["general"], t: number, font: PDFFont, color: RGB) => {

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import BoutonFiltresMultiples, { CasePastille } from "@/components/BoutonFiltresMultiples";
 import { useFiltresMultiples } from "@/lib/filtresMultiples";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { Modal, Field, FormFooter, inputCls } from "./GestionComptes";
 import { formatDate } from "@/lib/format";
@@ -72,6 +73,7 @@ export default function GestionCarnet({
   roleSlug = null,
   relations = [],
   rechercheInitiale = "",
+  famillesLiees,
 }: {
   contacts: Contact[];
   canVoirIban: boolean;
@@ -82,6 +84,8 @@ export default function GestionCarnet({
   relations?: string[];
   /** Recherche pré-remplie (lien depuis l'onglet Frais de scolarité : nom de famille). */
   rechercheInitiale?: string;
+  /** Familles de l'école liées aux fiches (id -> nom et enfants scolarisés). */
+  famillesLiees?: Record<string, { nom: string; enfants: string[] }>;
 }) {
   const router = useRouter();
   const contacts = useMemo(
@@ -315,7 +319,19 @@ export default function GestionCarnet({
             ) : (
               liste.map((c) => (
                 <tr key={c.id} className="border-b border-border last:border-0 align-top">
-                  <td className="px-4 py-3 font-medium">{nomAffiche(c)}</td>
+                  <td className="px-4 py-3 font-medium">
+                    {nomAffiche(c)}
+                    {c.famille_id && famillesLiees?.[c.famille_id] && (
+                      <div className="mt-0.5 text-xs font-normal text-muted">
+                        Famille {famillesLiees[c.famille_id].nom}
+                        {famillesLiees[c.famille_id].enfants.length > 0 && <> · Enfants : {famillesLiees[c.famille_id].enfants.join(", ")}</>}
+                        {" · "}
+                        <Link href="/scolarite" className="text-accent hover:underline">
+                          Frais de scolarité
+                        </Link>
+                      </div>
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-wrap gap-1">
                       {c.famille_statut && (

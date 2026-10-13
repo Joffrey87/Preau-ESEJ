@@ -42,6 +42,8 @@ export default function Bulletins({
   const [periodeId, setPeriodeId] = useState<string | null>(initial.periode ?? null);
   const [onglet, setOnglet] = useState<Onglet>((["bulletins", "conseil", "notes", "absences", "parametres"].includes(initial.onglet ?? "") ? initial.onglet : "bulletins") as Onglet);
   const [bulletinId, setBulletinId] = useState<string | null>(initial.bulletin ?? null);
+  // Bulletin ouvert depuis le Conseil de classe : bouton de retour au Conseil.
+  const [depuisConseil, setDepuisConseil] = useState(false);
   const [ctx, setCtx] = useState<ContexteClasse | null>(null);
   const [chargement, setChargement] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
@@ -196,6 +198,7 @@ export default function Bulletins({
                   onClick={() => {
                     setOnglet(o.v);
                     setBulletinId(null);
+                    setDepuisConseil(false);
                   }}
                   className={`rounded-md px-3 py-1.5 text-[13px] font-medium ${onglet === o.v ? "bg-accent text-accent-fg" : "text-foreground hover:bg-surface-2"}`}
                 >
@@ -228,6 +231,7 @@ export default function Bulletins({
               onOuvrir={(id) => {
                 setOnglet("bulletins");
                 setBulletinId(id);
+                setDepuisConseil(true);
               }}
             />
           ) : onglet === "absences" ? (
@@ -235,7 +239,21 @@ export default function Bulletins({
           ) : onglet === "notes" ? (
             <SaisieNotes ctx={ctx} resultats={resultats} droits={droits} enseignants={enseignants} onMaj={setCtx} />
           ) : bulletinId && resultats.some((r) => r.bulletin?.id === bulletinId) ? (
-            <FicheBulletin
+            <>
+              {depuisConseil && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setOnglet("conseil");
+                    setBulletinId(null);
+                    setDepuisConseil(false);
+                  }}
+                  className="mb-3 rounded-lg border border-border bg-surface px-3 py-1.5 text-[13px] font-medium text-accent hover:bg-accent-soft"
+                >
+                  ← Retour au Conseil de classe
+                </button>
+              )}
+              <FicheBulletin
               ctx={ctx}
               resultats={resultats}
               bulletinId={bulletinId}
@@ -246,6 +264,7 @@ export default function Bulletins({
               onMaj={setCtx}
               onRecharger={recharger}
             />
+            </>
           ) : (
             <ListeBulletins
               ctx={ctx}

@@ -15,6 +15,7 @@ import {
   type ResultatEleve,
 } from "@/lib/bulletins";
 import type { Droits } from "./Bulletins";
+import { AppreciationsEleveParEleve, ChampAppreciation, enregistrerAppreciation, raisonVerrou } from "./Appreciations";
 
 const ETATS: Record<string, Note["etat"]> = { abs: "absent", a: "absent", disp: "dispense", d: "dispense", nr: "non_rendu" };
 const ETAT_COURT: Record<string, string> = { absent: "abs", dispense: "disp", non_rendu: "nr" };
@@ -47,6 +48,8 @@ export default function SaisieNotes({
   const matiere = matieres.find((m) => m.id === matiereId) ?? matieres[0];
   const [nouvelle, setNouvelle] = useState<Partial<Evaluation> | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  // Grille (notes + appréciations) ou saisie des appréciations élève par élève.
+  const [vue, setVue] = useState<"grille" | "eleve">("grille");
 
   if (!matiere) return <p className="text-sm text-muted">Aucune matière dans cette classe.</p>;
   const peutNoter = droits.peutNoter(matiere);
@@ -171,6 +174,23 @@ export default function SaisieNotes({
             + Évaluation
           </button>
         )}
+        <div className={`flex gap-1 rounded-lg bg-surface-2 p-1 ${peutNoter && !nouvelle ? "" : "ml-auto"}`}>
+          {(
+            [
+              ["grille", "Grille"],
+              ["eleve", "Élève par élève"],
+            ] as const
+          ).map(([v, l]) => (
+            <button
+              key={v}
+              type="button"
+              onClick={() => setVue(v)}
+              className={`rounded-md px-2.5 py-1 text-[12.5px] font-medium ${vue === v ? "bg-surface text-accent shadow-sm" : "text-muted hover:text-foreground"}`}
+            >
+              {l}
+            </button>
+          ))}
+        </div>
         {!peutNoter && <span className="ml-auto text-[12px] text-muted">Consultation seule : cette matière ne vous est pas attribuée.</span>}
       </div>
 
@@ -199,6 +219,9 @@ export default function SaisieNotes({
 
       {message && <p className="rounded-lg bg-negative/10 px-3 py-1.5 text-[13px] text-negative">{message}</p>}
 
+      {vue === "eleve" ? (
+        <AppreciationsEleveParEleve sb={sb} ctx={ctx} matiere={matiere} lignes={lignes} evals={evals} notes={notes} droits={droits} onMaj={onMaj} />
+      ) : (
       <div className="overflow-x-auto rounded-xl border border-border bg-surface">
         <table className="text-[13px]">
           <thead>
@@ -210,6 +233,7 @@ export default function SaisieNotes({
                 </th>
               ))}
               <th className="min-w-24 border-l border-border bg-surface-2/60 px-2 py-2 text-center font-medium uppercase tracking-wide">Moyenne</th>
+              <th className="min-w-72 border-l border-border px-2 py-2 text-left font-medium uppercase tracking-wide">Appréciation</th>
             </tr>
           </thead>
           <tbody>
@@ -241,12 +265,22 @@ export default function SaisieNotes({
                     {note20(m?.chiffre.moy ?? null)}
                     {m?.ligne?.moyenne_saisie != null && <span className="ml-1 text-[10px] font-normal text-gold">saisie</span>}
                   </td>
+                  <td className="border-l border-border px-2 py-1 align-top">
+                    <ChampAppreciation
+                      key={`${r.bulletin?.id ?? r.eleve.id}:${matiere.id}`}
+                      valeur={m?.ligne?.commentaire ?? ""}
+                      disabled={!!raisonVerrou(droits, matiere, r)}
+                      raison={raisonVerrou(droits, matiere, r)}
+                      lignes={1}
+                      onEnregistrer={(t) => (r.bulletin ? enregistrerAppreciation(sb, onMaj, r.bulletin.id, matiere.id, t) : Promise.resolve("Bulletin pas encore créé."))}
+                    />
+                  </td>
                 </tr>
               );
             })}
             {!lignes.length && (
               <tr>
-                <td colSpan={evals.length + 2} className="px-3 py-6 text-center text-muted">
+                <td colSpan={evals.length + 3} className="px-3 py-6 text-center text-muted">
                   Aucun élève concerné par cette matière.
                 </td>
               </tr>
@@ -254,6 +288,7 @@ export default function SaisieNotes({
           </tbody>
         </table>
       </div>
+      )}
       <p className="text-[11.5px] text-muted">
         Saisie : un nombre (virgule acceptée), ou <strong>abs</strong> (absent), <strong>disp</strong> (dispensé), <strong>nr</strong> (non rendu) — ces trois-là ne comptent pas
         dans la moyenne. Entrée ou ↓ : élève suivant. Les évaluations sont ramenées sur 20 et pondérées par leur coefficient.

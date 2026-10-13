@@ -8,17 +8,18 @@ import { ROLES, roleByEmail } from "@/lib/roles";
 export const COOKIE_VUE = "vue_en_tant_que";
 
 /** Seul le Trésorier dispose de la vue « en tant que ». */
-export function peutChangerDeVue(emailReel?: string | null): boolean {
-  return roleByEmail(emailReel)?.slug === "tresorier";
+export function peutChangerDeVue(emailReel?: string | null, webmestre?: boolean): boolean {
+  // Le Webmestre (base) ; à défaut d'information, le Trésorier comme avant.
+  return webmestre ?? roleByEmail(emailReel)?.slug === "tresorier";
 }
 
 /**
  * Adresse « effective » : celle du profil simulé si le Trésorier en a choisi un,
  * sinon l'adresse réelle. Tout contrôle d'affichage (menu, pages) s'appuie dessus.
  */
-export function emailEffectif(emailReel: string | null | undefined, slugVue?: string | null): string | undefined {
+export function emailEffectif(emailReel: string | null | undefined, slugVue?: string | null, webmestre?: boolean): string | undefined {
   if (!emailReel) return undefined;
-  if (!slugVue || !peutChangerDeVue(emailReel)) return emailReel;
+  if (!slugVue || !peutChangerDeVue(emailReel, webmestre)) return emailReel;
   return ROLES.find((r) => r.slug === slugVue)?.email ?? emailReel;
 }
 

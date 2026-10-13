@@ -21,6 +21,8 @@ export type Contact = {
   relation: string | null;
   /** Famille de l'école : « actuelle » (inscrite cette année) ou « ancienne ». */
   famille_statut?: "actuelle" | "ancienne" | null;
+  /** Famille de l'école liée à cette fiche (ajout d'un élève, Paramètres des bulletins). */
+  famille_id?: string | null;
   supprime_le: string | null;
   supprime_par: string | null;
 };

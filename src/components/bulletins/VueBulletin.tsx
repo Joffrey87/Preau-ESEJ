@@ -43,7 +43,7 @@ export default function VueBulletin({ s }: { s: Synthese }) {
                 <th className="px-2 py-2 text-center font-medium">Moyenne</th>
                 <th className="px-2 py-2 text-center font-medium">Classe</th>
                 {avecRang && <th className="px-2 py-2 text-center font-medium">Rang</th>}
-                <th className="px-3 py-2 font-medium">Commentaire</th>
+                <th className="px-3 py-2 font-medium">Appréciation</th>
               </tr>
             </thead>
             <tbody>

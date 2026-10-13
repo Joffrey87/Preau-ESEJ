@@ -9,12 +9,19 @@ import Icon from "./Icon";
 import BasculeTheme from "./BasculeTheme";
 import { PanneauBascule } from "./BasculeEspace";
 
-const NAV = [
-  { href: "/espace", label: "Tableau de bord", icon: "dashboard", exact: true },
-  { href: "/espace/paiements", label: "Paiements", icon: "invoice", exact: false },
-  { href: "/espace/bulletins", label: "Bulletins", icon: "bulletin", exact: false },
-  { href: "/espace/absences", label: "Absences", icon: "calendar", exact: false },
-  { href: "/espace/famille", label: "Ma famille", icon: "maison", exact: false },
+type Lien = { href: string; label: string; icon: string; exact: boolean };
+/** Menu par sections : Tableau de bord seul en haut, puis École, Finance, Informations. */
+const NAV: { titre: string | null; liens: Lien[] }[] = [
+  { titre: null, liens: [{ href: "/espace", label: "Tableau de bord", icon: "dashboard", exact: true }] },
+  {
+    titre: "École",
+    liens: [
+      { href: "/espace/bulletins", label: "Bulletins", icon: "bulletin", exact: false },
+      { href: "/espace/absences", label: "Absences", icon: "calendar", exact: false },
+    ],
+  },
+  { titre: "Finance", liens: [{ href: "/espace/paiements", label: "Paiements", icon: "invoice", exact: false }] },
+  { titre: "Informations", liens: [{ href: "/espace/famille", label: "Ma famille", icon: "maison", exact: false }] },
 ];
 
 /**
@@ -117,8 +124,11 @@ export default function SidebarFamille({
             <PanneauBascule actuel="famille" liens={liens} />
           </div>
         )}
+        {NAV.map((section) => (
+          <div key={section.titre ?? "accueil"} className={section.titre ? "mt-3" : ""}>
+            {section.titre && <div className="px-2.5 pb-1 text-[10.5px] font-semibold uppercase tracking-wide text-muted">{section.titre}</div>}
         <ul>
-          {NAV.map((item) => {
+          {section.liens.map((item) => {
             const actif = item.exact ? pathname === item.href : pathname.startsWith(item.href);
             return (
               <li key={item.href}>
@@ -135,6 +145,8 @@ export default function SidebarFamille({
             );
           })}
         </ul>
+          </div>
+        ))}
       </nav>
 
       {!apercu && (

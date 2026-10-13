@@ -5,7 +5,8 @@ import CoffreProvider from "@/components/CoffreProvider";
 import { createClient } from "@/lib/supabase/server";
 import AideFlottante from "@/components/AideFlottante";
 import { COOKIE_PRENOM, pagesAutorisees, roleByEmail } from "@/lib/roles";
-import { peutChangerDeVue } from "@/lib/vueRole";
+import { COOKIE_VUE, peutChangerDeVue } from "@/lib/vueRole";
+import type { ContexteAcces } from "@/lib/acces";
 import { emailVue } from "@/lib/vueRoleServeur";
 import Icon from "@/components/Icon";
 import JaugeDons, { type DonsExercice } from "@/components/JaugeDons";
@@ -28,10 +29,17 @@ export default async function AppLayout({
 
   // Profil Recherche de fonds : la jauge des dons en haut de chaque onglet.
   // Le Trésorier peut voir l'application « en tant que » un autre profil (vue seulement).
-  const emailAffiche = (await emailVue(user.email)) ?? user.email;
-  const peutChanger = peutChangerDeVue(user.email);
+  // Droits réglés par le Webmestre (onglets masqués, lien vers la page Webmestre).
+  const jar = await cookies();
+  const { data: ctx } = await supabase.rpc("acces_contexte", {
+    p_vue: jar.get(COOKIE_VUE)?.value ?? null,
+    p_personne: decodeURIComponent(jar.get(COOKIE_PRENOM)?.value ?? "") || null,
+  });
+  const acces = (ctx as ContexteAcces | null) ?? null;
+  const emailAffiche = (await emailVue(user.email, acces?.webmestre)) ?? user.email;
+  const peutChanger = peutChangerDeVue(user.email, acces?.webmestre);
   const roleVu = roleByEmail(emailAffiche);
-  const enVue = peutChanger && roleVu?.slug !== "tresorier";
+  const enVue = peutChanger && !!roleVu && roleVu.email !== user.email;
   const rechercheFonds = roleVu?.slug === "recherche-fonds";
   // Profil « Famille » : le Trésorier choisit la famille à voir (aperçu de son espace).
   const familles = peutChanger
@@ -62,8 +70,10 @@ export default async function AppLayout({
           userEmail={emailAffiche ?? ""}
           peutChanger={peutChanger}
           familles={familles}
-          slugActif={roleVu?.slug ?? "tresorier"}
+          slugActif={roleVu?.slug ?? ""}
           bascule={bascule}
+          niveaux={acces?.niveaux}
+          webmestre={!!acces?.webmestre}
         />
         <main className="flex-1 min-w-0">
           {enVue && (
@@ -71,11 +81,10 @@ export default async function AppLayout({
               <Icon name="info" className="h-4 w-4 shrink-0 text-gold" />
               <span>
                 Vue en tant que <strong>{roleVu?.label}</strong> — simple aperçu de l’affichage : vos droits réels
-                restent ceux du Trésorier.
+                restent ceux de votre profil.
               </span>
-              {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- route qui pose un cookie puis redirige */}
-              <a href="/changer-profil/tresorier" className="ml-auto font-medium text-accent hover:underline">
-                Revenir au Trésorier
+              <a href={`/changer-profil/${slugReel ?? "tresorier"}`} className="ml-auto font-medium text-accent hover:underline">
+                Revenir à mon profil
               </a>
             </div>
           )}

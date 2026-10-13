@@ -13,8 +13,9 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
 
   const role = ROLES.find((r) => r.slug === slug);
   const reponse = NextResponse.redirect(new URL(role ? (PAGES_RESTREINTES[slug]?.[0] ?? "/") : "/", request.url));
-  if (!peutChangerDeVue(user?.email)) return reponse;
-  if (role && slug !== "tresorier") {
+  const { data: estWeb } = await supabase.rpc("est_webmestre");
+  if (!peutChangerDeVue(user?.email, typeof estWeb === "boolean" ? estWeb : undefined)) return reponse;
+  if (role && role.email !== user?.email) {
     reponse.cookies.set(COOKIE_VUE, slug, { path: "/", httpOnly: true, sameSite: "lax" });
   } else {
     reponse.cookies.delete(COOKIE_VUE);

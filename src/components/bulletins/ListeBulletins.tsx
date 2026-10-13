@@ -229,7 +229,7 @@ export default function ListeBulletins({
                   <td className="px-2 py-2">
                     <Jauge valeur={av.notees} total={av.total} titre={`${av.notees} matière(s) notée(s) sur ${av.total}`} />
                     <div className="text-[10.5px] text-muted">
-                      {av.notees}/{av.total} notées · {av.commentaires} commentaire{av.commentaires > 1 ? "s" : ""}
+                      {av.notees}/{av.total} notées · {av.commentaires} appréciation{av.commentaires > 1 ? "s" : ""}
                     </div>
                   </td>
                   <td className="px-2 py-2 text-[12px]">

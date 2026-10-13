@@ -23,6 +23,7 @@ import { telechargerBulletins } from "@/lib/bulletinPdf";
 import type { Droits } from "./Bulletins";
 import VueBulletin from "./VueBulletin";
 import { PastilleStatut, dateFr, syntheseDe } from "./outils";
+import { LIMITE_APPRECIATION } from "./Appreciations";
 
 /** Un bulletin : commentaires, moyennes, mention et appréciation, enregistrés au fil de la saisie. */
 export default function FicheBulletin({
@@ -215,7 +216,7 @@ export default function FicheBulletin({
                   <th className="w-24 px-2 py-2 text-center font-medium">Moyenne</th>
                   <th className="w-16 px-2 py-2 text-center font-medium">Classe</th>
                   {avecRang && <th className="w-12 px-2 py-2 text-center font-medium">Rang</th>}
-                  <th className="px-3 py-2 font-medium">Commentaire</th>
+                  <th className="px-3 py-2 font-medium">Appréciation</th>
                 </tr>
               </thead>
               <tbody>
@@ -262,7 +263,8 @@ export default function FicheBulletin({
                               key={`${b.id}:${m.matiere.id}`}
                               valeur={m.ligne?.commentaire ?? ""}
                               disabled={!editable}
-                              placeholder={editable ? "Commentaire…" : ""}
+                              placeholder={editable ? "Appréciation…" : ""}
+                              max={LIMITE_APPRECIATION}
                               onEnregistrer={(v) => enregistrerLigne(m.matiere, { commentaire: v || null })}
                             />
                           </td>
@@ -345,6 +347,7 @@ export function ChampTexte({
   placeholder,
   lignes = 1,
   compteur = false,
+  max,
 }: {
   valeur: string;
   onEnregistrer: (v: string) => void;
@@ -352,6 +355,8 @@ export function ChampTexte({
   placeholder?: string;
   lignes?: number;
   compteur?: boolean;
+  /** Longueur maximale (appréciation de matière : LIMITE_APPRECIATION). */
+  max?: number;
 }) {
   const [texte, setTexte] = useState(valeur);
   return (
@@ -360,11 +365,13 @@ export function ChampTexte({
         value={texte}
         disabled={disabled}
         placeholder={placeholder}
+        maxLength={max}
         rows={Math.max(lignes, Math.min(6, Math.ceil(texte.length / 70)))}
         onChange={(e) => setTexte(e.target.value)}
         onBlur={() => texte.trim() !== valeur.trim() && onEnregistrer(texte.trim())}
         className="w-full resize-y rounded-md border border-transparent bg-transparent px-1.5 py-1 text-[13px] leading-snug outline-none hover:border-border focus:border-accent focus:bg-background disabled:hover:border-transparent"
       />
+      {max && !disabled && texte.length > max * 0.8 && <div className="text-right text-[10.5px] text-muted">{texte.length}/{max}</div>}
       {compteur && <div className="text-right text-[10.5px] text-muted">{texte.length} caractères</div>}
     </div>
   );

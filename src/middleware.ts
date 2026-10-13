@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
-import { COOKIE_PRENOM, ROLES_PRENOM_A_L_ACCES, pageReserveeInterdite, pagesAutorisees, roleByEmail } from "@/lib/roles";
+import { COOKIE_PRENOM, ROLES_PRENOM_A_L_ACCES, pageReserveeInterdite, estProfesseur, pagesAutorisees, roleByEmail } from "@/lib/roles";
+import { PAGE_WEBMESTRE, niveauDuChemin, premierePage, type ContexteAcces } from "@/lib/acces";
 import { COOKIE_VUE, emailEffectif } from "@/lib/vueRole";
 
 // Rafraîchit la session et protège toutes les routes : sans session,
@@ -65,26 +66,46 @@ export async function middleware(request: NextRequest) {
   }
 
   // Vue « en tant que » (Trésorier) : les restrictions d'accès suivent le profil simulé.
-  const emailVue = emailEffectif(user?.email, request.cookies.get(COOKIE_VUE)?.value);
+  // Droits réglés par le Webmestre (tables acces_*) ; en cas d'erreur, les règles du code s'appliquent comme avant.
+  let acces: ContexteAcces | null = null;
+  if (user && !estFamille && !estProfesseur(user.email)) {
+    const { data, error } = await supabase.rpc("acces_contexte", {
+      p_vue: request.cookies.get(COOKIE_VUE)?.value ?? null,
+      p_personne: decodeURIComponent(request.cookies.get(COOKIE_PRENOM)?.value ?? "") || null,
+    });
+    if (!error && data) acces = data as ContexteAcces;
+  }
+  const emailVue = emailEffectif(user?.email, request.cookies.get(COOKIE_VUE)?.value, acces?.webmestre);
   if (user && request.nextUrl.pathname.startsWith("/changer-profil")) return response;
 
   // Profil restreint (ex. Recherche de fonds) : ses seules pages.
   const pages = user ? pagesAutorisees(emailVue) : null;
+  const chemin0 = request.nextUrl.pathname;
+  const niveau = acces ? niveauDuChemin(acces.niveaux, chemin0) : null;
+  const versWebmestre = chemin0 === PAGE_WEBMESTRE || chemin0.startsWith(PAGE_WEBMESTRE + "/");
+  // Page du catalogue (ou page Webmestre) : la base décide ; sinon, règles du code.
+  const parBase = !!user && !estFamille && (niveau !== null || versWebmestre);
+  if (user && !estFamille && versWebmestre && !acces?.webmestre) {
+    return NextResponse.redirect(Object.assign(request.nextUrl.clone(), { pathname: "/", search: "" }));
+  }
+  if (parBase && niveau === "masque" && acces && !isAuthRoute) {
+    return NextResponse.redirect(Object.assign(request.nextUrl.clone(), { pathname: premierePage(acces.niveaux), search: "" }));
+  }
 
   if (user && isAuthRoute) {
     const url = request.nextUrl.clone();
-    url.pathname = estFamille ? "/espace" : (pages?.[0] ?? "/");
+    url.pathname = estFamille ? "/espace" : acces ? premierePage(acces.niveaux) : (pages?.[0] ?? "/");
     return NextResponse.redirect(url);
   }
 
-  if (user && !estFamille && pageReserveeInterdite(emailVue, request.nextUrl.pathname)) {
+  if (!parBase && user && !estFamille && pageReserveeInterdite(emailVue, request.nextUrl.pathname)) {
     const url = request.nextUrl.clone();
     url.pathname = "/";
     url.search = "";
     return NextResponse.redirect(url);
   }
 
-  if (pages) {
+  if (pages && !parBase) {
     const chemin = request.nextUrl.pathname;
     const autorise = pages.some((p) => chemin === p || chemin.startsWith(p + "/"));
     if (!autorise) {

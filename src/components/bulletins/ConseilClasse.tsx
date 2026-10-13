@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { MENTIONS, mentionLabel, nomEleve, note20, rangTexte, type Bulletin, type Chiffre, type ContexteClasse, type Mention, type ResultatEleve } from "@/lib/bulletins";
 import type { Droits } from "./Bulletins";
@@ -31,6 +31,25 @@ export default function ConseilClasse({
   const sb = useMemo(() => createClient(), []);
   const [ouvert, setOuvert] = useState<string | null>(null);
   const [etat, setEtat] = useState<string | null>(null);
+  const defilementRef = useRef<HTMLDivElement>(null);
+
+  // Molette : défilement horizontal du tableau quand il ne défile qu'horizontalement. Aux bords, la page défile
+  // normalement ; les gestes horizontaux (pavé tactile) et Maj+molette gardent leur comportement natif.
+  useEffect(() => {
+    const el = defilementRef.current;
+    if (!el) return;
+    const surMolette = (e: WheelEvent) => {
+      if (e.shiftKey || Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+      if (el.scrollWidth <= el.clientWidth || el.scrollHeight > el.clientHeight) return;
+      const max = el.scrollWidth - el.clientWidth;
+      if ((e.deltaY < 0 && el.scrollLeft <= 0) || (e.deltaY > 0 && el.scrollLeft >= max - 1)) return;
+      // deltaMode 1 = lignes (certaines souris) : environ 16 px par ligne.
+      el.scrollLeft += e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+      e.preventDefault();
+    };
+    el.addEventListener("wheel", surMolette, { passive: false });
+    return () => el.removeEventListener("wheel", surMolette);
+  }, [ctx, resultats]);
 
   // Colonnes : chaque groupe, ses matières (toutes celles de la classe, quel que soit le niveau), puis sa moyenne.
   const colonnes = useMemo(
@@ -73,7 +92,7 @@ export default function ConseilClasse({
         <span className="text-positive">● 16 et plus</span>
         {etat && <span className="ml-auto">{etat}</span>}
       </div>
-      <div className="overflow-x-auto rounded-xl border border-border bg-surface">
+      <div ref={defilementRef} className="overflow-x-auto rounded-xl border border-border bg-surface">
         <table className="text-[12.5px]">
           <thead>
             <tr className="text-[10.5px] uppercase tracking-wide text-muted">
@@ -129,7 +148,23 @@ export default function ConseilClasse({
                   return (
                     <Fragment key={r.eleve.id}>
                       <tr onClick={() => b && setOuvert(actif ? null : b.id)} className={`cursor-pointer border-t border-border/60 ${actif ? "bg-accent-soft/50" : "hover:bg-surface-2/60"}`}>
-                        <td className={`sticky left-0 z-10 px-3 py-1 font-medium ${actif ? "bg-accent-soft" : "bg-surface"}`}>{nomEleve(r.eleve)}</td>
+                        <td className={`sticky left-0 z-10 px-3 py-1 font-medium ${actif ? "bg-accent-soft" : "bg-surface"}`}>
+                          {b ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onOuvrir(b.id);
+                              }}
+                              className="text-left hover:text-accent hover:underline"
+                              title="Ouvrir le bulletin"
+                            >
+                              {nomEleve(r.eleve)}
+                            </button>
+                          ) : (
+                            nomEleve(r.eleve)
+                          )}
+                        </td>
                         {colonnes.map(({ g, ms }) => (
                           <Fragment key={g.id}>
                             {ms.map((m) => (

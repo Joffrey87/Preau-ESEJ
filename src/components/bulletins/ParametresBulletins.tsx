@@ -5,6 +5,38 @@ import { createClient } from "@/lib/supabase/client";
 import { CLASSES } from "@/lib/eleves";
 import { libellePeriode, niveauDe, nomEleve, nomEnseignant, type Classe, type EleveBulletin, type Enseignant, type Groupe, type Matiere, type Periode } from "@/lib/bulletins";
 import type { Referentiel } from "@/lib/bulletinsDonnees";
+import { Modal, Field, inputCls } from "@/components/GestionComptes";
+
+/** Informations d'une nouvelle famille : toutes facultatives (rien ne bloque la création). */
+type InfosFamille = {
+  nom: string;
+  parent1_prenom: string;
+  parent1_nom: string;
+  parent1_telephone: string;
+  parent1_courriel: string;
+  parent2_prenom: string;
+  parent2_nom: string;
+  parent2_telephone: string;
+  parent2_courriel: string;
+  adresse: string;
+  cp_ville: string;
+};
+/** Famille : id d'une famille existante, ou NOUVELLE (décrite par `infos`). */
+type Ajout = { famille: string; prenom: string; nom: string; niveau: string; infos?: InfosFamille };
+const NOUVELLE = "__nouvelle";
+const infosVides = (nom: string): InfosFamille => ({
+  nom,
+  parent1_prenom: "",
+  parent1_nom: "",
+  parent1_telephone: "",
+  parent1_courriel: "",
+  parent2_prenom: "",
+  parent2_nom: "",
+  parent2_telephone: "",
+  parent2_courriel: "",
+  adresse: "",
+  cp_ville: "",
+});
 
 type Section = "classes" | "matieres" | "enseignants" | "periodes";
 const classeChamp = "rounded-md border border-border bg-background px-2 py-1 text-[13px] outline-none focus:border-accent";
@@ -102,7 +134,15 @@ export default function ParametresBulletins({
               familles={familles}
               onAjouterEleve={(p) =>
                 ecrire(
-                  sb.rpc("eleve_ajouter", { p_famille: p.famille, p_prenom: p.prenom, p_nom: p.nom, p_niveau: p.niveau, p_annee: annee, p_classe: c.id }),
+                  sb.rpc("eleve_ajouter", {
+                    p_famille: p.famille && p.famille !== NOUVELLE ? p.famille : null,
+                    p_prenom: p.prenom,
+                    p_nom: p.nom,
+                    p_niveau: p.niveau,
+                    p_annee: annee,
+                    p_classe: c.id,
+                    p_famille_infos: p.famille && p.famille !== NOUVELLE ? null : (p.infos ?? infosVides(p.nom)),
+                  }),
                 )
               }
               onModifier={(p) => ecrire(sb.from("classes").update(p).eq("id", c.id), "tout")}
@@ -356,14 +396,14 @@ function CarteClasse({
   membres: { classe_id: string; eleve_id: string }[];
   classes: Classe[];
   familles: { id: string; nom: string }[];
-  onAjouterEleve: (p: { famille: string; prenom: string; nom: string; niveau: string }) => Promise<boolean>;
+  onAjouterEleve: (p: Ajout) => Promise<boolean>;
   onModifier: (p: Partial<Classe>) => void;
   onEleve: (eleveId: string, dedans: boolean) => void;
   onNomUsage: (eleveId: string, nom: string) => void;
   onSupprimer: () => void;
 }) {
   const [elevesOuverts, setElevesOuverts] = useState(false);
-  const [ajout, setAjout] = useState<{ famille: string; prenom: string; nom: string; niveau: string } | null>(null);
+  const [ajout, setAjout] = useState<Ajout | null>(null);
   const dedans = new Set(membres.filter((m) => m.classe_id === c.id).map((m) => m.eleve_id));
   const classeDe = (id: string) => classes.find((x) => x.id === membres.find((m) => m.eleve_id === id && m.classe_id !== c.id)?.classe_id)?.nom;
   const scolarises = eleves.filter((e) => niveauDe(e, c.annee_scolaire) !== null);
@@ -460,8 +500,9 @@ function CarteClasse({
 }
 
 /**
- * Nouvel élève : toujours rattaché à une famille existante (celle de la scolarité et de l'Espace famille, qui
- * voit ainsi ses bulletins), inscrit dans cette classe, au niveau choisi pour l'année.
+ * Nouvel élève, inscrit dans cette classe au niveau choisi pour l'année. Aucune contrainte sur la famille : une
+ * famille existante, ou une nouvelle (fenêtre facultative). Il apparaît dans l'Espace famille et la fiche du Carnet
+ * d'adresses de sa famille ; une nouvelle famille est aussi ajoutée aux Frais de scolarité.
  */
 function AjoutEleve({
   ajout,
@@ -471,15 +512,18 @@ function AjoutEleve({
   onAnnuler,
   onValider,
 }: {
-  ajout: { famille: string; prenom: string; nom: string; niveau: string };
+  ajout: Ajout;
   familles: { id: string; nom: string }[];
   niveaux: string[];
-  onChange: (a: { famille: string; prenom: string; nom: string; niveau: string }) => void;
+  onChange: (a: Ajout) => void;
   onAnnuler: () => void;
   onValider: () => void;
 }) {
   const [envoi, setEnvoi] = useState(false);
-  const pret = ajout.famille && ajout.prenom.trim() && ajout.niveau;
+  const [fenetre, setFenetre] = useState<InfosFamille | null>(null);
+  // Seuls le prénom et le niveau sont nécessaires : sans famille choisie, une nouvelle famille est créée.
+  const pret = ajout.prenom.trim() && ajout.niveau;
+  const nouvelle = ajout.famille === NOUVELLE || !ajout.famille;
   return (
     <div className="flex flex-wrap items-end gap-2 rounded-lg border border-border bg-surface-2/50 p-2">
       <label className="grid gap-0.5 text-[11px] text-muted">
@@ -487,14 +531,19 @@ function AjoutEleve({
         <select
           value={ajout.famille}
           onChange={(e) => {
+            if (e.target.value === NOUVELLE) {
+              setFenetre(ajout.infos ?? infosVides(ajout.nom));
+              return;
+            }
             const f = familles.find((x) => x.id === e.target.value);
             // Le nom suit la famille tant qu'il n'a pas été changé à la main.
             const nomSuit = !ajout.nom || familles.some((x) => x.nom === ajout.nom);
-            onChange({ ...ajout, famille: e.target.value, nom: nomSuit ? (f?.nom ?? "") : ajout.nom });
+            onChange({ ...ajout, famille: e.target.value, infos: undefined, nom: nomSuit ? (f?.nom ?? "") : ajout.nom });
           }}
           className={classeChamp}
         >
           <option value="">Choisir la famille…</option>
+          <option value={NOUVELLE}>{ajout.famille === NOUVELLE ? `Nouvelle famille : ${ajout.infos?.nom || ajout.nom || "sans nom"}` : "+ Nouvelle famille…"}</option>
           {familles.map((f) => (
             <option key={f.id} value={f.id}>
               {f.nom}
@@ -537,9 +586,69 @@ function AjoutEleve({
           Ajouter
         </button>
       </div>
-      <p className="w-full text-[11px] text-muted">
-        La famille doit déjà exister dans Préau (Frais de scolarité) : l&apos;élève apparaît aussitôt dans son Espace famille.
-      </p>
+      {nouvelle && (
+        <p className="w-full text-[11px] text-muted">
+          {ajout.famille === NOUVELLE ? (
+            <button type="button" onClick={() => setFenetre(ajout.infos ?? infosVides(ajout.nom))} className="text-accent hover:underline">
+              Compléter les informations de la nouvelle famille
+            </button>
+          ) : (
+            "Sans famille choisie, une nouvelle famille sera créée au nom indiqué."
+          )}
+        </p>
+      )}
+      {fenetre && (
+        <Modal title="Nouvelle famille" onClose={() => setFenetre(null)}>
+          <div className="grid gap-3">
+            <p className="text-[12.5px] text-muted">
+              Aucune information n&apos;est obligatoire : vous pourrez compléter la fiche plus tard. La famille sera ajoutée aux Frais de scolarité, à l&apos;Espace famille et au Carnet d&apos;adresses.
+            </p>
+            <Field label="Nom de la famille">
+              <input value={fenetre.nom} onChange={(e) => setFenetre({ ...fenetre, nom: e.target.value })} className={inputCls} />
+            </Field>
+            {([1, 2] as const).map((k) => (
+              <div key={k} className="grid gap-2 sm:grid-cols-2">
+                <Field label={`Parent ${k} : prénom`}>
+                  <input value={fenetre[`parent${k}_prenom`]} onChange={(e) => setFenetre({ ...fenetre, [`parent${k}_prenom`]: e.target.value })} className={inputCls} />
+                </Field>
+                <Field label={`Parent ${k} : nom`}>
+                  <input value={fenetre[`parent${k}_nom`]} onChange={(e) => setFenetre({ ...fenetre, [`parent${k}_nom`]: e.target.value })} className={inputCls} />
+                </Field>
+                <Field label={`Parent ${k} : téléphone`}>
+                  <input value={fenetre[`parent${k}_telephone`]} onChange={(e) => setFenetre({ ...fenetre, [`parent${k}_telephone`]: e.target.value })} className={inputCls} />
+                </Field>
+                <Field label={`Parent ${k} : courriel`}>
+                  <input type="email" value={fenetre[`parent${k}_courriel`]} onChange={(e) => setFenetre({ ...fenetre, [`parent${k}_courriel`]: e.target.value })} className={inputCls} />
+                </Field>
+              </div>
+            ))}
+            <div className="grid gap-2 sm:grid-cols-2">
+              <Field label="Adresse">
+                <input value={fenetre.adresse} onChange={(e) => setFenetre({ ...fenetre, adresse: e.target.value })} className={inputCls} />
+              </Field>
+              <Field label="Code postal et ville">
+                <input value={fenetre.cp_ville} onChange={(e) => setFenetre({ ...fenetre, cp_ville: e.target.value })} className={inputCls} />
+              </Field>
+            </div>
+            <div className="flex justify-end gap-2">
+              <button type="button" onClick={() => setFenetre(null)} className="rounded-lg border border-border px-4 py-2 text-sm">
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const nomSuit = !ajout.nom || ajout.nom === ajout.infos?.nom || familles.some((x) => x.nom === ajout.nom);
+                  onChange({ ...ajout, famille: NOUVELLE, infos: fenetre, nom: nomSuit ? fenetre.nom.trim() : ajout.nom });
+                  setFenetre(null);
+                }}
+                className="rounded-lg bg-accent px-4 py-2 text-sm font-medium text-accent-fg"
+              >
+                Valider
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }

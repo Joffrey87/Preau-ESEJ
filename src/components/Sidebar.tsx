@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { NAV } from "@/lib/nav";
+import type { Niveau } from "@/lib/acces";
 import { pagesAutorisees, roleByEmail } from "@/lib/roles";
 import { ICONES_ROLES, PROFILS_VUE } from "@/lib/vueRole";
 import { MISES_A_JOUR, titreEnAmbre } from "@/lib/misesAJour";
@@ -25,6 +26,8 @@ export default function Sidebar({
   slugActif = "",
   familles = [],
   bascule,
+  niveaux,
+  webmestre = false,
 }: {
   userEmail?: string;
   /** Trésorier : le bloc « Préau » ouvre le choix du profil (vue seulement). */
@@ -34,6 +37,10 @@ export default function Sidebar({
   familles?: { id: string; nom: string }[];
   /** Profil relié à un Espace famille (Recherche de fonds, Directrice) : le logo propose le passage de l'un à l'autre. */
   bascule?: LiensEspace;
+  /** Droits réglés par le Webmestre : un onglet masqué disparaît du menu. */
+  niveaux?: Record<string, Niveau>;
+  /** Le profil connecté est Webmestre : le logo mène aussi à la page Webmestre. */
+  webmestre?: boolean;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -124,8 +131,18 @@ export default function Sidebar({
         {peutChanger && choixOuvert && (
           <div className="absolute left-2 right-2 top-full z-30 mt-1 rounded-xl border border-border bg-surface p-2 shadow-lg md:w-[19rem] md:right-auto">
             <div className="px-1.5 pb-1.5 text-[11px] text-muted">
-              Voir l’application en tant que… <span className="text-muted/70">(aperçu : vos droits restent ceux du Trésorier)</span>
+              Voir l’application en tant que… <span className="text-muted/70">(aperçu : vos droits restent ceux de votre profil)</span>
             </div>
+            {webmestre && (
+              <Link
+                href="/webmestre"
+                onClick={() => setChoixOuvert(false)}
+                className="mb-2 flex items-center gap-2 rounded-lg border border-accent bg-accent-soft px-3 py-2 text-[13px] font-medium text-accent hover:opacity-90"
+              >
+                <Icon name="bouclier" className="h-5 w-5" />
+                Page Webmestre
+              </Link>
+            )}
             <div className="grid grid-cols-2 gap-1.5">
               {PROFILS_VUE.map((r) => {
                 const actif = r.slug === slugActif;
@@ -192,7 +209,7 @@ export default function Sidebar({
             <span>Voir en tant que…</span>
           </button>
         )}
-        {navDe(userEmail).map((section, i) => (
+        {navDe(userEmail, niveaux).map((section, i) => (
           <div key={section.title || "accueil"} className={i === 0 ? "" : "mt-2 border-t border-border/70 pt-2"}>
             {section.title && (
               <div className="px-2 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-muted/70">
@@ -290,10 +307,10 @@ export default function Sidebar({
 }
 
 /** Menu du compte : un profil restreint ne voit que ses pages. */
-function navDe(email?: string) {
+function navDe(email?: string, niveaux?: Record<string, Niveau>) {
   const pages = pagesAutorisees(email);
   const slug = roleByEmail(email)?.slug ?? "";
   const visible = (i: (typeof NAV)[number]["items"][number]) =>
-    pages ? pages.includes(i.href) : !i.roles || i.roles.includes(slug);
+    niveaux && i.href in niveaux ? niveaux[i.href] !== "masque" : pages ? pages.includes(i.href) : !i.roles || i.roles.includes(slug);
   return NAV.map((s) => ({ ...s, items: s.items.filter(visible) })).filter((s) => s.items.length > 0);
 }

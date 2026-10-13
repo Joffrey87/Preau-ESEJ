@@ -7,6 +7,7 @@ import { emailVue } from "@/lib/vueRoleServeur";
 import { cookies } from "next/headers";
 import { COOKIE_PRENOM, ROLES_PRENOM_A_L_ACCES, roleByEmail } from "@/lib/roles";
 import { chargerTableauDeBord, type Ton } from "@/lib/tableauDeBord";
+import JaugeDons, { type DonsExercice } from "@/components/JaugeDons";
 
 // Tableau de bord : page d'accueil de chaque profil d'Administration. Les priorités du jour, puis une tuile par onglet
 // du profil avec ses chiffres essentiels (voir lib/tableauDeBord.ts).
@@ -34,6 +35,10 @@ export default async function Home() {
   const prenom = (ROLES_PRENOM_A_L_ACCES.includes(role?.slug ?? "") && prenomVisite ? prenomVisite : (role?.prenom ?? meta.prenom ?? "")).trim();
   const { exercice, tuiles, priorites } = await chargerTableauDeBord(supabase, email, todayISO());
   const finances = tuiles.some((t) => t.href === "/comptabilite");
+  const rechercheFonds = role?.slug === "recherche-fonds";
+  const jauge = rechercheFonds
+    ? ((await supabase.rpc("dons_exercice_courant")).data as DonsExercice)
+    : null;
 
   const now = new Date();
   const dateStr = new Intl.DateTimeFormat("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(now);
@@ -57,6 +62,13 @@ export default async function Home() {
           </p>
         </div>
       </div>
+
+      {/* Recherche de fonds : jauge pleine largeur sous le salut, au-dessus des priorités. */}
+      {rechercheFonds && (
+        <div className="mb-8">
+          <JaugeDons donnees={jauge} aujourdhui={todayISO()} />
+        </div>
+      )}
 
       {/* Priorités du jour : ce qui attend une action, dans les onglets du profil. */}
       <section className="mb-9">

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { usePathname } from "next/navigation";
 import JaugeDonsVue from "./jauge-dons/JaugeDonsVue";
 import { EQUILIBRE_MENSUEL } from "./jauge-dons/config";
 import { preparerJaugeDons } from "./jauge-dons/preparerJaugeDons";
@@ -14,7 +15,17 @@ export type DonsExercice = {
 } | null;
 
 /** Jauge des dons (design « Échelle des tranches ») : calcule les données puis affiche la vue. */
-export default function JaugeDons({ donnees, aujourdhui }: { donnees: DonsExercice; aujourdhui: string }) {
+export default function JaugeDons({
+  donnees,
+  aujourdhui,
+  saufAccueil = false,
+}: {
+  donnees: DonsExercice;
+  aujourdhui: string;
+  /** Masque la jauge sur la page d'accueil (elle y est placée sous le salut). */
+  saufAccueil?: boolean;
+}) {
+  const pathname = usePathname();
   const calcul = useMemo(
     () =>
       donnees
@@ -26,6 +37,7 @@ export default function JaugeDons({ donnees, aujourdhui }: { donnees: DonsExerci
         : null,
     [donnees, aujourdhui],
   );
+  if (saufAccueil && pathname === "/") return null;
   if (!donnees || !calcul) return null;
 
   // Cumul attendu aujourd'hui au rythme de l'équilibre précaire : mois écoulés = jours (inclus) ÷ 30,4375.

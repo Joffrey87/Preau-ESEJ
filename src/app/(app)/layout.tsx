@@ -113,7 +113,7 @@ export default async function AppLayout({
           )}
           {rechercheFonds && (
             <div className="mx-auto max-w-7xl px-5 pt-3 md:px-8">
-              <JaugeDons donnees={jauge} aujourdhui={todayISO()} />
+              <JaugeDons donnees={jauge} aujourdhui={todayISO()} saufAccueil />
             </div>
           )}
           {children}

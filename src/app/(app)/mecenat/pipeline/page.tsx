@@ -48,6 +48,7 @@ export default async function PipelinePage() {
         dons={(donsData ?? []) as Don[]}
         obtenus={obtenus}
         peutLier={["tresorier", "president", "administrateur"].includes(slugVu)}
+        peutModifierDons={slugVu === "tresorier"}
       />
     </div>
   );

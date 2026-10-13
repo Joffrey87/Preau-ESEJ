@@ -59,8 +59,11 @@ export default function DonateursPipeline({
   volet,
   filtreInitial = null,
   carteInitiale = false,
+  peutModifierDons = false,
 }: {
   donsInit: Don[];
+  /** Modification de la relation en ligne (Trésorier, comme les dons). */
+  peutModifierDons?: boolean;
   volet: "fichier" | "campagnes";
   /** Filtre actif à l'ouverture (lien du menu « Mises à jour »). */
   filtreInitial?: string | null;
@@ -79,6 +82,9 @@ export default function DonateursPipeline({
   const router = useRouter();
   const [busyBourse, setBusyBourse] = useState<string | null>(null);
   const [erreurBourse, setErreurBourse] = useState<string | null>(null);
+  // Relation modifiable en ligne : cellule en cours d'édition et état d'enregistrement.
+  const [editRelation, setEditRelation] = useState<{ cle: string; valeur: string } | null>(null);
+  const [relationEtat, setRelationEtat] = useState<{ cle: string; etat: "enregistrement" | "erreur"; message?: string } | null>(null);
 
   const profils = useMemo(
     () => agregerDonateurs(dons as unknown as DonAgg[], today),
@@ -159,6 +165,29 @@ export default function DonateursPipeline({
     const { error } = await createClient().rpc("definir_boursier", { p_ids: ids, p_donateur_bourse: actif, p_don_boursier: actif ? null : false });
     setBusyBourse(null);
     if (error) return setErreurBourse("Enregistrement impossible : " + error.message);
+    router.refresh();
+  }
+
+  /** Don dont la cellule Relation affiche l'origine : même règle que agregerDonateurs. */
+  function donDeRelation(cle: string): Don | null {
+    const tous = [...(donsParCle.get(cle) ?? [])].sort((a, b) => (a.date_don ?? "").localeCompare(b.date_don ?? ""));
+    const ordinaires = tous.filter((x) => !x.don_boursier);
+    const liste = ordinaires.length > 0 ? ordinaires : tous;
+    return [...liste].reverse().find((x) => x.origine && x.origine.trim()) ?? liste[liste.length - 1] ?? null;
+  }
+
+  async function enregistrerRelation(p: ProfilDonateur, valeur: string) {
+    const don = donDeRelation(p.cle);
+    const v = valeur.trim();
+    if (!don || v === (p.origine ?? "").trim()) return setEditRelation(null);
+    setRelationEtat({ cle: p.cle, etat: "enregistrement" });
+    const { data, error } = await createClient().from("dons").update({ origine: v || null }).eq("id", don.id).select("id");
+    if (error || !data?.length) {
+      setRelationEtat({ cle: p.cle, etat: "erreur", message: error?.message ?? "modification refusée" });
+      return;
+    }
+    setEditRelation(null);
+    setRelationEtat(null);
     router.refresh();
   }
 
@@ -356,7 +385,46 @@ export default function DonateursPipeline({
                     </button>
                     {alentours && <div className="text-xs text-muted">≈ {distanceDe(p.cle)} km de Reims</div>}
                   </td>
-                  <td className="px-4 py-3 text-muted">{p.origine?.trim() || "—"}</td>
+                  <td className="px-4 py-3 text-muted">
+                    {editRelation?.cle === p.cle ? (
+                      <input
+                        autoFocus
+                        type="text"
+                        value={editRelation.valeur}
+                        disabled={relationEtat?.cle === p.cle && relationEtat.etat === "enregistrement"}
+                        onChange={(e) => setEditRelation({ cle: p.cle, valeur: e.target.value })}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") e.currentTarget.blur();
+                          if (e.key === "Escape") {
+                            setRelationEtat(null);
+                            setEditRelation(null);
+                          }
+                        }}
+                        onBlur={(e) => void enregistrerRelation(p, e.currentTarget.value)}
+                        aria-label={`Relation : ${p.nom}`}
+                        className={`${inputCls} min-w-32 py-1 text-sm`}
+                      />
+                    ) : peutModifierDons ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setRelationEtat(null);
+                          setEditRelation({ cle: p.cle, valeur: p.origine ?? "" });
+                        }}
+                        title="Modifier la relation"
+                        className="-mx-1 rounded px-1 text-left hover:bg-surface-2"
+                      >
+                        {p.origine?.trim() || "—"}
+                      </button>
+                    ) : (
+                      p.origine?.trim() || "—"
+                    )}
+                    {relationEtat?.cle === p.cle && (
+                      <div className={`text-xs ${relationEtat.etat === "erreur" ? "text-negative" : "text-muted"}`}>
+                        {relationEtat.etat === "erreur" ? `Erreur : ${relationEtat.message}` : "Enregistrement…"}
+                      </div>
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <div className="flex flex-nowrap gap-1 whitespace-nowrap">
                       {badgesDe(p).map((b) => (

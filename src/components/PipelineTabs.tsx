@@ -24,6 +24,8 @@ type Props = {
   prospects: Prospect[];
   dons: Don[];
   obtenus?: Record<string, { montant: number; nb: number }>;
+  /** Écriture sur les dons (même règle que la base : Trésorier). */
+  peutModifierDons?: boolean;
   peutLier?: boolean;
 };
 
@@ -36,7 +38,7 @@ export default function PipelineTabs(props: Props) {
   return <PipelineTabsContenu key={params.toString()} {...props} />;
 }
 
-function PipelineTabsContenu({ prospects, dons, obtenus, peutLier }: Props) {
+function PipelineTabsContenu({ prospects, dons, obtenus, peutLier, peutModifierDons = false }: Props) {
   const params = useSearchParams();
   const voletParam = params.get("volet");
   const [vue, setVue] = useState<Volet>(
@@ -64,7 +66,7 @@ function PipelineTabsContenu({ prospects, dons, obtenus, peutLier }: Props) {
       {vue === "prospections" ? (
         <GestionPipeline prospects={prospects} dons={dons} obtenus={obtenus} peutLier={peutLier} listeInitiale={params.get("liste")} />
       ) : (
-        <DonateursPipeline donsInit={dons} volet={vue} filtreInitial={filtre} carteInitiale={params.get("carte") === "1"} />
+        <DonateursPipeline donsInit={dons} peutModifierDons={peutModifierDons} volet={vue} filtreInitial={filtre} carteInitiale={params.get("carte") === "1"} />
       )}
     </div>
   );

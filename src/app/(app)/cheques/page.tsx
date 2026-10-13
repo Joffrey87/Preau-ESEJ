@@ -4,7 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { emailVue } from "@/lib/vueRoleServeur";
 import { roleByEmail } from "@/lib/roles";
 import { toutesLesOperations } from "@/lib/operations";
-import type { Cheque, InscriptionCandidate, OpRemise, Remise } from "@/lib/depotCheques";
+import { COLONNES_CHEQUE, type ActiviteCandidate, type Cheque, type FamilleCandidate, type InscriptionCandidate, type OpRemise, type ParticipationCandidate, type Remise } from "@/lib/depotCheques";
 
 export default async function DepotChequesPage() {
   const supabase = await createClient();
@@ -15,7 +15,7 @@ export default async function DepotChequesPage() {
 
   const [{ data: remises, error }, { data: cheques }] = await Promise.all([
     supabase.from("remises_cheques").select("id, date_remise, photo_path, notes, operation_id, lien_operation, created_at").order("date_remise", { ascending: false }),
-    supabase.from("cheques_remis").select("id, remise_id, montant, emetteur, date_cheque, motif, don_id, inscription_id, lien").order("created_at"),
+    supabase.from("cheques_remis").select(COLONNES_CHEQUE).order("created_at"),
   ]);
 
   // Rapprochement : réservé au Trésorier (la Directrice et le Président déposent et consultent).
@@ -23,11 +23,14 @@ export default async function DepotChequesPage() {
   let operations: OpRemise[] = [];
   let dons: DonDepot[] = [];
   let inscriptions: InscriptionCandidate[] = [];
+  let familles: FamilleCandidate[] = [];
+  let activites: ActiviteCandidate[] = [];
+  let participations: ParticipationCandidate[] = [];
   if (peutLier) {
     // Crédits des 18 derniers mois (une remise ancienne reste rapprochable).
     const depuis = new Date();
     depuis.setMonth(depuis.getMonth() - 18);
-    const [ops, { data: d }, { data: i }] = await Promise.all([
+    const [ops, { data: d }, { data: i }, { data: f }, { data: a }, { data: p }] = await Promise.all([
       toutesLesOperations<OpRemise>(supabase, "id, date_operation, montant, libelle, libelle_origine, parent_id", (q) =>
         q.eq("type", "recette").gte("date_operation", depuis.toISOString().slice(0, 10)),
       ),
@@ -37,7 +40,16 @@ export default async function DepotChequesPage() {
         .is("supprime_le", null)
         .gte("date_don", depuis.toISOString().slice(0, 10)),
       supabase.from("scolarite_inscriptions").select("id, annee_scolaire, famille_nom"),
+      supabase.from("familles").select("id, nom"),
+      supabase.from("activites").select("id, titre, annee_scolaire, date_activite"),
+      // Participations encore à payer (pour proposer l'activité d'un chèque de famille).
+      supabase.from("activites_participations").select("activite_id, montant, eleves(famille_id)").is("paye_le", null),
     ]);
+    familles = (f ?? []) as FamilleCandidate[];
+    activites = (a ?? []) as ActiviteCandidate[];
+    participations = ((p ?? []) as unknown as { activite_id: string; montant: number; eleves: { famille_id: string } | null }[])
+      .filter((x) => x.eleves)
+      .map((x) => ({ activite_id: x.activite_id, montant: Number(x.montant), famille_id: x.eleves!.famille_id }));
     // Une remise est créditée en une ligne : les sous-écritures d'une ventilation ne sont pas candidates.
     operations = ops.filter((o) => !o.parent_id);
     dons = (d ?? []) as DonDepot[];
@@ -59,6 +71,9 @@ export default async function DepotChequesPage() {
           operations={operations}
           donsInit={dons}
           inscriptions={inscriptions}
+          familles={familles}
+          activites={activites}
+          participations={participations}
           peutLier={peutLier}
         />
       )}

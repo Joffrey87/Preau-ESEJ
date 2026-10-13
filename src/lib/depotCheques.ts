@@ -11,12 +11,14 @@
 
 import { joursEcart, normaliser } from "@/lib/reconciliation";
 
-export type MotifCheque = "don" | "frais_scolarite" | "frais_dossier" | "evenement" | "autre";
+export type MotifCheque = "don" | "frais_scolarite" | "frais_dossier" | "fourniture" | "activite" | "evenement" | "autre";
 
 export const MOTIFS: { v: MotifCheque; l: string }[] = [
   { v: "don", l: "Don" },
   { v: "frais_scolarite", l: "Frais de scolarité" },
   { v: "frais_dossier", l: "Frais de dossier" },
+  { v: "fourniture", l: "Fournitures" },
+  { v: "activite", l: "Activité" },
   { v: "evenement", l: "Événement" },
   { v: "autre", l: "Autre" },
 ];
@@ -44,8 +46,28 @@ export type Cheque = {
   motif: MotifCheque;
   don_id: string | null;
   inscription_id: string | null;
+  famille_id: string | null;
+  activite_id: string | null;
+  affectation_id: string | null;
+  participations_payees: string[];
   lien: Lien;
 };
+
+export const COLONNES_CHEQUE =
+  "id, remise_id, montant, emetteur, date_cheque, motif, don_id, inscription_id, famille_id, activite_id, affectation_id, participations_payees, lien";
+
+/** Ce que chaque catégorie met à jour dans le suivi (fait en base, par déclencheur, une fois la remise reliée à son crédit). */
+export const SUIVI_MOTIF: Partial<Record<MotifCheque, string>> = {
+  frais_scolarite: "Compté dans le suivi des frais de scolarité de la famille",
+  frais_dossier: "Compté en frais de dossier dans le suivi de scolarité",
+  activite: "Participations non payées des enfants marquées payées",
+  fourniture: "Pas de suivi des fournitures : le chèque en garde la trace",
+};
+
+export type FamilleCandidate = { id: string; nom: string };
+export type ActiviteCandidate = { id: string; titre: string; annee_scolaire: string; date_activite: string | null };
+/** Participation non payée, pour proposer l'activité d'une famille. */
+export type ParticipationCandidate = { activite_id: string; famille_id: string; montant: number };
 
 export type OpRemise = {
   id: string;
@@ -156,4 +178,27 @@ export function candidatsInscription(
     .sort((a, b) => Number(b.annee_scolaire === annee) - Number(a.annee_scolaire === annee));
   const courantes = candidats.filter((i) => i.annee_scolaire === annee);
   return { candidats, evident: courantes.length === 1 };
+}
+
+/** Familles dont le nom figure dans l'émetteur. Évident = une seule. */
+export function candidatsFamille(cheque: Pick<Cheque, "emetteur">, familles: FamilleCandidate[]) {
+  const candidats = familles.filter((f) => nomDansEmetteur(f.nom, cheque.emetteur));
+  return { candidats, evident: candidats.length === 1 };
+}
+
+/**
+ * Activités candidates pour un chèque « activité » d'une famille : celles où la famille a des
+ * participations non payées ; évident = une seule activité dont le reste dû égale le chèque.
+ */
+export function candidatsActivite(
+  cheque: Pick<Cheque, "montant">,
+  familleId: string,
+  participations: ParticipationCandidate[],
+  activites: ActiviteCandidate[],
+) {
+  const du = new Map<string, number>();
+  for (const p of participations) if (p.famille_id === familleId) du.set(p.activite_id, (du.get(p.activite_id) ?? 0) + Number(p.montant));
+  const candidats = activites.filter((a) => du.has(a.id));
+  const exactes = candidats.filter((a) => Math.abs((du.get(a.id) ?? 0) - Number(cheque.montant)) < 0.005);
+  return { candidats: [...exactes, ...candidats.filter((a) => !exactes.includes(a))], evident: exactes.length === 1 };
 }

@@ -9,7 +9,14 @@ import {
   BUCKET_CHEQUES,
   anneeScolaire,
   MOTIFS,
+  candidatsActivite,
   candidatsDon,
+  candidatsFamille,
+  COLONNES_CHEQUE,
+  SUIVI_MOTIF,
+  type ActiviteCandidate,
+  type FamilleCandidate,
+  type ParticipationCandidate,
   candidatsInscription,
   candidatsRemise,
   libelleMotif,
@@ -26,6 +33,7 @@ import {
 export type DonDepot = DonChiffrable & { id: string; montant: number; date_don: string; operation_id: string | null };
 
 type Ligne = { montant: string; emetteur: string; date_cheque: string; motif: MotifCheque };
+type ChampsLien = Partial<Pick<Cheque, "don_id" | "inscription_id" | "famille_id" | "activite_id">>;
 const ligneVide = (): Ligne => ({ montant: "", emetteur: "", date_cheque: "", motif: "don" });
 
 const champ = "w-full rounded-md border border-border bg-surface px-2 py-1.5 text-sm";
@@ -52,6 +60,9 @@ export default function DepotCheques({
   operations,
   donsInit,
   inscriptions,
+  familles,
+  activites,
+  participations,
   peutLier,
 }: {
   remisesInit: Remise[];
@@ -59,6 +70,9 @@ export default function DepotCheques({
   operations: OpRemise[];
   donsInit: DonDepot[];
   inscriptions: InscriptionCandidate[];
+  familles: FamilleCandidate[];
+  activites: ActiviteCandidate[];
+  participations: ParticipationCandidate[];
   peutLier: boolean;
 }) {
   const [remises, setRemises] = useState(remisesInit);
@@ -92,13 +106,26 @@ export default function DepotCheques({
     const { error } = await createClient().from("remises_cheques").update({ operation_id, lien_operation: lien }).eq("id", r.id);
     if (error) return setMessage({ ok: false, t: error.message });
     setRemises((rs) => rs.map((x) => (x.id === r.id ? { ...x, operation_id, lien_operation: lien } : x)));
+    // Le suivi des chèques suit l'opération de la remise (déclencheur) : on relit ses chèques.
+    const { data } = await createClient().from("cheques_remis").select(COLONNES_CHEQUE).eq("remise_id", r.id);
+    if (data) {
+      const frais = new Map((data as Cheque[]).map((x) => [x.id, x]));
+      setCheques((cs) => cs.map((x) => frais.get(x.id) ?? x));
+    }
   }
 
-  async function lierCheque(c: Cheque, champs: Partial<Pick<Cheque, "don_id" | "inscription_id">>, lien: Lien) {
-    const maj = { don_id: champs.don_id ?? null, inscription_id: champs.inscription_id ?? null, lien };
-    const { error } = await createClient().from("cheques_remis").update(maj).eq("id", c.id);
+  // Le suivi (scolarité, activités) est mis à jour en base par déclencheur : on relit la ligne.
+  async function lierCheque(c: Cheque, champs: ChampsLien, lien: Lien) {
+    const maj = {
+      don_id: champs.don_id ?? null,
+      inscription_id: champs.inscription_id ?? null,
+      famille_id: champs.famille_id ?? null,
+      activite_id: champs.activite_id ?? null,
+      lien,
+    };
+    const { data, error } = await createClient().from("cheques_remis").update(maj).eq("id", c.id).select(COLONNES_CHEQUE).single();
     if (error) return setMessage({ ok: false, t: error.message });
-    setCheques((cs) => cs.map((x) => (x.id === c.id ? { ...x, ...maj } : x)));
+    setCheques((cs) => cs.map((x) => (x.id === c.id ? (data as Cheque) : x)));
   }
 
   // Liens évidents posés automatiquement (une fois par chargement, Trésorier seulement).
@@ -109,7 +136,7 @@ export default function DepotCheques({
     const liees = new Set(remises.map((r) => r.operation_id).filter(Boolean) as string[]);
     const lies = new Set(cheques.map((c) => c.don_id).filter(Boolean) as string[]);
     const majRemises: { id: string; operation_id: string }[] = [];
-    const majCheques: { id: string; don_id: string | null; inscription_id: string | null }[] = [];
+    const majCheques: ({ id: string } & ChampsLien)[] = [];
     for (const r of remises) {
       if (r.operation_id || autoFait.current.has(r.id)) continue;
       autoFait.current.add(r.id);
@@ -135,7 +162,16 @@ export default function DepotCheques({
       } else if (c.motif === "frais_scolarite" || c.motif === "frais_dossier") {
         autoFait.current.add(c.id);
         const { candidats, evident } = candidatsInscription(c, date, inscriptions);
-        if (evident) majCheques.push({ id: c.id, don_id: null, inscription_id: candidats[0].id });
+        if (evident) majCheques.push({ id: c.id, inscription_id: candidats[0].id });
+      } else if (c.motif === "fourniture" || c.motif === "activite") {
+        autoFait.current.add(c.id);
+        const fam = c.famille_id ? { evident: true, candidats: [{ id: c.famille_id }] } : candidatsFamille(c, familles);
+        if (!fam.evident) continue;
+        if (c.motif === "fourniture") majCheques.push({ id: c.id, famille_id: fam.candidats[0].id });
+        else {
+          const act = candidatsActivite(c, fam.candidats[0].id, participations, activites);
+          if (act.evident) majCheques.push({ id: c.id, famille_id: fam.candidats[0].id, activite_id: act.candidats[0].id });
+        }
       }
     }
     if (majRemises.length === 0 && majCheques.length === 0) return;
@@ -145,12 +181,18 @@ export default function DepotCheques({
         if (!error) setRemises((rs) => rs.map((x) => (x.id === m.id ? { ...x, operation_id: m.operation_id, lien_operation: "auto" } : x)));
       }
       for (const m of majCheques) {
-        const maj = { don_id: m.don_id, inscription_id: m.inscription_id, lien: "auto" as const };
-        const { error } = await supabase.from("cheques_remis").update(maj).eq("id", m.id);
-        if (!error) setCheques((cs) => cs.map((x) => (x.id === m.id ? { ...x, ...maj } : x)));
+        const maj = {
+          don_id: m.don_id ?? null,
+          inscription_id: m.inscription_id ?? null,
+          famille_id: m.famille_id ?? null,
+          activite_id: m.activite_id ?? null,
+          lien: "auto" as const,
+        };
+        const { data, error } = await supabase.from("cheques_remis").update(maj).eq("id", m.id).select(COLONNES_CHEQUE).single();
+        if (!error) setCheques((cs) => cs.map((x) => (x.id === m.id ? (data as Cheque) : x)));
       }
     })();
-  }, [peutLier, remises, cheques, operations, dons, inscriptions]);
+  }, [peutLier, remises, cheques, operations, dons, inscriptions, familles, activites, participations]);
 
   async function enregistrer() {
     setMessage(null);
@@ -186,7 +228,7 @@ export default function DepotCheques({
             motif: l.motif,
           })),
         )
-        .select("id, remise_id, montant, emetteur, date_cheque, motif, don_id, inscription_id, lien");
+        .select(COLONNES_CHEQUE);
       if (e2) throw new Error(`Remise créée, mais enregistrement des chèques impossible : ${e2.message}`);
       setRemises((rs) => [remise, ...rs].sort((a, b) => b.date_remise.localeCompare(a.date_remise)));
       setCheques((x) => [...x, ...((cs ?? []) as Cheque[])]);
@@ -414,6 +456,10 @@ export default function DepotCheques({
                           donsParId={donsParId}
                           inscriptions={inscriptions}
                           inscParId={inscParId}
+                          familles={familles}
+                          activites={activites}
+                          participations={participations}
+                          remiseReliee={!!r.operation_id}
                           lier={lierCheque}
                         />
                       </td>
@@ -438,6 +484,10 @@ function LienCheque({
   donsParId,
   inscriptions,
   inscParId,
+  familles,
+  activites,
+  participations,
+  remiseReliee,
   lier,
 }: {
   c: Cheque;
@@ -448,23 +498,46 @@ function LienCheque({
   donsParId: Map<string, DonCandidat>;
   inscriptions: InscriptionCandidate[];
   inscParId: Map<string, InscriptionCandidate>;
-  lier: (c: Cheque, champs: Partial<Pick<Cheque, "don_id" | "inscription_id">>, lien: Lien) => void;
+  familles: FamilleCandidate[];
+  activites: ActiviteCandidate[];
+  participations: ParticipationCandidate[];
+  remiseReliee: boolean;
+  lier: (c: Cheque, champs: ChampsLien, lien: Lien) => void;
 }) {
-  if (c.don_id || c.inscription_id) {
+  const nomFamille = (id: string | null) => familles.find((f) => f.id === id)?.nom ?? "famille";
+  const relie =
+    !!c.don_id ||
+    !!c.inscription_id ||
+    (c.motif === "fourniture" && !!c.famille_id) ||
+    (c.motif === "activite" && !!c.famille_id && !!c.activite_id);
+  if (relie) {
     const d = c.don_id ? donsParId.get(c.don_id) : undefined;
     const i = c.inscription_id ? inscParId.get(c.inscription_id) : undefined;
+    const a = c.activite_id ? activites.find((x) => x.id === c.activite_id) : undefined;
     const texte = c.don_id
       ? `Don${d ? ` de ${d.nom} du ${formatDate(d.date_don)}` : " relié"}`
-      : `Famille ${i ? `${i.famille_nom} (${i.annee_scolaire})` : "reliée"}`;
+      : c.inscription_id
+        ? `Famille ${i ? `${i.famille_nom} (${i.annee_scolaire})` : "reliée"}`
+        : c.motif === "activite"
+          ? `${a ? a.titre : "Activité"} · famille ${nomFamille(c.famille_id)}`
+          : `Fournitures · famille ${nomFamille(c.famille_id)}`;
+    let suivi: string | undefined = SUIVI_MOTIF[c.motif];
+    if (c.motif === "activite" && remiseReliee)
+      suivi = c.participations_payees.length > 0 ? `${c.participations_payees.length} participation(s) marquée(s) payée(s)` : "Participations déjà payées : rien changé";
+    else if ((c.motif === "frais_scolarite" || c.motif === "frais_dossier" || c.motif === "activite") && !remiseReliee)
+      suivi = "Suivi mis à jour quand la remise sera reliée à son crédit bancaire";
     return (
-      <span className="flex flex-wrap items-center gap-1.5">
-        {texte}
-        <PastilleLien lien={c.lien} />
-        {peutLier && (
-          <button type="button" className={btnDiscret} onClick={() => lier(c, {}, null)}>
-            Délier
-          </button>
-        )}
+      <span className="flex flex-col gap-0.5">
+        <span className="flex flex-wrap items-center gap-1.5">
+          {texte}
+          <PastilleLien lien={c.lien} />
+          {peutLier && (
+            <button type="button" className={btnDiscret} onClick={() => lier(c, {}, null)}>
+              Délier
+            </button>
+          )}
+        </span>
+        {suivi && <span className="text-[11px] text-muted">{suivi}</span>}
       </span>
     );
   }
@@ -499,6 +572,52 @@ function LienCheque({
       </select>
     );
   }
+  if (c.motif === "fourniture" || c.motif === "activite") {
+    if (c.motif === "activite" && c.famille_id) {
+      const { candidats } = candidatsActivite(c, c.famille_id, participations, activites);
+      return (
+        <span className="flex flex-wrap items-center gap-1.5">
+          Famille {nomFamille(c.famille_id)}
+          {candidats.length === 0 ? (
+            <span className="text-muted">: aucune participation non payée</span>
+          ) : (
+            <select
+              className={`${champ} w-auto text-xs`}
+              defaultValue=""
+              onChange={(e) => e.target.value && lier(c, { famille_id: c.famille_id, activite_id: e.target.value }, "manuel")}
+            >
+              <option value="">Choisir l&apos;activité…</option>
+              {candidats.map((a) => (
+                <option key={a.id} value={a.id}>
+                  {a.titre} ({a.date_activite ? formatDate(a.date_activite) : a.annee_scolaire})
+                </option>
+              ))}
+            </select>
+          )}
+          <button type="button" className={btnDiscret} onClick={() => lier(c, {}, null)}>
+            Autre famille
+          </button>
+        </span>
+      );
+    }
+    const { candidats } = candidatsFamille(c, familles);
+    const liste = candidats.length > 0 ? candidats : familles;
+    return (
+      <select
+        className={`${champ} w-auto text-xs`}
+        defaultValue=""
+        onChange={(e) => e.target.value && lier(c, { famille_id: e.target.value }, c.motif === "fourniture" ? "manuel" : null)}
+      >
+        <option value="">{candidats.length > 0 ? "À confirmer : choisir la famille…" : "Aucune famille reconnue : choisir…"}</option>
+        {[...liste]
+          .sort((a, b) => a.nom.localeCompare(b.nom, "fr"))
+          .map((f) => (
+            <option key={f.id} value={f.id}>
+              {f.nom}
+            </option>
+          ))}
+      </select>
+    );
+  }
   return <span className="text-muted">Pas de rapprochement pour ce motif</span>;
 }
-

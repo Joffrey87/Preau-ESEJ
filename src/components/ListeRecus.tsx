@@ -134,6 +134,8 @@ function statutRecu(g: Groupe, recurrents: Set<string>, anneeEnCours: number): S
     // Courrier postal : À passer → Vérifier envoi postal (remis au secrétaire) → Envoyé.
     return g.dons.every((d) => (d.recu_etat ?? "").trim() === ETAT_PASSE_SECRETAIRE) ? "verifier" : "passer";
   }
+  // Numéro RE_… (même seulement réservé) : jamais « Attente fin d'année » ni « À établir », au moins « à envoyer ».
+  if (g.numero && /^RE_\d/.test(g.numero)) return prefereCourrier(g.representant) ? "passer" : "edite";
   return recurrents.has(cleDonateur(g.representant)) && g.annee >= anneeEnCours ? "attente" : "a_faire";
 }
 

@@ -125,7 +125,8 @@ export function statutsDon(d: Don, recurrents: Set<string>): Chip[] {
     chips.push(postal ? { key: "poste", label: "Posté", tone: "green" } : { key: "envoye", label: "Envoyé", tone: "green" });
   } else if (vide(d.recu_numero)) {
     chips.push({ key: "etablir", label: "À établir", tone: "amber" });
-  } else if (!postal && recurrents.has(cleDonateur(d))) {
+  } else if (!postal && recurrents.has(cleDonateur(d)) && !/^RE_\d/.test(d.recu_numero ?? "")) {
+    // Un reçu établi (numéro RE_…) n'est jamais « Annuel en attente » ni « À établir » : il est au moins « À envoyer ».
     // Courrier postal : un reçu déjà établi suit son parcours (À passer, Vérifier envoi) même pour un donateur récurrent.
     chips.push({ key: "annuel", label: "Annuel en attente", tone: "violet" });
   } else if (postal) {

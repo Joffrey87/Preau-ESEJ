@@ -6,7 +6,9 @@ import { tauxTexte } from "@/lib/calendrier";
 
 /** Bulletin tel que la famille le lit (synthèse figée) : même présentation que le PDF. */
 export default function VueBulletin({ s }: { s: Synthese }) {
-  const avecRang = s.afficherRang;
+  const releve = s.mode === "releve";
+  const avecClasse = !s.mode;
+  const avecRang = s.afficherRang && avecClasse;
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -22,11 +24,11 @@ export default function VueBulletin({ s }: { s: Synthese }) {
             {s.classe.titulaire ? ` · Titulaire : ${s.classe.titulaire}` : ""}
           </div>
         </div>
-        {s.general.moy !== null && (
+        {s.general.moy !== null && !releve && (
           <div className="rounded-xl border border-border bg-surface-2 px-4 py-2 text-center">
             <div className="text-[10px] uppercase tracking-wider text-muted">Moyenne générale</div>
             <div className="text-xl font-semibold tabular-nums text-accent">{note20(s.general.moy)}</div>
-            <div className="text-[11px] text-muted">
+            <div className={`text-[11px] text-muted ${avecClasse ? "" : "hidden"}`}>
               Classe {note20(s.general.moyClasse)}
               {avecRang && s.general.rang ? ` · ${rangTexte(s.general.rang)}` : ""}
             </div>
@@ -41,15 +43,15 @@ export default function VueBulletin({ s }: { s: Synthese }) {
             <thead>
               <tr className="bg-accent text-left text-[11px] text-accent-fg">
                 <th className="px-3 py-2 font-medium">Matière</th>
-                <th className="px-2 py-2 text-center font-medium">Moyenne</th>
-                <th className="px-2 py-2 text-center font-medium">Classe</th>
+                {!releve && <th className="px-2 py-2 text-center font-medium">Moyenne</th>}
+                {avecClasse && <th className="px-2 py-2 text-center font-medium">Classe</th>}
                 {avecRang && <th className="px-2 py-2 text-center font-medium">Rang</th>}
-                <th className="px-3 py-2 font-medium">Appréciation</th>
+                <th className="px-3 py-2 font-medium">{releve ? "Notes de la période" : "Appréciation"}</th>
               </tr>
             </thead>
             <tbody>
               {s.groupes.map((g) => (
-                <Groupe key={g.nom} g={g} avecRang={avecRang} />
+                <Groupe key={g.nom} g={g} avecRang={avecRang} releve={releve} avecClasse={avecClasse} />
               ))}
             </tbody>
           </table>
@@ -92,22 +94,23 @@ export default function VueBulletin({ s }: { s: Synthese }) {
   );
 }
 
-function Chiffres({ c, fort = false, avecRang }: { c: Synthese["general"]; fort?: boolean; avecRang: boolean }) {
+function Chiffres({ c, fort = false, avecRang, releve = false, avecClasse = true }: { c: Synthese["general"]; fort?: boolean; avecRang: boolean; releve?: boolean; avecClasse?: boolean }) {
+  if (releve) return null;
   return (
     <>
       <td className={`px-2 py-1.5 text-center tabular-nums ${fort ? "font-semibold" : ""}`}>{note20(c.moy)}</td>
-      <td className="px-2 py-1.5 text-center tabular-nums text-muted">{note20(c.moyClasse)}</td>
+      {avecClasse && <td className="px-2 py-1.5 text-center tabular-nums text-muted">{note20(c.moyClasse)}</td>}
       {avecRang && <td className="px-2 py-1.5 text-center tabular-nums">{rangTexte(c.rang)}</td>}
     </>
   );
 }
 
-function Groupe({ g, avecRang }: { g: Synthese["groupes"][number]; avecRang: boolean }) {
+function Groupe({ g, avecRang, releve, avecClasse }: { g: Synthese["groupes"][number]; avecRang: boolean; releve: boolean; avecClasse: boolean }) {
   return (
     <>
       <tr className="border-t border-border bg-gold-soft/60 font-semibold">
         <td className="px-3 py-1.5">{g.nom}</td>
-        <Chiffres c={g.chiffre} fort avecRang={avecRang} />
+        <Chiffres c={g.chiffre} fort avecRang={avecRang} releve={releve} avecClasse={avecClasse} />
         <td />
       </tr>
       {g.matieres.map((m) => (
@@ -116,7 +119,7 @@ function Groupe({ g, avecRang }: { g: Synthese["groupes"][number]; avecRang: boo
             <div>{m.nom}</div>
             {m.enseignants && <div className="text-[10.5px] text-muted">{m.enseignants}</div>}
           </td>
-          <Chiffres c={m.chiffre} avecRang={avecRang} />
+          <Chiffres c={m.chiffre} avecRang={avecRang} releve={releve} avecClasse={avecClasse} />
           <td className="px-3 py-1.5 text-[12.5px]">{m.commentaire}</td>
         </tr>
       ))}

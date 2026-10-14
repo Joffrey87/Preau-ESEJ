@@ -65,7 +65,7 @@ export function suiviParDonateur(lignes: SuiviAction[], cleDeDon: Map<string, st
 }
 
 /** Rôles qui ajoutent des actions (même règle que la base : peut_suivre_donateurs). */
-export const ROLES_SUIVI = ["recherche-fonds", "tresorier", "administrateur"];
+export const ROLES_SUIVI = ["recherche-fonds", "tresorier", "administrateur", "directeur-spirituel"];
 
 /** Historique par prospect (clé = id du prospect), du plus récent au plus ancien. */
 export function suiviParCle(lignes: SuiviAction[]): Map<string, SuiviAction[]> {

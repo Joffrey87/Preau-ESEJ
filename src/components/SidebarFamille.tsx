@@ -18,6 +18,7 @@ const NAV: { titre: string | null; liens: Lien[] }[] = [
     liens: [
       { href: "/espace/bulletins", label: "Bulletins", icon: "bulletin", exact: false },
       { href: "/espace/absences", label: "Absences", icon: "calendar", exact: false },
+      { href: "/espace/inscription", label: "Réinscription", icon: "check", exact: false },
     ],
   },
   { titre: "Finance", liens: [{ href: "/espace/paiements", label: "Paiements", icon: "invoice", exact: false }] },

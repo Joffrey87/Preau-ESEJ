@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { NAV } from "@/lib/nav";
 import type { Niveau } from "@/lib/acces";
 import { estEvenement, estProfesseur, pagesAutorisees, roleByEmail } from "@/lib/roles";
@@ -44,6 +44,7 @@ export default function Sidebar({
   webmestre?: boolean;
 }) {
   const pathname = usePathname();
+  const recherche = useSearchParams();
   const router = useRouter();
   const [choixOuvert, setChoixOuvert] = useState(false);
   // Téléphone : le menu entier (pages, déconnexion, thème) se déplie en touchant le logo Préau.
@@ -221,8 +222,17 @@ export default function Sidebar({
             )}
             <ul>
               {section.items.map((item) => {
+                // Liens vers un onglet (?onglet=…) : actifs sur cet onglet ; le lien simple de la même page, sur les autres.
+                const [chemin, requete] = item.href.split("?");
+                const ongletLien = requete ? new URLSearchParams(requete).get("onglet") : null;
+                const ongletsMenu = section.items.filter((x) => x.href.startsWith(chemin + "?")).map((x) => new URLSearchParams(x.href.split("?")[1]).get("onglet"));
+                const ongletActuel = recherche.get("onglet");
                 const active =
-                  item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
+                  item.href === "/"
+                    ? pathname === "/"
+                    : ongletLien
+                      ? pathname === chemin && ongletActuel === ongletLien
+                      : pathname.startsWith(item.href) && !(ongletActuel && ongletsMenu.includes(ongletActuel));
 
                 if (!item.ready) {
                   return (
@@ -242,6 +252,7 @@ export default function Sidebar({
                   <li key={item.href}>
                     <Link
                       href={item.href}
+                      title={item.titre}
                       className={`flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] transition-colors ${
                         active
                           ? "bg-accent-soft font-medium text-accent"
@@ -309,11 +320,31 @@ export default function Sidebar({
   );
 }
 
+const NAV_PROFESSEUR: typeof NAV = [
+  {
+    title: "École",
+    items: [
+      { href: "/bulletins?onglet=notes", label: "Notes", icon: "bulletin", ready: true },
+      { href: "/bulletins?onglet=releves", label: "Relevés de notes", icon: "bulletin", ready: true },
+      { href: "/bulletins?onglet=trimestre", label: "Bulletins", icon: "bulletin", ready: true },
+      { href: "/bulletins?onglet=conseil", label: "Conseil de classe", icon: "users", ready: true },
+      { href: "/bulletins?onglet=absences", label: "Appel & absences", icon: "calendar", ready: true },
+      { href: "/bulletins?onglet=trombi", label: "Trombinoscope", icon: "users", ready: true },
+    ],
+  },
+];
+
 /** Menu du compte : un profil restreint ne voit que ses pages. */
 function navDe(email?: string, niveaux?: Record<string, Niveau>) {
+  // Professeurs : les onglets des Bulletins directement dans le menu, dans l'ordre du travail de classe.
+  if (estProfesseur(email)) return NAV_PROFESSEUR;
   const pages = pagesAutorisees(email);
   const slug = roleByEmail(email)?.slug ?? "";
-  const visible = (i: (typeof NAV)[number]["items"][number]) =>
-    !i.sauf?.includes(slug) && (niveaux && i.href in niveaux ? niveaux[i.href] !== "masque" : pages ? pages.includes(i.href) : !i.roles || i.roles.includes(slug));
+  // Un lien vers un onglet suit les droits de sa page (/bulletins?onglet=… → /bulletins) et ses propres profils.
+  const visible = (i: (typeof NAV)[number]["items"][number]) => {
+    const h = i.href.split("?")[0];
+    if (i.href !== h && i.roles && !i.roles.includes(slug)) return false;
+    return !i.sauf?.includes(slug) && (niveaux && h in niveaux ? niveaux[h] !== "masque" : pages ? pages.includes(h) : !i.roles || i.roles.includes(slug));
+  };
   return NAV.map((s) => ({ ...s, items: s.items.filter(visible) })).filter((s) => s.items.length > 0);
 }

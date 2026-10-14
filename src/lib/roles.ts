@@ -42,7 +42,7 @@ export const PAGES_RESTREINTES: Record<string, string[]> = {
   // Profils pas encore configurés : rien de visible (une page d'attente) tant que leurs accès ne sont pas définis.
   secretaire: ["/en-attente"],
   administrateur: ["/en-attente"],
-  directrice: ["/", "/bulletins", "/cheques", "/ventes-diverses", "/caisses"],
+  directrice: ["/", "/bulletins", "/cheques", "/ventes-diverses", "/caisses", "/dons/medailles"],
   "resp-mecenat": ["/en-attente"],
 };
 

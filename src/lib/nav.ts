@@ -5,6 +5,8 @@ export type NavItem = {
   ready: boolean;
   /** Réservé à ces rôles (slugs) ; absent = tout le bureau. */
   roles?: string[];
+  /** Infobulle du lien. */
+  titre?: string;
   /** Masqué pour ces rôles (même page proposée ailleurs dans leur menu). */
   sauf?: string[];
 };
@@ -24,6 +26,11 @@ export const NAV: NavSection[] = [
     items: [
       // Directrice, Directeur spirituel (catéchisme) et Professeurs ; aucun autre profil du bureau (données d'élèves).
       { href: "/bulletins", label: "Bulletins", icon: "bulletin", ready: true, roles: ["directrice", "directeur-spirituel"] },
+      // Directrice : les onglets de vie de classe et d'administration des Bulletins, directement dans le menu.
+      { href: "/bulletins?onglet=absences", label: "Appel & absences", icon: "calendar", ready: true, roles: ["directrice"] },
+      { href: "/bulletins?onglet=trombi", label: "Trombinoscope", icon: "users", ready: true, roles: ["directrice"] },
+      { href: "/bulletins?onglet=parametres", label: "Gestion des classes", titre: "Classes, année", icon: "check", ready: true, roles: ["directrice"] },
+      { href: "/bulletins?onglet=inscriptions", label: "Inscriptions", icon: "mail", ready: true, roles: ["directrice"] },
     ],
   },
   {
@@ -32,10 +39,10 @@ export const NAV: NavSection[] = [
       { href: "/comptabilite", label: "Comptabilité", icon: "ledger", ready: true },
       { href: "/budget", label: "Budget", icon: "chart", ready: true },
       { href: "/scolarite", label: "Frais de scolarité", icon: "graduation", ready: true },
-      // Photo d'une remise de chèques, saisie des chèques et lien avec la comptabilité.
-      { href: "/cheques", label: "Dépôt de chèques", icon: "billets", ready: true, roles: ["tresorier", "president", "directrice"] },
       { href: "/ventes-diverses", label: "Ventes diverses", icon: "invoice", ready: true, roles: ["tresorier", "directrice"] },
       { href: "/caisses", label: "Caisses", icon: "billets", ready: true, roles: ["tresorier", "directrice"] },
+      // Photo d'une remise de chèques, saisie des chèques et lien avec la comptabilité.
+      { href: "/cheques", label: "Dépôt de chèques", icon: "billets", ready: true, roles: ["tresorier", "president", "directrice"] },
     ],
   },
   {
@@ -47,6 +54,8 @@ export const NAV: NavSection[] = [
       // Vue Recherche de fonds : ses « Dons » juste sous « Relations donateurs ».
       { href: "/recherche/dons", label: "Dons", icon: "gift", ready: true, roles: ["recherche-fonds"], sauf: ["president", "tresorier"] },
       { href: "/recus-fiscaux", label: "Reçus fiscaux", icon: "receipt", ready: true },
+      // Directrice : le tableau des dons pour cocher les médailles (lecture seule par ailleurs).
+      { href: "/dons/medailles", label: "Médailles Don", icon: "gift", ready: true, roles: ["directrice"] },
       // Lettres du Président pour les dons de 500 € et plus.
       { href: "/remerciements", label: "Remerciements", icon: "mail", ready: true, roles: ["president", "tresorier", "administrateur"] },
     ],

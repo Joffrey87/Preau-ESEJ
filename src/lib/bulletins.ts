@@ -96,6 +96,8 @@ export type EleveBulletin = Eleve & { id: string; prenom: string | null; nom: st
 /** Synthèse figée : ce que lisent la famille et le PDF. */
 export type Synthese = {
   v: 1;
+  /** Relevé de notes (période : notes seules, sans moyenne) ou bulletin trimestriel (moyennes simples, sans classe ni rang). Absent : bulletin de période historique. */
+  mode?: "releve" | "trimestre";
   source?: string | null;
   eleve: { prenom: string; nom: string; niveau: string | null };
   classe: { nom: string; titulaire: string | null };
@@ -328,4 +330,6 @@ export const titrePeriode = (p: Synthese["periode"]) =>
   [p.numero ? `Période ${p.numero}` : p.libelle, p.trimestre ? `${p.trimestre === 1 ? "1er" : `${p.trimestre}e`} trimestre` : null].filter(Boolean).join(" · ");
 
 export const nomFichierBulletin = (s: Synthese) =>
-  `Bulletin ${s.eleve.prenom} ${s.eleve.nom} - ${s.periode.numero ? `Période ${s.periode.numero}` : s.periode.libelle}`.replace(/[\\/:*?"<>|]/g, "-") + ".pdf";
+  `${s.mode === "releve" ? "Relevé de notes" : "Bulletin"} ${s.eleve.prenom} ${s.eleve.nom} - ${
+    s.mode === "trimestre" && s.periode.trimestre ? `${s.periode.trimestre === 1 ? "1er" : `${s.periode.trimestre}e`} trimestre` : s.periode.numero ? `Période ${s.periode.numero}` : s.periode.libelle
+  }`.replace(/[\\/:*?"<>|]/g, "-") + ".pdf";

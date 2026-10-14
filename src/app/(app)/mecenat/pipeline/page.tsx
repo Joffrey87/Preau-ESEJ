@@ -54,13 +54,13 @@ export default async function PipelinePage() {
         prospects={(prospectsData ?? []) as Prospect[]}
         dons={(donsData ?? []) as Don[]}
         obtenus={obtenus}
-        peutLier={["tresorier", "president", "administrateur"].includes(slugVu)}
-        peutModifierDons={slugVu === "tresorier"}
-        peutModifierRelation={["recherche-fonds", "tresorier", "president"].includes(slugVu)}
+        peutLier={["tresorier", "president", "administrateur", "directeur-spirituel"].includes(slugVu)}
+        peutModifierDons={["tresorier", "directeur-spirituel"].includes(slugVu)}
+        peutModifierRelation={["recherche-fonds", "tresorier", "president", "directeur-spirituel"].includes(slugVu)}
         suivi={(suiviData ?? []) as SuiviAction[]}
         peutSuivre={ROLES_SUIVI.includes(slugVu)}
-        auteurSuivi={ctx.prenomProfil}
-        peutEcrireProspects={["tresorier", "president", "administrateur", "recherche-fonds"].includes(slugVu)}
+        auteurSuivi={ctx.prenomProfil ?? (slugVu === "directeur-spirituel" ? "Directeur spirituel" : null)}
+        peutEcrireProspects={["tresorier", "president", "administrateur", "recherche-fonds", "directeur-spirituel"].includes(slugVu)}
       />
     </div>
   );

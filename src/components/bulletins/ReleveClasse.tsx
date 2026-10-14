@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   arrondi,
@@ -61,6 +61,23 @@ export default function ReleveClasse({
   const [occupe, setOccupe] = useState(false);
   const [matiereOuverte, setMatiereOuverte] = useState<string | null>(null);
   const [eleveOuvert, setEleveOuvert] = useState<string | null>(null);
+  const defilementRef = useRef<HTMLDivElement>(null);
+
+  // Molette : défilement horizontal du tableau (plus large que l'écran) ; aux bords, la page reprend la main.
+  // Les gestes horizontaux (pavé tactile) et Maj+molette gardent leur comportement natif.
+  useEffect(() => {
+    const el = defilementRef.current;
+    if (!el) return;
+    const surMolette = (e: WheelEvent) => {
+      if (e.shiftKey || Math.abs(e.deltaY) <= Math.abs(e.deltaX) || el.scrollWidth <= el.clientWidth) return;
+      const max = el.scrollWidth - el.clientWidth;
+      if ((e.deltaY < 0 && el.scrollLeft <= 0) || (e.deltaY > 0 && el.scrollLeft >= max - 1)) return;
+      el.scrollLeft += e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
+      e.preventDefault();
+    };
+    el.addEventListener("wheel", surMolette, { passive: false });
+    return () => el.removeEventListener("wheel", surMolette);
+  }, []);
 
   // Les notes saisies ici mettent à jour le contexte de la classe : le relevé suit aussitôt, sans rechargement.
   const vue: ContexteDocs = useMemo(() => {
@@ -188,7 +205,7 @@ export default function ReleveClasse({
       )}
 
       {!eleves.length && <p className="text-sm text-muted">Aucun élève dans cette classe.</p>}
-      <div className="overflow-x-auto rounded-xl border border-border bg-surface">
+      <div ref={defilementRef} className="overflow-x-auto rounded-xl border border-border bg-surface">
         <table className="text-[12.5px]">
           <thead>
             <tr className="text-[10.5px] uppercase tracking-wide text-muted">

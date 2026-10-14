@@ -154,12 +154,27 @@ export default function EditeurFormulaires() {
   return (
     <div className="space-y-3">
       {/* Barre d'état et d'actions. */}
-      <div className="sticky top-0 z-10 flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface p-2 text-[13px]">
+      <div className="sticky top-0 z-10 grid grid-cols-1 items-center gap-2 rounded-xl border border-border bg-surface p-2 text-[13px] lg:grid-cols-[1fr_auto_1fr]">
+        <div className="flex flex-wrap items-center gap-2">
         <span className={`rounded-full px-2 py-0.5 text-[11.5px] ${nonPublie ? "bg-gold-soft text-gold" : "bg-positive/15 text-positive"}`}>
           {nonPublie ? (nonEnregistre ? "Modifications non enregistrées" : "Brouillon enregistré, non publié") : "À jour : version publiée"}
         </span>
         {publieLe && <span className="text-[12px] text-muted">Publié le {new Date(publieLe).toLocaleDateString("fr-FR")}</span>}
-        <div className="ml-auto flex flex-wrap gap-2">
+        </div>
+        {/* Formulaire affiché (textes et aperçu) : au centre, bien visible. */}
+        <div className="flex justify-center gap-1 rounded-xl bg-surface-2 p-1">
+          {(["pre", "re"] as const).map((t) => (
+            <button
+              key={t}
+              type="button"
+              onClick={() => setVue(t)}
+              className={`rounded-lg px-5 py-2 text-[14px] font-semibold ${vue === t ? "bg-accent text-accent-fg shadow-sm" : "text-foreground hover:bg-surface"}`}
+            >
+              {TITRES_FORMULAIRE[t]}
+            </button>
+          ))}
+        </div>
+        <div className="flex flex-wrap justify-end gap-2">
           {nonPublie && (
             <button type="button" onClick={revenir} disabled={occupe} className="rounded-lg px-3 py-1.5 text-muted hover:bg-surface-2">
               Revenir à la version publiée
@@ -172,7 +187,7 @@ export default function EditeurFormulaires() {
             Publier
           </button>
         </div>
-        {message && <p className={`w-full text-[12.5px] ${message.ok ? "text-positive" : "text-negative"}`}>{message.texte}</p>}
+        {message && <p className={`text-[12.5px] lg:col-span-3 ${message.ok ? "text-positive" : "text-negative"}`}>{message.texte}</p>}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
@@ -320,13 +335,6 @@ export default function EditeurFormulaires() {
         {/* ——— Aperçu « comme une famille » ——— */}
         <div className="space-y-2 lg:sticky lg:top-14 lg:max-h-[calc(100vh-5rem)] lg:overflow-y-auto">
           <div className="flex flex-wrap items-center gap-2">
-            <div className="flex gap-1 rounded-lg bg-surface-2 p-1">
-              {(["pre", "re"] as const).map((t) => (
-                <button key={t} type="button" onClick={() => setVue(t)} className={`rounded-md px-3 py-1 text-[13px] font-medium ${vue === t ? "bg-surface text-accent shadow-sm" : "text-muted"}`}>
-                  {TITRES_FORMULAIRE[t]}
-                </button>
-              ))}
-            </div>
             {vue === "re" && (
               <select value={familleId} onChange={(e) => setFamilleId(e.target.value)} className={`${saisie} w-auto`} aria-label="Famille de l'aperçu">
                 {familles.map((f) => (

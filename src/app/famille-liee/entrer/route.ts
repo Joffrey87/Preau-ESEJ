@@ -1,3 +1,4 @@
+import { reinitialiserVueWebmestre } from "@/lib/vueRoleServeur";
 import { NextResponse, type NextRequest } from "next/server";
 import { COOKIE_APERCU, COOKIE_FAMILLE_LIEE } from "@/lib/apercuFamille";
 import { COOKIE_VUE } from "@/lib/vueRole";
@@ -8,6 +9,7 @@ import { COOKIE_VUE } from "@/lib/vueRole";
  */
 export async function GET(request: NextRequest) {
   const reponse = NextResponse.redirect(new URL("/espace", request.url));
+  await reinitialiserVueWebmestre();
   reponse.cookies.delete(COOKIE_VUE);
   reponse.cookies.delete(COOKIE_APERCU);
   reponse.cookies.set(COOKIE_FAMILLE_LIEE, "1", { path: "/", httpOnly: true, sameSite: "lax" });

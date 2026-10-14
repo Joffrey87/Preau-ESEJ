@@ -1,6 +1,6 @@
 import { ROLES, roleByEmail } from "@/lib/roles";
 
-// « Vue en tant que » : le Trésorier peut voir l'application comme un autre
+// « Vue en tant que » : le Webmestre bascule sur un autre profil ; la base (webmestre_vue, mon_role)
 // profil (menu, pages accessibles, accueil). C'est une simple vue : les droits
 // réels, côté base, restent ceux du Trésorier — aucune écriture n'est faite
 // sous l'identité du profil simulé.

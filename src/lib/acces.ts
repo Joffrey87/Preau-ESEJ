@@ -12,6 +12,8 @@ export type ContexteAcces = {
   webmestre: boolean;
   profil_webmestre: string | null;
   profil: string;
+  /** Profil sur lequel le Webmestre a basculé sa vue (base), sinon null. */
+  vue?: string | null;
   niveaux: Record<string, Niveau>;
 };
 

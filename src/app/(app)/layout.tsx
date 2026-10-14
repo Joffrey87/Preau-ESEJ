@@ -5,7 +5,7 @@ import CoffreProvider from "@/components/CoffreProvider";
 import { createClient } from "@/lib/supabase/server";
 import AideFlottante from "@/components/AideFlottante";
 import { COOKIE_PRENOM, estEvenement, pagesAutorisees, roleByEmail } from "@/lib/roles";
-import { COOKIE_VUE, peutChangerDeVue } from "@/lib/vueRole";
+import { COOKIE_VUE, emailEffectif, peutChangerDeVue } from "@/lib/vueRole";
 import type { ContexteAcces } from "@/lib/acces";
 import { emailVue } from "@/lib/vueRoleServeur";
 import Icon from "@/components/Icon";
@@ -37,7 +37,10 @@ export default async function AppLayout({
     p_personne: decodeURIComponent(jar.get(COOKIE_PRENOM)?.value ?? "") || null,
   });
   const acces = (ctx as ContexteAcces | null) ?? null;
-  const emailAffiche = (await emailVue(user.email, acces?.webmestre)) ?? user.email;
+  const emailAffiche =
+    (acces && "vue" in acces
+      ? emailEffectif(user.email, acces.webmestre ? (acces.vue ?? null) : null, acces.webmestre)
+      : await emailVue(user.email, acces?.webmestre)) ?? user.email;
   const peutChanger = peutChangerDeVue(user.email, acces?.webmestre);
   const roleVu = roleByEmail(emailAffiche);
   const enVue = peutChanger && !!roleVu && roleVu.email !== user.email;

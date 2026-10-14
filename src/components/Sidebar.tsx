@@ -69,6 +69,8 @@ export default function Sidebar({
 
   async function handleLogout() {
     const supabase = createClient();
+    // Le Webmestre quitte sa vue basculée (sans effet pour les autres comptes).
+    if ((await supabase.rpc("est_webmestre")).data === true) await supabase.rpc("webmestre_vue_definir", { p_profil: null });
     await supabase.auth.signOut();
     oublierSessions();
     document.cookie = "recherche_prenom=; path=/; max-age=0; SameSite=Lax";

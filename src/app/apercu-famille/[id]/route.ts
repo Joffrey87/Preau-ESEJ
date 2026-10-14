@@ -1,3 +1,4 @@
+import { reinitialiserVueWebmestre } from "@/lib/vueRoleServeur";
 import { NextResponse, type NextRequest } from "next/server";
 import { COOKIE_APERCU } from "@/lib/apercuFamille";
 import { COOKIE_VUE } from "@/lib/vueRole";
@@ -6,6 +7,7 @@ import { COOKIE_VUE } from "@/lib/vueRole";
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const reponse = NextResponse.redirect(new URL("/espace", request.url));
+  await reinitialiserVueWebmestre();
   // L'aperçu d'une famille remplace toute vue « en tant que » un autre profil.
   reponse.cookies.delete(COOKIE_VUE);
   if (/^[0-9a-f-]{36}$/i.test(id)) {

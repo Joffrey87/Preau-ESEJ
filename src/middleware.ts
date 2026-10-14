@@ -93,7 +93,14 @@ export async function middleware(request: NextRequest) {
     });
     if (!error && data) acces = data as ContexteAcces;
   }
-  const emailVue = emailEffectif(user?.email, request.cookies.get(COOKIE_VUE)?.value, acces?.webmestre);
+  // Vue du Webmestre : la base fait foi (il y reçoit tous les droits du profil) ; le cookie est réaligné sur elle.
+  const cookieVue = request.cookies.get(COOKIE_VUE)?.value ?? null;
+  const slugVue = acces && "vue" in acces ? (acces.webmestre ? (acces.vue ?? null) : null) : cookieVue;
+  if (acces && "vue" in acces && slugVue !== cookieVue) {
+    if (slugVue) response.cookies.set(COOKIE_VUE, slugVue, { path: "/", httpOnly: true, sameSite: "lax" });
+    else response.cookies.delete(COOKIE_VUE);
+  }
+  const emailVue = emailEffectif(user?.email, slugVue, acces?.webmestre);
   if (user && request.nextUrl.pathname.startsWith("/changer-profil")) return response;
 
   // Profil restreint (ex. Recherche de fonds) : ses seules pages.

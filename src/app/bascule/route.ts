@@ -3,6 +3,7 @@ import { createClient as createAdmin } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { COOKIE_PRENOM } from "@/lib/roles";
 import { COOKIE_VUE } from "@/lib/vueRole";
+import { reinitialiserVueWebmestre } from "@/lib/vueRoleServeur";
 import { cibleBascule } from "@/lib/liensBascule";
 import type { Espace } from "@/lib/basculeEspace";
 
@@ -37,6 +38,7 @@ export async function POST(request: NextRequest) {
   const jeton = lien?.properties?.hashed_token;
   if (e1 || !jeton) return NextResponse.json({ ok: false, raison: "compte introuvable" }, { status: 404 });
 
+  await reinitialiserVueWebmestre();
   // Remplace la session (cookies @supabase/ssr) par celle du compte cible.
   const { error: e2 } = await supabase.auth.verifyOtp({ type: "email", token_hash: jeton });
   if (e2) return NextResponse.json({ ok: false, raison: "session" }, { status: 500 });

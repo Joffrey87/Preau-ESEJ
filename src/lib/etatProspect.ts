@@ -5,7 +5,7 @@ import type { Etape, Prospect } from "@/lib/pipeline";
 import { ETAPE_LABEL } from "@/lib/pipeline";
 import { etatCourant, type SuiviAction } from "@/lib/suiviDonateurs";
 
-export const ETATS_PROSPECT = ["Pas contacté", "Contacté", "Promesse", "Donateur", "En pause", "Perdu"] as const;
+export const ETATS_PROSPECT = ["Pas contacté", "Contacté", "Promesse", "Donateur", "Sans réponse, à relancer", "Pas intéressé"] as const;
 export type EtatProspect = (typeof ETATS_PROSPECT)[number];
 
 export const AIDE_ETAT: Record<EtatProspect, string> = {
@@ -13,26 +13,28 @@ export const AIDE_ETAT: Record<EtatProspect, string> = {
   Contacté: "Premier contact établi ou don sollicité",
   Promesse: "Le prospect a promis un don",
   Donateur: "Un don est enregistré pour ce prospect (automatique)",
-  "En pause": "À relancer plus tard",
-  Perdu: "Refus ou ne plus solliciter",
+  "Sans réponse, à relancer": "Pas de réponse : à relancer plus tard",
+  "Pas intéressé": "Refus ou ne plus solliciter",
 };
 
 export const TON_ETAT: Record<EtatProspect, string> = {
-  "Pas contacté": "bg-surface-2 text-muted",
+  "Pas contacté": "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300",
   Contacté: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300",
-  Promesse: "bg-gold-soft text-gold",
+  Promesse: "bg-yellow-100 text-yellow-800 dark:bg-yellow-950 dark:text-yellow-300",
   Donateur: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300",
-  "En pause": "bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300",
-  Perdu: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300",
+  "Sans réponse, à relancer": "bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300",
+  "Pas intéressé": "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300",
 };
 
 const CORRESPONDANCE: Record<string, EtatProspect> = {
   // anciens états du Suivi
   "À contacter": "Pas contacté", Contacté: "Contacté", "En réflexion": "Contacté", "Promesse de don": "Promesse",
-  "Don reçu": "Donateur", "À relancer": "En pause", Refus: "Perdu", "Ne plus solliciter": "Perdu",
+  "Don reçu": "Donateur", "À relancer": "Sans réponse, à relancer", Refus: "Pas intéressé", "Ne plus solliciter": "Pas intéressé",
   // anciennes étapes
   Identifié: "Pas contacté", Qualifié: "Pas contacté", Rencontré: "Contacté", Sollicité: "Contacté",
-  Remercié: "Donateur", Fidélisé: "Donateur", Perdu: "Perdu",
+  Remercié: "Donateur", Fidélisé: "Donateur", Perdu: "Pas intéressé",
+  // libellés unifiés antérieurs
+  "En pause": "Sans réponse, à relancer",
 };
 
 export const estEtatProspect = (v: string | null | undefined): v is EtatProspect => !!v && (ETATS_PROSPECT as readonly string[]).includes(v);
@@ -51,7 +53,8 @@ export type EtatCalcule = {
 export function etatProspect(p: Pick<Prospect, "etat_unifie" | "etape">, h: SuiviAction[] | undefined, aUnDon: boolean): EtatCalcule {
   const ancien = etatCourant(h) ?? ETAPE_LABEL[p.etape as Etape] ?? null;
   const suggestion = ancien ? CORRESPONDANCE[ancien] ?? null : null;
-  if (estEtatProspect(p.etat_unifie)) return { etat: p.etat_unifie, auto: false, ancien: null, suggestion: null, affiche: p.etat_unifie };
+  const choisi = p.etat_unifie === "En pause" ? "Sans réponse, à relancer" : p.etat_unifie === "Perdu" ? "Pas intéressé" : p.etat_unifie;
+  if (estEtatProspect(choisi)) return { etat: choisi, auto: false, ancien: null, suggestion: null, affiche: choisi };
   if (aUnDon) return { etat: "Donateur", auto: true, ancien: null, suggestion: null, affiche: "Donateur" };
   return { etat: null, auto: false, ancien, suggestion, affiche: suggestion ?? "Pas contacté" };
 }

@@ -26,7 +26,10 @@ export function AjoutSuivi({
   existante = null,
   etats,
   noteSeule = false,
+  types = TYPES_ACTION,
 }: {
+  /** Types d'action proposés (prospects : liste dédiée). */
+  types?: readonly string[];
   /** Modification de sa dernière action (moins de 24 h) au lieu d'un ajout. */
   existante?: SuiviAction | null;
   /** États proposés (prospects : état unifié) ; défaut : états du Suivi. */
@@ -43,7 +46,7 @@ export function AjoutSuivi({
   onClose: () => void;
 }) {
   const router = useRouter();
-  const connus = (a: string) => (TYPES_ACTION as readonly string[]).includes(a);
+  const connus = (a: string) => types.includes(a);
   const [actions, setActions] = useState<string[]>(() => (existante?.actions ?? []).filter(connus));
   const [autre, setAutre] = useState<string | null>(() => (existante?.actions ?? []).filter((a) => !connus(a)).join(", ") || null);
   const [etat, setEtat] = useState("");
@@ -56,7 +59,7 @@ export function AjoutSuivi({
   async function enregistrer(e: React.FormEvent) {
     e.preventDefault();
     const libre = (autre ?? "").trim();
-    const liste = [...TYPES_ACTION.filter((t) => actions.includes(t)), ...(libre ? [libre.slice(0, 200)] : [])];
+    const liste = [...types.filter((t) => actions.includes(t)), ...actions.filter((a) => !types.includes(a)), ...(libre ? [libre.slice(0, 200)] : [])];
     if (liste.length === 0 && !(noteSeule && note.trim())) return setErreur(noteSeule ? "Écrivez un commentaire." : "Choisissez au moins une action.");
     setBusy(true);
     setErreur(null);
@@ -87,7 +90,7 @@ export function AjoutSuivi({
       <form onSubmit={enregistrer} className="space-y-3">
         {!noteSeule && <Field label="Action(s)">
           <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
-            {TYPES_ACTION.map((a) => (
+            {types.map((a) => (
               <label key={a} className="flex cursor-pointer items-center gap-2 rounded-md border border-border px-2 py-1 text-sm">
                 <input type="checkbox" checked={actions.includes(a)} onChange={() => basculer(a)} className="h-4 w-4" />
                 {a}

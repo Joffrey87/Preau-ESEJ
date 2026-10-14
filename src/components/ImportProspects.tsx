@@ -10,7 +10,7 @@ import { Modal, inputCls } from "@/components/GestionComptes";
 import { useDonsDechiffres } from "@/lib/donsChiffre";
 import { NOM_NEUTRE, estListeChiffree, nomComplet, type ProspectLisible } from "@/lib/prospectsChiffres";
 import { CHAMPS, convertir, lireFichier, tableauDesFeuilles, type Champ, type LigneImport, type Tableau } from "@/lib/importProspectsColonnes";
-import { ETAPE_LABEL, SEGMENT_LABEL, type Etape, type Segment } from "@/lib/pipeline";
+import { ETAPE_LABEL, TYPES_PROSPECT, type Etape, type Segment } from "@/lib/pipeline";
 import { ChoixReserve } from "@/components/SuiviDonateur";
 import { jetonsNom } from "@/lib/foyers";
 import { prenomsDuCouple, estCouple } from "@/lib/couple";
@@ -97,10 +97,11 @@ function Fenetre({
   const [segmentDefaut, setSegmentDefaut] = useState<Segment>("particulier");
   const [etapeDefaut, setEtapeDefaut] = useState<Etape>("identifie");
   const [reserveDefaut, setReserveDefaut] = useState<string>("");
-  const [majExistants, setMajExistants] = useState(false);
+  // Doublons : toujours écartés (plus de mise à jour depuis l'import).
+  const majExistants = false;
   // Étape « Relation » (obligatoire avant l'aperçu) : relation commune (ou pour les cellules vides) ou laisser vide.
   const [etapeRelation, setEtapeRelation] = useState(false);
-  const [choixRelation, setChoixRelation] = useState<"commune" | "vide" | null>(null);
+  const [choixRelation, setChoixRelation] = useState<"commune" | "vide" | null>(auteur ? "commune" : null);
   const [relationCommune, setRelationCommune] = useState(auteur ?? "");
   const relationDefaut = choixRelation === "commune" ? relationCommune.trim() || null : null;
   const [busy, setBusy] = useState(false);
@@ -287,7 +288,7 @@ function Fenetre({
           {fichier && <span className="ml-2 text-xs text-muted">{fichier}</span>}
           <p className="mt-1 text-xs text-muted">
             Toutes les feuilles sont lues ; les en-têtes (nom, prénom, adresse, CP, ville, email, téléphone, notes…) sont reconnus
-            automatiquement et se corrigent à l&apos;étape suivante. Email, téléphone, relation et segment ont leurs propres champs.
+            automatiquement et se corrigent à l&apos;étape suivante. Email, téléphone, relation et type ont leurs propres champs.
           </p>
         </div>
 
@@ -378,14 +379,14 @@ function Fenetre({
               {champs.includes("relation") ? "Laisser vides les cellules vides" : "Laisser vide"}
             </label>
             {choixRelation === "commune" && !relationCommune.trim() && <p className="text-xs text-negative">Saisissez la relation, ou choisissez « Laisser vide ».</p>}
-            <p className="text-xs text-muted">Prospects déjà existants (mise à jour) : la relation n&apos;est ajoutée que s&apos;ils n&apos;en ont pas.</p>
+            <p className="text-xs text-muted">Par défaut, la relation est la personne qui importe ; décochez pour laisser vide. Email et téléphone sont facultatifs.</p>
             <div className="flex justify-between">
               <button type="button" onClick={() => setEtapeRelation(false)} className="text-xs text-accent hover:underline">
                 ← Colonnes
               </button>
               <button
                 type="button"
-                disabled={!choixRelation || (choixRelation === "commune" && !relationCommune.trim())}
+                disabled={choixRelation === "commune" && !relationCommune.trim()}
                 onClick={() => setApercu(true)}
                 className="rounded-lg border border-border px-3 py-1.5 font-medium hover:bg-surface-2 disabled:opacity-50"
               >
@@ -413,9 +414,9 @@ function Fenetre({
             </p>
             <div className="grid gap-2 rounded-lg border border-border p-3 sm:grid-cols-3">
               <label className="text-xs text-muted">
-                Segment par défaut
+                Type par défaut
                 <select value={segmentDefaut} onChange={(e) => setSegmentDefaut(e.target.value as Segment)} className={`${inputCls} mt-0.5`}>
-                  {Object.entries(SEGMENT_LABEL).map(([k, v]) => (
+                  {TYPES_PROSPECT.map(({ key: k, label: v }) => (
                     <option key={k} value={k}>
                       {v}
                     </option>
@@ -439,12 +440,8 @@ function Fenetre({
                   <ChoixReserve key={reserveDefaut} value={reserveDefaut || null} onChange={setReserveDefaut} label="Réservé à (import)" />
                 </div>
               </div>
-              <label className="flex items-center gap-2 text-sm sm:col-span-3">
-                <input type="checkbox" checked={majExistants} onChange={(e) => setMajExistants(e.target.checked)} className="h-4 w-4" />
-                Mettre à jour les prospects existants ({analyse.doublonsProspects.length}) : leurs champs sont complétés ou remplacés par ceux du fichier
-              </label>
             </div>
-            {liste3(majExistants ? "Déjà prospects (mis à jour)" : "Déjà prospects (non recréés)", analyse.doublonsProspects)}
+            {liste3("Déjà prospects (doublons écartés)", analyse.doublonsProspects)}
             {liste3("Déjà donateurs (non recréés)", analyse.dejaDonateurs)}
             {liste3("Répétés dans le fichier (une seule fois)", analyse.doublonsFichier)}
             {analyse.avertissements.length > 0 && (

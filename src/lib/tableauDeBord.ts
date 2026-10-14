@@ -189,7 +189,7 @@ const CALCULS: Record<string, (c: Contexte) => Promise<Omit<Tuile, "href" | "tit
     // État unifié (choisi, sinon suggéré depuis l'ancienne étape).
     const ps = ((data ?? []) as { etape: Etape; etat_unifie: string | null; prochaine_action_date: string | null }[])
       .map((p) => ({ ...p, etat: etatProspect(p, undefined, false).affiche }));
-    const actifs = ps.filter((p) => ["Pas contacté", "Contacté", "Promesse", "En pause"].includes(p.etat));
+    const actifs = ps.filter((p) => ["Pas contacté", "Contacté", "Promesse", "Sans réponse, à relancer"].includes(p.etat));
     const dans7 = new Date(Date.parse(c.aujourdhui) + 7 * 86400000).toISOString().slice(0, 10);
     const retard = actifs.filter((p) => p.prochaine_action_date && p.prochaine_action_date < c.aujourdhui).length;
     const bientot = actifs.filter((p) => p.prochaine_action_date && p.prochaine_action_date >= c.aujourdhui && p.prochaine_action_date <= dans7).length;

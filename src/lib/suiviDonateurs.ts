@@ -10,6 +10,16 @@ export const TYPES_ACTION = [
   "Pas de réponse",
 ] as const;
 
+/** Actions proposées pour les prospects (+ Autre, texte libre). */
+export const TYPES_ACTION_PROSPECT = [
+  "Envoi courrier Bienfaiteur",
+  "Appel téléphonique",
+  "Rencontre",
+  "Invitation à un événement",
+  "Relance",
+  "Remerciement",
+] as const;
+
 export const ETATS_SUIVI = [
   "À contacter",
   "Contacté",

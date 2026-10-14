@@ -7,7 +7,7 @@ import { formatEuros, todayISO } from "@/lib/format";
 import { Modal, Field, FormFooter, inputCls } from "@/components/GestionComptes";
 import { AjoutSuivi, ChoixReserve, HistoriqueSuivi } from "@/components/SuiviDonateur";
 import { ETATS_PROSPECT, AIDE_ETAT, TON_ETAT, etatProspect, etatSuivant, type EtatProspect, type EtatCalcule } from "@/lib/etatProspect";
-import { dernierCommentaire, formatDateHeure, suiviParCle, type SuiviAction } from "@/lib/suiviDonateurs";
+import { TYPES_ACTION_PROSPECT, dernierCommentaire, formatDateHeure, suiviParCle, type SuiviAction } from "@/lib/suiviDonateurs";
 import { trierListe, useTri } from "@/components/TriColonnes";
 import RelationEnLigne from "@/components/RelationEnLigne";
 import { nomCliquableCls } from "@/lib/ui";
@@ -24,7 +24,11 @@ import ChoixResponsable from "@/components/ChoixResponsable";
 import LierEcrituresProspect from "@/components/LierEcrituresProspect";
 import { villeEtDepartement } from "@/lib/listeProspects";
 import {
-  SEGMENT_LABEL,
+  TYPES_PROSPECT,
+  typeDe,
+  libelleType,
+  ancienType,
+  type TypeProspect,
   CAPACITE_LABEL,
   type Prospect,
   type Etape,
@@ -39,6 +43,7 @@ type Form = {
   cp_ville: string;
   nom: string;
   segment: Segment;
+  type_autre: string;
   etape: Etape;
   etat_unifie: string;
   capacite: "" | Capacite;
@@ -67,7 +72,7 @@ const H24 = 24 * 3600 * 1000;
 
 const vide: Form = {
   civilite: "", prenom: "", adresse: "", cp_ville: "",
-  nom: "", segment: "particulier", etape: "identifie", etat_unifie: "Pas contacté", capacite: "",
+  nom: "", segment: "particulier", type_autre: "", etape: "identifie", etat_unifie: "Pas contacté", capacite: "",
   montant_cible: "", montant_obtenu: "", responsable: "",
   prochaine_action: "", prochaine_action_date: "", notes: "",
   email: "", telephone: "", relation: "",
@@ -146,7 +151,7 @@ export default function GestionPipeline({
 
   const [q, setQ] = useState("");
   const [fEtape, setFEtape] = useState<"" | EtatProspect>("");
-  const [fSegments, setFSegments] = useState<Segment[]>([]);
+  const [fSegments, setFSegments] = useState<TypeProspect[]>([]);
   const [exportEnCours, setExportEnCours] = useState(false);
 
   const filtres = useMemo(() => {
@@ -155,7 +160,7 @@ export default function GestionPipeline({
       (p) =>
         (!ql || [p.affiche, p.adresse, p.cp_ville, p.responsable, p.email, p.telephone, p.relation].some((v) => (v ?? "").toLowerCase().includes(ql))) &&
         (!fEtape || etats.get(p.id)?.affiche === fEtape) &&
-        (fSegments.length === 0 || fSegments.includes(p.segment)) &&
+        (fSegments.length === 0 || fSegments.includes(typeDe(p.segment))) &&
         (fListes.length === 0 || (!!p.liste && fListes.includes(p.liste))),
     );
   }, [prospects, q, fEtape, fSegments, fListes, etats]);
@@ -189,7 +194,7 @@ export default function GestionPipeline({
   });
 
   // Analyse (sur la sélection filtrée).
-  const actifs = filtres.filter((p) => etatDe(p).affiche !== "Perdu");
+  const actifs = filtres.filter((p) => etatDe(p).affiche !== "Pas intéressé");
   const totalCible = actifs.reduce((s, p) => s + Number(p.montant_cible ?? 0), 0);
   const totalObtenu = filtres.reduce((s, p) => s + (obtenus[p.id]?.montant ?? 0), 0);
   const dans7j = actifs.filter(
@@ -213,7 +218,7 @@ export default function GestionPipeline({
           adresse: p.verrouille ? ferme : [p.adresse, p.cp_ville].filter(Boolean).join(", "),
           courriel: p.email ?? "",
           telephone: p.telephone ?? "",
-          segment: SEGMENT_LABEL[p.segment] ?? p.segment,
+          segment: libelleType(p),
           etape: etatDe(p).affiche + (etatDe(p).etat ? "" : " (suggéré)"),
           relation: p.relation ?? "",
           reserve: p.reserve_a ?? "",
@@ -222,7 +227,7 @@ export default function GestionPipeline({
         };
       });
       const actifs = [
-        fSegments.length ? `Segments : ${fSegments.map((s) => SEGMENT_LABEL[s]).join(", ")}` : "",
+        fSegments.length ? `Types : ${fSegments.map((s) => TYPES_PROSPECT.find((t) => t.key === s)!.label).join(", ")}` : "",
         fEtape ? `État : ${fEtape}` : "",
         q.trim() ? `Recherche : « ${q.trim()} »` : "",
       ].filter(Boolean).join(" · ");
@@ -238,7 +243,7 @@ export default function GestionPipeline({
     else
       setForm({
         civilite: abregerCivilite(p.titre), prenom: p.prenom ?? "", adresse: p.adresse ?? "", cp_ville: p.cp_ville ?? "",
-        nom: p.verrouille ? "" : p.nom, segment: p.segment, etape: p.etape, etat_unifie: etatDe(p).auto ? "" : etatDe(p).etat ?? "", capacite: p.capacite ?? "",
+        nom: p.verrouille ? "" : p.nom, segment: p.segment, type_autre: p.type_autre ?? "", etape: p.etape, etat_unifie: etatDe(p).auto ? "" : etatDe(p).etat ?? "", capacite: p.capacite ?? "",
         montant_cible: p.montant_cible != null ? String(p.montant_cible).replace(".", ",") : "",
         montant_obtenu: p.montant_obtenu ? String(p.montant_obtenu).replace(".", ",") : "",
         responsable: p.responsable ?? "", prochaine_action: p.prochaine_action ?? "",
@@ -264,7 +269,7 @@ export default function GestionPipeline({
     if (edit !== "nouveau" && edit?.verrouille) return echec("Fiche chiffrée illisible : déverrouillez le coffre.");
     setSaving(true);
     const supabase = createClient();
-    const nomPropre = form.segment === "particulier" ? nomSoigne(form.nom, false) : form.nom.trim();
+    const nomPropre = typeDe(form.segment) === "particulier" ? nomSoigne(form.nom, false) : form.nom.trim();
     const coordonnees: { nom: string; pii_chiffre: string | null } = personnel
       ? {
           nom: NOM_NEUTRE,
@@ -292,6 +297,7 @@ export default function GestionPipeline({
       ...coordonnees,
       ...enClair,
       segment: form.segment,
+      type_autre: typeDe(form.segment) === "autre" ? form.type_autre.trim() || null : null,
       etape: form.etape,
       ...(edit === "nouveau" || form.etat_unifie !== (etatDe(edit as Prospect).auto ? "" : etatDe(edit as Prospect).etat ?? "")
         ? { etat_unifie: form.etat_unifie || null, etat_unifie_le: new Date().toISOString(), etat_unifie_par: auteurSuivi }
@@ -414,12 +420,22 @@ export default function GestionPipeline({
         </div>
       </div>
 
+      {/* Légende des états */}
+      <div className="flex flex-wrap items-center gap-1.5 text-xs">
+        <span className="text-muted">États :</span>
+        {ETATS_PROSPECT.map((e) => (
+          <span key={e} title={AIDE_ETAT[e]} className={`rounded-full px-2 py-0.5 font-medium ${TON_ETAT[e]}`}>{e}</span>
+        ))}
+        <span className="text-muted">— survolez pour la définition (Contacté : premier contact établi ou don sollicité).</span>
+      </div>
+
       {/* Barre d'outils */}
       <div className="flex flex-wrap items-center gap-2">
-        <div className="flex w-full flex-wrap items-center gap-1.5" role="group" aria-label="Filtrer par segment">
-          {(Object.entries(SEGMENT_LABEL) as [Segment, string][]).map(([k, v]) => {
+        <div className="flex w-full flex-wrap items-center gap-1.5" role="group" aria-label="Filtrer par type">
+          <span className="mr-1 text-sm text-muted">Type</span>
+          {TYPES_PROSPECT.map(({ key: k, label: v }) => {
             const actif = fSegments.includes(k);
-            const n = prospects.filter((p) => p.segment === k).length;
+            const n = prospects.filter((p) => typeDe(p.segment) === k).length;
             return (
               <button key={k} type="button" aria-pressed={actif}
                 onClick={() => setFSegments((l) => (actif ? l.filter((x) => x !== k) : [...l, k]))}
@@ -537,6 +553,7 @@ export default function GestionPipeline({
           existante={ajoutSuivi.existante ?? null}
           noteSeule={ajoutSuivi.noteSeule}
           etats={ETATS_PROSPECT}
+          types={TYPES_ACTION_PROSPECT}
           onClose={() => setAjoutSuivi(null)}
         />
       )}
@@ -596,7 +613,7 @@ export default function GestionPipeline({
                 const nomP = !p.verrouille ? nomComplet({ titre: p.titre, prenom: p.prenom, nom: p.nom }) : p.affiche;
                 const retard = p.prochaine_action_date && p.prochaine_action_date < today;
                 return (
-                  <tr key={p.id} className={`border-b border-border last:border-0 ${ec.affiche === "Perdu" ? "opacity-50" : ""}`}>
+                  <tr key={p.id} className={`border-b border-border last:border-0 ${ec.affiche === "Pas intéressé" ? "opacity-50" : ""}`}>
                     <td className="px-4 py-3">
                       <button type="button" onClick={() => ouvrir(p)} title="Ouvrir la fiche du prospect (informations et suivi)" className={`${nomCliquableCls} font-medium hover:underline`}>
                         {!p.verrouille ? nomComplet({ titre: p.titre, prenom: p.prenom, nom: p.nom }) : p.affiche}
@@ -613,13 +630,15 @@ export default function GestionPipeline({
                         {/* Prospects de la Liste Axel : tous des particuliers, segment non modifiable depuis le tableau. */}
                         {!estListeChiffree(p.liste) && (
                           <select
-                            value={p.segment}
-                            disabled={busy === p.id}
-                            onChange={(e) => void majChamp(p, { segment: e.target.value as Segment })}
-                            aria-label="Segment"
+                            value={ancienType(p.segment) ? `ancien:${p.segment}` : p.segment}
+                            disabled={busy === p.id || !peutEcrire}
+                            onChange={(e) => !e.target.value.startsWith("ancien:") && void majChamp(p, { segment: e.target.value as Segment })}
+                            aria-label="Type"
+                            title={ancienType(p.segment) ? `Ancienne valeur : ${ancienType(p.segment)} — type suggéré : ${libelleType(p)}` : `Type : ${libelleType(p)}`}
                             className="rounded border border-transparent bg-transparent py-0.5 text-xs hover:border-border"
                           >
-                            {Object.entries(SEGMENT_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                            {ancienType(p.segment) && <option value={`ancien:${p.segment}`}>{libelleType(p)} (suggéré · ancien : {ancienType(p.segment)})</option>}
+                            {TYPES_PROSPECT.map((t) => <option key={t.key} value={t.key}>{t.key === "autre" && p.type_autre && typeDe(p.segment) === "autre" ? libelleType(p) : t.label}</option>)}
                           </select>
                         )}
                       </div>
@@ -840,10 +859,15 @@ export default function GestionPipeline({
               <p className="-mt-2 text-xs text-muted">Fiche de la « {edit.liste} » : prénom, adresse et civilité sont chiffrés dans le coffre (email, téléphone et relation restent en clair).</p>
             )}
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Segment">
+              <Field label="Type">
                 <select value={form.segment} onChange={(e) => setForm({ ...form, segment: e.target.value as Segment })} className={inputCls}>
-                  {Object.entries(SEGMENT_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                  {ancienType(form.segment) && <option value={form.segment}>Ancien : {ancienType(form.segment)} (suggéré : {libelleType({ segment: form.segment })})</option>}
+                  {TYPES_PROSPECT.map((t) => <option key={t.key} value={t.key}>{t.label}</option>)}
                 </select>
+                {typeDe(form.segment) === "autre" && (
+                  <input type="text" value={form.type_autre} onChange={(e) => setForm({ ...form, type_autre: e.target.value })} maxLength={80}
+                    placeholder="Précisez le type…" className={`${inputCls} mt-1`} />
+                )}
               </Field>
               <Field label="Capacité">
                 <select value={form.capacite} onChange={(e) => setForm({ ...form, capacite: e.target.value as "" | Capacite })} className={inputCls}>

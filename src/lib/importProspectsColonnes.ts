@@ -4,7 +4,7 @@
 import { normaliser } from "@/lib/reconciliation";
 import { formaterNomParticulier } from "@/lib/nomPropre";
 import { codePostal, formaterPrenom, formaterVille, texte, titreDe, type LigneListe } from "@/lib/listeProspects";
-import { SEGMENT_LABEL, type Segment } from "@/lib/pipeline";
+import { SEGMENT_LABEL, TYPES_PROSPECT, type Segment } from "@/lib/pipeline";
 
 export type Champ = "" | "civilite" | "nom" | "prenom" | "adresse" | "cp" | "ville" | "cp_ville" | "email" | "telephone" | "relation" | "segment" | "notes";
 
@@ -19,7 +19,7 @@ export const CHAMPS: { key: Exclude<Champ, "">; label: string }[] = [
   { key: "email", label: "Email" },
   { key: "telephone", label: "Téléphone" },
   { key: "relation", label: "Relation (qui l'a amené)" },
-  { key: "segment", label: "Segment / type" },
+  { key: "segment", label: "Type" },
   { key: "notes", label: "Notes" },
 ];
 
@@ -124,11 +124,12 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 export function segmentDe(v: string): Segment | null {
   const t = normaliser(v);
   if (!t) return null;
+  for (const { key, label } of TYPES_PROSPECT) if (t === normaliser(label) || t === normaliser(key)) return key;
   for (const [k, l] of Object.entries(SEGMENT_LABEL)) if (t === normaliser(l) || t === normaliser(k)) return k as Segment;
-  if (/(entreprise|societe|sarl|sas|sa |eurl|commerce|pme)/.test(t + " ")) return "entreprise";
-  if (/(fondation|fonds|association|asso)/.test(t)) return "fondation";
-  if (/(paroisse|diocese|congregation|eglise|catho)/.test(t)) return "reseau_catho";
-  if (/(grand donateur|mecene)/.test(t)) return "grand_donateur";
+  if (/(entreprise|societe|sarl|sas|sa |eurl|commerce|pme|pro\b|professionnel)/.test(t + " ")) return "pro";
+  if (/(fondation|fonds|association|asso)/.test(t)) return "association";
+  if (/(paroisse|diocese|congregation|eglise|catho|communaute|monastere|abbaye)/.test(t)) return "communaute";
+  if (/(grand donateur|mecene)/.test(t)) return "particulier";
   if (/(particulier|famille|personne|individu)/.test(t)) return "particulier";
   return null;
 }

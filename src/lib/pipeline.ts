@@ -6,7 +6,9 @@ export type Etape =
 
 export type Segment =
   | "cercle_interieur" | "particulier" | "grand_donateur"
-  | "entreprise" | "fondation" | "reseau_catho" | "autre";
+  | "entreprise" | "fondation" | "reseau_catho" | "autre"
+  // Types actuels (anciens codes conservés en base, affichés selon leur correspondance).
+  | "pro" | "association" | "communaute";
 
 export type Capacite = "A" | "B" | "C";
 
@@ -38,6 +40,8 @@ export type Prospect = {
   pii_chiffre?: string | null;
   /** État unifié du prospect (remplace l'étape et l'état du Suivi) ; vide = ancien état, suggestion proposée. */
   etat_unifie?: string | null;
+  /** Type « Autre » : précision libre. */
+  type_autre?: string | null;
   etat_unifie_le?: string | null;
   etat_unifie_par?: string | null;
   /** Liste d'origine (ex. « Liste Axel »). */
@@ -69,7 +73,34 @@ export const SEGMENT_LABEL: Record<Segment, string> = {
   fondation: "Fondation / fonds",
   reseau_catho: "Réseau catholique",
   autre: "Autre",
+  pro: "Pro",
+  association: "Association",
+  communaute: "Communauté",
 };
+
+/** Types de prospect proposés (« Type » dans l'interface). */
+export type TypeProspect = "particulier" | "pro" | "association" | "communaute" | "autre";
+export const TYPES_PROSPECT: { key: TypeProspect; label: string }[] = [
+  { key: "particulier", label: "Particulier" },
+  { key: "pro", label: "Pro" },
+  { key: "association", label: "Association" },
+  { key: "communaute", label: "Communauté" },
+  { key: "autre", label: "Autre" },
+];
+const TYPE_DE_SEGMENT: Record<Segment, TypeProspect> = {
+  particulier: "particulier", cercle_interieur: "particulier", grand_donateur: "particulier",
+  entreprise: "pro", pro: "pro", fondation: "association", association: "association",
+  reseau_catho: "communaute", communaute: "communaute", autre: "autre",
+};
+/** Type affiché d'après le code en base (anciens codes : correspondance, sans conversion). */
+export const typeDe = (s: Segment | string): TypeProspect => TYPE_DE_SEGMENT[s as Segment] ?? "autre";
+export const libelleType = (p: { segment: Segment | string; type_autre?: string | null }) => {
+  const t = typeDe(p.segment);
+  const l = TYPES_PROSPECT.find((x) => x.key === t)!.label;
+  return t === "autre" && p.type_autre?.trim() ? `${l} : ${p.type_autre.trim()}` : l;
+};
+/** Ancien code dont le libellé diffère du type affiché (ex. « Fondation / fonds » → Association). */
+export const ancienType = (s: Segment | string) => (typeDe(s) !== s ? SEGMENT_LABEL[s as Segment] ?? s : null);
 
 // Fourchettes de potentiel par segment (plan V2, phase 3) — indicatif, à titre d'aide.
 export const SEGMENT_POTENTIEL: Record<Segment, string> = {
@@ -80,6 +111,9 @@ export const SEGMENT_POTENTIEL: Record<Segment, string> = {
   fondation: "5-20 k€/projet",
   reseau_catho: "3-8 k€/an",
   autre: "—",
+  pro: "8-15 k€/an",
+  association: "5-20 k€/projet",
+  communaute: "3-8 k€/an",
 };
 
 export const CAPACITE_LABEL: Record<Capacite, string> = {

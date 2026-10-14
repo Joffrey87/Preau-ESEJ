@@ -18,6 +18,8 @@ import {
   type DemiJournee,
   type TypeAbsence,
 } from "@/lib/absences";
+import { presentiel, tauxTexte } from "@/lib/calendrier";
+import CalendrierAppel from "./CalendrierAppel";
 
 type Etat = "present" | "absent" | "retard";
 type Ligne = { etat: Etat; type: TypeAbsence; remarque: string };
@@ -32,18 +34,25 @@ export default function Absences({
   periode,
   eleves,
   peutSaisir,
+  directrice = false,
 }: {
   classe: Classe;
   periode: Periode;
   eleves: EleveBulletin[];
   /** Titulaire de la classe ou Directrice (la base le garantit aussi). */
   peutSaisir: boolean;
+  /** La Directrice modifie aussi le calendrier des jours sans école. */
+  directrice?: boolean;
 }) {
   const sb = useMemo(() => createClient(), []);
   const [date, setDate] = useState(todayISO());
   const [demi, setDemi] = useState<DemiJournee>(demiJourneeCourante());
   const [absences, setAbsences] = useState<Absence[]>([]);
   const [appel, setAppel] = useState<Appel | null>(null);
+  // Par défaut l'appel vaut pour la journée entière (matin et après-midi) ; option pour préciser par demi-journée.
+  const [parDemi, setParDemi] = useState(false);
+  const [appelsPeriode, setAppelsPeriode] = useState<Appel[]>([]);
+  const [majCalendrier, setMajCalendrier] = useState(0);
   const [lignes, setLignes] = useState<Record<string, Ligne>>({});
   const [ouvert, setOuvert] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -58,12 +67,17 @@ export default function Absences({
     const fin = date > periode.fin ? date : periode.fin;
     const [a, ap] = await Promise.all([
       sb.from("absences").select("*").in("eleve_id", ids).gte("date", debut).lte("date", fin).order("date"),
-      sb.from("appels").select("*").eq("classe_id", classe.id).eq("date", date).eq("demi_journee", demi).maybeSingle(),
+      sb.from("appels").select("*").eq("classe_id", classe.id).gte("date", debut).lte("date", fin),
     ]);
     const liste = (a.data ?? []) as Absence[];
+    const appels = (ap.data ?? []) as Appel[];
     setAbsences(liste);
-    setAppel((ap.data ?? null) as Appel | null);
-    const du = new Map(liste.filter((x) => x.date === date && x.demi_journee === demi).map((x) => [x.eleve_id, x]));
+    setAppelsPeriode(appels);
+    const duJour = appels.filter((x) => x.date === date);
+    // Journée entière : l'appel du matin fait foi ; il n'est « fait » que si les deux demi-journées le sont.
+    const cible: DemiJournee = parDemi ? demi : "matin";
+    setAppel(parDemi ? (duJour.find((x) => x.demi_journee === demi) ?? null) : duJour.length === 2 ? (duJour.find((x) => x.demi_journee === "matin") ?? null) : null);
+    const du = new Map(liste.filter((x) => x.date === date && x.demi_journee === cible).map((x) => [x.eleve_id, x]));
     setLignes(
       Object.fromEntries(
         ids.map((id) => {
@@ -72,7 +86,7 @@ export default function Absences({
         }),
       ) as Record<string, Ligne>,
     );
-  }, [sb, ids, classe.id, periode.debut, periode.fin, date, demi]);
+  }, [sb, ids, classe.id, periode.debut, periode.fin, date, demi, parDemi]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement des absences de la classe
@@ -91,20 +105,30 @@ export default function Absences({
   async function enregistrerAppel() {
     setEnvoi(true);
     setMessage(null);
+    const demis: DemiJournee[] = parDemi ? [demi] : ["matin", "apres_midi"];
     const presents = ids.filter((id) => lignes[id]?.etat === "present");
-    const manquants = ids
-      .filter((id) => lignes[id] && lignes[id].etat !== "present")
-      .map((id) => ({ eleve_id: id, date, demi_journee: demi, type: lignes[id].type, remarque: lignes[id].remarque.trim() || null }));
+    const absentsIds = ids.filter((id) => lignes[id] && lignes[id].etat !== "present");
+    // Journée entière : un retard ne vaut que pour le matin (l'après-midi, l'élève est présent).
+    const manquants = demis.flatMap((dj) =>
+      absentsIds
+        .filter((id) => dj === "matin" || parDemi || lignes[id].etat !== "retard")
+        .map((id) => ({ eleve_id: id, date, demi_journee: dj, type: lignes[id].type, remarque: lignes[id].remarque.trim() || null })),
+    );
+    const effacer = demis.flatMap((dj) => {
+      const qui = dj === "apres_midi" && !parDemi ? [...presents, ...absentsIds.filter((id) => lignes[id].etat === "retard")] : presents;
+      return qui.length ? [sb.from("absences").delete().in("eleve_id", qui).eq("date", date).eq("demi_journee", dj)] : [];
+    });
     const ops = [
-      sb.from("appels").upsert({ classe_id: classe.id, date, demi_journee: demi, fait_le: new Date().toISOString() }, { onConflict: "classe_id,date,demi_journee" }),
-      presents.length ? sb.from("absences").delete().in("eleve_id", presents).eq("date", date).eq("demi_journee", demi) : null,
+      sb.from("appels").upsert(demis.map((dj) => ({ classe_id: classe.id, date, demi_journee: dj, fait_le: new Date().toISOString() })), { onConflict: "classe_id,date,demi_journee" }),
+      ...effacer,
       manquants.length ? sb.from("absences").upsert(manquants, { onConflict: "eleve_id,date,demi_journee" }) : null,
     ].filter(Boolean);
     const res = await Promise.all(ops);
     const erreur = res.find((r) => r && r.error)?.error;
     setEnvoi(false);
     if (erreur) return setMessage(`Échec : ${erreur.message}`);
-    setMessage(`Appel enregistré : ${manquants.length ? `${manquants.length} absence${manquants.length > 1 ? "s" : ""} ou retard${manquants.length > 1 ? "s" : ""}` : "tous présents"}.`);
+    setMajCalendrier((n) => n + 1);
+    setMessage(`Appel enregistré${parDemi ? "" : " (journée entière)"} : ${absentsIds.length ? `${absentsIds.length} absence${absentsIds.length > 1 ? "s" : ""} ou retard${absentsIds.length > 1 ? "s" : ""}` : "tous présents"}.`);
     await charger();
   }
 
@@ -130,7 +154,11 @@ export default function Absences({
         <div className="flex flex-wrap items-center gap-2 border-b border-border px-4 py-3">
           <h3 className="mr-2 text-[14px] font-semibold">Appel</h3>
           <input type="date" value={date} onChange={(e) => e.target.value && setDate(e.target.value)} className={champ} aria-label="Date de l'appel" />
-          <div className="flex gap-1 rounded-lg bg-surface-2 p-1">
+          <label className="flex items-center gap-1.5 text-[12.5px] text-muted">
+            <input type="checkbox" checked={parDemi} onChange={(e) => setParDemi(e.target.checked)} />
+            Préciser par demi-journée
+          </label>
+          {parDemi && <div className="flex gap-1 rounded-lg bg-surface-2 p-1">
             {DEMI_JOURNEES.map((d) => (
               <button
                 key={d.v}
@@ -141,7 +169,7 @@ export default function Absences({
                 {d.label}
               </button>
             ))}
-          </div>
+          </div>}
           <span className={`text-[12px] ${appel ? "text-positive" : "text-muted"}`}>
             {appel ? `Appel fait le ${new Date(appel.fait_le).toLocaleString("fr-FR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}` : "Appel non fait"}
           </span>
@@ -223,6 +251,8 @@ export default function Absences({
         </div>
       </div>
 
+      <CalendrierAppel classeId={classe.id} annee={classe.annee_scolaire} date={date} onChoisir={setDate} directrice={directrice} maj={majCalendrier} />
+
       {/* Récapitulatif de la période : ce qui figurera sur le bulletin. */}
       <div className="rounded-xl border border-border bg-surface">
         <div className="border-b border-border px-4 py-3">
@@ -236,6 +266,7 @@ export default function Absences({
               <th className="px-2 py-2 text-center font-medium">Demi-journées</th>
               <th className="px-2 py-2 text-center font-medium">dont justifiées</th>
               <th className="px-2 py-2 text-center font-medium">Retards</th>
+              <th className="px-2 py-2 text-center font-medium" title="Demi-journées de présence sur les demi-journées où l'appel a été fait">Présentiel</th>
               <th />
             </tr>
           </thead>
@@ -243,11 +274,13 @@ export default function Absences({
             {tries.map((e) => {
               const siennes = dePeriode.filter((a) => a.eleve_id === e.id);
               const r = resumeAbsences(siennes);
+              const taux = presentiel(appelsPeriode.filter((x) => x.date >= periode.debut && x.date <= periode.fin), siennes, e.sorti_le).taux;
               return (
                 <FragmentEleve
                   key={e.id}
                   nom={nomEleve(e)}
                   r={r}
+                  taux={taux}
                   absences={siennes}
                   ouvert={ouvert === e.id}
                   onBasculer={() => setOuvert(ouvert === e.id ? null : e.id)}
@@ -267,6 +300,7 @@ export default function Absences({
 function FragmentEleve({
   nom,
   r,
+  taux,
   absences,
   ouvert,
   onBasculer,
@@ -276,6 +310,7 @@ function FragmentEleve({
 }: {
   nom: string;
   r: ReturnType<typeof resumeAbsences>;
+  taux: number | null;
   absences: Absence[];
   ouvert: boolean;
   onBasculer: () => void;
@@ -291,6 +326,7 @@ function FragmentEleve({
         <td className="px-2 py-1.5 text-center tabular-nums">{r.demiJournees || "–"}</td>
         <td className="px-2 py-1.5 text-center tabular-nums text-muted">{r.demiJournees ? r.justifiees : "–"}</td>
         <td className="px-2 py-1.5 text-center tabular-nums">{r.retards || "–"}</td>
+        <td className="px-2 py-1.5 text-center tabular-nums">{tauxTexte(taux)}</td>
         <td className="px-4 py-1.5 text-right">
           {!vide && (
             <button type="button" onClick={onBasculer} className="text-[12px] text-accent hover:underline">
@@ -318,7 +354,7 @@ function FragmentEleve({
                 typeAbsence(a.type).label
               )}
             </td>
-            <td className="px-2 py-1 text-muted">{a.remarque}</td>
+            <td className="px-2 py-1 text-muted" colSpan={2}>{a.remarque}</td>
             <td className="px-4 py-1 text-right">
               {peutSaisir && (
                 <button type="button" onClick={() => onSupprimer(a)} className="text-muted hover:text-negative" aria-label="Supprimer">

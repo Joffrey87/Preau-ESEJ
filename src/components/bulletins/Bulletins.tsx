@@ -12,8 +12,10 @@ import SaisieNotes from "./SaisieNotes";
 import ParametresBulletins from "./ParametresBulletins";
 import ConseilClasse from "./ConseilClasse";
 import Absences from "./Absences";
+import ReleveMaternelle from "./ReleveMaternelle";
+import { estMaternelle } from "@/lib/releveMaternelle";
 
-export type Onglet = "bulletins" | "conseil" | "notes" | "absences" | "parametres";
+export type Onglet = "bulletins" | "conseil" | "notes" | "absences" | "maternelle" | "parametres";
 
 /** Ce que le compte peut faire dans la classe affichée (la base le garantit de son côté). */
 export type Droits = {
@@ -40,7 +42,7 @@ export default function Bulletins({
   const [ref, setRef] = useState<Referentiel | null>(null);
   const [classeId, setClasseId] = useState<string | null>(initial.classe ?? null);
   const [periodeId, setPeriodeId] = useState<string | null>(initial.periode ?? null);
-  const [onglet, setOnglet] = useState<Onglet>((["bulletins", "conseil", "notes", "absences", "parametres"].includes(initial.onglet ?? "") ? initial.onglet : "bulletins") as Onglet);
+  const [onglet, setOnglet] = useState<Onglet>((["bulletins", "conseil", "notes", "absences", "maternelle", "parametres"].includes(initial.onglet ?? "") ? initial.onglet : "bulletins") as Onglet);
   const [bulletinId, setBulletinId] = useState<string | null>(initial.bulletin ?? null);
   // Bulletin ouvert depuis le Conseil de classe : bouton de retour au Conseil.
   const [depuisConseil, setDepuisConseil] = useState(false);
@@ -127,7 +129,8 @@ export default function Bulletins({
     { v: "bulletins", label: "Bulletins" },
     { v: "conseil", label: "Conseil de classe" },
     { v: "notes", label: "Notes" },
-    { v: "absences", label: "Absences" },
+    { v: "absences", label: "Appel & absences" },
+    ...(classe && estMaternelle(classe.niveaux) ? [{ v: "maternelle" as Onglet, label: "Relevé maternelle" }] : []),
     ...(directrice ? [{ v: "parametres" as Onglet, label: "Paramètres" }] : []),
   ];
 
@@ -235,7 +238,17 @@ export default function Bulletins({
               }}
             />
           ) : onglet === "absences" ? (
-            <Absences classe={ctx.classe} periode={ctx.periode} eleves={ctx.eleves} peutSaisir={droits.directrice || droits.titulaire} />
+            <Absences classe={ctx.classe} periode={ctx.periode} eleves={ctx.eleves} peutSaisir={droits.directrice || droits.titulaire} directrice={droits.directrice} />
+          ) : onglet === "maternelle" ? (
+            <ReleveMaternelle
+              classe={ctx.classe}
+              periode={ctx.periode}
+              periodes={periodesAnnee}
+              eleves={ctx.eleves}
+              directrice={droits.directrice}
+              titulaire={droits.titulaire}
+              nomTitulaire={titulaire ? nomEnseignant(titulaire) : null}
+            />
           ) : onglet === "notes" ? (
             <SaisieNotes ctx={ctx} resultats={resultats} droits={droits} enseignants={enseignants} onMaj={setCtx} />
           ) : bulletinId && resultats.some((r) => r.bulletin?.id === bulletinId) ? (

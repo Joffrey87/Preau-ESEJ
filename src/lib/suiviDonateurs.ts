@@ -1,6 +1,7 @@
 /** Suivi des relations donateurs : historique des actions (table suivi_actions, écriture par RPC). */
 
 export const TYPES_ACTION = [
+  "Envoi courrier Bienfaiteur",
   "Courrier envoyé",
   "Appel téléphonique",
   "Rencontre en personne",

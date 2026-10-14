@@ -23,7 +23,16 @@ export function AjoutSuivi({
   nom,
   auteur,
   onClose,
+  existante = null,
+  etats,
+  noteSeule = false,
 }: {
+  /** Modification de sa dernière action (moins de 24 h) au lieu d'un ajout. */
+  existante?: SuiviAction | null;
+  /** États proposés (prospects : état unifié) ; défaut : états du Suivi. */
+  etats?: readonly string[];
+  /** Ajout d'un commentaire seul (aucune action exigée). */
+  noteSeule?: boolean;
   cibleType?: "donateur" | "prospect";
   /** Donateur : clé (secours) ; prospect : id. */
   cle: string;
@@ -34,9 +43,11 @@ export function AjoutSuivi({
   onClose: () => void;
 }) {
   const router = useRouter();
-  const [actions, setActions] = useState<string[]>([]);
+  const connus = (a: string) => (TYPES_ACTION as readonly string[]).includes(a);
+  const [actions, setActions] = useState<string[]>(() => (existante?.actions ?? []).filter(connus));
+  const [autre, setAutre] = useState<string | null>(() => (existante?.actions ?? []).filter((a) => !connus(a)).join(", ") || null);
   const [etat, setEtat] = useState("");
-  const [note, setNote] = useState("");
+  const [note, setNote] = useState(existante?.note ?? "");
   const [busy, setBusy] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
 
@@ -44,18 +55,27 @@ export function AjoutSuivi({
 
   async function enregistrer(e: React.FormEvent) {
     e.preventDefault();
-    if (actions.length === 0) return setErreur("Choisissez au moins une action.");
+    const libre = (autre ?? "").trim();
+    const liste = [...TYPES_ACTION.filter((t) => actions.includes(t)), ...(libre ? [libre.slice(0, 200)] : [])];
+    if (liste.length === 0 && !(noteSeule && note.trim())) return setErreur(noteSeule ? "Écrivez un commentaire." : "Choisissez au moins une action.");
     setBusy(true);
     setErreur(null);
-    const { error } = await createClient().rpc("ajouter_suivi_action", {
-      p_cible_type: cibleType,
-      p_cible_cle: cle,
-      p_dons_ids: cibleType === "donateur" ? donsIds : [],
-      p_actions: TYPES_ACTION.filter((t) => actions.includes(t)),
-      p_etat: etat,
-      p_note: note,
-      p_auteur: auteur ?? "",
-    });
+    const sb = createClient();
+    const { error } = existante
+      ? await sb.rpc("modifier_suivi_action", { p_id: existante.id, p_actions: liste, p_note: note, p_auteur: auteur ?? "" })
+      : await sb.rpc("ajouter_suivi_action", {
+          p_cible_type: cibleType,
+          p_cible_cle: cle,
+          p_dons_ids: cibleType === "donateur" ? donsIds : [],
+          p_actions: liste,
+          p_etat: etat,
+          p_note: note,
+          p_auteur: auteur ?? "",
+        });
+    // Prospect : le nouvel état choisi devient aussi son état unifié.
+    if (!error && !existante && etat && cibleType === "prospect" && etats) {
+      await sb.from("prospects").update({ etat_unifie: etat, etat_unifie_le: new Date().toISOString(), etat_unifie_par: auteur ?? null }).eq("id", cle);
+    }
     setBusy(false);
     if (error) return setErreur("Enregistrement impossible : " + error.message);
     onClose();
@@ -63,9 +83,9 @@ export function AjoutSuivi({
   }
 
   return (
-    <Modal title={`Ajouter une action — ${nom}`} onClose={onClose}>
+    <Modal title={`${existante ? "Modifier l'action" : noteSeule ? "Commentaire" : "Ajouter une action"} — ${nom}`} onClose={onClose}>
       <form onSubmit={enregistrer} className="space-y-3">
-        <Field label="Action(s)">
+        {!noteSeule && <Field label="Action(s)">
           <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
             {TYPES_ACTION.map((a) => (
               <label key={a} className="flex cursor-pointer items-center gap-2 rounded-md border border-border px-2 py-1 text-sm">
@@ -73,19 +93,27 @@ export function AjoutSuivi({
                 {a}
               </label>
             ))}
+            <label className="flex cursor-pointer items-center gap-2 rounded-md border border-dashed border-border px-2 py-1 text-sm">
+              <input type="checkbox" checked={autre !== null} onChange={() => setAutre((v) => (v === null ? "" : null))} className="h-4 w-4" />
+              + Autre (texte libre)
+            </label>
           </div>
-        </Field>
-        <Field label="Nouvel état (facultatif)">
+          {autre !== null && (
+            <input autoFocus type="text" maxLength={200} value={autre} onChange={(e) => setAutre(e.target.value)}
+              placeholder="Écrivez l'action… (ex. Déposé une plaquette)" className={`${inputCls} mt-2`} />
+          )}
+        </Field>}
+        {!existante && !noteSeule && <Field label="Nouvel état (facultatif)">
           <select value={etat} onChange={(e) => setEtat(e.target.value)} className={inputCls}>
             <option value="">Inchangé</option>
-            {ETATS_SUIVI.map((s) => (
+            {(etats ?? ETATS_SUIVI).map((s) => (
               <option key={s} value={s}>
                 {s}
               </option>
             ))}
           </select>
-        </Field>
-        <Field label="Note (facultative)">
+        </Field>}
+        <Field label={noteSeule ? "Commentaire" : "Note (facultative)"}>
           <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} className={inputCls} />
         </Field>
         <p className="text-xs text-muted">Signée : {auteur || "votre profil"}</p>
@@ -103,7 +131,7 @@ export function AjoutSuivi({
   );
 }
 
-/** Historique complet, du plus récent au plus ancien. */
+/** Historique succinct, une ligne par action : « date — action(s) », du plus récent au plus ancien. */
 export function HistoriqueSuivi({ historique }: { historique: SuiviAction[] }) {
   return (
     <div>
@@ -111,21 +139,15 @@ export function HistoriqueSuivi({ historique }: { historique: SuiviAction[] }) {
       {historique.length === 0 ? (
         <p className="text-sm text-muted">Aucune action enregistrée.</p>
       ) : (
-        <ol className="space-y-2">
+        <ol className="divide-y divide-border rounded-lg border border-border bg-surface text-sm">
           {historique.map((h) => (
-            <li key={h.id} className="rounded-lg border border-border bg-surface px-3 py-2 text-sm">
-              <div className="flex flex-wrap items-center gap-1">
-                {h.actions.map((a) => (
-                  <span key={a} className="rounded-full bg-surface-2 px-2 py-0.5 text-xs font-medium">
-                    {a}
-                  </span>
-                ))}
-                {h.etat && <span className="rounded-full bg-accent-soft px-2 py-0.5 text-xs font-medium">→ {h.etat}</span>}
-              </div>
-              {h.note && <p className="mt-1 whitespace-pre-wrap">{h.note}</p>}
-              <div className="mt-1 text-xs text-muted">
-                {formatDateHeure(h.cree_le)} · {h.auteur}
-              </div>
+            <li key={h.id} className="px-3 py-1.5" title={`${formatDateHeure(h.cree_le)} · ${h.auteur}`}>
+              <span className="tabular-nums text-muted">{new Date(h.cree_le).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" })}</span>
+              {" — "}
+              <span className="font-medium">{h.actions.length ? h.actions.join(", ") : "Commentaire"}</span>
+              {h.etat && <span className="text-accent"> → {h.etat}</span>}
+              {h.note && <span className="text-muted"> · {h.note}</span>}
+              <span className="text-xs text-muted"> ({h.auteur})</span>
             </li>
           ))}
         </ol>

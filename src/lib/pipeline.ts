@@ -36,6 +36,10 @@ export type Prospect = {
   cp_ville?: string | null;
   /** Coordonnées personnelles chiffrées par le coffre (« Liste Axel » seulement : voir lib/prospectsChiffres.ts). */
   pii_chiffre?: string | null;
+  /** État unifié du prospect (remplace l'étape et l'état du Suivi) ; vide = ancien état, suggestion proposée. */
+  etat_unifie?: string | null;
+  etat_unifie_le?: string | null;
+  etat_unifie_par?: string | null;
   /** Liste d'origine (ex. « Liste Axel »). */
   liste?: string | null;
 };

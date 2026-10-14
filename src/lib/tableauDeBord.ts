@@ -1,3 +1,5 @@
+import { etatProspect } from "@/lib/etatProspect";
+import type { Etape } from "@/lib/pipeline";
 // Tableau de bord (page d'accueil de chaque profil d'Administration) : une tuile par onglet du profil, avec ses
 // chiffres essentiels. Chaque tuile se calcule à part, avec les droits réels du compte (la base filtre) ; un onglet
 // sans résumé chiffré garde une tuile simple (lien). Les tuiles suivent le menu : un onglet ouvert plus tard à un
@@ -183,13 +185,15 @@ const CALCULS: Record<string, (c: Contexte) => Promise<Omit<Tuile, "href" | "tit
     return { chiffres: [{ label: "À confirmer", valeur: String(nb), ton: nb ? "ambre" : "vert" }] };
   },
   "/mecenat/pipeline": async (c) => {
-    const { data } = await c.sb.from("prospects").select("etape, prochaine_action_date");
-    const ps = (data ?? []) as { etape: string; prochaine_action_date: string | null }[];
-    const actifs = ps.filter((p) => ["identifie", "qualifie", "contacte", "rencontre", "sollicite"].includes(p.etape));
+    const { data } = await c.sb.from("prospects").select("etape, etat_unifie, prochaine_action_date");
+    // État unifié (choisi, sinon suggéré depuis l'ancienne étape).
+    const ps = ((data ?? []) as { etape: Etape; etat_unifie: string | null; prochaine_action_date: string | null }[])
+      .map((p) => ({ ...p, etat: etatProspect(p, undefined, false).affiche }));
+    const actifs = ps.filter((p) => ["Pas contacté", "Contacté", "Promesse", "En pause"].includes(p.etat));
     const dans7 = new Date(Date.parse(c.aujourdhui) + 7 * 86400000).toISOString().slice(0, 10);
     const retard = actifs.filter((p) => p.prochaine_action_date && p.prochaine_action_date < c.aujourdhui).length;
     const bientot = actifs.filter((p) => p.prochaine_action_date && p.prochaine_action_date >= c.aujourdhui && p.prochaine_action_date <= dans7).length;
-    const donateurs = ps.filter((p) => ["don_recu", "remercie", "fidelise"].includes(p.etape)).length;
+    const donateurs = ps.filter((p) => p.etat === "Donateur").length;
     if (retard) c.priorites.push({ titre: `${n(retard, "relance")} en retard`, detail: "Prochaine action prévue à une date passée", href: "/mecenat/pipeline", icone: "funnel", ton: "rouge" });
     return {
       chiffres: [

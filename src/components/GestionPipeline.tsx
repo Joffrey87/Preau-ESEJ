@@ -1,12 +1,13 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { formatEuros, todayISO } from "@/lib/format";
 import { Modal, Field, FormFooter, inputCls } from "@/components/GestionComptes";
-import { AjoutSuivi, CellulesSuivi, HistoriqueSuivi } from "@/components/SuiviDonateur";
-import { dernierCommentaire, etatCourant, suiviParCle, type SuiviAction } from "@/lib/suiviDonateurs";
+import { AjoutSuivi, ChoixReserve, HistoriqueSuivi } from "@/components/SuiviDonateur";
+import { ETATS_PROSPECT, AIDE_ETAT, TON_ETAT, etatProspect, etatSuivant, type EtatProspect, type EtatCalcule } from "@/lib/etatProspect";
+import { dernierCommentaire, formatDateHeure, suiviParCle, type SuiviAction } from "@/lib/suiviDonateurs";
 import { trierListe, useTri } from "@/components/TriColonnes";
 import RelationEnLigne from "@/components/RelationEnLigne";
 import { nomCliquableCls } from "@/lib/ui";
@@ -23,11 +24,8 @@ import ChoixResponsable from "@/components/ChoixResponsable";
 import LierEcrituresProspect from "@/components/LierEcrituresProspect";
 import { villeEtDepartement } from "@/lib/listeProspects";
 import {
-  ETAPES,
-  ETAPE_LABEL,
   SEGMENT_LABEL,
   CAPACITE_LABEL,
-  etapeSuivante,
   type Prospect,
   type Etape,
   type Segment,
@@ -42,6 +40,7 @@ type Form = {
   nom: string;
   segment: Segment;
   etape: Etape;
+  etat_unifie: string;
   capacite: "" | Capacite;
   montant_cible: string;
   montant_obtenu: string;
@@ -56,12 +55,19 @@ type Form = {
 
 type ColTriP =
   | "prospect" | "relation" | "suivi" | "suiviDate" | "etat" | "commentaire" | "reserve"
-  | "etape" | "responsable" | "action" | "cible" | "obtenu";
-const ETAPE_ORDRE: Etape[] = ["identifie", "qualifie", "contacte", "rencontre", "sollicite", "don_recu", "remercie", "fidelise", "perdu"];
+  | "responsable" | "action" | "cible" | "obtenu";
+/** Colonnes masquables du tableau (préférence par personne). */
+const COLONNES_P = [
+  { key: "relation", label: "Relation" }, { key: "suivi", label: "Suivi" }, { key: "etat", label: "État" },
+  { key: "commentaire", label: "Commentaire" }, { key: "reserve", label: "Réservé à" }, { key: "responsable", label: "Responsable" },
+  { key: "action", label: "Prochaine action" }, { key: "cible", label: "Cible" }, { key: "obtenu", label: "Obtenu" },
+] as const;
+type ColP = (typeof COLONNES_P)[number]["key"];
+const H24 = 24 * 3600 * 1000;
 
 const vide: Form = {
   civilite: "", prenom: "", adresse: "", cp_ville: "",
-  nom: "", segment: "particulier", etape: "identifie", capacite: "",
+  nom: "", segment: "particulier", etape: "identifie", etat_unifie: "Pas contacté", capacite: "",
   montant_cible: "", montant_obtenu: "", responsable: "",
   prochaine_action: "", prochaine_action_date: "", notes: "",
   email: "", telephone: "", relation: "",
@@ -106,17 +112,40 @@ export default function GestionPipeline({
   const [edit, setEdit] = useState<ProspectLisible | "nouveau" | null>(null);
   const [liaison, setLiaison] = useState<ProspectLisible | null>(null);
   // Suivi des actions : ajout, historique, réservation.
-  const [ajoutSuivi, setAjoutSuivi] = useState<ProspectLisible | null>(null);
+  const [ajoutSuivi, setAjoutSuiviEtat] = useState<{ p: ProspectLisible; existante?: SuiviAction; noteSeule?: boolean } | null>(null);
+  const setAjoutSuivi = (p: ProspectLisible | null) => setAjoutSuiviEtat(p ? { p } : null);
   const [histoSuivi, setHistoSuivi] = useState<ProspectLisible | null>(null);
+  // Colonnes affichées : préférence propre à chaque personne (profil + prénom), gardée dans ce navigateur.
+  const cleCols = `prospects.cols:${auteurSuivi ?? "profil"}`;
+  const [masquees, setMasquees] = useState<ColP[]>([]);
+  const [menuCols, setMenuCols] = useState(false);
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    try { const v = localStorage.getItem(cleCols); setMasquees(v ? JSON.parse(v) : []); } catch {}
+  }, [cleCols]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+  const basculerCol = (k: ColP) => setMasquees((l) => {
+    const n = l.includes(k) ? l.filter((x) => x !== k) : [...l, k];
+    try { localStorage.setItem(cleCols, JSON.stringify(n)); } catch {}
+    return n;
+  });
+  const vis = (k: ColP) => !masquees.includes(k);
+  const [editCom, setEditCom] = useState<string | null>(null);
   const [erreurReserve, setErreurReserve] = useState<string | null>(null);
   const suiviProspect = useMemo(() => suiviParCle(suivi), [suivi]);
+  const etats = useMemo(() => {
+    const m = new Map<string, EtatCalcule>();
+    for (const p of prospects) m.set(p.id, etatProspect(p, suiviProspect.get(p.id), (obtenus[p.id]?.nb ?? 0) > 0));
+    return m;
+  }, [prospects, suiviProspect, obtenus]);
+  const etatDe = (p: { id: string }) => etats.get(p.id)!;
   const [form, setForm] = useState<Form>(vide);
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const [q, setQ] = useState("");
-  const [fEtape, setFEtape] = useState<"" | Etape>("");
+  const [fEtape, setFEtape] = useState<"" | EtatProspect>("");
   const [fSegments, setFSegments] = useState<Segment[]>([]);
   const [exportEnCours, setExportEnCours] = useState(false);
 
@@ -125,11 +154,11 @@ export default function GestionPipeline({
     return prospects.filter(
       (p) =>
         (!ql || [p.affiche, p.adresse, p.cp_ville, p.responsable, p.email, p.telephone, p.relation].some((v) => (v ?? "").toLowerCase().includes(ql))) &&
-        (!fEtape || p.etape === fEtape) &&
+        (!fEtape || etats.get(p.id)?.affiche === fEtape) &&
         (fSegments.length === 0 || fSegments.includes(p.segment)) &&
         (fListes.length === 0 || (!!p.liste && fListes.includes(p.liste))),
     );
-  }, [prospects, q, fEtape, fSegments, fListes]);
+  }, [prospects, q, fEtape, fSegments, fListes, etats]);
 
   const relationsConnues = useMemo(
     () => [...new Set(prospects.map((p) => (p.relation ?? "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr")),
@@ -149,10 +178,9 @@ export default function GestionPipeline({
       case "relation": return p.relation?.trim() || null;
       case "suivi": return h?.[0]?.actions.join(", ") || null;
       case "suiviDate": return h?.[0]?.cree_le ?? null;
-      case "etat": return etatCourant(h);
+      case "etat": return ETATS_PROSPECT.indexOf(etatDe(p).affiche);
       case "commentaire": return dernierCommentaire(h);
       case "reserve": return p.reserve_a || null;
-      case "etape": return ETAPE_ORDRE.indexOf(p.etape);
       case "responsable": return p.responsable || null;
       case "action": return p.prochaine_action_date || null;
       case "cible": return p.montant_cible ?? null;
@@ -161,7 +189,7 @@ export default function GestionPipeline({
   });
 
   // Analyse (sur la sélection filtrée).
-  const actifs = filtres.filter((p) => p.etape !== "perdu");
+  const actifs = filtres.filter((p) => etatDe(p).affiche !== "Perdu");
   const totalCible = actifs.reduce((s, p) => s + Number(p.montant_cible ?? 0), 0);
   const totalObtenu = filtres.reduce((s, p) => s + (obtenus[p.id]?.montant ?? 0), 0);
   const dans7j = actifs.filter(
@@ -169,7 +197,7 @@ export default function GestionPipeline({
   ).length;
 
   // Répartition par étape (pour la barre de progression du pipeline).
-  const parEtape = ETAPES.map((e) => ({ ...e, n: filtres.filter((p) => p.etape === e.key).length }));
+  const parEtape = ETATS_PROSPECT.map((e) => ({ key: e, label: e, court: e, n: filtres.filter((p) => etatDe(p).affiche === e).length }));
   const maxEtape = Math.max(1, ...parEtape.map((e) => e.n));
 
   async function exporterListe() {
@@ -186,7 +214,7 @@ export default function GestionPipeline({
           courriel: p.email ?? "",
           telephone: p.telephone ?? "",
           segment: SEGMENT_LABEL[p.segment] ?? p.segment,
-          etape: ETAPE_LABEL[p.etape] ?? p.etape,
+          etape: etatDe(p).affiche + (etatDe(p).etat ? "" : " (suggéré)"),
           relation: p.relation ?? "",
           reserve: p.reserve_a ?? "",
           derniereAction: der ? `${[...der.actions, der.etat].filter(Boolean).join(", ") || "Action"} — ${new Date(der.cree_le).toLocaleDateString("fr-FR")}${der.auteur ? ` (${der.auteur})` : ""}` : "",
@@ -195,7 +223,7 @@ export default function GestionPipeline({
       });
       const actifs = [
         fSegments.length ? `Segments : ${fSegments.map((s) => SEGMENT_LABEL[s]).join(", ")}` : "",
-        fEtape ? `Étape : ${ETAPE_LABEL[fEtape]}` : "",
+        fEtape ? `État : ${fEtape}` : "",
         q.trim() ? `Recherche : « ${q.trim()} »` : "",
       ].filter(Boolean).join(" · ");
       await telechargerListeProspects(lignes, actifs || "Tous les prospects (aucun filtre)");
@@ -210,7 +238,7 @@ export default function GestionPipeline({
     else
       setForm({
         civilite: abregerCivilite(p.titre), prenom: p.prenom ?? "", adresse: p.adresse ?? "", cp_ville: p.cp_ville ?? "",
-        nom: p.verrouille ? "" : p.nom, segment: p.segment, etape: p.etape, capacite: p.capacite ?? "",
+        nom: p.verrouille ? "" : p.nom, segment: p.segment, etape: p.etape, etat_unifie: etatDe(p).auto ? "" : etatDe(p).etat ?? "", capacite: p.capacite ?? "",
         montant_cible: p.montant_cible != null ? String(p.montant_cible).replace(".", ",") : "",
         montant_obtenu: p.montant_obtenu ? String(p.montant_obtenu).replace(".", ",") : "",
         responsable: p.responsable ?? "", prochaine_action: p.prochaine_action ?? "",
@@ -222,12 +250,18 @@ export default function GestionPipeline({
 
   async function submit(ev: React.FormEvent) {
     ev.preventDefault();
+    if (await enregistrerFiche()) setEdit(null);
+  }
+
+  /** Enregistre la fiche ouverte ; renvoie vrai si c'est fait (la fenêtre peut rester ouverte). */
+  async function enregistrerFiche(): Promise<boolean> {
+    const echec = (m: string) => { setError(m); return false; };
     setError(null);
-    if (!form.nom.trim()) return setError("Le nom est obligatoire.");
+    if (!form.nom.trim()) return echec("Le nom est obligatoire.");
     // Seuls les prospects de la « Liste Axel » sont chiffrés (ils le restent) ; les autres sont enregistrés en clair.
     const personnel = edit !== "nouveau" && !!edit?.chiffre;
-    if (personnel && !coffre.estOuvert) return setError("Coffre verrouillé : déverrouillez-le pour enregistrer des coordonnées (elles sont chiffrées).");
-    if (edit !== "nouveau" && edit?.verrouille) return setError("Fiche chiffrée illisible : déverrouillez le coffre.");
+    if (personnel && !coffre.estOuvert) return echec("Coffre verrouillé : déverrouillez-le pour enregistrer des coordonnées (elles sont chiffrées).");
+    if (edit !== "nouveau" && edit?.verrouille) return echec("Fiche chiffrée illisible : déverrouillez le coffre.");
     setSaving(true);
     const supabase = createClient();
     const nomPropre = form.segment === "particulier" ? nomSoigne(form.nom, false) : form.nom.trim();
@@ -259,6 +293,9 @@ export default function GestionPipeline({
       ...enClair,
       segment: form.segment,
       etape: form.etape,
+      ...(edit === "nouveau" || form.etat_unifie !== (etatDe(edit as Prospect).auto ? "" : etatDe(edit as Prospect).etat ?? "")
+        ? { etat_unifie: form.etat_unifie || null, etat_unifie_le: new Date().toISOString(), etat_unifie_par: auteurSuivi }
+        : {}),
       capacite: form.capacite || null,
       montant_cible: form.montant_cible.trim() ? eur(form.montant_cible) : null,
       responsable: form.responsable.trim() || null,
@@ -275,8 +312,37 @@ export default function GestionPipeline({
         ? await supabase.from("prospects").insert(payload)
         : await supabase.from("prospects").update(payload).eq("id", (edit as Prospect).id);
     setSaving(false);
-    if (err) return setError("Enregistrement impossible : " + err.message);
-    setEdit(null);
+    if (err) return echec("Enregistrement impossible : " + err.message);
+    router.refresh();
+    return true;
+  }
+
+  /** État unifié choisi depuis le tableau (ou suggestion acceptée). */
+  async function definirEtat(p: ProspectLisible, etat: string) {
+    setBusy(p.id);
+    await createClient().from("prospects").update({ etat_unifie: etat || null, etat_unifie_le: new Date().toISOString(), etat_unifie_par: auteurSuivi, updated_at: new Date().toISOString() }).eq("id", p.id);
+    setBusy(null);
+    router.refresh();
+  }
+
+  /** Clic sur le Suivi : modifier sa dernière action (moins de 24 h, même auteur), sinon en ajouter une. */
+  function cliquerSuivi(p: ProspectLisible) {
+    const der = suiviProspect.get(p.id)?.[0];
+    const modifiable = der && der.actions.length > 0 && der.auteur === auteurSuivi && Date.now() - new Date(der.cree_le).getTime() < H24;
+    setAjoutSuiviEtat(modifiable ? { p, existante: der } : { p });
+  }
+
+  /** Commentaire modifié dans le tableau : corrige le sien (moins de 24 h), sinon ajoute une ligne de commentaire. */
+  async function enregistrerCommentaire(p: ProspectLisible, texte: string) {
+    setEditCom(null);
+    const h = suiviProspect.get(p.id) ?? [];
+    if (texte.trim() === (dernierCommentaire(h) ?? "").trim()) return;
+    const der = h.find((l) => l.note);
+    const sb = createClient();
+    const { error: e } = der && der.auteur === auteurSuivi && Date.now() - new Date(der.cree_le).getTime() < H24
+      ? await sb.rpc("modifier_suivi_action", { p_id: der.id, p_actions: der.actions, p_note: texte, p_auteur: auteurSuivi ?? "" })
+      : await sb.rpc("ajouter_suivi_action", { p_cible_type: "prospect", p_cible_cle: p.id, p_dons_ids: [], p_actions: [], p_etat: "", p_note: texte, p_auteur: auteurSuivi ?? "" });
+    if (e) return setErreurReserve("Commentaire non enregistré : " + e.message);
     router.refresh();
   }
 
@@ -301,13 +367,8 @@ export default function GestionPipeline({
   }
 
   async function avancer(p: Prospect) {
-    const suite = etapeSuivante(p.etape);
-    if (!suite) return;
-    setBusy(p.id);
-    const supabase = createClient();
-    await supabase.from("prospects").update({ etape: suite, updated_at: new Date().toISOString() }).eq("id", p.id);
-    setBusy(null);
-    router.refresh();
+    const suite = etatSuivant(etatDe(p).affiche);
+    if (suite) await definirEtat(p as ProspectLisible, suite);
   }
 
   async function supprimer(p: ProspectLisible) {
@@ -347,7 +408,7 @@ export default function GestionPipeline({
                 />
               </div>
               <span className="text-[10px] font-medium tabular-nums">{e.n}</span>
-              <span className="text-[9px] text-muted">{e.court}</span>
+              <span className="text-[9px] text-muted" title={AIDE_ETAT[e.key]}>{e.court}</span>
             </button>
           ))}
         </div>
@@ -375,10 +436,28 @@ export default function GestionPipeline({
           placeholder="Rechercher (nom, responsable)…"
           className="min-w-[12rem] flex-1 rounded-lg border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-accent"
         />
-        <select value={fEtape} onChange={(e) => setFEtape(e.target.value as "" | Etape)} className="rounded-lg border border-border bg-background px-2 py-1.5 text-sm">
-          <option value="">Toutes étapes</option>
-          {Object.entries(ETAPE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+        <select value={fEtape} onChange={(e) => setFEtape(e.target.value as "" | EtatProspect)} className="rounded-lg border border-border bg-background px-2 py-1.5 text-sm">
+          <option value="">Tous états</option>
+          {ETATS_PROSPECT.map((v) => <option key={v} value={v} title={AIDE_ETAT[v]}>{v}</option>)}
         </select>
+        <div className="relative">
+          <button type="button" onClick={() => setMenuCols((v) => !v)} aria-expanded={menuCols}
+            className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-surface-2">Colonnes ▾</button>
+          {menuCols && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => setMenuCols(false)} />
+              <div className="absolute right-0 z-20 mt-1 w-52 rounded-lg border border-border bg-surface p-2 shadow-lg">
+                {COLONNES_P.map((c) => (
+                  <label key={c.key} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-sm hover:bg-surface-2">
+                    <input type="checkbox" checked={vis(c.key)} onChange={() => basculerCol(c.key)} className="h-4 w-4" />
+                    {c.label}
+                  </label>
+                ))}
+                <p className="mt-1 px-2 text-[11px] text-muted">Mémorisé pour {auteurSuivi ?? "ce profil"}.</p>
+              </div>
+            </>
+          )}
+        </div>
         {(q || fEtape || fSegments.length > 0) && (
           <button type="button" onClick={() => { setQ(""); setFEtape(""); setFSegments([]); }} className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-surface-2">
             Réinitialiser
@@ -452,9 +531,12 @@ export default function GestionPipeline({
       {ajoutSuivi && (
         <AjoutSuivi
           cibleType="prospect"
-          cle={ajoutSuivi.id}
-          nom={!ajoutSuivi.verrouille ? nomComplet({ titre: ajoutSuivi.titre, prenom: ajoutSuivi.prenom, nom: ajoutSuivi.nom }) : ajoutSuivi.affiche}
+          cle={ajoutSuivi.p.id}
+          nom={!ajoutSuivi.p.verrouille ? nomComplet({ titre: ajoutSuivi.p.titre, prenom: ajoutSuivi.p.prenom, nom: ajoutSuivi.p.nom }) : ajoutSuivi.p.affiche}
           auteur={auteurSuivi}
+          existante={ajoutSuivi.existante ?? null}
+          noteSeule={ajoutSuivi.noteSeule}
+          etats={ETATS_PROSPECT}
           onClose={() => setAjoutSuivi(null)}
         />
       )}
@@ -484,21 +566,20 @@ export default function GestionPipeline({
           <thead>
             <tr className="border-b border-border text-left text-muted">
               {thTri("prospect", "Prospect")}
-              {thTri("relation", "Relation")}
-              <th className="px-4 py-3 font-medium" aria-sort={ariaSort("suivi", "suiviDate")}>
+              {vis("relation") && thTri("relation", "Relation")}
+              {vis("suivi") && <th className="px-4 py-3 font-medium" aria-sort={ariaSort("suivi", "suiviDate")}>
                 <span className="inline-flex items-center gap-1">
                   {bouton("suivi", "Suivi", "Trier par action")}
                   {bouton("suiviDate", "date", "Trier par date de la dernière action")}
                 </span>
-              </th>
-              {thTri("etat", "État")}
-              {thTri("commentaire", "Commentaire")}
-              {thTri("reserve", "Réservé à")}
-              {thTri("etape", "Étape")}
-              {thTri("responsable", "Responsable")}
-              {thTri("action", "Prochaine action")}
-              {thTri("cible", "Cible", true)}
-              {thTri("obtenu", "Obtenu", true)}
+              </th>}
+              {vis("etat") && thTri("etat", "État")}
+              {vis("commentaire") && thTri("commentaire", "Commentaire")}
+              {vis("reserve") && thTri("reserve", "Réservé à")}
+              {vis("responsable") && thTri("responsable", "Responsable")}
+              {vis("action") && thTri("action", "Prochaine action")}
+              {vis("cible") && thTri("cible", "Cible", true)}
+              {vis("obtenu") && thTri("obtenu", "Obtenu", true)}
               <th className="px-4 py-3 text-right font-medium">Actions</th>
             </tr>
           </thead>
@@ -507,10 +588,15 @@ export default function GestionPipeline({
               <tr><td colSpan={12} className="px-4 py-10 text-center text-muted">Aucun prospect. Commencez par « Ajouter un prospect ».</td></tr>
             ) : (
               tries.map((p) => {
-                const suite = etapeSuivante(p.etape);
+                const ec = etatDe(p);
+                const suite = etatSuivant(ec.affiche);
+                const h = suiviProspect.get(p.id);
+                const der = h?.[0];
+                const com = dernierCommentaire(h);
+                const nomP = !p.verrouille ? nomComplet({ titre: p.titre, prenom: p.prenom, nom: p.nom }) : p.affiche;
                 const retard = p.prochaine_action_date && p.prochaine_action_date < today;
                 return (
-                  <tr key={p.id} className={`border-b border-border last:border-0 ${p.etape === "perdu" ? "opacity-50" : ""}`}>
+                  <tr key={p.id} className={`border-b border-border last:border-0 ${ec.affiche === "Perdu" ? "opacity-50" : ""}`}>
                     <td className="px-4 py-3">
                       <button type="button" onClick={() => ouvrir(p)} title="Ouvrir la fiche du prospect (informations et suivi)" className={`${nomCliquableCls} font-medium hover:underline`}>
                         {!p.verrouille ? nomComplet({ titre: p.titre, prenom: p.prenom, nom: p.nom }) : p.affiche}
@@ -538,7 +624,7 @@ export default function GestionPipeline({
                         )}
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-muted">
+                    {vis("relation") && <td className="px-4 py-3 text-muted">
                       <RelationEnLigne
                         valeur={p.relation ?? null}
                         modifiable={peutEcrire}
@@ -551,28 +637,71 @@ export default function GestionPipeline({
                           return null;
                         }}
                       />
-                    </td>
-                    <CellulesSuivi
-                      historique={suiviProspect.get(p.id)}
-                      peutSuivre={peutSuivre}
-                      onAjouter={() => setAjoutSuivi(p)}
-                      reserve={p.reserve_a ?? null}
-                      reserveBusy={busy === p.id}
-                      onReserver={(v) => void reserverProspect(p, v)}
-                      nom={!p.verrouille ? nomComplet({ titre: p.titre, prenom: p.prenom, nom: p.nom }) : p.affiche}
-                    />
-                    <td className="px-4 py-3">
-                      <select
-                        value={p.etape}
-                        disabled={busy === p.id}
-                        onChange={(e) => void majChamp(p, { etape: e.target.value as Etape })}
-                        aria-label="Étape"
-                        className="rounded-full border border-transparent bg-accent-soft px-2 py-0.5 text-xs font-medium text-accent hover:border-accent"
-                      >
-                        {Object.entries(ETAPE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-                      </select>
-                    </td>
-                    <td className="px-4 py-3">
+                    </td>}
+                    {vis("suivi") && <td className="px-4 py-3">
+                      <button type="button" disabled={!peutSuivre} onClick={() => cliquerSuivi(p)}
+                        title={der ? `Dernière action le ${formatDateHeure(der.cree_le)} par ${der.auteur}${peutSuivre ? (der.auteur === auteurSuivi && Date.now() - new Date(der.cree_le).getTime() < H24 ? " — cliquer pour la modifier" : " — cliquer pour ajouter une action") : ""}` : peutSuivre ? "Ajouter une action" : undefined}
+                        className="flex flex-wrap items-center gap-1 rounded text-left enabled:hover:bg-surface-2">
+                        {der && der.actions.length ? der.actions.map((a) => (
+                          <span key={a} className="whitespace-nowrap rounded-full bg-surface-2 px-2 py-0.5 text-xs font-medium">{a}</span>
+                        )) : <span className="text-muted">{peutSuivre ? "+ action" : "—"}</span>}
+                        {der && <span className="text-[11px] text-muted">{new Date(der.cree_le).toLocaleDateString("fr-FR")}</span>}
+                      </button>
+                    </td>}
+                    {vis("etat") && <td className="whitespace-nowrap px-4 py-3">
+                      {ec.etat || !peutEcrire ? (
+                        peutEcrire && !ec.auto ? (
+                          <select value={ec.etat ?? ""} disabled={busy === p.id} onChange={(e) => void definirEtat(p, e.target.value)}
+                            aria-label={`État : ${nomP}`} title={ec.etat ? AIDE_ETAT[ec.etat] : undefined}
+                            className={`rounded-full border border-transparent px-2 py-0.5 text-xs font-medium hover:border-border ${ec.etat ? TON_ETAT[ec.etat] : ""}`}>
+                            {ETATS_PROSPECT.map((v) => <option key={v} value={v}>{v}</option>)}
+                          </select>
+                        ) : (
+                          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${TON_ETAT[ec.affiche]}`} title={ec.auto ? "Automatique : un don est enregistré pour ce prospect" : AIDE_ETAT[ec.affiche]}>
+                            {ec.etat ?? ec.ancien ?? "—"}
+                          </span>
+                        )
+                      ) : (
+                        <div className="flex flex-col items-start gap-0.5">
+                          <span className="text-xs text-muted" title="Ancienne valeur (conservée)">{ec.ancien ?? "—"}</span>
+                          <span className="inline-flex items-center gap-1">
+                            {ec.suggestion && (
+                              <button type="button" disabled={busy === p.id} onClick={() => void definirEtat(p, ec.suggestion!)}
+                                title={`Accepter l'état suggéré : ${ec.suggestion} (${AIDE_ETAT[ec.suggestion]})`}
+                                className={`rounded-full border border-dashed border-accent px-2 py-0.5 text-xs font-medium ${TON_ETAT[ec.suggestion]}`}>
+                                → {ec.suggestion} ✓
+                              </button>
+                            )}
+                            <select value="" disabled={busy === p.id} onChange={(e) => e.target.value && void definirEtat(p, e.target.value)}
+                              aria-label={`Choisir l'état : ${nomP}`} className="rounded border border-border bg-background py-0.5 text-[11px] text-muted">
+                              <option value="">Autre…</option>
+                              {ETATS_PROSPECT.map((v) => <option key={v} value={v}>{v}</option>)}
+                            </select>
+                          </span>
+                        </div>
+                      )}
+                    </td>}
+                    {vis("commentaire") && <td className="max-w-56 px-4 py-3 text-muted">
+                      {editCom === p.id ? (
+                        <textarea autoFocus defaultValue={com ?? ""} rows={2} aria-label={`Commentaire : ${nomP}`}
+                          onBlur={(e) => void enregistrerCommentaire(p, e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Escape") setEditCom(null); if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); (e.target as HTMLTextAreaElement).blur(); } }}
+                          className="w-52 rounded border border-accent bg-background px-1.5 py-1 text-xs text-foreground" />
+                      ) : (
+                        <button type="button" disabled={!peutSuivre} onClick={() => setEditCom(p.id)} title={peutSuivre ? "Cliquer pour modifier le commentaire" : com ?? undefined}
+                          className="line-clamp-2 w-full rounded text-left enabled:hover:bg-surface-2">
+                          {com ?? "—"}
+                        </button>
+                      )}
+                    </td>}
+                    {vis("reserve") && <td className="px-4 py-3">
+                      {peutSuivre ? (
+                        <ChoixReserve key={p.reserve_a ?? ""} value={p.reserve_a ?? null} disabled={busy === p.id} onChange={(v) => void reserverProspect(p, v)} compact label={`Réservé à : ${nomP}`} />
+                      ) : (
+                        p.reserve_a ?? <span className="text-muted">—</span>
+                      )}
+                    </td>}
+                    {vis("responsable") && <td className="px-4 py-3">
                       <ChoixResponsable
                         key={`${p.id}-${p.responsable ?? ""}`}
                         value={p.responsable ?? null}
@@ -580,8 +709,8 @@ export default function GestionPipeline({
                         compact
                         onChange={(v) => void majChamp(p, { responsable: v })}
                       />
-                    </td>
-                    <td className="px-4 py-3">
+                    </td>}
+                    {vis("action") && <td className="px-4 py-3">
                       <input
                         type="text"
                         // Enregistré en quittant le champ.
@@ -604,8 +733,8 @@ export default function GestionPipeline({
                         onChange={(e) => void majChamp(p, { prochaine_action_date: e.target.value || null })}
                         className={`mt-1 block rounded border bg-background px-1.5 py-0.5 text-xs focus:border-accent focus:outline-none ${retard ? "border-negative text-negative" : "border-border text-muted"}`}
                       />
-                    </td>
-                    <td className="px-4 py-3 text-right">
+                    </td>}
+                    {vis("cible") && <td className="px-4 py-3 text-right">
                       <span className="inline-flex items-center gap-1">
                         <input
                           type="text"
@@ -636,8 +765,8 @@ export default function GestionPipeline({
                           {Object.entries(CAPACITE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
                         </select>
                       </div>
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums">
+                    </td>}
+                    {vis("obtenu") && <td className="px-4 py-3 text-right tabular-nums">
                       <span className="font-medium text-positive">{obtenus[p.id] ? formatEuros(obtenus[p.id].montant) : "—"}</span>
                       {peutLier && (
                         <button
@@ -650,10 +779,10 @@ export default function GestionPipeline({
                           <Icon name="ledger" className="h-4 w-4" />
                         </button>
                       )}
-                    </td>
+                    </td>}
                     <td className="px-4 py-3 text-right whitespace-nowrap">
                       {suite && (
-                        <button type="button" onClick={() => avancer(p)} disabled={busy === p.id} className="rounded p-1.5 text-accent hover:bg-accent-soft disabled:opacity-50" title={`Avancer → ${ETAPE_LABEL[suite]}`} aria-label={`Avancer vers ${ETAPE_LABEL[suite]}`}>
+                        <button type="button" onClick={() => avancer(p)} disabled={busy === p.id} className="rounded p-1.5 text-accent hover:bg-accent-soft disabled:opacity-50" title={`Avancer → ${suite}`} aria-label={`Avancer vers ${suite}`}>
                           <Icon name="avancer" className="h-4 w-4" />
                         </button>
                       )}
@@ -724,10 +853,15 @@ export default function GestionPipeline({
               </Field>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Étape">
-                <select value={form.etape} onChange={(e) => setForm({ ...form, etape: e.target.value as Etape })} className={inputCls}>
-                  {Object.entries(ETAPE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+              <Field label="État">
+                <select value={form.etat_unifie} onChange={(e) => setForm({ ...form, etat_unifie: e.target.value })} className={inputCls}
+                  title="Contacté : premier contact établi ou don sollicité">
+                  {edit !== "nouveau" && <option value="">— Non défini{edit && etatDe(edit).auto ? " (Donateur automatique)" : ""}</option>}
+                  {ETATS_PROSPECT.map((v) => <option key={v} value={v}>{v} — {AIDE_ETAT[v]}</option>)}
                 </select>
+                {edit !== "nouveau" && edit && !etatDe(edit).etat && (
+                  <span className="mt-1 block text-xs text-muted">Ancienne valeur : {etatDe(edit).ancien ?? "—"} {etatDe(edit).suggestion ? ` · suggestion : ${etatDe(edit).suggestion}` : ""}</span>
+                )}
               </Field>
               <Field label="Responsable (comité)">
                 <ChoixResponsable value={form.responsable || null} onChange={(v) => setForm({ ...form, responsable: v ?? "" })} />
@@ -763,9 +897,14 @@ export default function GestionPipeline({
                 {peutSuivre && (
                   <button
                     type="button"
-                    onClick={() => {
-                      setAjoutSuivi(edit);
-                      setEdit(null);
+                    disabled={saving}
+                    onClick={async () => {
+                      // Enregistre d'abord la fiche : aucune modification n'est perdue.
+                      const p = edit;
+                      if (await enregistrerFiche()) {
+                        setEdit(null);
+                        setAjoutSuivi(p);
+                      }
                     }}
                     className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-surface-2"
                   >

@@ -28,7 +28,7 @@ export const NAV: NavSection[] = [
       { href: "/bulletins", label: "Notes & Bulletins", icon: "bulletin", ready: true, roles: ["directrice", "directeur-spirituel"] },
       // Directrice : les onglets de vie de classe et d'administration des Bulletins, directement dans le menu.
       { href: "/bulletins?onglet=absences", label: "Appel & absences", icon: "calendar", ready: true, roles: ["directrice"] },
-      { href: "/bulletins?onglet=trombi", label: "Trombinoscope", icon: "users", ready: true, roles: ["directrice"] },
+      { href: "/bulletins?onglet=trombi", label: "Élèves", icon: "users", ready: true, roles: ["directrice"] },
       { href: "/bulletins?onglet=parametres", label: "Gestion des classes", titre: "Classes, année", icon: "check", ready: true, roles: ["directrice"] },
       { href: "/bulletins?onglet=inscriptions", label: "Inscriptions", icon: "mail", ready: true, roles: ["directrice"] },
     ],

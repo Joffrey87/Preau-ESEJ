@@ -382,6 +382,22 @@ function Puce({ actif, onClick, children, disabled }: { actif: boolean; onClick:
   );
 }
 
+/** Liste d'élèves d'une carte de classe : ceux de la classe par niveau, puis les autres par classe (ou sans classe). */
+function groupesEleves(eleves: EleveBulletin[], dedans: Set<string>, c: Classe, classeDe: (id: string) => string | undefined) {
+  const rangNiveau = (e: EleveBulletin) => CLASSES.indexOf(niveauDe(e, c.annee_scolaire) ?? "PS");
+  const tri = (a: EleveBulletin, b: EleveBulletin) => rangNiveau(a) - rangNiveau(b) || a.nom.localeCompare(b.nom, "fr") || (a.prenom ?? "").localeCompare(b.prenom ?? "", "fr");
+  const groupes: { titre: string; dedans: boolean; eleves: EleveBulletin[] }[] = [];
+  const ajouter = (titre: string, d: boolean, e: EleveBulletin) => {
+    const g = groupes.find((x) => x.titre === titre) ?? groupes[groupes.push({ titre, dedans: d, eleves: [] }) - 1];
+    g.eleves.push(e);
+  };
+  const classeDedans = [...eleves].filter((e) => dedans.has(e.id)).sort(tri);
+  for (const e of classeDedans) ajouter(`${c.nom} · ${niveauDe(e, c.annee_scolaire)}`, true, e);
+  const autres = [...eleves].filter((e) => !dedans.has(e.id)).sort((a, b) => (classeDe(a.id) ?? "~").localeCompare(classeDe(b.id) ?? "~", "fr") || tri(a, b));
+  for (const e of autres) ajouter(classeDe(e.id) ? `Autres élèves · ${classeDe(e.id)}` : "Autres élèves · sans classe", false, e);
+  return groupes;
+}
+
 function CarteClasse({
   c,
   enseignants,
@@ -482,21 +498,30 @@ function CarteClasse({
             )}
           </div>
       {elevesOuverts && (
-        <div className="mt-2 grid gap-x-4 gap-y-0.5 border-t border-border pt-2 text-[13px] sm:grid-cols-2 lg:grid-cols-3">
-          {scolarises.map((e) => (
-            <label key={e.id} className="flex items-center gap-2">
-              <input type="checkbox" checked={dedans.has(e.id)} onChange={(ev) => onEleve(e.id, ev.target.checked)} />
-              <span>{e.prenom}</span>
-              <input
-                defaultValue={e.nom}
-                onBlur={(ev) => ev.target.value.trim() && ev.target.value.trim() !== e.nom && onNomUsage(e.id, ev.target.value.trim())}
-                className="w-32 rounded border border-transparent bg-transparent px-1 text-[13px] outline-none hover:border-border focus:border-accent"
-                title="Nom tel que l'école l'écrit sur le bulletin"
-                aria-label={`Nom de ${e.prenom}`}
-              />
-              <span className="text-[11px] text-muted">{niveauDe(e, c.annee_scolaire)}</span>
-              {!dedans.has(e.id) && classeDe(e.id) && <span className="text-[10.5px] text-gold">({classeDe(e.id)})</span>}
-            </label>
+        <div className="mt-2 space-y-3 border-t border-border pt-2 text-[13px]">
+          {/* Élèves de la classe par niveau, puis les autres élèves de l'école par classe ; colonnes alignées. */}
+          {groupesEleves(scolarises, dedans, c, classeDe).map((g) => (
+            <div key={g.titre}>
+              <div className={`mb-1 text-[11.5px] font-semibold uppercase tracking-wide ${g.dedans ? "text-accent" : "text-muted"}`}>
+                {g.titre} <span className="font-normal normal-case">({g.eleves.length})</span>
+              </div>
+              <div className="grid gap-x-6 gap-y-0.5 sm:grid-cols-2 lg:grid-cols-3">
+                {g.eleves.map((e) => (
+                  <label key={e.id} className="grid grid-cols-[auto_minmax(0,7rem)_minmax(0,1fr)_2.5rem] items-center gap-2">
+                    <input type="checkbox" checked={dedans.has(e.id)} onChange={(ev) => onEleve(e.id, ev.target.checked)} />
+                    <span className="truncate">{e.prenom}</span>
+                    <input
+                      defaultValue={e.nom}
+                      onBlur={(ev) => ev.target.value.trim() && ev.target.value.trim() !== e.nom && onNomUsage(e.id, ev.target.value.trim())}
+                      className="min-w-0 rounded border border-transparent bg-transparent px-1 text-[13px] outline-none hover:border-border focus:border-accent"
+                      title="Nom tel que l'école l'écrit sur le bulletin"
+                      aria-label={`Nom de ${e.prenom}`}
+                    />
+                    <span className="text-right text-[11px] text-muted">{niveauDe(e, c.annee_scolaire)}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
           ))}
         </div>
       )}

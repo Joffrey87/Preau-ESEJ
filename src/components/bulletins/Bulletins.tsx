@@ -150,7 +150,7 @@ export default function Bulletins({
     { v: "conseil", label: "Conseil de classe" },
     { v: "absences", label: "Appel & absences" },
     ...(classe && estMaternelle(classe.niveaux) ? [{ v: "maternelle" as Onglet, label: "Relevé maternelle" }] : []),
-    { v: "trombi", label: "Trombinoscope" },
+    { v: "trombi", label: "Élèves" },
     // Bulletins de période d'avant (dont ceux repris d'École Futée) : conservés tels quels.
     { v: "bulletins", label: "Archives (périodes)" },
     ...(directrice ? [{ v: "inscriptions" as Onglet, label: "Inscriptions" }, { v: "parametres" as Onglet, label: "Gestion des classes" }] : []),

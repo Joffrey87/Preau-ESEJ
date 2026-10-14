@@ -326,14 +326,14 @@ const NAV_PROFESSEUR: typeof NAV = [
     items: [
       { href: "/bulletins", label: "Notes & Bulletins", icon: "bulletin", ready: true },
       { href: "/bulletins?onglet=absences", label: "Appel & absences", icon: "calendar", ready: true },
-      { href: "/bulletins?onglet=trombi", label: "Trombinoscope", icon: "users", ready: true },
+      { href: "/bulletins?onglet=trombi", label: "Élèves", icon: "users", ready: true },
     ],
   },
 ];
 
 /** Menu du compte : un profil restreint ne voit que ses pages. */
 function navDe(email?: string, niveaux?: Record<string, Niveau>) {
-  // Professeurs : Notes & Bulletins, puis Appel & absences et Trombinoscope directement dans le menu.
+  // Professeurs : Notes & Bulletins, puis Appel & absences et Élèves (trombinoscope) directement dans le menu.
   if (estProfesseur(email)) return NAV_PROFESSEUR;
   const pages = pagesAutorisees(email);
   const slug = roleByEmail(email)?.slug ?? "";

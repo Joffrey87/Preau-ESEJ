@@ -42,7 +42,7 @@ export const PAGES_RESTREINTES: Record<string, string[]> = {
   // Profils pas encore configurés : rien de visible (une page d'attente) tant que leurs accès ne sont pas définis.
   secretaire: ["/en-attente"],
   administrateur: ["/en-attente"],
-  directrice: ["/", "/bulletins", "/cheques"],
+  directrice: ["/", "/bulletins", "/cheques", "/ventes-diverses", "/caisses"],
   "resp-mecenat": ["/en-attente"],
 };
 
@@ -84,7 +84,7 @@ export const PAGES_PROFESSEURS = ["/bulletins"];
 /** Comptes du profil Événement : <identifiant>@evenement.esej, cantonnés à leurs quatre onglets. */
 export const DOMAINE_EVENEMENT = "evenement.esej";
 export const estEvenement = (email?: string | null) => !!email?.endsWith(`@${DOMAINE_EVENEMENT}`);
-export const PAGES_EVENEMENT = ["/evenement", "/evenement/membres", "/evenement/facturation", "/evenement/carnet"];
+export const PAGES_EVENEMENT = ["/evenement", "/evenement/membres", "/evenement/facturation", "/evenement/carnet", "/ventes-diverses", "/caisses"];
 
 /** Pages autorisées pour ce compte ; null = pas de restriction. */
 export function pagesAutorisees(email?: string | null): string[] | null {

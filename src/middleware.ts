@@ -55,7 +55,14 @@ export async function middleware(request: NextRequest) {
 
   // Profil Événement : uniquement /evenement (la base le garantit aussi : RLS). Côté bureau : Trésorier, Président et Directrice (lecture).
   const estEvenement = (user?.app_metadata as { espace?: string } | undefined)?.espace === "evenement";
-  const versEvenement = request.nextUrl.pathname === "/evenement" || request.nextUrl.pathname.startsWith("/evenement/");
+  const chemin = request.nextUrl.pathname;
+  const versEvenement =
+    chemin === "/evenement" ||
+    chemin.startsWith("/evenement/") ||
+    chemin === "/ventes-diverses" ||
+    chemin.startsWith("/ventes-diverses/") ||
+    chemin === "/caisses" ||
+    chemin.startsWith("/caisses/");
   // Famille reliée ouverte sans changer de compte (cookie sans droit propre : la base filtre).
   const enFamilleLiee = !!user && !estFamille && request.cookies.get("famille_liee")?.value === "1";
   const cheminLiee = request.nextUrl.pathname.startsWith("/famille-liee/");

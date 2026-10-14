@@ -7,6 +7,7 @@ import { ROLES } from "@/lib/roles";
 import { NIVEAUX, type Niveau } from "@/lib/acces";
 import { DialogueAttribution, type Annuaire, type MembreReel, type PersonneAcces } from "./AttributionWebmestre";
 
+export type DomainesVentes = "ecole" | "evenement";
 export type DonneesWebmestre = {
   pages: { cle: string; libelle: string; section: string; ordre: number }[];
   droits: { profil: string; page: string; niveau: Niveau }[];
@@ -17,6 +18,8 @@ export type DonneesWebmestre = {
   exceptions: { personne: string; profil: string; page: string; niveau: Niveau }[];
   historique: { id: number; quand: string; auteur: string; action: string; profil: string | null; page: string | null; ancien: string | null; nouveau: string | null; detail: string | null }[];
   webmestre: { profil: string; depuis: string };
+  /** Domaines Ventes diverses / Caisses par profil (Trésorier = toujours les deux, hors table). */
+  domainesVentes: { profil: string; domaines: DomainesVentes[] }[];
 };
 
 /** Profils Administration (le Webmestre ne peut être que l'un d'eux). */
@@ -61,7 +64,7 @@ export default function GestionWebmestre({ donnees }: { donnees: DonneesWebmestr
   const router = useRouter();
   const [enCours, demarrer] = useTransition();
   const [erreur, setErreur] = useState("");
-  const { pages, droits, personnes, liens, exceptions, historique, webmestre, titulaires, annuaire } = donnees;
+  const { pages, droits, personnes, liens, exceptions, historique, webmestre, titulaires, annuaire, domainesVentes } = donnees;
   const [roleOuvert, setRoleOuvert] = useState<string | null>(null);
   const [info, setInfo] = useState("");
   const personneDe = (source: keyof Annuaire, m: MembreReel) =>
@@ -363,6 +366,71 @@ export default function GestionWebmestre({ donnees }: { donnees: DonneesWebmestr
                 ))}
               </SectionLignes>
             ))}
+          </tbody>
+        </table>
+      </div>
+
+      <Titre>Domaines Ventes diverses et Caisses</Titre>
+      <p className="mb-2 text-xs text-muted">
+        Pour chaque profil (sauf le Trésorier, qui voit toujours les deux), choisissez École, Événement, ou les deux.
+        Ces domaines filtrent les sous-catégories et les ventes, et limitent l&apos;écriture dans les Caisses. La lecture de la Caisse totale reste possible.
+      </p>
+      <div className="overflow-x-auto rounded-xl border border-border bg-surface">
+        <table className="w-full text-[13px]">
+          <thead>
+            <tr className="border-b border-border text-left text-[11px] text-muted">
+              <th className="px-3 py-2">Profil</th>
+              <th className="px-3 py-2">Domaines visibles</th>
+            </tr>
+          </thead>
+          <tbody>
+            {[...ROLES.map((r) => r.slug), "evenement"].filter((s, i, a) => a.indexOf(s) === i).map((slug) => {
+              const estTreso = slug === "tresorier";
+              const origine: DomainesVentes[] = estTreso
+                ? ["ecole", "evenement"]
+                : ((domainesVentes.find((d) => d.profil === slug)?.domaines as DomainesVentes[] | undefined) ?? []);
+              const cleD = `domaines:${slug}`;
+              const d = enAttente(cleD);
+              const courant = (d?.args.p_domaines as DomainesVentes[] | undefined) ?? origine;
+              const valeur = estTreso ? "tous" : !courant.length ? "aucun" : courant.length === 2 ? "tous" : courant[0];
+              return (
+                <tr key={slug} className="border-b border-border/60">
+                  <td className="px-3 py-1.5">{label(slug)}</td>
+                  <td className="px-3 py-1.5">
+                    {estTreso ? (
+                      <span className="text-positive">École et Événement (fixe)</span>
+                    ) : (
+                      <select
+                        value={valeur}
+                        disabled={enCours}
+                        onChange={(e) => {
+                          const v = e.target.value;
+                          const domaines: DomainesVentes[] =
+                            v === "tous" ? ["ecole", "evenement"] : v === "aucun" ? [] : [v as DomainesVentes];
+                          const libOri = !origine.length ? "aucun" : origine.length === 2 ? "École et Événement" : origine[0] === "ecole" ? "École" : "Événement";
+                          const libNew = v === "tous" ? "École et Événement" : v === "aucun" ? "aucun" : v === "ecole" ? "École" : "Événement";
+                          preparer(
+                            {
+                              cle: cleD,
+                              fn: "acces_domaines_definir",
+                              args: { p_profil: slug, p_domaines: domaines },
+                              libelle: `${label(slug)} · domaines ventes : ${libOri} → ${libNew}`,
+                            },
+                            JSON.stringify([...domaines].sort()) === JSON.stringify([...origine].sort()),
+                          );
+                        }}
+                        className={`rounded border border-border px-2 py-0.5 text-[12px] ${d ? JAUNE : "bg-surface"}`}
+                      >
+                        <option value="aucun">Aucun</option>
+                        <option value="ecole">École seulement</option>
+                        <option value="evenement">Événement seulement</option>
+                        <option value="tous">École et Événement</option>
+                      </select>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

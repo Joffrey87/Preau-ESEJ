@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { MENTIONS, mentionLabel, nomEleve, note20, rangTexte, type Bulletin, type Chiffre, type ContexteClasse, type Mention, type ResultatEleve } from "@/lib/bulletins";
 import type { Droits } from "./Bulletins";
@@ -33,23 +33,7 @@ export default function ConseilClasse({
   const [etat, setEtat] = useState<string | null>(null);
   const defilementRef = useRef<HTMLDivElement>(null);
 
-  // Molette : défilement horizontal du tableau quand il ne défile qu'horizontalement. Aux bords, la page défile
-  // normalement ; les gestes horizontaux (pavé tactile) et Maj+molette gardent leur comportement natif.
-  useEffect(() => {
-    const el = defilementRef.current;
-    if (!el) return;
-    const surMolette = (e: WheelEvent) => {
-      if (e.shiftKey || Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
-      if (el.scrollWidth <= el.clientWidth || el.scrollHeight > el.clientHeight) return;
-      const max = el.scrollWidth - el.clientWidth;
-      if ((e.deltaY < 0 && el.scrollLeft <= 0) || (e.deltaY > 0 && el.scrollLeft >= max - 1)) return;
-      // deltaMode 1 = lignes (certaines souris) : environ 16 px par ligne.
-      el.scrollLeft += e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY;
-      e.preventDefault();
-    };
-    el.addEventListener("wheel", surMolette, { passive: false });
-    return () => el.removeEventListener("wheel", surMolette);
-  }, [ctx, resultats]);
+  // Molette : défilement vertical natif (la page), Maj+molette ou pavé tactile pour le défilement horizontal du tableau.
 
   // Colonnes : chaque groupe, ses matières (toutes celles de la classe, quel que soit le niveau), puis sa moyenne.
   const colonnes = useMemo(
@@ -176,9 +160,16 @@ export default function ConseilClasse({
                         <td className={`border-l border-border bg-accent-soft/40 px-2 py-1 text-center font-semibold tabular-nums ${ton(r.general.moy)}`}>{note20(r.general.moy)}</td>
                         {ctx.classe.afficher_rang && <td className="px-2 py-1 text-center tabular-nums text-muted">{rangTexte(r.general.rang)}</td>}
                         <td className="border-l border-border px-2 py-1 text-[11.5px] text-gold">{mentionLabel(b?.mention) ?? ""}</td>
-                        <td className="px-2 py-1">
-                          {b && <PastilleStatut statut={b.statut} />}
-                          {b && !b.appreciation?.trim() && <div className="text-[10px] text-gold">Appréciation à rédiger</div>}
+                        <td className="px-2 py-0.5">
+                          {/* Une seule ligne par élève : l'appréciation manquante est signalée à côté du statut. */}
+                          <div className="flex items-center gap-1 whitespace-nowrap">
+                            {b && <PastilleStatut statut={b.statut} />}
+                            {b && !b.appreciation?.trim() && (
+                              <span className="text-[11px] text-gold" title="Appréciation à rédiger">
+                                ✎
+                              </span>
+                            )}
+                          </div>
                         </td>
                       </tr>
                       {actif && b && (

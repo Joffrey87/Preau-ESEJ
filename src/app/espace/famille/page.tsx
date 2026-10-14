@@ -4,6 +4,8 @@ import { todayISO } from "@/lib/format";
 import { chargerEspace, anneeCourante, classeEn } from "@/lib/espaceFamille";
 import { depuis, prenomEleve, termineEnJuin } from "@/lib/eleves";
 import CoordonneesFamille from "@/components/CoordonneesFamille";
+import PropositionsFamille from "@/components/PropositionsFamille";
+import type { PropositionFamille } from "@/components/CarnetFamilles";
 
 export default async function MaFamille() {
   const supabase = await createClient();
@@ -15,11 +17,15 @@ export default async function MaFamille() {
   if (!espace) return <p className="text-sm text-negative">{erreur ?? "Espace indisponible."}</p>;
   const f = espace.famille;
   const annee = anneeCourante(espace, todayISO());
-  const { data: campagne } = await supabase.rpc("annee_revalidation");
+  const [{ data: campagne }, { data: propositions }] = await Promise.all([
+    supabase.rpc("annee_revalidation"),
+    supabase.from("familles_propositions").select("id, famille_id, champ, ancien, nouveau, propose_le").eq("famille_id", f.id).eq("statut", "en_attente").order("propose_le"),
+  ]);
 
   return (
     <div className="space-y-6">
       <h1 className="text-lg font-semibold">Famille {f.nom}</h1>
+      <PropositionsFamille propositions={(propositions ?? []) as PropositionFamille[]} lectureSeule={!!apercu} />
       <CoordonneesFamille
         init={{
           adresse: f.adresse,

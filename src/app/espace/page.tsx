@@ -37,7 +37,23 @@ export default async function TableauDeBordFamille() {
     .select("id", { count: "exact", head: true })
     .eq("statut", "publie")
     .is("lu_le", null);
+  // Coordonnées dont la Directrice propose la mise à jour : à accepter ou refuser dans « Ma famille ».
+  const { count: propositions } = await supabase
+    .from("familles_propositions")
+    .select("id", { count: "exact", head: true })
+    .eq("famille_id", espace.famille.id)
+    .eq("statut", "en_attente");
   const liste = [
+    ...(propositions
+      ? [
+          {
+            ton: "ambre" as const,
+            titre: "Coordonnées à vérifier",
+            detail: `La Directrice propose ${propositions > 1 ? `${propositions} mises à jour` : "une mise à jour"} de vos coordonnées.`,
+            lien: "/espace/famille",
+          },
+        ]
+      : []),
     ...(bulletinsNonLus && !liee
       ? [
           {

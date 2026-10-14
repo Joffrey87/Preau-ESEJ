@@ -3,7 +3,7 @@
 //  - avancement du reçu (à établir → à envoyer / annuel en attente → envoyé)
 // Un don peut cumuler plusieurs pastilles (ex. « Reçu envoyé » + « Courriel manquant »).
 
-import { ETAT_PASSE_SECRETAIRE } from "@/lib/envoiRecu";
+import { ETAT_PASSE_SECRETAIRE, recuPostal } from "@/lib/envoiRecu";
 
 export type Don = {
   est_personne_morale: boolean;
@@ -118,7 +118,7 @@ export function statutsDon(d: Don, recurrents: Set<string>): Chip[] {
 
   // Axe workflow du reçu (une seule pastille).
   const sans = sansRecu(d);
-  const postal = d.envoi_prefere === "courrier";
+  const postal = recuPostal(d);
   if (sans) {
     chips.push({ key: "sans", label: "Non demandé", tone: "blue", detail: "Le donateur ne demande pas de reçu" });
   } else if (recuEnvoye(d)) {

@@ -38,6 +38,15 @@ export const libelleMoyen = (v: string | null | undefined) => MOYENS_ENVOI.find(
 export const prefereCourrier = (d: { envoi_prefere?: string | null }) => d.envoi_prefere === "courrier";
 
 /**
+ * Reçu « à passer » (remis au secrétaire) plutôt qu'« à envoyer » par courriel : le donateur demande le courrier
+ * postal, ou son reçu est « À transmettre à une personne », ou il n'a pas de courriel mais une adresse postale.
+ */
+export const recuPostal = (d: { envoi_prefere?: string | null; courriel?: string | null; adresse?: string | null; cp_ville?: string | null }) =>
+  d.envoi_prefere === "courrier" ||
+  d.envoi_prefere === "transmettre" ||
+  (!(d.courriel ?? "").trim() && !!((d.adresse ?? "").trim() || (d.cp_ville ?? "").trim()));
+
+/**
  * Texte résumé inscrit dans « Reçu – état » du don : « Envoyé le 23/07/2026 - Courrier postal ».
  * Moyen « Autre » : la précision libre prend la place du moyen (« Envoyé le 06/10/2026 - Transmis à JF »).
  */

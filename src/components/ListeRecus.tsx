@@ -19,7 +19,7 @@ import { createClient } from "@/lib/supabase/client";
 import { formatEuros, formatDate, todayISO } from "@/lib/format";
 import { useDonsDechiffres } from "@/lib/donsChiffre";
 import { cleDonateur, champsImportantsManquants, recuEnvoye, sansRecu } from "@/lib/statutDon";
-import { ETAT_PASSE_SECRETAIRE, MOYENS_ENVOI, etatEnvoye, libelleMoyen, prefereCourrier } from "@/lib/envoiRecu";
+import { ETAT_PASSE_SECRETAIRE, MOYENS_ENVOI, etatEnvoye, libelleMoyen, prefereCourrier, recuPostal } from "@/lib/envoiRecu";
 import { construireRecuPdf, genererRecuPdf, nomFichierRecu, numeroCourt } from "@/lib/recu";
 import { modeleRecuEnCache } from "@/lib/modeleRecu";
 import { creerZip } from "@/lib/zip";
@@ -130,12 +130,12 @@ function statutRecu(g: Groupe, recurrents: Set<string>, anneeEnCours: number): S
   if (g.sans) return "sans";
   if (g.numero && !g.reserve) {
     if (g.dons.every(recuEnvoye)) return "envoye";
-    if (!prefereCourrier(g.representant)) return "edite";
+    if (!recuPostal(g.representant)) return "edite";
     // Courrier postal : À passer → Vérifier envoi postal (remis au secrétaire) → Envoyé.
     return g.dons.every((d) => (d.recu_etat ?? "").trim() === ETAT_PASSE_SECRETAIRE) ? "verifier" : "passer";
   }
   // Numéro RE_… (même seulement réservé) : jamais « Attente fin d'année » ni « À établir », au moins « à envoyer ».
-  if (g.numero && /^RE_\d/.test(g.numero)) return prefereCourrier(g.representant) ? "passer" : "edite";
+  if (g.numero && /^RE_\d/.test(g.numero)) return recuPostal(g.representant) ? "passer" : "edite";
   return recurrents.has(cleDonateur(g.representant)) && g.annee >= anneeEnCours ? "attente" : "a_faire";
 }
 
@@ -279,7 +279,7 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
         return tri.dir === "asc" ? c : -c;
       });
   /** Reçu établi d'un donateur « courrier postal » : il suit le parcours À passer → Vérifier envoi → Envoyé. */
-  const postalNumerote = (g: Groupe) => !!g.numero && !g.reserve && !g.sans && prefereCourrier(g.representant);
+  const postalNumerote = (g: Groupe) => !!g.numero && !g.reserve && !g.sans && recuPostal(g.representant);
   /** Un reçu est téléchargeable s'il existe : numéroté, édité (pas seulement réservé), demandé. */
   const telechargeable = (g: Groupe) => !!g.numero && !g.reserve && !g.sans;
   const affichesTelechargeables = affiches.filter((x) => telechargeable(x.g));
@@ -314,7 +314,7 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
   const tuiles: { cle: StatutRecu; libelle: string; ton: string }[] = [
     { cle: "a_faire", libelle: "À établir", ton: "text-gold" },
     { cle: "attente", libelle: "Attente fin d'année", ton: "text-gold" },
-    { cle: "edite", libelle: "Établis, à envoyer", ton: "text-accent" },
+    { cle: "edite", libelle: "À envoyer", ton: "text-accent" },
     { cle: "passer", libelle: "À passer", ton: "text-blue-600" },
     { cle: "verifier", libelle: "Vérifier envoi", ton: "text-violet-600" },
     { cle: "envoye", libelle: "Envoyés", ton: "text-positive" },
@@ -541,7 +541,7 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
           const verifier = tuiles.find((x) => x.cle === "verifier");
           return (
             <div key="envoi" className="col-span-2 rounded-2xl border border-accent/40 bg-accent-soft/30 p-1.5 lg:col-span-3">
-              <div className="mb-1 text-center text-xs text-muted">Établis, à envoyer</div>
+              <div className="mb-1 text-center text-xs text-muted">Reçus établis</div>
               <div className="grid grid-cols-3 gap-1.5">
                 <Tuile t={t} libelle="Par mail" />
                 {passer && <Tuile t={passer} libelle="Courrier : à passer" />}

@@ -9,7 +9,7 @@ export type StatutRecu = "envoye" | "edite" | "passer" | "verifier" | "attente" 
 
 export const LIBELLE: Record<StatutRecu, string> = {
   envoye: "Envoyé",
-  edite: "Établi, à envoyer",
+  edite: "À envoyer",
   passer: "À passer",
   verifier: "Vérifier envoi postal",
   attente: "Attente fin d'année",

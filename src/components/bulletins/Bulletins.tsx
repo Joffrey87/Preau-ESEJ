@@ -238,7 +238,11 @@ export default function Bulletins({
               }}
             />
           ) : onglet === "absences" ? (
-            <Absences classe={ctx.classe} periode={ctx.periode} eleves={ctx.eleves} peutSaisir={droits.directrice || droits.titulaire} directrice={droits.directrice} />
+            <Absences classe={ctx.classe} periode={ctx.periode} eleves={ctx.eleves} peutSaisir={droits.directrice || droits.titulaire} directrice={droits.directrice}
+              onOptionChangee={async () => {
+                await chargerRef();
+              }}
+            />
           ) : onglet === "maternelle" ? (
             <ReleveMaternelle
               classe={ctx.classe}

@@ -2,6 +2,7 @@
 
 import { mentionLabel, note20, rangTexte, titrePeriode, type Synthese } from "@/lib/bulletins";
 import { texteAbsences } from "@/lib/absences";
+import { tauxTexte } from "@/lib/calendrier";
 
 /** Bulletin tel que la famille le lit (synthèse figée) : même présentation que le PDF. */
 export default function VueBulletin({ s }: { s: Synthese }) {
@@ -59,6 +60,12 @@ export default function VueBulletin({ s }: { s: Synthese }) {
         <p className="text-sm">
           <span className="text-muted">Absences : </span>
           {texteAbsences(s.absences)}
+        </p>
+      )}
+      {s.presentiel !== undefined && s.presentiel !== null && (
+        <p className="text-sm">
+          <span className="text-muted">Taux de présentiel : </span>
+          {tauxTexte(s.presentiel)}
         </p>
       )}
       {mentionLabel(s.mention) && (

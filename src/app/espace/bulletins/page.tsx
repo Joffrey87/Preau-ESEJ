@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { familleEnApercu } from "@/lib/apercuFamille";
 import { estSynthese, type Synthese } from "@/lib/bulletins";
+import RelevesMaternelleFamille from "@/components/bulletins/RelevesMaternelleFamille";
 import BulletinsFamille, { type BulletinFamille } from "@/components/bulletins/BulletinsFamille";
 
 /** Bulletins publiés des enfants de la famille (la base ne renvoie que ceux-là). */
@@ -38,6 +39,7 @@ export default async function BulletinsFamillePage() {
         </p>
       )}
       <BulletinsFamille bulletins={bulletins} apercu={!!apercu} />
+      {!apercu && <RelevesMaternelleFamille />}
     </div>
   );
 }

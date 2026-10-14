@@ -6,6 +6,7 @@ import type { PDFFont, PDFPage, RGB } from "pdf-lib";
 import { chargerRessources, assainir } from "@/lib/recuPdf";
 import { mentionLabel, nomFichierBulletin, note20, rangTexte, titrePeriode, type Synthese } from "@/lib/bulletins";
 import { texteAbsences } from "@/lib/absences";
+import { tauxTexte } from "@/lib/calendrier";
 
 const W = 595.28, H = 841.89, M = 40;
 
@@ -159,6 +160,12 @@ export async function construireBulletinsPdf(syntheses: Synthese[]): Promise<Uin
       place(20);
       texte("Absences :", M, top + 10, regular, 9.5, GRIS);
       texte(texteAbsences(s.absences), M + 54, top + 10, regular, 9.5);
+      top += 20;
+    }
+    if (s.presentiel !== undefined && s.presentiel !== null) {
+      place(20);
+      texte("Taux de présentiel :", M, top + 10, regular, 9.5, GRIS);
+      texte(tauxTexte(s.presentiel), M + 92, top + 10, semi, 9.5);
       top += 20;
     }
 

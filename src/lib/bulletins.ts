@@ -10,7 +10,8 @@
 // Les bulletins repris d'École Futée portent ses chiffres (`synthese.chiffres`), qui priment sur le calcul.
 
 import { classeEn, type Eleve } from "@/lib/eleves";
-import { resumeAbsences, type Absence, type ResumeAbsences } from "@/lib/absences";
+import { resumeAbsences, type Absence, type Appel, type ResumeAbsences } from "@/lib/absences";
+import { presentiel } from "@/lib/calendrier";
 
 export type Statut = "nouveau" | "en_cours" | "pret" | "valide" | "publie";
 export type Mention = "avertissement" | "encouragements" | "compliments" | "felicitations";
@@ -54,6 +55,8 @@ export type Classe = {
   notation: "notes" | "competences";
   afficher_rang: boolean;
   rang_par_niveau: boolean;
+  /** Option de la Directrice : taux de présentiel imprimé sur les bulletins de la classe. */
+  presentiel_bulletin?: boolean;
   ordre: number;
 };
 export type Groupe = { id: string; classe_id: string; nom: string; coef: number; ordre: number };
@@ -105,6 +108,8 @@ export type Synthese = {
   publieLe?: string | null;
   /** Absences et retards de la période (bulletins publiés depuis Préau). */
   absences?: ResumeAbsences;
+  /** Taux de présentiel de la période (0–1), si la classe l'affiche. */
+  presentiel?: number | null;
   /** Commentaires par rubrique (Catéchisme, Travail…), repris d'École Futée. */
   rubriques?: { titre: string; texte: string }[];
   /** Bulletins repris d'École Futée : ses chiffres, conservés pour un éventuel retour en arrière. */
@@ -166,6 +171,7 @@ export type ResultatEleve = {
   general: Chiffre;
   groupes: { groupe: Groupe; chiffre: Chiffre; matieres: ResultatMatiere[] }[];
   absences: ResumeAbsences;
+  presentiel: number | null;
 };
 
 export type ContexteClasse = {
@@ -180,6 +186,8 @@ export type ContexteClasse = {
   lignes: Ligne[];
   /** Absences des élèves de la classe pendant la période. */
   absences: Absence[];
+  /** Appels de la classe pendant la période (si le taux de présentiel figure sur les bulletins). */
+  appels?: Pick<Appel, "date" | "demi_journee">[];
 };
 
 /** Calcule moyennes, moyennes de classe et rangs de tous les élèves d'une classe pour une période. */
@@ -212,7 +220,9 @@ export function calculerClasse(ctx: ContexteClasse): ResultatEleve[] {
       .filter((g) => g.matieres.length > 0);
     const general = moyennePonderee(gs.filter((g) => g.chiffre.moy !== null).map((g) => [g.chiffre.moy as number, Number(g.groupe.coef)]));
     const absences = resumeAbsences((ctx.absences ?? []).filter((a) => a.eleve_id === eleve.id && a.date >= ctx.periode.debut && a.date <= ctx.periode.fin));
-    return { eleve, niveau, bulletin, groupes: gs, general: { moy: general, moyClasse: null, rang: null }, absences };
+    const dePeriode = (ctx.absences ?? []).filter((a) => a.eleve_id === eleve.id && a.date >= ctx.periode.debut && a.date <= ctx.periode.fin);
+    const taux = ctx.classe.presentiel_bulletin && ctx.appels ? presentiel(ctx.appels, dePeriode, eleve.sorti_le).taux : null;
+    return { eleve, niveau, bulletin, groupes: gs, general: { moy: general, moyClasse: null, rang: null }, absences, presentiel: taux };
   });
 
   // 2. Moyennes de classe et rangs, parmi les élèves comparables (même niveau si la classe le demande).
@@ -304,6 +314,7 @@ export function construireSynthese(r: ResultatEleve, ctx: { classe: Classe; peri
     mention: b?.mention ?? null,
     appreciation: b?.appreciation?.trim() || null,
     absences: r.absences,
+    ...(r.presentiel !== null ? { presentiel: r.presentiel } : {}),
     publieLe: new Date().toISOString(),
     ...((b?.synthese as { chiffres?: Record<string, Chiffre> } | null)?.chiffres ? { chiffres: (b?.synthese as { chiffres: Record<string, Chiffre> }).chiffres } : {}),
   };

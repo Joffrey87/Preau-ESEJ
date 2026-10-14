@@ -35,6 +35,7 @@ export default function Absences({
   eleves,
   peutSaisir,
   directrice = false,
+  onOptionChangee,
 }: {
   classe: Classe;
   periode: Periode;
@@ -43,6 +44,8 @@ export default function Absences({
   peutSaisir: boolean;
   /** La Directrice modifie aussi le calendrier des jours sans école. */
   directrice?: boolean;
+  /** Après changement de l'option « taux de présentiel sur les bulletins ». */
+  onOptionChangee?: () => void;
 }) {
   const sb = useMemo(() => createClient(), []);
   const [date, setDate] = useState(todayISO());
@@ -142,6 +145,12 @@ export default function Absences({
     const { error } = await sb.from("absences").delete().eq("id", a.id);
     if (error) return setMessage(`Échec : ${error.message}`);
     await charger();
+  }
+
+  async function basculerPresentiel(v: boolean) {
+    const { error } = await sb.from("classes").update({ presentiel_bulletin: v }).eq("id", classe.id);
+    if (error) return setMessage(`Échec : ${error.message}`);
+    onOptionChangee?.();
   }
 
   const dePeriode = absences.filter((a) => a.date >= periode.debut && a.date <= periode.fin);
@@ -258,6 +267,12 @@ export default function Absences({
         <div className="border-b border-border px-4 py-3">
           <h3 className="text-[14px] font-semibold">Récapitulatif de la période</h3>
           <p className="text-[12px] text-muted">{libellePeriode(periode)} — total repris sur le bulletin à sa publication.</p>
+          {directrice && (
+            <label className="mt-1 flex items-center gap-1.5 text-[12.5px]">
+              <input type="checkbox" checked={!!classe.presentiel_bulletin} onChange={(e) => basculerPresentiel(e.target.checked)} />
+              Afficher le taux de présentiel sur les bulletins de cette classe
+            </label>
+          )}
         </div>
         <table className="w-full text-[13px]">
           <thead>

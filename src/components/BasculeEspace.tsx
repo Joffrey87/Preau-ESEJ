@@ -46,7 +46,7 @@ export function PanneauBascule({ actuel, liens }: { actuel: Espace; liens: Liens
     // Personne sans famille reliée (ex. professeur) : pas d'Espace famille proposé.
     ...(famille ? [{ espace: "famille" as Espace, titre: "Espace famille", detail: `Famille ${famille}`, icone: "maison" }] : []),
     ...(prenom ? [{ espace: "recherche" as Espace, titre: "Recherche de fonds", detail: prenom, icone: "users" }] : []),
-    ...(liens.directrice ? [{ espace: "directrice" as Espace, titre: "Directrice", detail: "Bulletins", icone: "graduation" }] : []),
+    ...(liens.directrice ? [{ espace: "directrice" as Espace, titre: "Directrice", detail: "Notes & Bulletins", icone: "graduation" }] : []),
     ...(liens.president ? [{ espace: "president" as Espace, titre: "Président", detail: "Administration de l'ARIL", icone: "ledger" }] : []),
     ...(liens.evenement ? [{ espace: "evenement" as Espace, titre: "Événement", detail: prenomDuLibelle(liens.evenement.libelle), icone: "calendar" }] : []),
     ...(liens.professeur ? [{ espace: "professeur" as Espace, titre: "Professeur", detail: liens.professeur.libelle, icone: "graduation" }] : []),

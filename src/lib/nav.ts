@@ -25,7 +25,7 @@ export const NAV: NavSection[] = [
     title: "École",
     items: [
       // Directrice, Directeur spirituel (catéchisme) et Professeurs ; aucun autre profil du bureau (données d'élèves).
-      { href: "/bulletins", label: "Bulletins", icon: "bulletin", ready: true, roles: ["directrice", "directeur-spirituel"] },
+      { href: "/bulletins", label: "Notes & Bulletins", icon: "bulletin", ready: true, roles: ["directrice", "directeur-spirituel"] },
       // Directrice : les onglets de vie de classe et d'administration des Bulletins, directement dans le menu.
       { href: "/bulletins?onglet=absences", label: "Appel & absences", icon: "calendar", ready: true, roles: ["directrice"] },
       { href: "/bulletins?onglet=trombi", label: "Trombinoscope", icon: "users", ready: true, roles: ["directrice"] },

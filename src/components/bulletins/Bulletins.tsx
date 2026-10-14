@@ -19,8 +19,9 @@ import Trombinoscope from "./Trombinoscope";
 import InscriptionsDirectrice from "@/components/inscriptions/InscriptionsDirectrice";
 
 export type Onglet = "releves" | "trimestre" | "bulletins" | "conseil" | "notes" | "absences" | "maternelle" | "trombi" | "inscriptions" | "parametres";
+// Onglets de « Notes & Bulletins » ; les autres (Appel & absences, Trombinoscope, Gestion des classes, Inscriptions)
+// s'ouvrent par le menu latéral, sans cette barre.
 const GROUPE_EVAL: Onglet[] = ["notes", "releves", "trimestre", "conseil", "maternelle", "bulletins"];
-const GROUPE_VIE: Onglet[] = ["absences", "trombi"];
 const ONGLETS: Onglet[] = ["releves", "trimestre", "bulletins", "conseil", "notes", "absences", "maternelle", "trombi", "inscriptions", "parametres"];
 
 /** Ce que le compte peut faire dans la classe affichée (la base le garantit de son côté). */
@@ -55,6 +56,8 @@ export default function Bulletins({
     const o = initial.onglet as Onglet | undefined;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- l'onglet suit l'adresse
     if (o && ONGLETS.includes(o)) setOnglet(o);
+    // Lien « Notes & Bulletins » (sans onglet) : retour aux onglets d'évaluation.
+    else setOnglet((cur) => (GROUPE_EVAL.includes(cur) ? cur : "releves"));
   }, [initial.onglet]);
   const [ajoutPour, setAjoutPour] = useState<string | null>(null);
   const [bulletinId, setBulletinId] = useState<string | null>(initial.bulletin ?? null);
@@ -153,6 +156,8 @@ export default function Bulletins({
     ...(directrice ? [{ v: "inscriptions" as Onglet, label: "Inscriptions" }, { v: "parametres" as Onglet, label: "Gestion des classes" }] : []),
   ];
 
+  const evaluation = GROUPE_EVAL.includes(onglet);
+
   const choisirOnglet = (v: Onglet) => {
     setOnglet(v);
     setBulletinId(null);
@@ -163,7 +168,7 @@ export default function Bulletins({
   return (
     <div className="mx-auto max-w-7xl px-5 py-6 md:px-8">
       <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
-        <h1 className="text-lg font-semibold tracking-tight">Bulletins</h1>
+        <h1 className="text-lg font-semibold tracking-tight">{evaluation ? "Notes & Bulletins" : onglets.find((o) => o.v === onglet)?.label}</h1>
         {annee && <p className="text-xs text-muted">Année {annee}</p>}
       </div>
 
@@ -222,13 +227,12 @@ export default function Bulletins({
               ))}
             </select>
             {titulaire && <span className="text-[12px] text-muted">Titulaire : {nomEnseignant(titulaire)}</span>}
-            {/* Onglets par catégorie : évaluation (notes, relevés, bulletins…) puis vie de classe (absences, trombinoscope). */}
-            {/* Directrice : Appel & absences, Trombinoscope, Gestion des classes et Inscriptions sont dans le menu latéral. */}
-            <div className="flex w-full flex-wrap items-center justify-start gap-2">
-              {(directrice ? [GROUPE_EVAL] : [GROUPE_EVAL, GROUPE_VIE]).map((groupe, gi) => (
-                <div key={gi} className="flex flex-wrap gap-1 rounded-lg border border-border p-0.5">
+            {/* Onglets de Notes & Bulletins seulement ; les autres pages s'ouvrent par le menu latéral. */}
+            {evaluation && (
+              <div className="flex w-full flex-wrap items-center justify-start gap-2">
+                <div className="flex flex-wrap gap-1 rounded-lg border border-border p-0.5">
                   {onglets
-                    .filter((o) => groupe.includes(o.v))
+                    .filter((o) => GROUPE_EVAL.includes(o.v))
                     .map((o) => (
                       <button
                         key={o.v}
@@ -240,8 +244,8 @@ export default function Bulletins({
                       </button>
                     ))}
                 </div>
-              ))}
-            </div>
+              </div>
+            )}
           </div>
 
           {erreur && <p className="mb-3 rounded-lg bg-negative/10 px-3 py-2 text-sm text-negative">{erreur}</p>}

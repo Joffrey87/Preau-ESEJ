@@ -324,10 +324,7 @@ const NAV_PROFESSEUR: typeof NAV = [
   {
     title: "École",
     items: [
-      { href: "/bulletins?onglet=notes", label: "Notes", icon: "bulletin", ready: true },
-      { href: "/bulletins?onglet=releves", label: "Relevés de notes", icon: "bulletin", ready: true },
-      { href: "/bulletins?onglet=trimestre", label: "Bulletins", icon: "bulletin", ready: true },
-      { href: "/bulletins?onglet=conseil", label: "Conseil de classe", icon: "users", ready: true },
+      { href: "/bulletins", label: "Notes & Bulletins", icon: "bulletin", ready: true },
       { href: "/bulletins?onglet=absences", label: "Appel & absences", icon: "calendar", ready: true },
       { href: "/bulletins?onglet=trombi", label: "Trombinoscope", icon: "users", ready: true },
     ],
@@ -336,7 +333,7 @@ const NAV_PROFESSEUR: typeof NAV = [
 
 /** Menu du compte : un profil restreint ne voit que ses pages. */
 function navDe(email?: string, niveaux?: Record<string, Niveau>) {
-  // Professeurs : les onglets des Bulletins directement dans le menu, dans l'ordre du travail de classe.
+  // Professeurs : Notes & Bulletins, puis Appel & absences et Trombinoscope directement dans le menu.
   if (estProfesseur(email)) return NAV_PROFESSEUR;
   const pages = pagesAutorisees(email);
   const slug = roleByEmail(email)?.slug ?? "";

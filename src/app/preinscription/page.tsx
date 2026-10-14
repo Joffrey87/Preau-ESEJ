@@ -1,25 +1,19 @@
-import Image from "next/image";
 import Preinscription from "@/components/inscriptions/Preinscription";
+import EnTetePreinscription from "@/components/inscriptions/EnTetePreinscription";
 import { anneeInscriptions } from "@/lib/inscriptions";
+import { chargerFormulaire } from "@/lib/formulaireInscription";
+import { createClient } from "@/lib/supabase/server";
 
 export const metadata = { title: "Préinscription · École du Saint-Enfant-Jésus" };
 
-/** Lien public de préinscription : une nouvelle famille remplit son dossier, sans compte. */
-export default function PreinscriptionPage() {
+/** Lien public de préinscription : une nouvelle famille remplit son dossier, sans compte (formulaire publié par la Directrice). */
+export default async function PreinscriptionPage() {
   const annee = anneeInscriptions();
+  const { config } = await chargerFormulaire(await createClient(), "publie");
   return (
     <main className="mx-auto max-w-2xl px-4 py-8">
-      <div className="mb-6 flex items-center gap-3">
-        <Image src="/recu/ecole.png" alt="" width={48} height={48} />
-        <div>
-          <h1 className="text-lg font-semibold">Préinscription · Année {annee}</h1>
-          <p className="text-sm text-muted">École du Saint-Enfant-Jésus, Reims</p>
-        </div>
-      </div>
-      <p className="mb-5 text-sm text-muted">
-        Remplissez ce dossier pour demander l&apos;inscription de votre enfant. La Directrice étudie chaque demande et vous recontacte.
-      </p>
-      <Preinscription annee={annee} />
+      <EnTetePreinscription annee={annee} />
+      <Preinscription annee={annee} config={config} />
     </main>
   );
 }

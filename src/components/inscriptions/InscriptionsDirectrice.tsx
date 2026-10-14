@@ -3,16 +3,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { anneeInscriptions, STATUTS_DOSSIER, type Dossier, type StatutDossier } from "@/lib/inscriptions";
-
-const LIBELLES: Record<string, string> = {
-  date_naissance: "Naissance",
-  lieu_naissance: "Lieu de naissance",
-  classe_demandee: "Classe demandée",
-  ecole_actuelle: "École actuelle",
-  adresse: "Adresse",
-  cp_ville: "Ville",
-  remarques: "Remarques",
-};
+import { chargerFormulaire, FORMULAIRE_DEFAUT, sectionsPour, type Champ, type ConfigFormulaire } from "@/lib/formulaireInscription";
+import EditeurFormulaires from "./EditeurFormulaires";
+import FormulaireInscription, { type Reponses } from "./FormulaireInscription";
 
 /**
  * Tableau de bord de la Directrice : dossiers de préinscription (lien public) et de réinscription (Espace famille).
@@ -20,6 +13,40 @@ const LIBELLES: Record<string, string> = {
  * (logiciel de messagerie, destinataires en copie cachée) ou lien à copier, l'onglet Communication n'envoyant pas encore.
  */
 export default function InscriptionsDirectrice() {
+  const [vue, setVue] = useState<"dossiers" | "formulaires">("dossiers");
+  return (
+    <div className="space-y-4">
+      <div className="flex w-fit gap-1 rounded-lg bg-surface-2 p-1">
+        {(
+          [
+            ["dossiers", "Dossiers reçus"],
+            ["formulaires", "Formulaires (préinscription, réinscription)"],
+          ] as const
+        ).map(([v, l]) => (
+          <button key={v} type="button" onClick={() => setVue(v)} className={`rounded-md px-3 py-1 text-[13px] font-medium ${vue === v ? "bg-surface text-accent shadow-sm" : "text-muted hover:text-foreground"}`}>
+            {l}
+          </button>
+        ))}
+      </div>
+      {vue === "dossiers" ? <Dossiers /> : <EditeurFormulaires />}
+    </div>
+  );
+}
+
+/** Réponse lisible d'un champ (date à la française, case cochée, pièce jointe à ouvrir). */
+function Reponse({ champ, valeur, ouvrirFichier }: { champ: Champ; valeur: string; ouvrirFichier: (chemin: string) => void }) {
+  if (champ.type === "date") return <>{valeur.split("-").reverse().join("/")}</>;
+  if (champ.type === "case") return <>{valeur === "oui" ? "Oui" : "Non"}</>;
+  if (champ.type === "fichier")
+    return (
+      <button type="button" onClick={() => ouvrirFichier(valeur)} className="text-accent hover:underline">
+        Ouvrir la pièce jointe
+      </button>
+    );
+  return <span className="whitespace-pre-line">{valeur}</span>;
+}
+
+function Dossiers() {
   const sb = useMemo(() => createClient(), []);
   const annee = anneeInscriptions();
   const [dossiers, setDossiers] = useState<Dossier[]>([]);
@@ -29,6 +56,8 @@ export default function InscriptionsDirectrice() {
   const [courriels, setCourriels] = useState<string[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const [copie, setCopie] = useState<string | null>(null);
+  const [config, setConfig] = useState<ConfigFormulaire>(FORMULAIRE_DEFAUT);
+  const [corrige, setCorrige] = useState<string | null>(null);
   const origine = typeof window !== "undefined" ? window.location.origin : "";
   const lienPre = `${origine}/preinscription`;
   const lienRe = `${origine}/espace/inscription`;
@@ -41,6 +70,7 @@ export default function InscriptionsDirectrice() {
     if (d.error) setMessage(`Échec : ${d.error.message}`);
     setDossiers((d.data ?? []) as Dossier[]);
     setCourriels([...new Set(((c.data ?? []) as { courriel: string }[]).map((x) => x.courriel))]);
+    setConfig((await chargerFormulaire(sb, "publie")).config);
   }, [sb, annee]);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement des dossiers
@@ -54,6 +84,11 @@ export default function InscriptionsDirectrice() {
       const { data } = await sb.storage.from("inscriptions").createSignedUrl(d.photo_path, 3600);
       setPhoto(data?.signedUrl ?? null);
     }
+  }
+  async function ouvrirFichier(chemin: string) {
+    const { data, error } = await sb.storage.from("inscriptions").createSignedUrl(chemin, 3600);
+    if (error || !data) return setMessage(`Échec : ${error?.message ?? "fichier introuvable"}`);
+    window.open(data.signedUrl, "_blank", "noopener");
   }
   async function decider(d: Dossier, statut: StatutDossier, note?: string) {
     const { error } = await sb.rpc("inscription_decider", { p_id: d.id, p_statut: statut, p_note: note ?? null });
@@ -129,24 +164,40 @@ export default function InscriptionsDirectrice() {
                     )}
                   </div>
                   <div className="space-y-1">
-                    {Object.entries(LIBELLES).map(([k, l]) =>
-                      x[k as keyof typeof x] ? (
-                        <div key={k}>
-                          <span className="text-muted">{l} : </span>
-                          {k === "date_naissance" ? String(x.date_naissance).split("-").reverse().join("/") : x[k as keyof typeof x]}
-                        </div>
-                      ) : null,
-                    )}
-                    {([1, 2] as const).map((k) => {
-                      const p = [x[`parent${k}_prenom`], x[`parent${k}_nom`]].filter(Boolean).join(" ");
-                      const c = [x[`parent${k}_telephone`], x[`parent${k}_courriel`]].filter(Boolean).join(" · ");
-                      return p || c ? (
-                        <div key={k}>
-                          <span className="text-muted">Parent {k} : </span>
-                          {p} {c && <span className="text-muted">({c})</span>}
-                        </div>
-                      ) : null;
-                    })}
+                    {(() => {
+                      const sections = sectionsPour(config, d.type === "preinscription" ? "pre" : "re");
+                      const connues = new Set(sections.flatMap((s) => s.champs.map((ch) => ch.cle)));
+                      const autres = Object.entries(x).filter(([k, v]) => !connues.has(k) && v);
+                      return (
+                        <>
+                          {sections.map((s) => {
+                            const lignes = s.champs.filter((ch) => ch.type !== "photo" && x[ch.cle]);
+                            return lignes.length ? (
+                              <div key={s.id} className="pb-1">
+                                <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">{s.titre}</div>
+                                {lignes.map((ch) => (
+                                  <div key={ch.cle}>
+                                    <span className="text-muted">{ch.libelle} : </span>
+                                    <Reponse champ={ch} valeur={String(x[ch.cle])} ouvrirFichier={ouvrirFichier} />
+                                  </div>
+                                ))}
+                              </div>
+                            ) : null;
+                          })}
+                          {autres.length > 0 && (
+                            <div className="pb-1">
+                              <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">Autres réponses (champs retirés du formulaire)</div>
+                              {autres.map(([k, v]) => (
+                                <div key={k}>
+                                  <span className="text-muted">{k} : </span>
+                                  {String(v)}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </>
+                      );
+                    })()}
                     <div className="text-[11.5px] text-muted">Reçu le {new Date(d.created_at).toLocaleDateString("fr-FR")}{d.traite_le ? ` · traité le ${new Date(d.traite_le).toLocaleDateString("fr-FR")}` : ""}</div>
                     <textarea
                       key={d.note_directrice ?? ""}
@@ -160,6 +211,9 @@ export default function InscriptionsDirectrice() {
                       <button type="button" onClick={() => decider(d, "valide")} className="rounded-lg bg-positive px-3 py-1.5 font-medium text-white">Valider</button>
                       <button type="button" onClick={() => decider(d, "attente")} className="rounded-lg border border-gold px-3 py-1.5 text-gold">Mettre en attente</button>
                       <button type="button" onClick={() => decider(d, "refuse")} className="rounded-lg border border-negative px-3 py-1.5 text-negative">Refuser</button>
+                      <button type="button" onClick={() => setCorrige(corrige === d.id ? null : d.id)} className="rounded-lg border border-border px-3 py-1.5 hover:bg-surface-2">
+                        {corrige === d.id ? "Fermer la correction" : "Modifier les réponses"}
+                      </button>
                       {d.statut !== "recu" && <button type="button" onClick={() => decider(d, "recu")} className="text-[12px] text-muted hover:underline">Remettre à « Reçu »</button>}
                       {contact.length > 0 && (
                         <a href={mailto(`Inscription de ${x.enfant_prenom ?? ""} · ${d.annee_scolaire}`, "Bonjour,\n\n", contact)} className="ml-auto text-[12.5px] text-accent hover:underline">
@@ -167,6 +221,28 @@ export default function InscriptionsDirectrice() {
                         </a>
                       )}
                     </div>
+                    {corrige === d.id && (
+                      <div className="mt-3 rounded-xl border border-accent/40 bg-background p-3">
+                        <p className="mb-3 text-[12.5px] text-muted">Correction du dossier : les champs obligatoires ne bloquent pas ; une nouvelle photo ou pièce jointe remplace l&apos;ancienne.</p>
+                        <FormulaireInscription
+                          config={config}
+                          type={d.type === "preinscription" ? "pre" : "re"}
+                          initial={Object.fromEntries(Object.entries(x).filter(([, v]) => v != null).map(([k, v]) => [k, String(v)])) as Reponses}
+                          dossierFichiers="directrice"
+                          correction
+                          photoActuelle={!!d.photo_path}
+                          libelleBouton="Enregistrer les corrections"
+                          envoyer={async (donnees, photo) => {
+                            const { error } = await sb.rpc("inscription_dossier_modifier", { p_id: d.id, p_donnees: donnees, p_photo: photo });
+                            if (error) return error.message;
+                            setCorrige(null);
+                            setOuvert(null);
+                            await charger();
+                            return null;
+                          }}
+                        />
+                      </div>
+                    )}
                   </div>
                 </div>
               )}

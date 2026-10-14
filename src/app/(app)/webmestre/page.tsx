@@ -8,7 +8,7 @@ export default async function WebmestrePage() {
   const { data: estWeb } = await supabase.rpc("est_webmestre");
   if (estWeb !== true) redirect("/");
 
-  const [pages, droits, personnes, liens, exceptions, historique, webmestre, titulaires, annuaire] = await Promise.all([
+  const [pages, droits, personnes, liens, exceptions, historique, webmestre, titulaires, annuaire, domainesVentes] = await Promise.all([
     supabase.from("acces_pages").select("cle, libelle, section, ordre").order("ordre"),
     supabase.from("acces_profils").select("profil, page, niveau"),
     supabase.from("acces_personnes").select("id, nom, note, prenom, famille_id, contact_id, enseignant_id, evenement_membre_id, prenom_recherche").order("nom"),
@@ -18,6 +18,7 @@ export default async function WebmestrePage() {
     supabase.from("webmestre").select("profil, depuis").single(),
     supabase.from("acces_titulaires").select("profil, personne, depuis"),
     supabase.rpc("acces_annuaire"),
+    supabase.from("acces_domaines_ventes").select("profil, domaines"),
   ]);
 
   const donnees: DonneesWebmestre = {
@@ -30,6 +31,7 @@ export default async function WebmestrePage() {
     webmestre: webmestre.data ?? { profil: "tresorier", depuis: "" },
     titulaires: titulaires.data ?? [],
     annuaire: (annuaire.data as DonneesWebmestre["annuaire"] | null) ?? { evenement: [], recherche: [], professeur: [] },
+    domainesVentes: (domainesVentes.data ?? []) as DonneesWebmestre["domainesVentes"],
   } as DonneesWebmestre;
 
   return (

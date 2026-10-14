@@ -14,48 +14,57 @@ const input = "w-full rounded-lg border border-border bg-background px-3 py-2 te
 const btn = "rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-accent-fg hover:opacity-90 disabled:opacity-50";
 const btnGhost = "rounded-lg border border-border px-3 py-1.5 text-sm font-medium hover:bg-surface-2 disabled:opacity-50";
 
+type VueCaisse = "ecole" | "evenement" | "totale";
+
 export default function GestionCaisses({
   caisses,
   mouvements,
   domaines,
-  estTresorier,
+  soldesTous,
   peutModifier,
 }: {
   caisses: Caisse[];
   mouvements: CaisseMouvement[];
   domaines: DomaineVente[];
-  estTresorier: boolean;
+  /** Soldes des deux caisses (Caisse totale), même si le détail des mouvements d'un domaine est masqué. */
+  soldesTous: { cle: string; nom: string; solde: number }[];
   peutModifier: boolean;
 }) {
   const router = useRouter();
-  const visibles = useMemo(() => caisses.filter((c) => domaines.includes(c.cle) || estTresorier), [caisses, domaines, estTresorier]);
-  const [caisseId, setCaisseId] = useState(visibles[0]?.id ?? "");
-  const [mutualise, setMutualise] = useState(false);
+  const initial: VueCaisse = domaines.includes("ecole") ? "ecole" : domaines.includes("evenement") ? "evenement" : "totale";
+  const [vue, setVue] = useState<VueCaisse>(initial);
   const [erreur, setErreur] = useState("");
   const [busy, setBusy] = useState(false);
 
-  // Saisie manuelle
   const [date, setDate] = useState(todayISO());
   const [libelle, setLibelle] = useState("");
   const [montant, setMontant] = useState("");
   const [sens, setSens] = useState<"entree" | "sortie">("entree");
 
-  // Import
   const [preview, setPreview] = useState<(LigneCaisseProposee & { garder: boolean })[] | null>(null);
   const [caisseImport, setCaisseImport] = useState("");
 
-  const caisseActive = visibles.find((c) => c.id === caisseId) ?? visibles[0];
-  const soldes = visibles.map((c) => ({ caisse: c, solde: solde(c, mouvements) }));
-  const totalMutualise = soldes.reduce((s, x) => s + x.solde, 0);
+  const caisseEcole = caisses.find((c) => c.cle === "ecole");
+  const caisseEvt = caisses.find((c) => c.cle === "evenement");
+  const soldeDe = (cle: string) => soldesTous.find((s) => s.cle === cle)?.solde ?? caisses.filter((c) => c.cle === cle).reduce((s, c) => s + solde(c, mouvements), 0);
+  const soldeEcole = soldeDe("ecole");
+  const soldeEvt = soldeDe("evenement");
+  const soldeTotale = soldeEcole + soldeEvt;
+
+  const peutEcrire = (d: DomaineVente) => peutModifier && domaines.includes(d);
+
+  const caisseActive = vue === "ecole" ? caisseEcole : vue === "evenement" ? caisseEvt : null;
   const liste = useMemo(() => {
-    if (mutualise && (estTresorier || domaines.length > 1)) return mouvements.filter((m) => visibles.some((c) => c.id === m.caisse_id));
-    return mouvements.filter((m) => m.caisse_id === (caisseActive?.id ?? ""));
-  }, [mouvements, mutualise, caisseActive, visibles, estTresorier, domaines]);
+    if (vue === "totale") return mouvements;
+    if (!caisseActive) return [];
+    return mouvements.filter((m) => m.caisse_id === caisseActive.id);
+  }, [mouvements, vue, caisseActive]);
 
   async function ajouterManuel(e: React.FormEvent) {
     e.preventDefault();
     setErreur("");
-    if (!caisseActive) return;
+    if (!caisseActive || vue === "totale") return;
+    if (!peutEcrire(caisseActive.cle)) return setErreur("Pas de droit d'écriture sur cette caisse.");
     const n = Number(String(montant).replace(",", "."));
     if (!isFinite(n) || n <= 0) return setErreur("Montant invalide.");
     if (!libelle.trim()) return setErreur("Libellé obligatoire.");
@@ -95,7 +104,7 @@ export default function GestionCaisses({
       const j = (await rep.json()) as { lignes?: LigneCaisseProposee[]; erreur?: string };
       if (!rep.ok) throw new Error(j.erreur ?? "Lecture impossible");
       setPreview((j.lignes ?? []).map((l) => ({ ...l, garder: !!(l.montant && l.libelle) })));
-      setCaisseImport(caisseActive?.id ?? "");
+      setCaisseImport(caisseActive?.id ?? caisses.find((c) => domaines.includes(c.cle))?.id ?? "");
     } catch (e) {
       setErreur(e instanceof Error ? e.message : "Lecture impossible");
     }
@@ -114,29 +123,29 @@ export default function GestionCaisses({
       const lignes: (LigneCaisseProposee & { garder: boolean })[] = [];
       for (const row of rows.slice(0, 200)) {
         if (!row || row.length < 2) continue;
-        let date: string | null = null;
-        let libelle: string | null = null;
-        let montant: number | null = null;
+        let dateL: string | null = null;
+        let lib: string | null = null;
+        let mont: number | null = null;
         for (const cell of row) {
-          if (cell instanceof Date) date = cell.toISOString().slice(0, 10);
-          else if (typeof cell === "number" && montant == null) montant = Math.round(cell * 100) / 100;
+          if (cell instanceof Date) dateL = cell.toISOString().slice(0, 10);
+          else if (typeof cell === "number" && mont == null) mont = Math.round(cell * 100) / 100;
           else if (typeof cell === "string" && cell.trim()) {
-            if (/^\d{4}-\d{2}-\d{2}$/.test(cell.trim())) date = cell.trim();
+            if (/^\d{4}-\d{2}-\d{2}$/.test(cell.trim())) dateL = cell.trim();
             else if (/^\d{1,2}[\/.]\d{1,2}[\/.]\d{2,4}$/.test(cell.trim())) {
               const [j, m, a] = cell.trim().split(/[\/.]/);
-              date = `${a.length === 2 ? "20" + a : a}-${m.padStart(2, "0")}-${j.padStart(2, "0")}`;
-            } else if (libelle == null) libelle = cell.trim();
-            else if (montant == null) {
+              dateL = `${a.length === 2 ? "20" + a : a}-${m.padStart(2, "0")}-${j.padStart(2, "0")}`;
+            } else if (lib == null) lib = cell.trim();
+            else if (mont == null) {
               const n = Number(cell.replace(/\s/g, "").replace(",", "."));
-              if (isFinite(n) && n !== 0) montant = Math.round(n * 100) / 100;
+              if (isFinite(n) && n !== 0) mont = Math.round(n * 100) / 100;
             }
           }
         }
-        if (libelle || montant != null) lignes.push({ date, libelle, montant, garder: !!(montant && libelle) });
+        if (lib || mont != null) lignes.push({ date: dateL, libelle: lib, montant: mont, garder: !!(mont && lib) });
       }
       if (!lignes.length) throw new Error("Aucune ligne lisible dans le fichier.");
       setPreview(lignes);
-      setCaisseImport(caisseActive?.id ?? "");
+      setCaisseImport(caisseActive?.id ?? caisses.find((c) => domaines.includes(c.cle))?.id ?? "");
     } catch (e) {
       setErreur(e instanceof Error ? e.message : "Import Excel impossible");
     }
@@ -145,12 +154,13 @@ export default function GestionCaisses({
 
   async function confirmerImport() {
     if (!preview || !caisseImport) return;
+    const cible = caisses.find((c) => c.id === caisseImport);
+    if (!cible || !peutEcrire(cible.cle)) return setErreur("Choisissez une caisse sur laquelle vous pouvez écrire.");
     const aImporter = preview.filter((l) => l.garder && l.montant != null && l.libelle);
     if (!aImporter.length) return setErreur("Aucune ligne à importer.");
     setBusy(true);
     setErreur("");
-    const sb = createClient();
-    const { error } = await sb.from("caisse_mouvements").insert(
+    const { error } = await createClient().from("caisse_mouvements").insert(
       aImporter.map((l) => ({
         caisse_id: caisseImport,
         date: l.date || todayISO(),
@@ -165,43 +175,49 @@ export default function GestionCaisses({
     router.refresh();
   }
 
+  // Les trois positions sont toujours proposées (Directrice et Événement inclus) : lecture des deux caisses ;
+  // l'écriture reste limitée aux domaines accordés par le Webmestre.
+  const positions: { v: VueCaisse; label: string; montant: number }[] = [
+    { v: "ecole", label: "Caisse école", montant: soldeEcole },
+    { v: "evenement", label: "Caisse Événement", montant: soldeEvt },
+    { v: "totale", label: "Caisse totale", montant: soldeTotale },
+  ];
+
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center gap-3">
-        {soldes.map(({ caisse, solde: s }) => (
-          <button
-            key={caisse.id}
-            type="button"
-            onClick={() => {
-              setCaisseId(caisse.id);
-              setMutualise(false);
-            }}
-            className={`rounded-xl border px-4 py-3 text-left transition ${!mutualise && caisseId === caisse.id ? "border-accent bg-accent/5" : "border-border bg-surface hover:bg-surface-2"}`}
-          >
-            <div className="text-xs text-muted">{caisse.nom}</div>
-            <div className={`text-lg font-semibold tabular-nums ${s >= 0 ? "text-positive" : "text-negative"}`}>{formatEuros(s)}</div>
-          </button>
-        ))}
-        {(estTresorier || domaines.length > 1) && (
-          <button
-            type="button"
-            onClick={() => setMutualise(true)}
-            className={`rounded-xl border px-4 py-3 text-left transition ${mutualise ? "border-accent bg-accent/5" : "border-border bg-surface hover:bg-surface-2"}`}
-          >
-            <div className="text-xs text-muted">Total mutualisé</div>
-            <div className={`text-lg font-semibold tabular-nums ${totalMutualise >= 0 ? "text-positive" : "text-negative"}`}>{formatEuros(totalMutualise)}</div>
-          </button>
-        )}
-        <Link href="/ventes-diverses" className={btnGhost + " ml-auto self-center"}>
+      <div className="flex flex-wrap items-stretch gap-2">
+        <div className="flex flex-1 flex-wrap gap-2 rounded-xl border border-border bg-surface p-1">
+          {positions.map((p) => (
+            <button
+              key={p.v}
+              type="button"
+              onClick={() => setVue(p.v)}
+              className={`min-w-[9rem] flex-1 rounded-lg px-3 py-2.5 text-left transition ${
+                vue === p.v ? "bg-accent/10 ring-1 ring-accent" : "hover:bg-surface-2"
+              }`}
+            >
+              <div className="text-[11px] font-medium uppercase tracking-wide text-muted">{p.label}</div>
+              <div className={`text-lg font-semibold tabular-nums ${p.montant >= 0 ? "text-positive" : "text-negative"}`}>{formatEuros(p.montant)}</div>
+            </button>
+          ))}
+        </div>
+        <Link href="/ventes-diverses" className={btnGhost + " self-center"}>
           Ventes diverses
         </Link>
       </div>
 
       {erreur && <p className="rounded-lg bg-negative/10 px-3 py-2 text-sm text-negative">{erreur}</p>}
 
-      {peutModifier && caisseActive && !mutualise && (
+      {vue === "totale" && (
+        <p className="text-sm text-muted">
+          Total des deux caisses : {formatEuros(soldeTotale)} (école {formatEuros(soldeEcole)} + événement {formatEuros(soldeEvt)}).
+          Lecture des deux caisses ; pour ajouter ou importer, choisissez une caisse de votre domaine.
+        </p>
+      )}
+
+      {peutModifier && caisseActive && vue !== "totale" && peutEcrire(caisseActive.cle) && (
         <div className="grid gap-4 md:grid-cols-2">
-          <form onSubmit={ajouterManuel} className="rounded-xl border border-border bg-surface p-4 space-y-3">
+          <form onSubmit={ajouterManuel} className="space-y-3 rounded-xl border border-border bg-surface p-4">
             <h2 className="text-sm font-semibold">Mouvement manuel · {caisseActive.nom}</h2>
             <div className="grid grid-cols-2 gap-2">
               <input type="date" className={input} value={date} onChange={(e) => setDate(e.target.value)} required />
@@ -217,7 +233,7 @@ export default function GestionCaisses({
             </button>
           </form>
 
-          <div className="rounded-xl border border-border bg-surface p-4 space-y-3">
+          <div className="space-y-3 rounded-xl border border-border bg-surface p-4">
             <h2 className="text-sm font-semibold">Importer</h2>
             <p className="text-xs text-muted">Photo d&apos;une feuille manuscrite (prioritaire), puis Excel. Vérifiez et corrigez avant de confirmer.</p>
             <div className="flex flex-wrap gap-2">
@@ -253,11 +269,11 @@ export default function GestionCaisses({
       )}
 
       {preview && (
-        <section className="rounded-xl border border-accent/40 bg-surface p-4 space-y-3">
+        <section className="space-y-3 rounded-xl border border-accent/40 bg-surface p-4">
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="text-sm font-semibold">Aperçu avant import ({preview.filter((l) => l.garder).length} lignes)</h2>
             <select className={input + " w-auto"} value={caisseImport} onChange={(e) => setCaisseImport(e.target.value)}>
-              {visibles.map((c) => (
+              {caisses.filter((c) => peutEcrire(c.cle)).map((c) => (
                 <option key={c.id} value={c.id}>
                   {c.nom}
                 </option>
@@ -287,28 +303,17 @@ export default function GestionCaisses({
                       <input type="checkbox" checked={l.garder} onChange={(e) => setPreview((p) => p!.map((x, j) => (j === i ? { ...x, garder: e.target.checked } : x)))} />
                     </td>
                     <td className="px-2 py-1">
-                      <input
-                        type="date"
-                        className={input}
-                        value={l.date ?? ""}
-                        onChange={(e) => setPreview((p) => p!.map((x, j) => (j === i ? { ...x, date: e.target.value || null } : x)))}
-                      />
+                      <input type="date" className={input} value={l.date ?? ""} onChange={(e) => setPreview((p) => p!.map((x, j) => (j === i ? { ...x, date: e.target.value || null } : x)))} />
                     </td>
                     <td className="px-2 py-1">
-                      <input
-                        className={input}
-                        value={l.libelle ?? ""}
-                        onChange={(e) => setPreview((p) => p!.map((x, j) => (j === i ? { ...x, libelle: e.target.value } : x)))}
-                      />
+                      <input className={input} value={l.libelle ?? ""} onChange={(e) => setPreview((p) => p!.map((x, j) => (j === i ? { ...x, libelle: e.target.value } : x)))} />
                     </td>
                     <td className="px-2 py-1">
                       <input
                         className={input + " text-right"}
                         value={l.montant ?? ""}
                         onChange={(e) =>
-                          setPreview((p) =>
-                            p!.map((x, j) => (j === i ? { ...x, montant: e.target.value === "" ? null : Number(e.target.value.replace(",", ".")) } : x)),
-                          )
+                          setPreview((p) => p!.map((x, j) => (j === i ? { ...x, montant: e.target.value === "" ? null : Number(e.target.value.replace(",", ".")) } : x)))
                         }
                       />
                     </td>
@@ -322,13 +327,13 @@ export default function GestionCaisses({
 
       <section className="overflow-hidden rounded-xl border border-border bg-surface">
         <div className="border-b border-border px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted">
-          {mutualise ? "Mouvements (toutes caisses)" : caisseActive?.nom ?? "Mouvements"}
+          {vue === "totale" ? "Mouvements (toutes caisses)" : caisseActive?.nom ?? "Mouvements"}
         </div>
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-border text-left text-xs text-muted">
               <th className="px-4 py-2 font-medium">Date</th>
-              {mutualise && <th className="px-4 py-2 font-medium">Caisse</th>}
+              {vue === "totale" && <th className="px-4 py-2 font-medium">Caisse</th>}
               <th className="px-4 py-2 font-medium">Libellé</th>
               <th className="px-4 py-2 font-medium">Source</th>
               <th className="px-4 py-2 font-medium text-right">Montant</th>
@@ -343,30 +348,34 @@ export default function GestionCaisses({
                 </td>
               </tr>
             ) : (
-              liste.map((m) => (
-                <tr key={m.id} className="border-b border-border/60">
-                  <td className="px-4 py-2 whitespace-nowrap">{formatDate(m.date)}</td>
-                  {mutualise && <td className="px-4 py-2 text-muted">{caisses.find((c) => c.id === m.caisse_id)?.nom}</td>}
-                  <td className="px-4 py-2">{m.libelle}</td>
-                  <td className="px-4 py-2 text-xs text-muted">{m.source === "vente" ? "Vente diverse" : m.source === "import" ? "Import" : "Manuel"}</td>
-                  <td className={`px-4 py-2 text-right tabular-nums font-medium ${m.montant >= 0 ? "text-positive" : "text-negative"}`}>
-                    {formatEuros(m.montant)}
-                  </td>
-                  {peutModifier && (
-                    <td className="px-4 py-2 text-right">
-                      <button type="button" disabled={busy} className="text-xs text-muted hover:text-negative" onClick={() => supprimer(m.id)}>
-                        Suppr.
-                      </button>
-                    </td>
-                  )}
-                </tr>
-              ))
+              liste.map((m) => {
+                const c = caisses.find((x) => x.id === m.caisse_id);
+                const ecrire = c ? peutEcrire(c.cle) : false;
+                return (
+                  <tr key={m.id} className="border-b border-border/60">
+                    <td className="whitespace-nowrap px-4 py-2">{formatDate(m.date)}</td>
+                    {vue === "totale" && <td className="px-4 py-2 text-muted">{c?.nom}</td>}
+                    <td className="px-4 py-2">{m.libelle}</td>
+                    <td className="px-4 py-2 text-xs text-muted">{m.source === "vente" ? "Vente diverse" : m.source === "import" ? "Import" : "Manuel"}</td>
+                    <td className={`px-4 py-2 text-right font-medium tabular-nums ${m.montant >= 0 ? "text-positive" : "text-negative"}`}>{formatEuros(m.montant)}</td>
+                    {peutModifier && (
+                      <td className="px-4 py-2 text-right">
+                        {ecrire && (
+                          <button type="button" disabled={busy} className="text-xs text-muted hover:text-negative" onClick={() => supprimer(m.id)}>
+                            Suppr.
+                          </button>
+                        )}
+                      </td>
+                    )}
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
       </section>
       <p className="text-xs text-muted">
-        Domaines visibles : {domaines.map((d) => DOMAINES.find((x) => x.v === d)?.label).join(", ")}. Les paiements liquides des ventes diverses créent automatiquement une entrée dans la caisse du même domaine.
+        Domaines accordés : {domaines.map((d) => DOMAINES.find((x) => x.v === d)?.label).join(", ") || "aucun"}. Les paiements liquides des ventes diverses créent une entrée dans la caisse du même domaine.
       </p>
     </div>
   );

@@ -537,8 +537,8 @@ export default function DonateursPipeline({
               {vis("suivi") && <th className="px-3 py-1 font-medium border-x-2 border-x-blue-900 dark:border-x-blue-400" aria-sort={ariaSort("suivi", "suiviDate")}>
                 {bouton("suiviDate", "Suivi", "Trier par date de la dernière action")}
               </th>}
-              {vis("etat") && <th className="w-10 px-1 py-1 font-medium" title={LEGENDE_ETATS(ETATS_DONATEUR_MANUELS)}>{bouton("etat", "État", LEGENDE_ETATS(ETATS_DONATEUR_MANUELS))} <span aria-hidden>ⓘ</span></th>}
-              {vis("qualification") && th("qualification", "Qualif.")}
+              {vis("etat") && <th className="w-28 px-1 py-1 font-medium" title={LEGENDE_ETATS(ETATS_DONATEUR_MANUELS)}>{bouton("etat", "État", LEGENDE_ETATS(ETATS_DONATEUR_MANUELS))} <span aria-hidden>ⓘ</span></th>}
+              {vis("qualification") && <th className="w-28 px-2 py-1 font-medium" aria-sort={ariaSort("qualification")}>{bouton("qualification", "Qualification")}</th>}
               {vis("cumul") && th("cumul", "Cumul", true)}
               {vis("annee") && th("annee", "Cette année", true)}
               {vis("dernier") && th("dernier", "Dernier don")}
@@ -601,7 +601,7 @@ export default function DonateursPipeline({
                       donsIds={(donsParCle.get(p.cle) ?? []).map((d) => d.id)} nom={p.nom}
                       onPlus={(ex) => { setAjoutExistante(ex); setAjoutCle(p.cle); }} />
                   </td>}
-                  {vis("etat") && <td className="w-10 px-1 py-2">
+                  {vis("etat") && <td className="w-28 px-1 py-2">
                     <span className="relative inline-flex">
                       <span title={manuel ? `${manuel} (état manuel)` : "Aucun état manuel"}
                         className={`inline-flex h-7 w-7 items-center justify-center rounded-full text-sm ${manuel ? TON_ETAT_DONATEUR[manuel] : "text-muted"}`}>
@@ -617,7 +617,7 @@ export default function DonateursPipeline({
                       )}
                     </span>
                   </td>}
-                  {vis("qualification") && <td className="w-24 px-2 py-2">
+                  {vis("qualification") && <td className="w-28 px-2 py-2">
                     <div className="flex flex-col items-center gap-0.5">
                       {autos.map(pastille)}
                       {badgesDe(p).filter((b) => !["actif", "sommeil", "perdu", "grand", "reserve"].includes(b.key)).map((b) => (

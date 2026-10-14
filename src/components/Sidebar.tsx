@@ -7,7 +7,7 @@ import { NAV } from "@/lib/nav";
 import type { Niveau } from "@/lib/acces";
 import { estEvenement, estProfesseur, pagesAutorisees, roleByEmail } from "@/lib/roles";
 import { ICONES_ROLES, PROFILS_VUE } from "@/lib/vueRole";
-import { MISES_A_JOUR, titreEnAmbre } from "@/lib/misesAJour";
+import { MISES_A_JOUR, entreeEnAmbre, titreEnAmbre } from "@/lib/misesAJour";
 import { todayISO } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
 import Icon from "./Icon";
@@ -273,7 +273,7 @@ export default function Sidebar({
               </div>
               {MISES_A_JOUR.map((m) => (
                 <div key={m.depuis} className="mt-1.5">
-                  <div className="text-[10.5px] text-muted">Depuis le {m.depuis}</div>
+                  <div suppressHydrationWarning className={`text-[10.5px] ${entreeEnAmbre(m, todayISO()) ? "font-semibold text-gold" : "text-muted"}`}>{m.titre ?? `Depuis le ${m.depuis}`}</div>
                   <ul className="mt-0.5 space-y-0.5 text-[12px] leading-snug">
                     {m.points.map((p) => (
                       <li key={p.texte} className="flex items-baseline gap-1.5">

@@ -570,9 +570,9 @@ export default function GestionPipeline({
               {vis("suivi") && <th className="px-4 py-3 font-medium border-x-2 border-x-blue-900 dark:border-x-blue-400" aria-sort={ariaSort("suivi", "suiviDate")}>
                 {bouton("suiviDate", "Suivi", "Trier par date de la dernière action")}
               </th>}
-              {vis("etat") && <th className="w-10 px-1 py-3 font-medium" title={LEGENDE_ETATS(ETATS_PROSPECT)}>{bouton("etat", "État", LEGENDE_ETATS(ETATS_PROSPECT))} <span aria-hidden>ⓘ</span></th>}
+              {vis("etat") && <th className="w-28 px-1 py-3 font-medium" title={LEGENDE_ETATS(ETATS_PROSPECT)}>{bouton("etat", "État", LEGENDE_ETATS(ETATS_PROSPECT))} <span aria-hidden>ⓘ</span></th>}
               {vis("cible") && <th className="w-12 px-1 py-3 font-medium" title={`Capacité : ${Object.values(CAPACITE_LABEL).map((v, i) => `${ICONE_CAPACITE[(["A", "B", "C"] as Capacite[])[i]]} ${v}`).join(" · ")}`}>{bouton("cible", "Cap.", "Trier par capacité")}</th>}
-              {vis("obtenu") && thTri("obtenu", "Obtenu", true)}
+              {vis("obtenu") && <th className="w-28 px-4 py-3 font-medium" aria-sort={ariaSort("obtenu")}>{bouton("obtenu", "Obtenu")}</th>}
               {vis("commentaire") && thTri("commentaire", "Commentaire")}
               <th className="w-10 px-2 py-3 font-medium"><span className="sr-only">Supprimer</span></th>
             </tr>
@@ -589,19 +589,18 @@ export default function GestionPipeline({
                 const nomP = !p.verrouille ? nomComplet({ titre: p.titre, prenom: p.prenom, nom: p.nom }) : p.affiche;
                 return (
                   <tr key={p.id} className={`border-b border-border last:border-0 ${ec.affiche === "Pas intéressé" ? "opacity-50" : ""}`}>
-                    <td className="px-4 py-3">
-                      <button type="button" onClick={() => ouvrir(p)} title="Ouvrir la fiche du prospect (informations et suivi)" className={`${nomCliquableCls} font-medium hover:underline`}>
-                        {!p.verrouille ? nomComplet({ titre: p.titre, prenom: p.prenom, nom: p.nom }) : p.affiche}
+                    <td className="max-w-64 px-3 py-1">
+                      <button type="button" onClick={() => ouvrir(p)} title={`${nomP} — ouvrir la fiche du prospect`} className={`${nomCliquableCls} block max-w-full truncate font-medium hover:underline`}>
+                        {nomP}
                       </button>
-                      {p.cp_ville && <div className="text-xs text-muted">{villeEtDepartement(p.cp_ville)}</div>}
-                      {(p.email || p.telephone) && (
-                        <div className="text-xs text-muted">
+                      <div className="flex min-w-0 items-center gap-1 text-[11px] leading-tight text-muted">
+                        <span className="truncate" title={[p.cp_ville && villeEtDepartement(p.cp_ville), p.email, p.telephone].filter(Boolean).join(" · ")}>
+                          {p.cp_ville && villeEtDepartement(p.cp_ville)}
+                          {p.cp_ville && (p.email || p.telephone) && " · "}
                           {p.email && <a href={`mailto:${p.email}`} className="hover:underline">{p.email}</a>}
                           {p.email && p.telephone && " · "}
                           {p.telephone && <a href={`tel:${p.telephone.replace(/\s/g, "")}`} className="hover:underline">{p.telephone}</a>}
-                        </div>
-                      )}
-                      <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted">
+                        </span>
                         {/* Prospects de la Liste Axel : tous des particuliers, segment non modifiable depuis le tableau. */}
                         {!estListeChiffree(p.liste) && (
                           <select
@@ -610,7 +609,7 @@ export default function GestionPipeline({
                             onChange={(e) => !e.target.value.startsWith("ancien:") && void majChamp(p, { segment: e.target.value as Segment })}
                             aria-label="Type"
                             title={ancienType(p.segment) ? `Ancienne valeur : ${ancienType(p.segment)} — type suggéré : ${libelleType(p)}` : `Type : ${libelleType(p)}`}
-                            className="rounded border border-transparent bg-transparent py-0.5 text-xs hover:border-border"
+                            className="shrink-0 rounded border border-transparent bg-transparent py-0 text-[11px] hover:border-border"
                           >
                             {ancienType(p.segment) && <option value={`ancien:${p.segment}`}>{libelleType(p)} (suggéré · ancien : {ancienType(p.segment)})</option>}
                             {TYPES_PROSPECT.map((t) => <option key={t.key} value={t.key}>{t.key === "autre" && p.type_autre && typeDe(p.segment) === "autre" ? libelleType(p) : t.label}</option>)}
@@ -618,7 +617,7 @@ export default function GestionPipeline({
                         )}
                       </div>
                     </td>
-                    {vis("relation") && <td className="px-4 py-3 text-muted">
+                    {vis("relation") && <td className="px-3 py-1.5 text-muted">
                       <RelationResponsable
                         relation={p.relation ?? null}
                         responsable={p.reserve_a ?? p.responsable ?? null}
@@ -650,7 +649,7 @@ export default function GestionPipeline({
                       <SuiviCoche der={der} auteur={auteurSuivi} peutSuivre={peutSuivre} cibleType="prospect" cle={p.id} nom={nomP}
                         onPlus={(ex) => setAjoutSuiviEtat(ex ? { p, existante: ex } : { p })} />
                     </td>}
-                    {vis("etat") && <td className="w-10 px-1 py-2">
+                    {vis("etat") && <td className="w-28 px-1 py-2">
                       <span className="relative inline-flex">
                         <span title={`${ec.affiche}${ec.auto ? " (automatique : un don est enregistré)" : ec.ancien ? ` — suggéré (ancienne valeur : ${ec.ancien})` : ""}`}
                           className={`inline-flex h-7 w-7 items-center justify-center rounded-full text-sm ${TON_ETAT[ec.affiche]} ${!ec.etat ? "border border-dashed border-accent" : ""}`}>
@@ -680,7 +679,7 @@ export default function GestionPipeline({
                         </select>
                       </span>
                     </td>}
-                    {vis("obtenu") && <td className="px-4 py-3 text-right tabular-nums">
+                    {vis("obtenu") && <td className="w-28 px-3 py-1.5 text-right tabular-nums">
                       <span className="font-medium text-positive">{obtenus[p.id] ? formatEuros(obtenus[p.id].montant) : "—"}</span>
                       {peutLier && (
                         <button
@@ -707,7 +706,7 @@ export default function GestionPipeline({
                         </button>
                       )}
                     </td>}
-                    <td className="px-4 py-3 text-right whitespace-nowrap">
+                    <td className="px-3 py-1.5 text-right whitespace-nowrap">
                       <button type="button" onClick={() => supprimer(p)} disabled={busy === p.id} className="rounded p-1.5 text-muted hover:bg-negative/10 hover:text-negative disabled:opacity-50" title="Supprimer" aria-label="Supprimer">
                         <Icon name="corbeille" className="h-4 w-4" />
                       </button>

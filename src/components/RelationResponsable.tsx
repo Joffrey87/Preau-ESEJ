@@ -66,11 +66,12 @@ export default function RelationResponsable({
   ) : (
     <span className={CADRE}>{rel}</span>
   );
-  const affichage = (
-    <span title={different || !rel ? legende : `${legende} — ici, la Relation est aussi le Responsable`}>
-      {base}
-      {rsv && <>{base && " · "}<span className="font-medium text-orange-600 dark:text-orange-400">🔒 {rsv}</span></>}
-    </span>
+  const affichage = rsv ? (
+    // Réservé à : seul ce nom s'affiche ; Relation et Responsable restent dans l'infobulle.
+    <span title={`Réservé à : ${rsv}${rel ? ` · Relation : ${rel}` : ""}${resp || rel ? ` · Responsable : ${resp || rel}` : ""} — ${legende}`}
+      className="font-medium text-orange-600 dark:text-orange-400">🔒 {rsv}</span>
+  ) : (
+    <span title={different || !rel ? legende : `${legende} — ici, la Relation est aussi le Responsable`}>{base}</span>
   );
 
   return (

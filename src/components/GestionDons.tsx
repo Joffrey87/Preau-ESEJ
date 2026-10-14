@@ -242,7 +242,8 @@ export default function GestionDons({
   const { actifs: filtres, multiple: filtreMultiple, basculer: basculerFiltre, basculerMultiple: basculerFiltreMultiple, estActif: filtreActif, reinitialiser: reinitialiserFiltres } = useFiltresMultiples<StatutKey>();
   const [signaler, setSignaler] = useState(false);
   const [recherche, setRecherche] = useState("");
-  const [anneeFiltre, setAnneeFiltre] = useState<FiltreAnnee>(FILTRE_ANNEE_DEFAUT);
+  // Médailles Don : toute la liste, sans filtre.
+  const [anneeFiltre, setAnneeFiltre] = useState<FiltreAnnee>(modeMedailles ? "toutes" : FILTRE_ANNEE_DEFAUT);
   // Catégories décochées dans le menu « Catégorie » (aucune = toutes affichées) ; « à corriger » = filtre à part.
   const [catsMasquees, setCatsMasquees] = useState<string[]>([]);
   const [soloIncoherents, setSoloIncoherents] = useState(false);
@@ -260,6 +261,7 @@ export default function GestionDons({
   // setState au montage depuis localStorage : cas légitime, non SSR-able autrement.
   /* eslint-disable react-hooks/set-state-in-effect */
   useEffect(() => {
+    if (modeMedailles) return; // colonnes et tri fixes (date, la plus récente d'abord)
     try {
       const c = localStorage.getItem("dons.cols");
       if (c) setCols({ ...COLS_DEFAUT, ...JSON.parse(c) });
@@ -268,7 +270,7 @@ export default function GestionDons({
       const k = localStorage.getItem("dons.compact");
       if (k != null) setCompact(k === "1");
     } catch {}
-  }, []);
+  }, [modeMedailles]);
   /* eslint-enable react-hooks/set-state-in-effect */
   useEffect(() => { try { localStorage.setItem("dons.cols", JSON.stringify(cols)); } catch {} }, [cols]);
   useEffect(() => { try { localStorage.setItem("dons.tri", JSON.stringify(tri)); } catch {} }, [tri]);
@@ -772,7 +774,7 @@ export default function GestionDons({
     router.refresh();
   }
 
-  const colsAff = modeRecherche ? { ...cols, medaille: false } : cols;
+  const colsAff = modeRecherche ? { ...cols, medaille: false } : modeMedailles ? { ...cols, statut: false, recu: false } : cols;
   const cellPad = compact ? "px-3 py-1.5" : "px-4 py-3";
   const ringManque = (estVide: boolean) =>
     signaler && estVide ? " ring-2 ring-negative/60 !border-negative" : "";
@@ -877,6 +879,7 @@ export default function GestionDons({
         </div>
       )}
 
+      {!modeMedailles && (<>
       {/* Recherche + actions */}
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <input
@@ -1075,11 +1078,13 @@ export default function GestionDons({
           </div>
         ))}
       </div>
+      </>)}
 
       {genErreur && (
         <p className="mb-3 rounded-lg bg-negative/10 px-3 py-2 text-sm text-negative">{genErreur}</p>
       )}
 
+      {!modeMedailles && (<>
       <div className="mb-4 flex flex-wrap items-center gap-2">
         {FILTRES.filter((item) => plusFiltres || FILTRES_VISIBLES.includes(item.key) || filtreActif(item.key)).map((item) => {
           const n = compteParStatut.get(item.key) ?? 0;
@@ -1119,6 +1124,7 @@ export default function GestionDons({
           </button>
         )}
       </div>
+      </>)}
 
       <div className="overflow-x-auto rounded-xl border border-border bg-surface">
         <table className={`w-full ${compact ? "text-[13px]" : "text-sm"}`}>
@@ -1145,13 +1151,13 @@ export default function GestionDons({
                   </th>
                 );
               })}
-              <th className={`${cellPad} font-medium text-right`}>Actions</th>
+              {!modeMedailles && <th className={`${cellPad} font-medium text-right`}>Actions</th>}
             </tr>
           </thead>
           <tbody>
             {donsTries.length === 0 ? (
               <tr>
-                <td colSpan={COLONNES.filter((c) => colsAff[c.key]).length + 1} className="px-4 py-12 text-center text-muted">
+                <td colSpan={COLONNES.filter((c) => colsAff[c.key]).length + (modeMedailles ? 0 : 1)} className="px-4 py-12 text-center text-muted">
                   {vueCorbeille
                     ? "Corbeille vide."
                     : dons.length === 0
@@ -1308,7 +1314,7 @@ export default function GestionDons({
                       )}
                     </td>
                   )}
-                  <td className={`${cellPad} text-right whitespace-nowrap`}>
+                  {!modeMedailles && <td className={`${cellPad} text-right whitespace-nowrap`}>
                     {vueCorbeille ? (
                       <>
                         {d.supprime_le && (
@@ -1369,7 +1375,7 @@ export default function GestionDons({
                         </>}
                       </>
                     )}
-                  </td>
+                  </td>}
                 </tr>
                 );
               })

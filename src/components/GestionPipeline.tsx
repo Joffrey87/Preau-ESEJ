@@ -658,7 +658,7 @@ export default function GestionPipeline({
                         </span>
                         {peutEcrire && !ec.auto && (
                           <select value={ec.etat ?? ""} disabled={busy === p.id} onChange={(e) => e.target.value && void definirEtat(p, e.target.value)}
-                            aria-label={`État : ${nomP}`} title={ec.affiche} className="absolute inset-0 cursor-pointer opacity-0">
+                            aria-label={`État : ${nomP}`} title={ec.affiche} className="absolute inset-0 cursor-pointer bg-white text-black opacity-0 [color-scheme:light] [&_option]:bg-white [&_option]:text-black">
                             {!ec.etat && <option value="">{ec.ancien ? `Ancien : ${ec.ancien}` : "—"}</option>}
                             {ETATS_PROSPECT.map((v) => <option key={v} value={v}>{ICONE_ETAT[v]} {v}</option>)}
                           </select>

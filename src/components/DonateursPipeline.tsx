@@ -594,7 +594,7 @@ export default function DonateursPipeline({
                       </span>
                       {peutSuivre && (
                         <select value="" onChange={(e) => e.target.value && void ligneSuivi(p, e.target.value, "")}
-                          aria-label={`État manuel : ${p.nom}`} title={manuel ?? "Choisir un état manuel"} className="absolute inset-0 cursor-pointer opacity-0">
+                          aria-label={`État manuel : ${p.nom}`} title={manuel ?? "Choisir un état manuel"} className="absolute inset-0 cursor-pointer bg-white text-black opacity-0 [color-scheme:light] [&_option]:bg-white [&_option]:text-black">
                           <option value="">{manuel ? `${ICONE_ETAT[manuel]} ${manuel}` : "— aucun état manuel"}</option>
                           {ETATS_DONATEUR_MANUELS.filter((x) => x !== manuel).map((x) => <option key={x} value={x}>{ICONE_ETAT[x]} {x}</option>)}
                           {manuel && <option value="Aucun">Retirer l&apos;état manuel</option>}

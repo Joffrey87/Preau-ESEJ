@@ -158,6 +158,7 @@ export default function Bulletins({
   ];
 
   const evaluation = GROUPE_EVAL.includes(onglet);
+  const sansChoixClasse = onglet === "inscriptions" || onglet === "parametres";
 
   const choisirOnglet = (v: Onglet) => {
     setOnglet(v);
@@ -189,7 +190,8 @@ export default function Bulletins({
         </div>
       ) : (
         <>
-          {/* Barre de choix : classe, période, onglet. */}
+          {/* Barre de choix : classe, période, onglet (inutile pour les Inscriptions et la Gestion des classes). */}
+          {!sansChoixClasse && (
           <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface p-2">
             <div className="flex flex-wrap gap-1 rounded-lg bg-surface-2 p-1">
               {classesAnnee.map((c) => (
@@ -249,6 +251,7 @@ export default function Bulletins({
               </div>
             )}
           </div>
+          )}
 
           {erreur && <p className="mb-3 rounded-lg bg-negative/10 px-3 py-2 text-sm text-negative">{erreur}</p>}
 

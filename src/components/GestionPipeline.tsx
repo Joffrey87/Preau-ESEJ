@@ -342,7 +342,7 @@ export default function GestionPipeline({
             Réinitialiser
           </button>
         )}
-        {peutEcrire && <ImportProspects prospects={prospects} dons={dons} />}
+        {peutEcrire && <ImportProspects prospects={prospects} dons={dons} auteur={auteurSuivi} relations={relationsConnues} />}
         {peutEcrire && (
           <button type="button" onClick={() => ouvrir("nouveau")} className="rounded-lg bg-accent px-4 py-1.5 text-sm font-medium text-accent-fg hover:opacity-90">
             <span className="inline-flex items-center gap-1.5">

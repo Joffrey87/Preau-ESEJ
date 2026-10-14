@@ -37,7 +37,19 @@ type Analyse = {
  * CP, ville). Les coordonnées sont chiffrées dans le coffre ; chaque prospect reçoit l'étiquette de liste
  * choisie (ex. « Liste Axel »). Les noms déjà prospects, déjà donateurs ou répétés dans le fichier ne sont pas recréés.
  */
-export default function ImportProspects({ prospects, dons }: { prospects: ProspectLisible[]; dons: Don[] }) {
+export default function ImportProspects({
+  prospects,
+  dons,
+  auteur = null,
+  relations = [],
+}: {
+  prospects: ProspectLisible[];
+  dons: Don[];
+  /** Personne qui importe (prénom Recherche de fonds, ou prénom/titulaire du rôle) : relation proposée par défaut. */
+  auteur?: string | null;
+  /** Relations déjà employées (suggestions). */
+  relations?: string[];
+}) {
   const [ouvert, setOuvert] = useState(false);
   return (
     <>
@@ -49,12 +61,24 @@ export default function ImportProspects({ prospects, dons }: { prospects: Prospe
       >
         📥 Importer
       </button>
-      {ouvert && <Fenetre prospects={prospects} dons={dons} onClose={() => setOuvert(false)} />}
+      {ouvert && <Fenetre prospects={prospects} dons={dons} auteur={auteur} relations={relations} onClose={() => setOuvert(false)} />}
     </>
   );
 }
 
-function Fenetre({ prospects, dons, onClose }: { prospects: ProspectLisible[]; dons: Don[]; onClose: () => void }) {
+function Fenetre({
+  prospects,
+  dons,
+  auteur,
+  relations,
+  onClose,
+}: {
+  prospects: ProspectLisible[];
+  dons: Don[];
+  auteur: string | null;
+  relations: string[];
+  onClose: () => void;
+}) {
   const router = useRouter();
   const coffre = useCoffre();
   const { dons: clairs, verrou } = useDonsDechiffres(dons);
@@ -74,6 +98,11 @@ function Fenetre({ prospects, dons, onClose }: { prospects: ProspectLisible[]; d
   const [etapeDefaut, setEtapeDefaut] = useState<Etape>("identifie");
   const [reserveDefaut, setReserveDefaut] = useState<string>("");
   const [majExistants, setMajExistants] = useState(false);
+  // Étape « Relation » (obligatoire avant l'aperçu) : relation commune (ou pour les cellules vides) ou laisser vide.
+  const [etapeRelation, setEtapeRelation] = useState(false);
+  const [choixRelation, setChoixRelation] = useState<"commune" | "vide" | null>(null);
+  const [relationCommune, setRelationCommune] = useState(auteur ?? "");
+  const relationDefaut = choixRelation === "commune" ? relationCommune.trim() || null : null;
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ ok: boolean; t: string } | null>(null);
 
@@ -120,6 +149,8 @@ function Fenetre({ prospects, dons, onClose }: { prospects: ProspectLisible[]; d
     if (!f) return;
     setMessage(null);
     setApercu(false);
+    setEtapeRelation(false);
+    setChoixRelation(null);
     try {
       const t = tableauDesFeuilles(await lireFichier(f));
       if (t.lignes.length === 0) throw new Error("vide");
@@ -144,7 +175,7 @@ function Fenetre({ prospects, dons, onClose }: { prospects: ProspectLisible[]; d
       notes: l.note,
       email: l.email,
       telephone: l.telephone,
-      relation: l.relation,
+      relation: l.relation ?? relationDefaut,
       ...(chiffrer
         ? {
             nom: NOM_NEUTRE,
@@ -160,7 +191,8 @@ function Fenetre({ prospects, dons, onClose }: { prospects: ProspectLisible[]; d
     const commun = {
       email: l.email ?? p.email ?? null,
       telephone: l.telephone ?? p.telephone ?? null,
-      relation: l.relation ?? p.relation ?? null,
+      // Relation : seulement si le prospect n'en a pas (jamais remplacée).
+      relation: p.relation?.trim() ? p.relation : (l.relation ?? relationDefaut),
       notes: notes ?? null,
       updated_at: new Date().toISOString(),
     };
@@ -210,6 +242,8 @@ function Fenetre({ prospects, dons, onClose }: { prospects: ProspectLisible[]; d
     });
     setTableau(null);
     setApercu(false);
+    setEtapeRelation(false);
+    setChoixRelation(null);
     router.refresh();
   }
 
@@ -257,7 +291,7 @@ function Fenetre({ prospects, dons, onClose }: { prospects: ProspectLisible[]; d
           </p>
         </div>
 
-        {tableau && !apercu && (
+        {tableau && !apercu && !etapeRelation && (
           <div className="space-y-2">
             <p className="font-medium">Correspondance des colonnes ({tableau.lignes.length} lignes lues)</p>
             <div className="overflow-x-auto rounded-lg border border-border">
@@ -299,6 +333,59 @@ function Fenetre({ prospects, dons, onClose }: { prospects: ProspectLisible[]; d
               <button
                 type="button"
                 disabled={!champs.includes("nom")}
+                onClick={() => setEtapeRelation(true)}
+                className="rounded-lg border border-border px-3 py-1.5 font-medium hover:bg-surface-2 disabled:opacity-50"
+              >
+                Suivant : relation →
+              </button>
+            </div>
+          </div>
+        )}
+
+        {tableau && !apercu && etapeRelation && (
+          <div className="space-y-2">
+            <p className="font-medium">Relation (qui a amené ces prospects)</p>
+            <p className="text-xs text-muted">
+              {champs.includes("relation")
+                ? "La colonne Relation du fichier est reprise ligne par ligne. Que faire des cellules vides ?"
+                : "Le fichier n'a pas de colonne Relation. Choisissez une relation commune, ou laissez-la vide."}
+            </p>
+            <label className="flex items-start gap-2 rounded-lg border border-border px-3 py-2">
+              <input type="checkbox" checked={choixRelation === "commune"} onChange={(e) => setChoixRelation(e.target.checked ? "commune" : null)} className="mt-0.5 h-4 w-4" />
+              <span className="flex-1">
+                {champs.includes("relation") ? "Compléter les cellules vides avec cette relation" : "Appliquer cette relation à tous les nouveaux prospects"}
+                <input
+                  type="text"
+                  list="relations-import"
+                  value={relationCommune}
+                  onChange={(e) => {
+                    setRelationCommune(e.target.value);
+                    setChoixRelation("commune");
+                  }}
+                  placeholder="Nom de la relation"
+                  aria-label="Relation commune"
+                  className={`${inputCls} mt-1`}
+                />
+                <datalist id="relations-import">
+                  {[...new Set([auteur, ...relations].filter((r): r is string => !!r))].map((r) => (
+                    <option key={r} value={r} />
+                  ))}
+                </datalist>
+              </span>
+            </label>
+            <label className="flex items-center gap-2 rounded-lg border border-border px-3 py-2">
+              <input type="checkbox" checked={choixRelation === "vide"} onChange={(e) => setChoixRelation(e.target.checked ? "vide" : null)} className="h-4 w-4" />
+              {champs.includes("relation") ? "Laisser vides les cellules vides" : "Laisser vide"}
+            </label>
+            {choixRelation === "commune" && !relationCommune.trim() && <p className="text-xs text-negative">Saisissez la relation, ou choisissez « Laisser vide ».</p>}
+            <p className="text-xs text-muted">Prospects déjà existants (mise à jour) : la relation n&apos;est ajoutée que s&apos;ils n&apos;en ont pas.</p>
+            <div className="flex justify-between">
+              <button type="button" onClick={() => setEtapeRelation(false)} className="text-xs text-accent hover:underline">
+                ← Colonnes
+              </button>
+              <button
+                type="button"
+                disabled={!choixRelation || (choixRelation === "commune" && !relationCommune.trim())}
                 onClick={() => setApercu(true)}
                 className="rounded-lg border border-border px-3 py-1.5 font-medium hover:bg-surface-2 disabled:opacity-50"
               >
@@ -312,6 +399,17 @@ function Fenetre({ prospects, dons, onClose }: { prospects: ProspectLisible[]; d
           <>
             <p className="rounded-lg bg-surface-2 px-3 py-2">
               <strong>{analyse.nouveaux.length}</strong> prospect{analyse.nouveaux.length > 1 ? "s" : ""} à créer sur {analyse.total} lignes lues.
+              <span className="mt-0.5 block text-xs text-muted">
+                Relation :{" "}
+                {champs.includes("relation")
+                  ? `colonne du fichier${relationDefaut ? `, cellules vides → « ${relationDefaut} »` : ", cellules vides laissées vides"}`
+                  : relationDefaut
+                    ? `« ${relationDefaut} » pour tous les nouveaux prospects`
+                    : "laissée vide"}{" "}
+                <button type="button" onClick={() => setApercu(false)} className="text-accent hover:underline">
+                  modifier
+                </button>
+              </span>
             </p>
             <div className="grid gap-2 rounded-lg border border-border p-3 sm:grid-cols-3">
               <label className="text-xs text-muted">
@@ -373,7 +471,14 @@ function Fenetre({ prospects, dons, onClose }: { prospects: ProspectLisible[]; d
                 </ul>
               </details>
             )}
-            <button type="button" onClick={() => setApercu(false)} className="text-xs text-accent hover:underline">
+            <button
+              type="button"
+              onClick={() => {
+                setApercu(false);
+                setEtapeRelation(false);
+              }}
+              className="text-xs text-accent hover:underline"
+            >
               ← Modifier la correspondance des colonnes
             </button>
           </>

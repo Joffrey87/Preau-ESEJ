@@ -32,6 +32,7 @@ import {
   type OperationJournalisable,
 } from "@/lib/journalOperations";
 import { libelleNature } from "@/lib/scolariteDepots";
+import AffectationVente from "@/components/AffectationVente";
 import AffectationScolarite, {
   CAT_DON_ASSOCIATION,
   estCategorieScolarite,
@@ -1191,6 +1192,15 @@ export default function ListeOperations({
                 libelleExercice={exerciceChoisi?.libelle ?? null}
                 mode={estDonAssociation ? "don" : "scolarite"}
                 categorie={categorieChoisie?.nom ?? null}
+              />
+            )}
+
+            {f.type === "recette" && !estVentilee && /ventes diverses/i.test(categorieChoisie?.nom ?? "") && (
+              <AffectationVente
+                operationId={edit.id}
+                libelle={edit.libelle_origine || f.libelle}
+                montantOperation={Number(edit.montant)}
+                modePaiement={f.mode_paiement || null}
               />
             )}
 

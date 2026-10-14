@@ -33,7 +33,7 @@ export const ROLES: Role[] = [
  */
 export const PAGES_RESTREINTES: Record<string, string[]> = {
   // Chaque profil arrive sur son Tableau de bord (« / »), qui résume ses onglets.
-  "recherche-fonds": ["/", "/recherche/axes", "/recherche/suivi", "/mecenat/pipeline"],
+  "recherche-fonds": ["/", "/recherche/axes", "/recherche/suivi", "/recherche/dons", "/mecenat/pipeline"],
   // Directeur spirituel : lecture du carnet, des dons et des relations donateurs ; bulletins (il enseigne le catéchisme).
   "directeur-spirituel": ["/", "/carnet", "/dons", "/mecenat/pipeline", "/bulletins"],
   // Président : Tableau de bord, Comptabilité (lecture), Budget, Frais de scolarité, Dons, Relations donateurs. Son

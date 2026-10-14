@@ -83,6 +83,7 @@ export const NAV: NavSection[] = [
     items: [
       { href: "/recherche/axes", label: "Axes de recherche", icon: "target", ready: true, roles: ["president", "tresorier", "recherche-fonds"] },
       { href: "/recherche/suivi", label: "Suivi des actions", icon: "check", ready: true, roles: ["president", "tresorier", "recherche-fonds"] },
+      { href: "/recherche/dons", label: "Dons", icon: "gift", ready: true, roles: ["president", "tresorier", "recherche-fonds"] },
     ],
   },
   {

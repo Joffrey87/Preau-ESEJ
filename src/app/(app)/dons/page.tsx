@@ -5,6 +5,7 @@ import { roleByEmail } from "@/lib/roles";
 import type { ModeleRecuRow } from "@/lib/modeleRecu";
 import JaugeDons, { type DonsExercice } from "@/components/JaugeDons";
 import { todayISO } from "@/lib/format";
+import type { DemandeRecu, AlerteDonateur } from "@/components/DemandeRecu";
 
 export default async function DonsPage() {
   const supabase = await createClient();
@@ -18,7 +19,7 @@ export default async function DonsPage() {
   const { data: dons } = await supabase
     .from("dons")
     .select(
-      "id, exercice_id, origine, categorie_donateur, est_personne_morale, donateur_titre, donateur_nom, donateur_prenom, raison_sociale, adresse, cp_ville, courriel, pii_chiffre, montant, date_don, mode_paiement, recu_numero, recu_etat, recu_emis_le, envoi_prefere, observations, supprime_le, supprime_par, don_boursier, medaille_affichee, medaille_par, medaille_le, operation_id, operation:operations!dons_operation_id_fkey(date_operation)",
+      "id, exercice_id, origine, categorie_donateur, est_personne_morale, donateur_titre, donateur_nom, donateur_prenom, raison_sociale, adresse, cp_ville, courriel, telephone, pii_chiffre, montant, date_don, mode_paiement, recu_numero, recu_etat, recu_emis_le, envoi_prefere, observations, supprime_le, supprime_par, don_boursier, medaille_affichee, medaille_par, medaille_le, operation_id, operation:operations!dons_operation_id_fkey(date_operation)",
     )
     .order("date_don", { ascending: false });
 
@@ -27,6 +28,12 @@ export default async function DonsPage() {
     ...d,
     operation: (Array.isArray(d.operation) ? d.operation[0] : d.operation) as Don["operation"],
   })) as Don[];
+
+  // Demandes de reçu (Recherche de fonds) et alertes « infos donateur modifiées » (Trésorier).
+  const [{ data: demandes }, { data: alertes }] = await Promise.all([
+    supabase.from("dons_demandes_recu").select("don_id, demande_par, demande_role, demande_le"),
+    supabase.from("dons_alertes_donateur").select("id, don_id, changements, par, le").is("vu_le", null).order("le"),
+  ]);
 
   // Signataires et adresse imprimés sur les reçus (modifiables depuis la page).
   const { data: modeleRecu } = await supabase.from("modele_recu").select("*").eq("id", 1).maybeSingle();
@@ -43,7 +50,7 @@ export default async function DonsPage() {
   return (
     <div className="mx-auto max-w-6xl px-5 py-8 md:px-8">
       <GestionDons dons={donsNormalises} roleSlug={roleSlug}
-        relations={relations} modeleRecu={(modeleRecu ?? null) as ModeleRecuRow | null}
+        relations={relations} demandes={(demandes ?? []) as DemandeRecu[]} alertes={(alertes ?? []) as AlerteDonateur[]} modeleRecu={(modeleRecu ?? null) as ModeleRecuRow | null}
         sousEntete={roleSlug === "recherche-fonds" ? undefined : <JaugeDons donnees={jauge} aujourdhui={todayISO()} />} />
     </div>
   );

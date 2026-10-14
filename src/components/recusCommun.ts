@@ -19,12 +19,12 @@ export const LIBELLE: Record<StatutRecu, string> = {
 
 export const TON: Record<StatutRecu, string> = {
   envoye: "bg-positive/15 text-positive",
-  edite: "bg-accent-soft text-accent",
+  edite: "bg-transparent text-positive ring-1 ring-inset ring-border",
   passer: "bg-blue-500/15 text-blue-700 dark:text-blue-300",
   verifier: "bg-violet-500/15 text-violet-700 dark:text-violet-300",
   attente: "bg-gold-soft text-gold",
   a_faire: "bg-gold-soft text-gold",
-  sans: "bg-positive/15 text-positive",
+  sans: "bg-blue-500/15 text-blue-700 dark:text-blue-300",
 };
 
 /**

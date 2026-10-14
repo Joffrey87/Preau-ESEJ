@@ -25,6 +25,10 @@ import EtapePostaleListe, { BandeauEtapePostale } from "@/components/EtapePostal
 import LiaisonGlobale from "@/components/LiaisonGlobale";
 import Link from "next/link";
 import MedailleDon from "@/components/MedailleDon";
+import EtablirRecu from "@/components/EtablirRecu";
+import ContactDonateurRecherche from "@/components/ContactDonateurRecherche";
+import { BoutonDemandeRecu, PastilleDemandeRecu, AlerteInfosDonateur, type DemandeRecu, type AlerteDonateur } from "@/components/DemandeRecu";
+import type { Groupe } from "@/components/ListeRecus";
 import PageHeader from "@/components/PageHeader";
 import ModeleRecuDialog from "@/components/ModeleRecuDialog";
 import type { ModeleRecuRow } from "@/lib/modeleRecu";
@@ -58,6 +62,8 @@ export type Don = {
   adresse: string | null;
   cp_ville: string | null;
   courriel: string | null;
+  /** Téléphone du donateur (en clair, modifiable par la Recherche de fonds). */
+  telephone?: string | null;
   /** « À transmettre à » : à qui remettre le reçu fiscal (chiffré avec la fiche). */
   a_transmettre?: string | null;
   /** Le donateur est un « Donateur Bourse » (dons faits pour payer des bourses de scolarité). */
@@ -182,7 +188,18 @@ export default function GestionDons({
   onFermer,
   modeleRecu,
   sousEntete,
+  modeRecherche = false,
+  prenomRecherche = null,
+  demandes = [],
+  alertes = [],
 }: {
+  /** Onglet Dons de la Recherche de fonds : lecture seule, sans médaille ; fiche contact et demande de reçu. */
+  modeRecherche?: boolean;
+  prenomRecherche?: string | null;
+  /** Demandes de reçu fiscal en cours (Recherche de fonds → Trésorier). */
+  demandes?: DemandeRecu[];
+  /** Alertes « infos donateur modifiées » non vues (Trésorier). */
+  alertes?: AlerteDonateur[];
   /** Page Dons : bloc affiché sous le titre (jauge des dons). */
   sousEntete?: React.ReactNode;
   dons: Don[];
@@ -260,6 +277,37 @@ export default function GestionDons({
   }, [toast]);
 
   const recurrents = useMemo(() => donateursRecurrents(dons), [dons]);
+  const demandeParDon = useMemo(() => new Map(demandes.map((x) => [x.don_id, x])), [demandes]);
+  const alertesParDon = useMemo(() => {
+    const m = new Map<string, AlerteDonateur[]>();
+    for (const a of alertes) (m.get(a.don_id) ?? m.set(a.don_id, []).get(a.don_id)!).push(a);
+    return m;
+  }, [alertes]);
+  const estTresorier = roleSlug === "tresorier";
+  const [etablirGroupe, setEtablirGroupe] = useState<Groupe | null>(null);
+  const [contactId, setContactId] = useState<string | null>(null);
+  const numeroEtabli = (n: string | null) => !!n && /^RE_\d+/.test(n);
+  /** Ouvre la fenêtre « Établir le reçu » avec les dons sans reçu du même donateur et de la même année. */
+  function ouvrirEtablir(d: Don) {
+    if (numeroEtabli(d.recu_numero)) {
+      setGenErreur(`Ce don porte déjà le reçu ${d.recu_numero} : voir la page Reçus fiscaux.`);
+      return;
+    }
+    if (d.pii_chiffre && verrou) {
+      setGenErreur("Déverrouillez le coffre pour établir un reçu.");
+      return;
+    }
+    const annee = d.date_don.slice(0, 4);
+    const cle = cleDonateur(d);
+    const groupe = dons
+      .filter((x) => x.date_don.slice(0, 4) === annee && !numeroEtabli(x.recu_numero) && !x.don_boursier &&
+        !statutsDon(x, recurrents).some((c) => c.key === "sans") && (x.id === d.id || (cle && cle !== "|" && cleDonateur(x) === cle)))
+      .sort((a, b) => a.date_don.localeCompare(b.date_don));
+    setEtablirGroupe({
+      cle: `a|${cle}|${annee}`, numero: null, annee: Number(annee), total: groupe.reduce((s, x) => s + Number(x.montant), 0),
+      dons: groupe, representant: groupe[groupe.length - 1] ?? d, aScinder: false, sans: false, reserve: false,
+    });
+  }
   const chipsParDon = useMemo(() => {
     const map = new Map<string, Chip[]>();
     for (const d of dons) {
@@ -719,6 +767,7 @@ export default function GestionDons({
     router.refresh();
   }
 
+  const colsAff = modeRecherche ? { ...cols, medaille: false } : cols;
   const cellPad = compact ? "px-3 py-1.5" : "px-4 py-3";
   const ringManque = (estVide: boolean) =>
     signaler && estVide ? " ring-2 ring-negative/60 !border-negative" : "";
@@ -806,7 +855,7 @@ export default function GestionDons({
       )}
 
       {/* Migration : dons pas encore chiffrés (coffre ouvert) */}
-      {coffre.estOuvert && nonChiffres.length > 0 && (
+      {!modeRecherche && coffre.estOuvert && nonChiffres.length > 0 && (
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-accent/40 bg-accent-soft px-4 py-3 text-sm">
           <span>
             <strong>{nonChiffres.length}</strong> don{nonChiffres.length > 1 ? "s" : ""} pas encore chiffré
@@ -974,7 +1023,7 @@ export default function GestionDons({
                 <div className="fixed inset-0 z-10" onClick={() => setMenuCols(false)} />
                 <div className="absolute right-0 z-20 mt-1 w-52 rounded-lg border border-border bg-surface p-2 shadow-lg">
                   <p className="px-2 py-1 text-xs font-medium text-muted">Colonnes affichées</p>
-                  {COLONNES.map((c) => (
+                  {COLONNES.filter((c) => !modeRecherche || c.key !== "medaille").map((c) => (
                     <label key={c.key} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-surface-2">
                       <input
                         type="checkbox"
@@ -1070,7 +1119,7 @@ export default function GestionDons({
         <table className={`w-full ${compact ? "text-[13px]" : "text-sm"}`}>
           <thead>
             <tr className="border-b border-border text-left text-muted">
-              {COLONNES.filter((c) => cols[c.key]).map((c) => {
+              {COLONNES.filter((c) => colsAff[c.key]).map((c) => {
                 const aligneD = c.key === "montant";
                 const centre = c.key === "medaille";
                 const actif = tri.key === c.key;
@@ -1097,7 +1146,7 @@ export default function GestionDons({
           <tbody>
             {donsTries.length === 0 ? (
               <tr>
-                <td colSpan={COLONNES.filter((c) => cols[c.key]).length + 1} className="px-4 py-12 text-center text-muted">
+                <td colSpan={COLONNES.filter((c) => colsAff[c.key]).length + 1} className="px-4 py-12 text-center text-muted">
                   {vueCorbeille
                     ? "Corbeille vide."
                     : dons.length === 0
@@ -1114,7 +1163,8 @@ export default function GestionDons({
                   onClick={(e) => {
                     // Les boutons, liens et champs de la ligne gardent leur rôle ; ailleurs, la ligne s'ouvre.
                     if (vueCorbeille || (e.target as HTMLElement).closest("button, a, input, select, textarea")) return;
-                    setFicheEcritureId(d.id);
+                    if (modeRecherche) setContactId(d.id);
+                    else setFicheEcritureId(d.id);
                   }}
                   className={`border-b border-border last:border-0 align-middle ${vueCorbeille ? "" : "cursor-pointer hover:bg-surface-2"}`}
                 >
@@ -1141,7 +1191,7 @@ export default function GestionDons({
                       {vueCorbeille ? null : d.operation_id ? (
                         <button
                           type="button"
-                          onClick={() => setLierId(d.id)}
+                          onClick={() => { if (!modeRecherche) setLierId(d.id); }}
                           title="Relié à une écriture comptable : voir ou délier"
                           aria-label="Relié à la comptabilité"
                           className="inline-flex text-positive hover:opacity-80"
@@ -1153,7 +1203,7 @@ export default function GestionDons({
                       ) : (
                         <button
                           type="button"
-                          onClick={() => setLierId(d.id)}
+                          onClick={() => { if (!modeRecherche) setLierId(d.id); }}
                           title="Non lié (hors compta) : lier à une écriture comptable"
                           aria-label="Non lié à la comptabilité"
                           className="inline-flex text-gold hover:opacity-80"
@@ -1182,6 +1232,16 @@ export default function GestionDons({
                                 etape={c.key === "passer" ? "passer" : c.key === "verifier_poste" ? "verifier" : "envoye"}
                                 libelleEnvoye="Posté"
                               />
+                            );
+                          }
+                          if (modeRecherche) return <span key={c.key} title={c.detail} className={cls}>{c.label}</span>;
+                          if ((c.key === "etablir" || c.key === "annuel") && estTresorier && !vueCorbeille) {
+                            return (
+                              <button key={c.key} type="button" onClick={() => ouvrirEtablir(d)}
+                                title="Cliquer pour établir le reçu fiscal (choix des dons, numéro attribué automatiquement)"
+                                className={`${cls} cursor-pointer hover:opacity-80`}>
+                                {c.label}
+                              </button>
                             );
                           }
                           return c.key === "important" || c.key === "mineur" ? (
@@ -1219,12 +1279,20 @@ export default function GestionDons({
                           </span>
                         )}
                       </div>
+                      {!modeRecherche && (demandeParDon.get(d.id) && !numeroEtabli(d.recu_numero) || alertesParDon.get(d.id)) && (
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {demandeParDon.get(d.id) && !numeroEtabli(d.recu_numero) && (
+                            <PastilleDemandeRecu demande={demandeParDon.get(d.id)!} onClick={estTresorier ? () => ouvrirEtablir(d) : undefined} />
+                          )}
+                          {estTresorier && alertesParDon.get(d.id) && <AlerteInfosDonateur donId={d.id} alertes={alertesParDon.get(d.id)!} />}
+                        </div>
+                      )}
                       {!compact && d.recu_etat && d.recu_etat.trim() && (
                         <p className="mt-1 text-xs text-muted">{d.recu_etat}</p>
                       )}
                     </td>
                   )}
-                  {cols.medaille && (
+                  {colsAff.medaille && (
                     <td className={`${cellPad} text-center`}>
                       {d.don_boursier ? (
                         <span className="text-muted" title="Don boursier : pas de médaille">—</span>
@@ -1250,13 +1318,22 @@ export default function GestionDons({
                       </>
                     ) : (
                       <>
-                        <button
-                          type="button"
-                          onClick={() => genererRecu(d)}
-                          className="text-accent hover:underline"
-                        >
-                          Reçu
-                        </button>
+                        {numeroEtabli(d.recu_numero) && (
+                          <button
+                            type="button"
+                            onClick={() => genererRecu(d)}
+                            className="text-accent hover:underline"
+                          >
+                            Reçu
+                          </button>
+                        )}
+                        {modeRecherche && (
+                          <span className="ml-3 inline-flex align-middle">
+                            <BoutonDemandeRecu donId={d.id} demande={demandeParDon.get(d.id) ?? null}
+                              etabli={numeroEtabli(d.recu_numero)} prenom={prenomRecherche} />
+                          </span>
+                        )}
+                        {!modeRecherche && <>
                         <button
                           type="button"
                           onClick={() => ouvrir(d)}
@@ -1283,6 +1360,7 @@ export default function GestionDons({
                             <path d="M10 11v6M14 11v6" />
                           </svg>
                         </button>
+                        </>}
                       </>
                     )}
                   </td>
@@ -1309,6 +1387,28 @@ export default function GestionDons({
             <LierDonAEcriture don={d} operationsLiees={operationsLiees} dons={donsHydrates} />
           </Modal>
         );
+      })()}
+
+      {etablirGroupe && (
+        <EtablirRecu
+          groupe={etablirGroupe}
+          manquants={[]}
+          onFermer={() => setEtablirGroupe(null)}
+          onFait={(t) => {
+            setEtablirGroupe(null);
+            setGenErreur(null);
+            window.alert(t);
+            router.refresh();
+          }}
+        />
+      )}
+
+      {contactId && (() => {
+        const d = donsHydrates.find((x) => x.id === contactId);
+        if (!d) return null;
+        const cle = cleDonateur(d);
+        const memes = dons.filter((x) => x.id === d.id || (!verrou && cle && cle !== "|" && cleDonateur(x) === cle));
+        return <ContactDonateurRecherche don={d} donsDuDonateur={memes} prenom={prenomRecherche} onFermer={() => setContactId(null)} />;
       })()}
 
       {ficheEcritureId && (() => {

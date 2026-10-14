@@ -23,7 +23,7 @@ export type Don = {
   a_transmettre?: string | null;
 };
 
-export type Tone = "red" | "amber" | "green" | "blue" | "violet" | "gray";
+export type Tone = "red" | "amber" | "green" | "greenText" | "blue" | "violet" | "gray";
 export type StatutKey =
   | "important"
   | "mineur"
@@ -120,7 +120,7 @@ export function statutsDon(d: Don, recurrents: Set<string>): Chip[] {
   const sans = sansRecu(d);
   const postal = d.envoi_prefere === "courrier";
   if (sans) {
-    chips.push({ key: "sans", label: "Non demandé", tone: "green", detail: "Le donateur ne demande pas de reçu" });
+    chips.push({ key: "sans", label: "Non demandé", tone: "blue", detail: "Le donateur ne demande pas de reçu" });
   } else if (recuEnvoye(d)) {
     chips.push(postal ? { key: "poste", label: "Posté", tone: "green" } : { key: "envoye", label: "Envoyé", tone: "green" });
   } else if (vide(d.recu_numero)) {
@@ -136,7 +136,7 @@ export function statutsDon(d: Don, recurrents: Set<string>): Chip[] {
         : { key: "passer", label: "À passer", tone: "blue", detail: "Reçu établi, à passer au secrétaire pour envoi postal" },
     );
   } else {
-    chips.push({ key: "envoyer", label: "À envoyer", tone: "blue" });
+    chips.push({ key: "envoyer", label: "À envoyer", tone: "greenText" });
   }
 
   // Axe complétude (au plus une pastille : important > mineur). Sans reçu,
@@ -170,6 +170,8 @@ export const TONE_CLASSES: Record<Tone, string> = {
   red: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300",
   amber: "bg-amber-100 text-amber-800 dark:bg-amber-950/70 dark:text-amber-300",
   green: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300",
+  // « À envoyer » : écriture verte seule, sans fond, pour ne pas la confondre avec Envoyé / Posté.
+  greenText: "bg-transparent text-emerald-700 ring-1 ring-inset ring-border dark:text-emerald-400",
   blue: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300",
   violet: "bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300",
   gray: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300",
@@ -183,9 +185,9 @@ export const FILTRES: { key: StatutKey; label: string; tone: Tone }[] = [
   { key: "annuel", label: "Annuel en attente", tone: "violet" },
   { key: "passer", label: "À passer", tone: "blue" },
   { key: "verifier_poste", label: "Vérifier envoi postal", tone: "violet" },
-  { key: "envoyer", label: "À envoyer", tone: "blue" },
+  { key: "envoyer", label: "À envoyer", tone: "greenText" },
   { key: "envoye", label: "Envoyé", tone: "green" },
   { key: "poste", label: "Posté", tone: "green" },
-  { key: "sans", label: "Non demandé", tone: "green" },
+  { key: "sans", label: "Non demandé", tone: "blue" },
   { key: "nonlie", label: "Non lié (compta)", tone: "amber" },
 ];

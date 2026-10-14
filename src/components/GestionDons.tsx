@@ -405,10 +405,12 @@ export default function GestionDons({
       else if (tri.key === "mode") r = (a.mode_paiement ?? "").localeCompare(b.mode_paiement ?? "");
       else if (tri.key === "donateur") r = nomTri(a).localeCompare(nomTri(b));
       else r = (a.date_don ?? "").localeCompare(b.date_don ?? ""); // date par défaut
+      // Médailles Don : à date égale, l'ordre des numéros du don (mêmes départages que leur calcul).
+      if (r === 0 && numeros) r = (numeros[a.id] ?? 0) - (numeros[b.id] ?? 0);
       return r * dir;
     });
     return arr;
-  }, [donsAffiches, tri]);
+  }, [donsAffiches, tri, numeros]);
 
   function trierPar(key: ColKey) {
     setTri((t) =>

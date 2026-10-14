@@ -94,10 +94,10 @@ export default function StrategiePage() {
             Chaque donateur travaillé avance dans le <strong>parcours relationnel</strong> (« moves management ») :
           </p>
           <div className="flex flex-wrap items-center gap-1.5 text-xs">
-            {ETAPES.map((e, i) => (
+            {ETAPES.filter((x) => x.key !== "identifie").map((e, i, l) => (
               <span key={e.key} className="flex items-center gap-1.5">
                 <span className="rounded-full bg-accent-soft px-2 py-0.5 font-medium text-accent">{e.label}</span>
-                {i < ETAPES.length - 1 && <span className="text-muted">→</span>}
+                {i < l.length - 1 && <span className="text-muted">→</span>}
               </span>
             ))}
           </div>

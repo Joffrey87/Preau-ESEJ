@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
-import { formatEuros, todayISO } from "@/lib/format";
+import { formatEuros } from "@/lib/format";
 import { Modal, Field, FormFooter, inputCls } from "@/components/GestionComptes";
 import { AjoutSuivi, HistoriqueSuivi } from "@/components/SuiviDonateur";
 import { ETATS_PROSPECT, AIDE_ETAT, TON_ETAT, etatProspect, etatSuivant, type EtatProspect, type EtatCalcule } from "@/lib/etatProspect";
@@ -64,7 +64,7 @@ type ColTriP =
 /** Colonnes masquables du tableau (préférence par personne). */
 const COLONNES_P = [
   { key: "relation", label: "Relation · Responsable" }, { key: "suivi", label: "Suivi" }, { key: "etat", label: "État" },
-  { key: "action", label: "Prochaine action" }, { key: "cible", label: "Cible" }, { key: "obtenu", label: "Obtenu" },
+  { key: "cible", label: "Capacité" }, { key: "obtenu", label: "Obtenu" },
   { key: "commentaire", label: "Commentaire" },
 ] as const;
 type ColP = (typeof COLONNES_P)[number]["key"];
@@ -113,7 +113,6 @@ export default function GestionPipeline({
   // Listes d'origine (ex. « Liste Axel ») : filtres en pastilles, cumulables avec « + ».
   const { actifs: fListes, multiple: listeMultiple, basculer: basculerListe, basculerMultiple: basculerListeMultiple, estActif: listeActive, reinitialiser: reinitialiserListes } = useFiltresMultiples<string>(listeInitiale ? [listeInitiale] : []);
   const listes = useMemo(() => [...new Set(prospects.map((p) => p.liste).filter((l): l is string => !!l))].sort((a, b) => a.localeCompare(b, "fr")), [prospects]);
-  const today = todayISO();
   const [edit, setEdit] = useState<ProspectLisible | "nouveau" | null>(null);
   const [liaison, setLiaison] = useState<ProspectLisible | null>(null);
   // Suivi des actions : ajout, historique, réservation.
@@ -188,18 +187,14 @@ export default function GestionPipeline({
       case "reserve": return p.reserve_a || null;
       case "responsable": return p.responsable || null;
       case "action": return p.prochaine_action_date || null;
-      case "cible": return p.montant_cible ?? null;
+      case "cible": return p.capacite ?? null;
       case "obtenu": return obtenus[p.id]?.montant ?? null;
     }
   });
 
   // Analyse (sur la sélection filtrée).
   const actifs = filtres.filter((p) => etatDe(p).affiche !== "Pas intéressé");
-  const totalCible = actifs.reduce((s, p) => s + Number(p.montant_cible ?? 0), 0);
   const totalObtenu = filtres.reduce((s, p) => s + (obtenus[p.id]?.montant ?? 0), 0);
-  const dans7j = actifs.filter(
-    (p) => p.prochaine_action_date && p.prochaine_action_date <= addJours(today, 7),
-  ).length;
 
   // Répartition par étape (pour la barre de progression du pipeline).
   const parEtape = ETATS_PROSPECT.map((e) => ({ key: e, label: e, court: e, n: filtres.filter((p) => etatDe(p).affiche === e).length }));
@@ -382,11 +377,9 @@ export default function GestionPipeline({
   return (
     <div className="space-y-5">
       {/* Analyse */}
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3">
         <Tuile label="Prospects actifs" valeur={String(actifs.length)} />
-        <Tuile label="Objectif (cible)" valeur={formatEuros(totalCible)} />
         <Tuile label="Déjà obtenu" valeur={formatEuros(totalObtenu)} accent="positive" />
-        <Tuile label="Actions ≤ 7 jours" valeur={String(dans7j)} accent={dans7j > 0 ? "gold" : "muted"} />
       </div>
 
       {/* Progression du pipeline par étape */}
@@ -584,8 +577,7 @@ export default function GestionPipeline({
                 </span>
               </th>}
               {vis("etat") && thTri("etat", "État")}
-              {vis("action") && thTri("action", "Prochaine action")}
-              {vis("cible") && thTri("cible", "Cible", true)}
+              {vis("cible") && thTri("cible", "Capacité")}
               {vis("obtenu") && thTri("obtenu", "Obtenu", true)}
               {vis("commentaire") && thTri("commentaire", "Commentaire")}
               <th className="px-4 py-3 text-right font-medium">Actions</th>
@@ -602,7 +594,6 @@ export default function GestionPipeline({
                 const der = h?.[0];
                 const com = dernierCommentaire(h);
                 const nomP = !p.verrouille ? nomComplet({ titre: p.titre, prenom: p.prenom, nom: p.nom }) : p.affiche;
-                const retard = p.prochaine_action_date && p.prochaine_action_date < today;
                 return (
                   <tr key={p.id} className={`border-b border-border last:border-0 ${ec.affiche === "Pas intéressé" ? "opacity-50" : ""}`}>
                     <td className="px-4 py-3">
@@ -700,49 +691,8 @@ export default function GestionPipeline({
                         </div>
                       )}
                     </td>}
-                    {vis("action") && <td className="px-4 py-3">
-                      <input
-                        type="text"
-                        // Enregistré en quittant le champ.
-                        key={`${p.id}-a-${p.prochaine_action ?? ""}`}
-                        defaultValue={p.prochaine_action ?? ""}
-                        placeholder="—"
-                        aria-label="Prochaine action"
-                        onBlur={(e) => {
-                          const v = e.target.value.trim();
-                          if (v !== (p.prochaine_action ?? "")) void majChamp(p, { prochaine_action: v || null });
-                        }}
-                        className="w-36 rounded border border-border bg-background px-1.5 py-0.5 text-xs focus:border-accent focus:outline-none"
-                      />
-                      <input
-                        type="date"
-                        key={`${p.id}-d-${p.prochaine_action_date ?? ""}`}
-                        defaultValue={p.prochaine_action_date ?? ""}
-                        aria-label="Échéance de l'action"
-                        title={retard ? "En retard" : "Échéance"}
-                        onChange={(e) => void majChamp(p, { prochaine_action_date: e.target.value || null })}
-                        className={`mt-1 block rounded border bg-background px-1.5 py-0.5 text-xs focus:border-accent focus:outline-none ${retard ? "border-negative text-negative" : "border-border text-muted"}`}
-                      />
-                    </td>}
                     {vis("cible") && <td className="px-4 py-3 text-right">
-                      <span className="inline-flex items-center gap-1">
-                        <input
-                          type="text"
-                          inputMode="decimal"
-                          key={`${p.id}-c-${p.montant_cible ?? ""}`}
-                          defaultValue={p.montant_cible != null ? String(p.montant_cible).replace(".", ",") : ""}
-                          placeholder="—"
-                          aria-label="Cible en euros"
-                          onBlur={(e) => {
-                            const t = e.target.value.trim();
-                            const v = t ? eur(t) : null;
-                            if (v !== (p.montant_cible != null ? Number(p.montant_cible) : null)) void majChamp(p, { montant_cible: v });
-                          }}
-                          className="w-20 rounded border border-border bg-background px-1.5 py-0.5 text-right text-xs tabular-nums focus:border-accent focus:outline-none"
-                        />
-                        <span className="text-xs text-muted">€</span>
-                      </span>
-                      <div className="mt-1">
+                      <div>
                         <select
                           value={p.capacite ?? ""}
                           disabled={busy === p.id}
@@ -876,21 +826,10 @@ export default function GestionPipeline({
               </Field>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Montant cible (€)">
-                <input type="text" inputMode="decimal" value={form.montant_cible} onChange={(e) => setForm({ ...form, montant_cible: e.target.value })} className={inputCls} placeholder="0,00" />
-              </Field>
               <div className="text-xs text-muted">
                 <span className="mb-1 block">Montant obtenu</span>
                 Tiré des écritures de Comptabilité liées par le Trésorier (bouton <Icon name="ledger" className="inline h-3.5 w-3.5" /> du tableau).
               </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <Field label="Prochaine action">
-                <input type="text" value={form.prochaine_action} onChange={(e) => setForm({ ...form, prochaine_action: e.target.value })} className={inputCls} placeholder="Ex. Appeler, envoyer le dossier…" />
-              </Field>
-              <Field label="Échéance de l'action">
-                <input type="date" value={form.prochaine_action_date} onChange={(e) => setForm({ ...form, prochaine_action_date: e.target.value })} className={inputCls} />
-              </Field>
             </div>
             <Field label="Notes">
               <textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} className={inputCls} rows={2} placeholder="Motivations, historique, points d'attention…" />
@@ -939,9 +878,3 @@ function Tuile({ label, valeur, accent = "default" }: { label: string; valeur: s
   );
 }
 
-function addJours(iso: string, n: number): string {
-  const [y, m, d] = iso.split("-").map(Number);
-  const dt = new Date(y, m - 1, d + n);
-  const p = (x: number) => String(x).padStart(2, "0");
-  return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())}`;
-}

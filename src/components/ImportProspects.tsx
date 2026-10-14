@@ -95,7 +95,7 @@ function Fenetre({
   const [fichier, setFichier] = useState("");
   // Valeurs par défaut de l'import (le segment peut aussi venir d'une colonne du fichier).
   const [segmentDefaut, setSegmentDefaut] = useState<Segment>("particulier");
-  const [etapeDefaut, setEtapeDefaut] = useState<Etape>("identifie");
+  const [etapeDefaut, setEtapeDefaut] = useState<Etape>("qualifie");
   const [reserveDefaut, setReserveDefaut] = useState<string>("");
   // Doublons : toujours écartés (plus de mise à jour depuis l'import).
   const majExistants = false;
@@ -427,7 +427,7 @@ function Fenetre({
               <label className="text-xs text-muted">
                 Étape
                 <select value={etapeDefaut} onChange={(e) => setEtapeDefaut(e.target.value as Etape)} className={`${inputCls} mt-0.5`}>
-                  {Object.entries(ETAPE_LABEL).map(([k, v]) => (
+                  {Object.entries(ETAPE_LABEL).filter(([k]) => k !== "identifie").map(([k, v]) => (
                     <option key={k} value={k}>
                       {v}
                     </option>

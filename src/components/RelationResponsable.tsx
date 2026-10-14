@@ -6,7 +6,7 @@ import { PROFILS_RECHERCHE_FONDS } from "@/lib/profilsContact";
 import { PROFILS_ADMIN_RESERVE } from "@/lib/suiviDonateurs";
 
 /** Cadre ambre léger qui signale le Responsable. */
-const CADRE = "rounded border border-amber-300/50 bg-amber-50/40 px-1 dark:border-amber-500/30 dark:bg-amber-950/20";
+const CADRE = "rounded border border-amber-300/50 bg-amber-50/40 px-1 text-amber-700 dark:border-amber-500/30 dark:bg-amber-950/20 dark:text-amber-300";
 
 /**
  * Relation et Responsable dans une seule cellule. Par défaut, la personne de la Relation est aussi le Responsable
@@ -14,8 +14,9 @@ const CADRE = "rounded border border-amber-300/50 bg-amber-50/40 px-1 dark:borde
  * `responsable` vide = même personne que la relation.
  */
 export default function RelationResponsable({
-  relation, responsable, peutRelation, peutResponsable, suggestions = [], nom, onEnregistrer,
+  relation, responsable, peutRelation, peutResponsable, suggestions = [], nom, onEnregistrer, cible = "prospect",
 }: {
+  cible?: "donateur" | "prospect";
   relation: string | null;
   responsable: string | null;
   peutRelation: boolean;
@@ -51,12 +52,13 @@ export default function RelationResponsable({
     setOuvert(false);
   }
 
+  const legende = `En ambre : le Responsable (personne qui suit ce ${cible === "donateur" ? "donateur" : "prospect"})`;
   const affichage = !rel && !resp ? (
     <span className="text-muted">—</span>
   ) : different ? (
-    <span>{rel || "—"} · <span className={CADRE}>Resp. : {resp}</span></span>
+    <span title={legende}>{rel || "—"} · <span className={CADRE}>Resp. : {resp}</span></span>
   ) : (
-    <span className={CADRE} title="Relation et Responsable">{rel}</span>
+    <span className={CADRE} title={`${legende} — ici, la Relation est aussi le Responsable`}>{rel}</span>
   );
 
   return (

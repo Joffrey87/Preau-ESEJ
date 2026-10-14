@@ -517,7 +517,7 @@ export default function DonateursPipeline({
         <CarteDonateurs profils={affiches} cpVilleDe={cpVilleDe} onOuvrirFiche={setFicheCle} />
       ) : (
       <div className="overflow-x-auto rounded-xl border border-border bg-surface">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm [&_th:first-child]:text-left [&_td:not(:first-child)]:text-center [&_th:not(:first-child)]:text-center">
           <thead>
             <tr className="border-b border-border text-center text-xs text-muted">
               {th("donateur", "Donateur")}
@@ -565,6 +565,7 @@ export default function DonateursPipeline({
                       peutRelation={peutModifierDons}
                       peutResponsable={peutSuivre}
                       nom={p.nom}
+                      cible="donateur"
                       onEnregistrer={async (rel, resp) => {
                         if (peutModifierDons && rel !== (p.origine ?? "").trim()) {
                           const don = donDeRelation(p.cle);
@@ -586,7 +587,7 @@ export default function DonateursPipeline({
                   {vis("suivi") && <td className="px-3 py-2">
                     <button type="button" disabled={!peutSuivre} onClick={() => cliquerSuivi(p)}
                       title={der ? `Dernière action le ${formatDateHeure(der.cree_le)} par ${der.auteur}` : peutSuivre ? "Ajouter une action" : undefined}
-                      className="flex flex-wrap items-center gap-1 rounded text-left enabled:hover:bg-surface-2">
+                      className="mx-auto flex flex-wrap items-center justify-center gap-1 rounded enabled:hover:bg-surface-2">
                       {der && der.actions.length ? der.actions.map((a) => (
                         <span key={a} className="whitespace-nowrap rounded-full bg-surface-2 px-2 py-0.5 text-xs font-medium">{a}</span>
                       )) : <span className="text-muted">{peutSuivre ? "+ action" : "—"}</span>}
@@ -594,7 +595,7 @@ export default function DonateursPipeline({
                     </button>
                   </td>}
                   {vis("etat") && <td className="px-2 py-2">
-                    <div className="flex flex-col items-start gap-0.5">
+                    <div className="flex flex-col items-center gap-0.5">
                       {autos.map(pastille)}
                       {manuel && pastille(manuel)}
                       {peutSuivre && (
@@ -608,7 +609,7 @@ export default function DonateursPipeline({
                     </div>
                   </td>}
                   {vis("qualification") && <td className="w-24 px-2 py-2">
-                    <div className="flex flex-col items-start gap-0.5">
+                    <div className="flex flex-col items-center gap-0.5">
                       {badgesDe(p).filter((b) => !["actif", "sommeil", "perdu", "grand", "reserve"].includes(b.key)).map((b) => (
                         <span key={b.key} className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${TONE_CLASSES[b.tone]}`}>
                           {b.label}
@@ -627,7 +628,7 @@ export default function DonateursPipeline({
                         className="w-52 rounded border border-accent bg-background px-1.5 py-1 text-xs text-foreground" />
                     ) : (
                       <button type="button" disabled={!peutSuivre} onClick={() => setEditCom(p.cle)} title={peutSuivre ? "Cliquer pour modifier le commentaire" : com ?? undefined}
-                        className="line-clamp-2 w-full rounded text-left enabled:hover:bg-surface-2">
+                        className="line-clamp-2 w-full rounded text-center enabled:hover:bg-surface-2">
                         {com ?? "—"}
                       </button>
                     )}
@@ -659,7 +660,7 @@ export default function DonateursPipeline({
             Ils donnent pour payer des bourses de frais de scolarité : hors grands donateurs, hors statistiques et campagnes de collecte. Cochez ou décochez leurs « dons boursiers » dans leur fiche (boutons « Tout cocher » / « Tout décocher »).
           </p>
           <div className="overflow-x-auto rounded-lg border border-border bg-surface">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm [&_th:first-child]:text-left [&_td:not(:first-child)]:text-center [&_th:not(:first-child)]:text-center">
               <thead>
                 <tr className="border-b border-border text-center text-xs text-muted">
                   <th className="px-3 py-1 font-medium" aria-sort={ariaSortB("donateur")}>{boutonB("donateur", "Donateur")}</th>

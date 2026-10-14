@@ -123,19 +123,19 @@ export default function FicheDonateur({
 
   return (
     <Modal title="Fiche donateur" onClose={onClose} fermerAuClicExterieur enregistrerEnFermant large>
-      <div className="space-y-4">
+      <div className="space-y-2.5">
         {/* Identité + badges */}
         <div>
           <div className="text-lg font-semibold">{profil.nom}</div>
-          <div className="mt-1 space-y-0.5 text-sm text-muted">
-            {profil.courriel && <div>{profil.courriel}</div>}
-            {recent?.cp_ville && <div>{[recent.adresse, recent.cp_ville].filter(Boolean).join(" · ")}</div>}
-            {contactMorale && <div>Contact : {contactMorale}</div>}
+          <div className="flex flex-wrap gap-x-3 text-sm text-muted">
+            {profil.courriel && <span>{profil.courriel}</span>}
+            {recent?.cp_ville && <span>{[recent.adresse, recent.cp_ville].filter(Boolean).join(" · ")}</span>}
+            {contactMorale && <span>Contact : {contactMorale}</span>}
           </div>
-          <div className="mt-2">
+          <div className="mt-1">
             <ModifierDonateur key={recent?.id} dons={dons} />
           </div>
-          <div className="mt-2 flex flex-wrap gap-1">
+          <div className="mt-1 flex flex-wrap gap-1">
             {badgesDe(profil).map((b) => (
               <span key={b.key} className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${TONE_CLASSES[b.tone]}`}>
                 {b.label}
@@ -148,53 +148,54 @@ export default function FicheDonateur({
               <span className="inline-flex items-center rounded-full bg-gold-soft px-2 py-0.5 text-xs font-medium text-gold">Donateur Bourse</span>
             )}
           </div>
-          <label className="mt-3 flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm">
-            <input type="checkbox" checked={profil.boursier} disabled={busy} onChange={(e) => basculerDonateur(e.target.checked)} className="h-4 w-4" />
+          <div className="mt-1.5 grid gap-1.5 sm:grid-cols-2">
+          <label title="Donne pour payer des bourses de frais de scolarité" className="flex cursor-pointer items-center gap-2 rounded-md border border-border bg-surface px-2 py-1 text-sm">
+            <input type="checkbox" checked={profil.boursier} disabled={busy} onChange={(e) => basculerDonateur(e.target.checked)} className="h-3.5 w-3.5" />
             <span>
               <strong>Donateur Bourse</strong>
-              <span className="ml-1 text-xs text-muted">— donne pour payer des bourses de frais de scolarité</span>
+              
             </span>
           </label>
-          <label className="mt-2 flex items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm">
+          <label className="flex items-center gap-2 rounded-md border border-border bg-surface px-2 py-1 text-sm">
             <strong>Famille de l&apos;école</strong>
             <select
               value={profil.famille ?? ""}
               disabled={busy}
               onChange={(e) => void definirFamille((e.target.value || null) as "actuelle" | "ancienne" | null)}
-              className="rounded-md border border-border bg-background px-2 py-1 text-sm"
+              className="rounded-md border border-border bg-background px-1.5 py-0.5 text-sm"
             >
               <option value="">Non</option>
               <option value="actuelle">Famille actuelle</option>
               <option value="ancienne">Ancienne famille</option>
             </select>
           </label>
-          <label className="mt-2 flex cursor-pointer items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm">
-            <input type="checkbox" checked={profil.nePasSolliciter} disabled={busy} onChange={(e) => void definirNePasSolliciter(e.target.checked)} className="h-4 w-4" />
+          <label title="Exclu des exports, des campagnes et des actions suggérées" className="flex cursor-pointer items-center gap-2 rounded-md border border-border bg-surface px-2 py-1 text-sm">
+            <input type="checkbox" checked={profil.nePasSolliciter} disabled={busy} onChange={(e) => void definirNePasSolliciter(e.target.checked)} className="h-3.5 w-3.5" />
             <span>
               <strong>Ne souhaite pas être sollicité</strong>
-              <span className="ml-1 text-xs text-muted">— exclu des exports, des campagnes et des actions suggérées</span>
+              
             </span>
           </label>
-          <label className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-sm">
-            <strong>Contact réservé à</strong>
+          <label title="Lui seul contacte ce donateur" className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-surface px-2 py-1 text-sm">
+            <strong>Responsable</strong>
             <ChoixReserve
               key={profil.contactReserveA ?? ""}
               value={profil.contactReserveA}
               disabled={busy}
               onChange={(v) => void definirContactReserve(v)}
-              label="Contact réservé à"
+              label="Responsable"
             />
-            <span className="text-xs text-muted">— lui seul contacte ce donateur</span>
           </label>
+          </div>
           {erreur && <p className="mt-1 text-xs text-negative">{erreur}</p>}
         </div>
 
         {/* Chiffres clés */}
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-3 gap-1.5 md:grid-cols-6">
           {tuiles.map((t) => (
-            <div key={t.label} className="rounded-lg border border-border bg-surface px-3 py-2">
+            <div key={t.label} className="rounded-md border border-border bg-surface px-2 py-1">
               <div className="text-xs text-muted">{t.label}</div>
-              <div className="mt-0.5 text-sm font-semibold tabular-nums">{t.valeur}</div>
+              <div className="text-sm font-semibold tabular-nums">{t.valeur}</div>
             </div>
           ))}
         </div>
@@ -202,15 +203,15 @@ export default function FicheDonateur({
         {/* Répartition par année */}
         {annees.length > 0 && (
           <div>
-            <h3 className="mb-2 text-sm font-semibold">Par année</h3>
-            <div className="space-y-1">
+            <h3 className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted">Par année</h3>
+            <div className="grid gap-x-4 gap-y-0.5 sm:grid-cols-2">
               {annees
                 .slice()
                 .reverse()
                 .map(([an, montant]) => (
                   <div key={an} className="flex items-center gap-2 text-sm">
                     <span className="w-12 shrink-0 tabular-nums text-muted">{an}</span>
-                    <div className="h-3 flex-1 overflow-hidden rounded-full bg-surface-2">
+                    <div className="h-2 flex-1 overflow-hidden rounded-full bg-surface-2">
                       <div className="h-full rounded-full bg-accent" style={{ width: `${Math.round((montant / maxAnnee) * 100)}%` }} />
                     </div>
                     <span className="w-20 shrink-0 text-right tabular-nums">{formatEuros(montant)}</span>
@@ -222,8 +223,8 @@ export default function FicheDonateur({
 
         {/* Derniers dons (les plus anciens sont résumés par année ci-dessus). */}
         <div>
-          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <h3 className="text-sm font-semibold">
+          <div className="mb-1 flex flex-wrap items-center justify-between gap-2">
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-muted">
               {profil.boursier ? "Dons (cochez les dons boursiers)" : historique.length > 5 ? "5 derniers dons" : "Détail des dons"}
             </h3>
             {profil.boursier && historique.length > 0 && (
@@ -251,29 +252,29 @@ export default function FicheDonateur({
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-surface-2 text-left text-muted">
-                  <th className="px-3 py-2 font-medium">Date</th>
-                  <th className="px-3 py-2 text-right font-medium">Montant</th>
-                  <th className="px-3 py-2 font-medium">Mode</th>
-                  <th className="px-3 py-2 font-medium">Catégorie</th>
-                  {profil.boursier && <th className="px-3 py-2 text-center font-medium">Don boursier</th>}
+                  <th className="px-2 py-1 font-medium">Date</th>
+                  <th className="px-2 py-1 text-right font-medium">Montant</th>
+                  <th className="px-2 py-1 font-medium">Mode</th>
+                  <th className="px-2 py-1 font-medium">Catégorie</th>
+                  {profil.boursier && <th className="px-2 py-1 text-center font-medium">Don boursier</th>}
                 </tr>
               </thead>
               <tbody>
                 {(profil.boursier ? historique : historique.slice(0, 5)).map((d) => (
                   <tr key={d.id} className="border-b border-border last:border-0">
-                    <td className="px-3 py-2 tabular-nums whitespace-nowrap">{formatDate(d.date_don)}</td>
-                    <td className="px-3 py-2 text-right font-medium tabular-nums">{formatEuros(Number(d.montant))}</td>
-                    <td className="px-3 py-2 text-muted">{d.mode_paiement ?? "—"}</td>
-                    <td className="px-3 py-2 text-muted">{d.categorie_donateur ?? "—"}</td>
+                    <td className="px-2 py-1 tabular-nums whitespace-nowrap">{formatDate(d.date_don)}</td>
+                    <td className="px-2 py-1 text-right font-medium tabular-nums">{formatEuros(Number(d.montant))}</td>
+                    <td className="px-2 py-1 text-muted">{d.mode_paiement ?? "—"}</td>
+                    <td className="px-2 py-1 text-muted">{d.categorie_donateur ?? "—"}</td>
                     {profil.boursier && (
-                      <td className="px-3 py-2 text-center">
+                      <td className="px-2 py-1 text-center">
                         <input
                           type="checkbox"
                           checked={!!d.don_boursier}
                           disabled={busy}
                           onChange={(e) => void definir([d.id], null, e.target.checked)}
                           aria-label="Don boursier"
-                          className="h-4 w-4"
+                          className="h-3.5 w-3.5"
                         />
                       </td>
                     )}
@@ -293,15 +294,15 @@ export default function FicheDonateur({
         <HistoriqueSuivi historique={suivi} />
 
         {/* Lecture / interprétation (en bas) */}
-        <div className="rounded-lg border border-accent/40 bg-accent-soft/30 p-3 text-sm">
-          <div className="mb-1 font-medium">Lecture</div>
+        <div className="rounded-md border border-accent/40 bg-accent-soft/30 px-2.5 py-2 text-sm">
+          <div className="mb-0.5 text-xs font-semibold uppercase tracking-wide text-muted">Lecture</div>
           <p className="text-muted">
             Premier don le {formatDate(profil.premier)}, dernier le {formatDate(profil.dernier)}
             {profil.moisDepuisDernier > 0 ? ` (il y a ${profil.moisDepuisDernier} mois)` : " (ce mois-ci)"}.
             {tendance && ` Générosité ${tendance} sur la dernière année.`} Don moyen de {formatEuros(profil.moyenne)}
             {profil.nbAnnees > 1 ? `, régulier sur ${profil.nbAnnees} années` : ""}.
           </p>
-          <p className="mt-1.5 font-medium text-foreground">→ {recommandation(profil)}</p>
+          <p className="mt-1 font-medium text-foreground">→ {recommandation(profil)}</p>
         </div>
       </div>
     </Modal>

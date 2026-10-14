@@ -572,7 +572,7 @@ export default function GestionPipeline({
 
       {/* Table */}
       <div className="overflow-x-auto rounded-xl border border-border bg-surface">
-        <table className="w-full text-sm">
+        <table className="w-full text-sm [&_th:first-child]:text-left [&_td:not(:first-child)]:text-center [&_th:not(:first-child)]:text-center">
           <thead>
             <tr className="border-b border-border text-left text-muted">
               {thTri("prospect", "Prospect")}
@@ -660,7 +660,7 @@ export default function GestionPipeline({
                     {vis("suivi") && <td className="px-4 py-3">
                       <button type="button" disabled={!peutSuivre} onClick={() => cliquerSuivi(p)}
                         title={der ? `Dernière action le ${formatDateHeure(der.cree_le)} par ${der.auteur}${peutSuivre ? (der.auteur === auteurSuivi && Date.now() - new Date(der.cree_le).getTime() < H24 ? " — cliquer pour la modifier" : " — cliquer pour ajouter une action") : ""}` : peutSuivre ? "Ajouter une action" : undefined}
-                        className="flex flex-wrap items-center gap-1 rounded text-left enabled:hover:bg-surface-2">
+                        className="mx-auto flex flex-wrap items-center justify-center gap-1 rounded enabled:hover:bg-surface-2">
                         {der && der.actions.length ? der.actions.map((a) => (
                           <span key={a} className="whitespace-nowrap rounded-full bg-surface-2 px-2 py-0.5 text-xs font-medium">{a}</span>
                         )) : <span className="text-muted">{peutSuivre ? "+ action" : "—"}</span>}
@@ -681,7 +681,7 @@ export default function GestionPipeline({
                           </span>
                         )
                       ) : (
-                        <div className="flex flex-col items-start gap-0.5">
+                        <div className="flex flex-col items-center gap-0.5">
                           <span className="text-xs text-muted" title="Ancienne valeur (conservée)">{ec.ancien ?? "—"}</span>
                           <span className="inline-flex items-center gap-1">
                             {ec.suggestion && (
@@ -778,7 +778,7 @@ export default function GestionPipeline({
                           className="w-52 rounded border border-accent bg-background px-1.5 py-1 text-xs text-foreground" />
                       ) : (
                         <button type="button" disabled={!peutSuivre} onClick={() => setEditCom(p.id)} title={peutSuivre ? "Cliquer pour modifier le commentaire" : com ?? undefined}
-                          className="line-clamp-2 w-full rounded text-left enabled:hover:bg-surface-2">
+                          className="line-clamp-2 w-full rounded text-center enabled:hover:bg-surface-2">
                           {com ?? "—"}
                         </button>
                       )}

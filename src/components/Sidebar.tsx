@@ -314,6 +314,6 @@ function navDe(email?: string, niveaux?: Record<string, Niveau>) {
   const pages = pagesAutorisees(email);
   const slug = roleByEmail(email)?.slug ?? "";
   const visible = (i: (typeof NAV)[number]["items"][number]) =>
-    niveaux && i.href in niveaux ? niveaux[i.href] !== "masque" : pages ? pages.includes(i.href) : !i.roles || i.roles.includes(slug);
+    !i.sauf?.includes(slug) && (niveaux && i.href in niveaux ? niveaux[i.href] !== "masque" : pages ? pages.includes(i.href) : !i.roles || i.roles.includes(slug));
   return NAV.map((s) => ({ ...s, items: s.items.filter(visible) })).filter((s) => s.items.length > 0);
 }

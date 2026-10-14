@@ -14,10 +14,12 @@ const CADRE = "text-amber-700 dark:text-amber-300";
  * `responsable` vide = même personne que la relation.
  */
 export default function RelationResponsable({
-  relation, responsable, peutRelation, peutResponsable, suggestions = [], nom, onEnregistrer, cible = "prospect",
+  relation, responsable, reservePour = null, peutRelation, peutResponsable, suggestions = [], nom, onEnregistrer, cible = "prospect",
 }: {
   cible?: "donateur" | "prospect";
   relation: string | null;
+  /** « Réservé à » (orange), distinct du Responsable (ambre). */
+  reservePour?: string | null;
   responsable: string | null;
   peutRelation: boolean;
   peutResponsable: boolean;
@@ -25,7 +27,7 @@ export default function RelationResponsable({
   suggestions?: string[];
   nom: string;
   /** Enregistre ; `responsable` null = identique à la relation. Renvoie un message d'erreur ou null. */
-  onEnregistrer: (relation: string, responsable: string | null) => Promise<string | null>;
+  onEnregistrer: (relation: string, responsable: string | null, reservePour: string | null) => Promise<string | null>;
 }) {
   const rel = (relation ?? "").trim();
   const resp = (responsable ?? "").trim();
@@ -34,32 +36,41 @@ export default function RelationResponsable({
   const [r, setR] = useState(rel);
   const [diff, setDiff] = useState(different);
   const [rp, setRp] = useState(resp);
+  const rsv = (reservePour ?? "").trim();
+  const [rv, setRv] = useState(rsv);
+  const [aRv, setARv] = useState(!!rsv);
   const [busy, setBusy] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   /* eslint-disable react-hooks/set-state-in-effect */
-  useEffect(() => { if (!ouvert) { setR(rel); setDiff(different); setRp(resp); } }, [ouvert, rel, resp, different]);
+  useEffect(() => { if (!ouvert) { setR(rel); setDiff(different); setRp(resp); setRv(rsv); setARv(!!rsv); } }, [ouvert, rel, resp, different, rsv]);
   /* eslint-enable react-hooks/set-state-in-effect */
   const modifiable = peutRelation || peutResponsable;
   const liste = [...new Set([...PROFILS_RECHERCHE_FONDS, ...PROFILS_ADMIN_RESERVE, ...suggestions])];
   const idListe = `rel-${nom.replace(/\W+/g, "-")}`;
 
-  const modifie = r.trim() !== rel || diff !== different || (diff && rp.trim() !== resp);
+    const modifie = r.trim() !== rel || diff !== different || (diff && rp.trim() !== resp) || aRv !== !!rsv || (aRv && rv.trim() !== rsv);
   async function valider() {
     setBusy(true);
     setErreur(null);
-    const e = await onEnregistrer(peutRelation ? r.trim() : rel, diff && rp.trim() && rp.trim() !== r.trim() ? rp.trim() : null);
+    const e = await onEnregistrer(peutRelation ? r.trim() : rel, diff && rp.trim() && rp.trim() !== r.trim() ? rp.trim() : null, aRv && rv.trim() ? rv.trim() : null);
     setBusy(false);
     if (e) return setErreur(e);
     setOuvert(false);
   }
 
-  const legende = `En ambre : le Responsable (personne qui suit ce ${cible === "donateur" ? "donateur" : "prospect"})`;
-  const affichage = !rel && !resp ? (
-    <span className="text-muted">—</span>
+  const legende = `En ambre : le Responsable (personne qui suit ce ${cible === "donateur" ? "donateur" : "prospect"}) · en orange : Réservé à (lui seul le contacte)`;
+  const base = !rel && !resp ? (
+    rsv ? null : <span className="text-muted">—</span>
   ) : different ? (
-    <span title={legende}>{rel && <>{rel} · </>}<span className={CADRE}>{resp}</span></span>
+    <>{rel && <>{rel} · </>}<span className={CADRE}>{resp}</span></>
   ) : (
-    <span className={CADRE} title={`${legende} — ici, la Relation est aussi le Responsable`}>{rel}</span>
+    <span className={CADRE}>{rel}</span>
+  );
+  const affichage = (
+    <span title={different || !rel ? legende : `${legende} — ici, la Relation est aussi le Responsable`}>
+      {base}
+      {rsv && <>{base && " · "}<span className="font-medium text-orange-600 dark:text-orange-400">🔒 {rsv}</span></>}
+    </span>
   );
 
   return (
@@ -86,6 +97,11 @@ export default function RelationResponsable({
             {diff && (
               <ChoixReserve value={rp || null} disabled={!peutResponsable} onChange={setRp} label={`Responsable : ${nom}`} />
             )}
+            <label className="flex items-center gap-2 text-xs">
+              <input type="checkbox" checked={aRv} disabled={!peutResponsable} onChange={(e) => setARv(e.target.checked)} className="h-4 w-4" />
+              <span className="text-orange-600 dark:text-orange-400">Réservé à</span>
+            </label>
+            {aRv && <ChoixReserve value={rv || null} disabled={!peutResponsable} onChange={setRv} label={`Réservé à : ${nom}`} />}
             {erreur && <p className="text-xs text-negative">{erreur}</p>}
             <div className="flex justify-end gap-2">
               <button type="button" onClick={() => setOuvert(false)} className="rounded-md border border-border px-2 py-1 text-xs">Annuler</button>

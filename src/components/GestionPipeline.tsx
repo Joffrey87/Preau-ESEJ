@@ -6,9 +6,10 @@ import { createClient } from "@/lib/supabase/client";
 import { formatEuros } from "@/lib/format";
 import { Modal, Field, FormFooter, inputCls } from "@/components/GestionComptes";
 import { AjoutSuivi, HistoriqueSuivi } from "@/components/SuiviDonateur";
-import { ETATS_PROSPECT, AIDE_ETAT, TON_ETAT, etatProspect, etatSuivant, ICONE_ETAT, LEGENDE_ETATS, type EtatProspect, type EtatCalcule } from "@/lib/etatProspect";
+import { ETATS_PROSPECT, AIDE_ETAT, TON_ETAT, etatProspect, estEtatProspect, ICONE_ETAT, LEGENDE_ETATS, type EtatProspect, type EtatCalcule } from "@/lib/etatProspect";
 import { TYPES_ACTION_PROSPECT, dernierCommentaire, formatDateHeure, suiviParCle, type SuiviAction } from "@/lib/suiviDonateurs";
 import { trierListe, useTri } from "@/components/TriColonnes";
+import { ICONE_CAPACITE, TON_CAPACITE } from "@/lib/pipeline";
 import SuiviCoche from "@/components/SuiviCoche";
 import RelationResponsable from "@/components/RelationResponsable";
 import { nomCliquableCls } from "@/lib/ui";
@@ -361,11 +362,6 @@ export default function GestionPipeline({
 
 
 
-  async function avancer(p: Prospect) {
-    const suite = etatSuivant(etatDe(p).affiche);
-    if (suite) await definirEtat(p as ProspectLisible, suite);
-  }
-
   async function supprimer(p: ProspectLisible) {
     if (!confirm(`Supprimer « ${p.affiche} » du pipeline ?`)) return;
     setBusy(p.id);
@@ -575,10 +571,10 @@ export default function GestionPipeline({
                 {bouton("suiviDate", "Suivi", "Trier par date de la dernière action")}
               </th>}
               {vis("etat") && <th className="w-10 px-1 py-3 font-medium" title={LEGENDE_ETATS(ETATS_PROSPECT)}>{bouton("etat", "État", LEGENDE_ETATS(ETATS_PROSPECT))} <span aria-hidden>ⓘ</span></th>}
-              {vis("cible") && thTri("cible", "Capacité")}
+              {vis("cible") && <th className="w-12 px-1 py-3 font-medium" title={`Capacité : ${Object.values(CAPACITE_LABEL).map((v, i) => `${ICONE_CAPACITE[(["A", "B", "C"] as Capacite[])[i]]} ${v}`).join(" · ")}`}>{bouton("cible", "Cap.", "Trier par capacité")}</th>}
               {vis("obtenu") && thTri("obtenu", "Obtenu", true)}
               {vis("commentaire") && thTri("commentaire", "Commentaire")}
-              <th className="px-4 py-3 text-right font-medium">Actions</th>
+              <th className="w-10 px-2 py-3 font-medium"><span className="sr-only">Supprimer</span></th>
             </tr>
           </thead>
           <tbody>
@@ -587,7 +583,6 @@ export default function GestionPipeline({
             ) : (
               tries.map((p) => {
                 const ec = etatDe(p);
-                const suite = etatSuivant(ec.affiche);
                 const h = suiviProspect.get(p.id);
                 const der = h?.[0];
                 const com = dernierCommentaire(h);
@@ -627,11 +622,12 @@ export default function GestionPipeline({
                       <RelationResponsable
                         relation={p.relation ?? null}
                         responsable={p.reserve_a ?? p.responsable ?? null}
+                        reservePour={p.reserve_pour ?? null}
                         peutRelation={peutEcrire}
                         peutResponsable={peutSuivre}
                         suggestions={relationsConnues}
                         nom={nomP}
-                        onEnregistrer={async (rel, resp) => {
+                        onEnregistrer={async (rel, resp, rsv) => {
                           const sb = createClient();
                           if (peutEcrire && rel !== (p.relation ?? "").trim()) {
                             const { data, error: e } = await sb.from("prospects").update({ relation: rel || null, updated_at: new Date().toISOString() }).eq("id", p.id).select("id");
@@ -639,6 +635,10 @@ export default function GestionPipeline({
                           }
                           if (peutSuivre && (resp ?? "") !== (p.reserve_a ?? "")) {
                             const { error: e } = await sb.rpc("definir_reserve_prospect", { p_id: p.id, p_valeur: resp ?? "" });
+                            if (e) return e.message;
+                          }
+                          if (peutSuivre && (rsv ?? "") !== (p.reserve_pour ?? "")) {
+                            const { error: e } = await sb.rpc("definir_reserve_pour_prospect", { p_id: p.id, p_valeur: rsv ?? "" });
                             if (e) return e.message;
                           }
                           router.refresh();
@@ -665,20 +665,20 @@ export default function GestionPipeline({
                         )}
                       </span>
                     </td>}
-                    {vis("cible") && <td className="px-4 py-3 text-right">
-                      <div>
-                        <select
-                          value={p.capacite ?? ""}
-                          disabled={busy === p.id}
+                    {vis("cible") && <td className="w-12 px-1 py-2">
+                      <span className="relative inline-flex">
+                        <span title={p.capacite ? CAPACITE_LABEL[p.capacite] : "Capacité non estimée"}
+                          className={`inline-flex h-7 min-w-7 items-center justify-center rounded-full px-1 text-xs font-semibold ${p.capacite ? TON_CAPACITE[p.capacite] : "text-muted"}`}>
+                          {p.capacite ? ICONE_CAPACITE[p.capacite] : "·"}
+                        </span>
+                        <select value={p.capacite ?? ""} disabled={busy === p.id}
                           onChange={(e) => void majChamp(p, { capacite: (e.target.value || null) as Capacite | null })}
-                          aria-label="Capacité"
-                          title={p.capacite ? CAPACITE_LABEL[p.capacite] : "Capacité non estimée"}
-                          className="rounded border border-border bg-background py-0.5 text-xs text-muted focus:border-accent focus:outline-none"
-                        >
-                          <option value="">Capacité —</option>
-                          {Object.entries(CAPACITE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                          aria-label={`Capacité : ${nomP}`} title={p.capacite ? CAPACITE_LABEL[p.capacite] : "Capacité non estimée"}
+                          className="absolute inset-0 cursor-pointer bg-white text-black opacity-0 [color-scheme:light] [&_option]:bg-white [&_option]:text-black">
+                          <option value="">— non estimée</option>
+                          {(Object.keys(CAPACITE_LABEL) as Capacite[]).map((k) => <option key={k} value={k}>{ICONE_CAPACITE[k]} {CAPACITE_LABEL[k]}</option>)}
                         </select>
-                      </div>
+                      </span>
                     </td>}
                     {vis("obtenu") && <td className="px-4 py-3 text-right tabular-nums">
                       <span className="font-medium text-positive">{obtenus[p.id] ? formatEuros(obtenus[p.id].montant) : "—"}</span>
@@ -708,14 +708,6 @@ export default function GestionPipeline({
                       )}
                     </td>}
                     <td className="px-4 py-3 text-right whitespace-nowrap">
-                      {suite && (
-                        <button type="button" onClick={() => avancer(p)} disabled={busy === p.id} className="rounded p-1.5 text-accent hover:bg-accent-soft disabled:opacity-50" title={`Avancer → ${suite}`} aria-label={`Avancer vers ${suite}`}>
-                          <Icon name="avancer" className="h-4 w-4" />
-                        </button>
-                      )}
-                      <button type="button" onClick={() => ouvrir(p)} className="rounded p-1.5 text-muted hover:bg-surface-2 hover:text-foreground" title="Modifier" aria-label="Modifier">
-                        <Icon name="crayon" className="h-4 w-4" />
-                      </button>
                       <button type="button" onClick={() => supprimer(p)} disabled={busy === p.id} className="rounded p-1.5 text-muted hover:bg-negative/10 hover:text-negative disabled:opacity-50" title="Supprimer" aria-label="Supprimer">
                         <Icon name="corbeille" className="h-4 w-4" />
                       </button>
@@ -730,8 +722,9 @@ export default function GestionPipeline({
 
       {edit && (
         <Modal title={edit === "nouveau" ? "Nouveau prospect" : `Fiche prospect — ${!edit.verrouille ? nomComplet({ titre: edit.titre, prenom: edit.prenom, nom: edit.nom }) : edit.affiche}`} onClose={() => setEdit(null)} enregistrerEnFermant>
-          <form onSubmit={submit} className="space-y-4">
-            <div className="grid grid-cols-3 gap-3">
+          <form onSubmit={submit} className="space-y-2 text-sm [&_input]:py-1 [&_select]:py-1 [&_textarea]:py-1">
+            <h3 className="border-l-4 border-blue-700 pl-2 text-xs font-semibold uppercase tracking-wide text-blue-800 dark:border-blue-400 dark:text-blue-300">Identité et contact</h3>
+            <div className="grid grid-cols-[6rem_1fr_1.4fr] gap-2">
               <Field label="Civilité">
                 <select value={form.civilite} onChange={(e) => setForm({ ...form, civilite: e.target.value })} className={inputCls}>
                   {["", "M.", "Mme", "M. & Mme", "Père", "Sœur", "Abbé"].map((c) => <option key={c} value={c}>{c || "—"}</option>)}
@@ -744,7 +737,7 @@ export default function GestionPipeline({
                 <input type="text" required value={form.nom} onChange={(e) => setForm({ ...form, nom: e.target.value })} className={inputCls} placeholder="Nom, ou Fondation Y…" />
               </Field>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-[1.6fr_1fr] gap-2">
               <Field label="Adresse">
                 <input type="text" value={form.adresse} onChange={(e) => setForm({ ...form, adresse: e.target.value })} className={inputCls} placeholder="N° et rue" />
               </Field>
@@ -752,7 +745,7 @@ export default function GestionPipeline({
                 <input type="text" value={form.cp_ville} onChange={(e) => setForm({ ...form, cp_ville: e.target.value })} className={inputCls} placeholder="51100 Reims" />
               </Field>
             </div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-3 gap-2">
               <Field label="Email">
                 <input type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} className={inputCls} />
               </Field>
@@ -764,9 +757,10 @@ export default function GestionPipeline({
               </Field>
             </div>
             {edit !== "nouveau" && edit?.chiffre && (
-              <p className="-mt-2 text-xs text-muted">Fiche de la « {edit.liste} » : prénom, adresse et civilité sont chiffrés dans le coffre (email, téléphone et relation restent en clair).</p>
+              <p className="text-[11px] text-muted">Fiche de la « {edit.liste} » : prénom, adresse et civilité sont chiffrés dans le coffre (email, téléphone et relation restent en clair).</p>
             )}
-            <div className="grid grid-cols-2 gap-3">
+            <h3 className="border-l-4 border-violet-600 pl-2 pt-1 text-xs font-semibold uppercase tracking-wide text-violet-700 dark:border-violet-400 dark:text-violet-300">Qualification</h3>
+            <div className="grid grid-cols-3 gap-2">
               <Field label="Type">
                 <select value={form.segment} onChange={(e) => setForm({ ...form, segment: e.target.value as Segment })} className={inputCls}>
                   {ancienType(form.segment) && <option value={form.segment}>Ancien : {ancienType(form.segment)} (suggéré : {libelleType({ segment: form.segment })})</option>}
@@ -778,38 +772,51 @@ export default function GestionPipeline({
                 )}
               </Field>
               <Field label="Capacité">
-                <select value={form.capacite} onChange={(e) => setForm({ ...form, capacite: e.target.value as "" | Capacite })} className={inputCls}>
+                <select value={form.capacite} onChange={(e) => setForm({ ...form, capacite: e.target.value as "" | Capacite })} className={`${inputCls} ${form.capacite ? TON_CAPACITE[form.capacite] : ""}`}>
                   <option value="">— non estimée —</option>
-                  {Object.entries(CAPACITE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+                  {(Object.keys(CAPACITE_LABEL) as Capacite[]).map((k) => <option key={k} value={k}>{ICONE_CAPACITE[k]} {CAPACITE_LABEL[k]}</option>)}
                 </select>
               </Field>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
               <Field label="État">
-                <select value={form.etat_unifie} onChange={(e) => setForm({ ...form, etat_unifie: e.target.value })} className={inputCls}
+                <select value={form.etat_unifie} onChange={(e) => setForm({ ...form, etat_unifie: e.target.value })} className={`${inputCls} ${estEtatProspect(form.etat_unifie) ? TON_ETAT[form.etat_unifie] : ""}`}
                   title="Contacté : premier contact établi ou don sollicité">
                   {edit !== "nouveau" && <option value="">— Non défini{edit && etatDe(edit).auto ? " (Donateur automatique)" : ""}</option>}
-                  {ETATS_PROSPECT.map((v) => <option key={v} value={v}>{v} — {AIDE_ETAT[v]}</option>)}
+                  {ETATS_PROSPECT.map((v) => <option key={v} value={v}>{ICONE_ETAT[v]} {v} — {AIDE_ETAT[v]}</option>)}
                 </select>
                 {edit !== "nouveau" && edit && !etatDe(edit).etat && (
                   <span className="mt-1 block text-xs text-muted">Ancienne valeur : {etatDe(edit).ancien ?? "—"} {etatDe(edit).suggestion ? ` · suggestion : ${etatDe(edit).suggestion}` : ""}</span>
                 )}
               </Field>
+            </div>
+            <h3 className="border-l-4 border-amber-500 pl-2 pt-1 text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">Suivi relationnel</h3>
+            <div className="grid grid-cols-3 gap-2">
+              {edit !== "nouveau" && edit && (
+                <Field label="Responsable · Réservé à">
+                  <RelationResponsable relation={edit.relation ?? null} responsable={edit.reserve_a ?? edit.responsable ?? null} reservePour={edit.reserve_pour ?? null}
+                    peutRelation={false} peutResponsable={peutSuivre} nom={nomComplet({ titre: edit.titre, prenom: edit.prenom, nom: edit.nom }) || edit.affiche}
+                    onEnregistrer={async (_rel, resp, rsv) => {
+                      const sb = createClient();
+                      if ((resp ?? "") !== (edit.reserve_a ?? "")) { const { error: e } = await sb.rpc("definir_reserve_prospect", { p_id: edit.id, p_valeur: resp ?? "" }); if (e) return e.message; }
+                      if ((rsv ?? "") !== (edit.reserve_pour ?? "")) { const { error: e } = await sb.rpc("definir_reserve_pour_prospect", { p_id: edit.id, p_valeur: rsv ?? "" }); if (e) return e.message; }
+                      setEdit({ ...edit, reserve_a: resp, reserve_pour: rsv });
+                      router.refresh();
+                      return null;
+                    }} />
+                </Field>
+              )}
               <Field label="Comité (ancien champ Responsable)">
                 <ChoixResponsable value={form.responsable || null} onChange={(v) => setForm({ ...form, responsable: v ?? "" })} />
               </Field>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="text-xs text-muted">
-                <span className="mb-1 block">Montant obtenu</span>
-                Tiré des écritures de Comptabilité liées par le Trésorier (bouton <Icon name="ledger" className="inline h-3.5 w-3.5" /> du tableau).
+              <div className="text-[11px] text-muted">
+                <span className="block font-medium text-positive">Montant obtenu{edit !== "nouveau" && edit && obtenus[edit.id] ? ` : ${formatEuros(obtenus[edit.id].montant)}` : ""}</span>
+                Tiré des écritures de Comptabilité liées par le Trésorier (bouton <Icon name="ledger" className="inline h-3 w-3" /> du tableau).
               </div>
             </div>
             <Field label="Notes">
               <textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} className={inputCls} rows={2} placeholder="Motivations, historique, points d'attention…" />
             </Field>
             {edit !== "nouveau" && (
-              <div className="space-y-2 rounded-lg border border-border p-3">
+              <div className="space-y-1.5 rounded-md border border-border border-l-4 border-l-blue-900 p-2 dark:border-l-blue-400">
                 <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
                   <span className="font-medium">Suivi des actions</span>
                   <span className="text-xs text-muted">Responsable : {edit.reserve_a || edit.responsable || edit.relation || "—"}</span>

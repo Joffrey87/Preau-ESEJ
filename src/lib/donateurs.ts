@@ -23,6 +23,7 @@ export type DonAgg = {
   ne_pas_solliciter?: boolean;
   /** Contact réservé à une personne (membre de la Recherche de fonds ou du bureau) ; copie portée par chaque don. */
   contact_reserve_a?: string | null;
+  reserve_pour?: string | null;
 };
 
 export type FamilleStatut = "actuelle" | "ancienne";
@@ -60,6 +61,8 @@ export type ProfilDonateur = {
   nePasSolliciter: boolean;
   /** Seule cette personne contacte le donateur. */
   contactReserveA: string | null;
+  /** « Réservé à » (distinct du Responsable). */
+  reservePour: string | null;
 };
 
 /** Nombre de mois entiers écoulés entre deux dates ISO (b ≥ a). */
@@ -135,6 +138,7 @@ export function agregerDonateurs(dons: DonAgg[], todayISO: string): ProfilDonate
       nbDonsBourse: donsBourse.length,
       nePasSolliciter: tout.some((d) => d.ne_pas_solliciter),
       contactReserveA: tout.find((d) => d.contact_reserve_a)?.contact_reserve_a ?? null,
+      reservePour: tout.find((d) => d.reserve_pour)?.reserve_pour ?? null,
       famille: tout.some((d) => d.famille_statut === "actuelle") ? "actuelle" : tout.some((d) => d.famille_statut === "ancienne") ? "ancienne" : null,
     });
   }

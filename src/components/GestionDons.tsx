@@ -75,6 +75,7 @@ export type Don = {
   /** Le donateur ne souhaite pas être sollicité (copie portée par chacun de ses dons). */
   ne_pas_solliciter?: boolean;
   contact_reserve_a?: string | null;
+  reserve_pour?: string | null;
   /** La médaille est posée sur le tableau physique des dons de l'école (qui, quand). */
   medaille_affichee?: boolean;
   medaille_par?: string | null;

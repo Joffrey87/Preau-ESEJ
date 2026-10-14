@@ -91,6 +91,14 @@ export default function FicheDonateur({
     if (error) return setErreur("Enregistrement impossible : " + error.message);
     router.refresh();
   }
+  async function definirReservePour(valeur: string) {
+    setBusy(true);
+    setErreur(null);
+    const { error } = await createClient().rpc("definir_reserve_pour_dons", { p_ids: dons.map((d) => d.id), p_valeur: valeur });
+    setBusy(false);
+    if (error) return setErreur("Enregistrement impossible : " + error.message);
+    router.refresh();
+  }
   const historique = [...dons].sort((a, b) => (b.date_don ?? "").localeCompare(a.date_don ?? ""));
   const recent = historique[0]; // don le plus récent (pour l'adresse / contact à jour)
 
@@ -199,13 +207,23 @@ export default function FicheDonateur({
             </span>
           </label>
           <label title="Lui seul contacte ce donateur" className="flex flex-wrap items-center gap-2 rounded-md border border-border bg-surface px-2 py-1 text-sm">
-            <strong>Responsable</strong>
+            <strong className="text-amber-700 dark:text-amber-300">Responsable</strong>
             <ChoixReserve
               key={profil.contactReserveA ?? ""}
               value={profil.contactReserveA}
               disabled={busy}
               onChange={(v) => void definirContactReserve(v)}
               label="Responsable"
+            />
+          </label>
+          <label title="Seule cette personne contacte ce donateur" className="flex flex-wrap items-center gap-2 rounded-md border border-orange-300/60 bg-surface px-2 py-1 text-sm">
+            <strong className="text-orange-600 dark:text-orange-400">Réservé à</strong>
+            <ChoixReserve
+              key={profil.reservePour ?? ""}
+              value={profil.reservePour}
+              disabled={busy}
+              onChange={(v) => void definirReservePour(v)}
+              label="Réservé à"
             />
           </label>
           </div>

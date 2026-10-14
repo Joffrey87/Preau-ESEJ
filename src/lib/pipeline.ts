@@ -46,6 +46,8 @@ export type Prospect = {
   etat_unifie_par?: string | null;
   /** Liste d'origine (ex. « Liste Axel »). */
   liste?: string | null;
+  /** « Réservé à » (distinct du Responsable, porté par reserve_a). */
+  reserve_pour?: string | null;
 };
 
 // Ordre du pipeline (le « moves management » du plan). « perdu » hors flux.
@@ -116,6 +118,13 @@ export const SEGMENT_POTENTIEL: Record<Segment, string> = {
   communaute: "3-8 k€/an",
 };
 
+/** Icônes et couleurs de la capacité (colonne compacte). */
+export const ICONE_CAPACITE: Record<Capacite, string> = { A: "★★★", B: "★★", C: "★" };
+export const TON_CAPACITE: Record<Capacite, string> = {
+  A: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300",
+  B: "bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-300",
+  C: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300",
+};
 export const CAPACITE_LABEL: Record<Capacite, string> = {
   A: "A — fort potentiel",
   B: "B — potentiel moyen",

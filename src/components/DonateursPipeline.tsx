@@ -571,11 +571,12 @@ export default function DonateursPipeline({
                     <RelationResponsable
                       relation={p.origine}
                       responsable={p.contactReserveA}
+                      reservePour={p.reservePour}
                       peutRelation={peutModifierRelation}
                       peutResponsable={peutSuivre}
                       nom={p.nom}
                       cible="donateur"
-                      onEnregistrer={async (rel, resp) => {
+                      onEnregistrer={async (rel, resp, rsv) => {
                         if (peutModifierRelation && rel !== (p.origine ?? "").trim()) {
                           const e = await majRelation(p.cle, rel, false);
                           if (e) return e;
@@ -583,6 +584,11 @@ export default function DonateursPipeline({
                         if (peutSuivre && (resp ?? "") !== (p.contactReserveA ?? "")) {
                           const ids = (donsParCle.get(p.cle) ?? []).map((x) => x.id);
                           const { error } = await createClient().rpc("definir_contact_reserve", { p_ids: ids, p_valeur: resp ?? "" });
+                          if (error) return error.message;
+                        }
+                        if (peutSuivre && (rsv ?? "") !== (p.reservePour ?? "")) {
+                          const ids = (donsParCle.get(p.cle) ?? []).map((x) => x.id);
+                          const { error } = await createClient().rpc("definir_reserve_pour_dons", { p_ids: ids, p_valeur: rsv ?? "" });
                           if (error) return error.message;
                         }
                         router.refresh();

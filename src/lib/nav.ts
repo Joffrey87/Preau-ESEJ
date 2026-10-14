@@ -5,6 +5,8 @@ export type NavItem = {
   ready: boolean;
   /** Réservé à ces rôles (slugs) ; absent = tout le bureau. */
   roles?: string[];
+  /** Masqué pour ces rôles (même page proposée ailleurs dans leur menu). */
+  sauf?: string[];
 };
 
 export type NavSection = {
@@ -37,10 +39,13 @@ export const NAV: NavSection[] = [
     ],
   },
   {
-    title: "Financement",
+    // Libellé de section seulement (anciennement « Financement »).
+    title: "Donateurs",
     items: [
       { href: "/dons", label: "Dons", icon: "gift", ready: true },
       { href: "/mecenat/pipeline", label: "Relations donateurs", icon: "funnel", ready: true },
+      // Vue Recherche de fonds : ses « Dons » juste sous « Relations donateurs ».
+      { href: "/recherche/dons", label: "Dons", icon: "gift", ready: true, roles: ["recherche-fonds"], sauf: ["president", "tresorier"] },
       { href: "/recus-fiscaux", label: "Reçus fiscaux", icon: "receipt", ready: true },
       // Lettres du Président pour les dons de 500 € et plus.
       { href: "/remerciements", label: "Remerciements", icon: "mail", ready: true, roles: ["president", "tresorier", "administrateur"] },
@@ -79,11 +84,12 @@ export const NAV: NavSection[] = [
     ],
   },
   {
-    title: "Recherche de fonds",
+    // Libellé de section seulement (anciennement « Recherche de fonds » ; le profil garde son nom).
+    title: "Autres axes",
     items: [
       { href: "/recherche/axes", label: "Axes de recherche", icon: "target", ready: true, roles: ["president", "tresorier", "recherche-fonds"] },
       { href: "/recherche/suivi", label: "Suivi des actions", icon: "check", ready: true, roles: ["president", "tresorier", "recherche-fonds"] },
-      { href: "/recherche/dons", label: "Dons", icon: "gift", ready: true, roles: ["president", "tresorier", "recherche-fonds"] },
+      { href: "/recherche/dons", label: "Dons", icon: "gift", ready: true, roles: ["president", "tresorier", "recherche-fonds"], sauf: ["recherche-fonds"] },
     ],
   },
   {

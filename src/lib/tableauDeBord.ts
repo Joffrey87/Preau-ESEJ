@@ -29,7 +29,7 @@ export function ongletsDuProfil(email?: string | null): NavItem[] {
   const pages = pagesAutorisees(email);
   const slug = roleByEmail(email)?.slug ?? "";
   return NAV.flatMap((s) => s.items).filter(
-    (i) => i.ready && i.href !== "/" && (pages ? pages.includes(i.href) : !i.roles || i.roles.includes(slug)),
+    (i) => i.ready && i.href !== "/" && !i.sauf?.includes(slug) && (pages ? pages.includes(i.href) : !i.roles || i.roles.includes(slug)),
   );
 }
 

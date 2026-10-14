@@ -117,7 +117,8 @@ export default function GestionPipeline({
 
   const [q, setQ] = useState("");
   const [fEtape, setFEtape] = useState<"" | Etape>("");
-  const [fSegment, setFSegment] = useState<"" | Segment>("");
+  const [fSegments, setFSegments] = useState<Segment[]>([]);
+  const [exportEnCours, setExportEnCours] = useState(false);
 
   const filtres = useMemo(() => {
     const ql = q.trim().toLowerCase();
@@ -125,10 +126,10 @@ export default function GestionPipeline({
       (p) =>
         (!ql || [p.affiche, p.adresse, p.cp_ville, p.responsable, p.email, p.telephone, p.relation].some((v) => (v ?? "").toLowerCase().includes(ql))) &&
         (!fEtape || p.etape === fEtape) &&
-        (!fSegment || p.segment === fSegment) &&
+        (fSegments.length === 0 || fSegments.includes(p.segment)) &&
         (fListes.length === 0 || (!!p.liste && fListes.includes(p.liste))),
     );
-  }, [prospects, q, fEtape, fSegment, fListes]);
+  }, [prospects, q, fEtape, fSegments, fListes]);
 
   const relationsConnues = useMemo(
     () => [...new Set(prospects.map((p) => (p.relation ?? "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr")),
@@ -170,6 +171,38 @@ export default function GestionPipeline({
   // Répartition par étape (pour la barre de progression du pipeline).
   const parEtape = ETAPES.map((e) => ({ ...e, n: filtres.filter((p) => p.etape === e.key).length }));
   const maxEtape = Math.max(1, ...parEtape.map((e) => e.n));
+
+  async function exporterListe() {
+    setExportEnCours(true);
+    try {
+      const { telechargerListeProspects } = await import("@/lib/prospectsPdf");
+      const ferme = "coffre fermé";
+      const lignes = tries.map((p) => {
+        const h = suiviProspect.get(p.id) ?? [];
+        const der = [...h].sort((a, b) => b.cree_le.localeCompare(a.cree_le))[0];
+        return {
+          nom: p.verrouille ? `${ferme} (${p.affiche.replace("🔒 ", "")})` : nomComplet({ titre: p.titre, prenom: p.prenom, nom: p.nom }),
+          adresse: p.verrouille ? ferme : [p.adresse, p.cp_ville].filter(Boolean).join(", "),
+          courriel: p.email ?? "",
+          telephone: p.telephone ?? "",
+          segment: SEGMENT_LABEL[p.segment] ?? p.segment,
+          etape: ETAPE_LABEL[p.etape] ?? p.etape,
+          relation: p.relation ?? "",
+          reserve: p.reserve_a ?? "",
+          derniereAction: der ? `${[...der.actions, der.etat].filter(Boolean).join(", ") || "Action"} — ${new Date(der.cree_le).toLocaleDateString("fr-FR")}${der.auteur ? ` (${der.auteur})` : ""}` : "",
+          commentaire: dernierCommentaire(h) ?? "",
+        };
+      });
+      const actifs = [
+        fSegments.length ? `Segments : ${fSegments.map((s) => SEGMENT_LABEL[s]).join(", ")}` : "",
+        fEtape ? `Étape : ${ETAPE_LABEL[fEtape]}` : "",
+        q.trim() ? `Recherche : « ${q.trim()} »` : "",
+      ].filter(Boolean).join(" · ");
+      await telechargerListeProspects(lignes, actifs || "Tous les prospects (aucun filtre)");
+    } finally {
+      setExportEnCours(false);
+    }
+  }
 
   function ouvrir(p: ProspectLisible | "nouveau") {
     setError(null);
@@ -322,6 +355,19 @@ export default function GestionPipeline({
 
       {/* Barre d'outils */}
       <div className="flex flex-wrap items-center gap-2">
+        <div className="flex w-full flex-wrap items-center gap-1.5" role="group" aria-label="Filtrer par segment">
+          {(Object.entries(SEGMENT_LABEL) as [Segment, string][]).map(([k, v]) => {
+            const actif = fSegments.includes(k);
+            const n = prospects.filter((p) => p.segment === k).length;
+            return (
+              <button key={k} type="button" aria-pressed={actif}
+                onClick={() => setFSegments((l) => (actif ? l.filter((x) => x !== k) : [...l, k]))}
+                className={`rounded-full border px-2.5 py-1 text-xs font-medium transition ${actif ? "border-accent bg-accent-soft text-accent" : "border-border text-muted hover:bg-surface-2"} ${n === 0 ? "opacity-40" : ""}`}>
+                {actif ? "✓ " : ""}{v} <span className="tabular-nums">({n})</span>
+              </button>
+            );
+          })}
+        </div>
         <input
           type="search"
           value={q}
@@ -329,19 +375,20 @@ export default function GestionPipeline({
           placeholder="Rechercher (nom, responsable)…"
           className="min-w-[12rem] flex-1 rounded-lg border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-accent"
         />
-        <select value={fSegment} onChange={(e) => setFSegment(e.target.value as "" | Segment)} className="rounded-lg border border-border bg-background px-2 py-1.5 text-sm">
-          <option value="">Tous segments</option>
-          {Object.entries(SEGMENT_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-        </select>
         <select value={fEtape} onChange={(e) => setFEtape(e.target.value as "" | Etape)} className="rounded-lg border border-border bg-background px-2 py-1.5 text-sm">
           <option value="">Toutes étapes</option>
           {Object.entries(ETAPE_LABEL).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </select>
-        {(q || fEtape || fSegment) && (
-          <button type="button" onClick={() => { setQ(""); setFEtape(""); setFSegment(""); }} className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-surface-2">
+        {(q || fEtape || fSegments.length > 0) && (
+          <button type="button" onClick={() => { setQ(""); setFEtape(""); setFSegments([]); }} className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-surface-2">
             Réinitialiser
           </button>
         )}
+        <button type="button" onClick={() => void exporterListe()} disabled={exportEnCours}
+          className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-surface-2 disabled:opacity-50"
+          title="PDF des prospects affichés (filtres actifs), ou de tous sans filtre">
+          {exportEnCours ? "Export…" : "Exporter liste"}
+        </button>
         {peutEcrire && <ImportProspects prospects={prospects} dons={dons} auteur={auteurSuivi} relations={relationsConnues} />}
         {peutEcrire && (
           <button type="button" onClick={() => ouvrir("nouveau")} className="rounded-lg bg-accent px-4 py-1.5 text-sm font-medium text-accent-fg hover:opacity-90">
@@ -465,7 +512,7 @@ export default function GestionPipeline({
                 return (
                   <tr key={p.id} className={`border-b border-border last:border-0 ${p.etape === "perdu" ? "opacity-50" : ""}`}>
                     <td className="px-4 py-3">
-                      <button type="button" onClick={() => setHistoSuivi(p)} title="Voir le suivi des actions" className={`${nomCliquableCls} font-medium`}>
+                      <button type="button" onClick={() => ouvrir(p)} title="Ouvrir la fiche du prospect (informations et suivi)" className={`${nomCliquableCls} font-medium hover:underline`}>
                         {!p.verrouille ? nomComplet({ titre: p.titre, prenom: p.prenom, nom: p.nom }) : p.affiche}
                       </button>
                       {p.cp_ville && <div className="text-xs text-muted">{villeEtDepartement(p.cp_ville)}</div>}
@@ -626,7 +673,7 @@ export default function GestionPipeline({
       </div>
 
       {edit && (
-        <Modal title={edit === "nouveau" ? "Nouveau prospect" : "Modifier le prospect"} onClose={() => setEdit(null)} enregistrerEnFermant>
+        <Modal title={edit === "nouveau" ? "Nouveau prospect" : `Fiche prospect — ${!edit.verrouille ? nomComplet({ titre: edit.titre, prenom: edit.prenom, nom: edit.nom }) : edit.affiche}`} onClose={() => setEdit(null)} enregistrerEnFermant>
           <form onSubmit={submit} className="space-y-4">
             <div className="grid grid-cols-3 gap-3">
               <Field label="Civilité">
@@ -706,6 +753,27 @@ export default function GestionPipeline({
             <Field label="Notes">
               <textarea value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} className={inputCls} rows={2} placeholder="Motivations, historique, points d'attention…" />
             </Field>
+            {edit !== "nouveau" && (
+              <div className="space-y-2 rounded-lg border border-border p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                  <span className="font-medium">Suivi des actions</span>
+                  <span className="text-xs text-muted">Réservé à : {edit.reserve_a || "—"}</span>
+                </div>
+                <HistoriqueSuivi historique={suiviProspect.get(edit.id) ?? []} />
+                {peutSuivre && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAjoutSuivi(edit);
+                      setEdit(null);
+                    }}
+                    className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-surface-2"
+                  >
+                    + Ajouter une action
+                  </button>
+                )}
+              </div>
+            )}
             <FormFooter saving={saving} error={error} onCancel={() => setEdit(null)} />
           </form>
         </Modal>

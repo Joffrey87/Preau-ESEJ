@@ -198,6 +198,13 @@ export default async function ComptabilitePage({
               {!lectureSeule && (
                 <>
                   <Link
+                    href="/ventes-diverses?vue=rattachement"
+                    className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-surface-2"
+                    title="Ventiler les recettes Ventes diverses par sous-catégorie et les rattacher aux ventes attendues"
+                  >
+                    Ventes diverses
+                  </Link>
+                  <Link
                     href="/comptabilite/correspondances"
                     className="rounded-lg border border-border px-4 py-2 text-sm font-medium hover:bg-surface-2"
                   >

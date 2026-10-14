@@ -24,6 +24,7 @@ import FenetreDonEcriture from "@/components/FenetreDonEcriture";
 import EtapePostaleListe, { BandeauEtapePostale } from "@/components/EtapePostale";
 import LiaisonGlobale from "@/components/LiaisonGlobale";
 import Link from "next/link";
+import MedailleDon from "@/components/MedailleDon";
 import PageHeader from "@/components/PageHeader";
 import ModeleRecuDialog from "@/components/ModeleRecuDialog";
 import type { ModeleRecuRow } from "@/lib/modeleRecu";
@@ -68,6 +69,10 @@ export type Don = {
   /** Le donateur ne souhaite pas être sollicité (copie portée par chacun de ses dons). */
   ne_pas_solliciter?: boolean;
   contact_reserve_a?: string | null;
+  /** La médaille est posée sur le tableau physique des dons de l'école (qui, quand). */
+  medaille_affichee?: boolean;
+  medaille_par?: string | null;
+  medaille_le?: string | null;
   pii_chiffre: string | null;
   montant: number;
   date_don: string;
@@ -89,7 +94,7 @@ const CATEGORIES = CATEGORIES_DONATEUR;
 const MODES = ["Virement", "Chèque", "Carte bancaire", "Espèces", "Nature", "Autre"];
 
 // Colonnes affichables du tableau (le n° de reçu est masqué par défaut).
-type ColKey = "date" | "donateur" | "categorie" | "montant" | "mode" | "recu" | "compta" | "statut";
+type ColKey = "date" | "donateur" | "categorie" | "montant" | "mode" | "recu" | "compta" | "statut" | "medaille";
 const COLONNES: { key: ColKey; label: string; sortable: boolean; defaut: boolean }[] = [
   { key: "date", label: "Date", sortable: true, defaut: true },
   { key: "donateur", label: "Donateur", sortable: true, defaut: true },
@@ -99,6 +104,7 @@ const COLONNES: { key: ColKey; label: string; sortable: boolean; defaut: boolean
   { key: "recu", label: "N° reçu", sortable: false, defaut: false },
   { key: "compta", label: "Lié Compta", sortable: false, defaut: true },
   { key: "statut", label: "Reçu Fiscal", sortable: false, defaut: true },
+  { key: "medaille", label: "Médaille", sortable: false, defaut: true },
 ];
 const COLS_DEFAUT = Object.fromEntries(COLONNES.map((c) => [c.key, c.defaut])) as Record<ColKey, boolean>;
 
@@ -1066,9 +1072,10 @@ export default function GestionDons({
             <tr className="border-b border-border text-left text-muted">
               {COLONNES.filter((c) => cols[c.key]).map((c) => {
                 const aligneD = c.key === "montant";
+                const centre = c.key === "medaille";
                 const actif = tri.key === c.key;
                 return (
-                  <th key={c.key} className={`${cellPad} font-medium ${aligneD ? "text-right" : ""}`}>
+                  <th key={c.key} className={`${cellPad} font-medium ${aligneD ? "text-right" : ""} ${centre ? "text-center" : ""}`}>
                     {c.sortable ? (
                       <button
                         type="button"
@@ -1214,6 +1221,16 @@ export default function GestionDons({
                       </div>
                       {!compact && d.recu_etat && d.recu_etat.trim() && (
                         <p className="mt-1 text-xs text-muted">{d.recu_etat}</p>
+                      )}
+                    </td>
+                  )}
+                  {cols.medaille && (
+                    <td className={`${cellPad} text-center`}>
+                      {d.don_boursier ? (
+                        <span className="text-muted" title="Don boursier : pas de médaille">—</span>
+                      ) : (
+                        <MedailleDon key={`${d.id}-${d.medaille_affichee ? 1 : 0}`} donId={d.id} affichee={!!d.medaille_affichee}
+                          par={d.medaille_par} le={d.medaille_le} roleSlug={vueCorbeille ? null : roleSlug} />
                       )}
                     </td>
                   )}

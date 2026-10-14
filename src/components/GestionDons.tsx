@@ -190,12 +190,15 @@ export default function GestionDons({
   modeleRecu,
   sousEntete,
   modeRecherche = false,
+  modeMedailles = false,
   prenomRecherche = null,
   demandes = [],
   alertes = [],
 }: {
   /** Onglet Dons de la Recherche de fonds : lecture seule, sans médaille ; fiche contact et demande de reçu. */
   modeRecherche?: boolean;
+  /** Onglet « Médailles Don » de la Directrice : lecture seule, seule la colonne Médaille se coche. */
+  modeMedailles?: boolean;
   prenomRecherche?: string | null;
   /** Demandes de reçu fiscal en cours (Recherche de fonds → Trésorier). */
   demandes?: DemandeRecu[];
@@ -285,6 +288,7 @@ export default function GestionDons({
     return m;
   }, [alertes]);
   const estTresorier = roleSlug === "tresorier";
+  const lecture = modeRecherche || modeMedailles;
   const [etablirGroupe, setEtablirGroupe] = useState<Groupe | null>(null);
   const [contactId, setContactId] = useState<string | null>(null);
   const numeroEtabli = (n: string | null) => !!n && /^RE_\d+/.test(n);
@@ -856,7 +860,7 @@ export default function GestionDons({
       )}
 
       {/* Migration : dons pas encore chiffrés (coffre ouvert) */}
-      {!modeRecherche && coffre.estOuvert && nonChiffres.length > 0 && (
+      {!lecture && coffre.estOuvert && nonChiffres.length > 0 && (
         <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-accent/40 bg-accent-soft px-4 py-3 text-sm">
           <span>
             <strong>{nonChiffres.length}</strong> don{nonChiffres.length > 1 ? "s" : ""} pas encore chiffré
@@ -1164,6 +1168,7 @@ export default function GestionDons({
                   onClick={(e) => {
                     // Les boutons, liens et champs de la ligne gardent leur rôle ; ailleurs, la ligne s'ouvre.
                     if (vueCorbeille || (e.target as HTMLElement).closest("button, a, input, select, textarea")) return;
+                    if (modeMedailles) return;
                     if (modeRecherche) setContactId(d.id);
                     else setFicheEcritureId(d.id);
                   }}
@@ -1192,7 +1197,7 @@ export default function GestionDons({
                       {vueCorbeille ? null : d.operation_id ? (
                         <button
                           type="button"
-                          onClick={() => { if (!modeRecherche) setLierId(d.id); }}
+                          onClick={() => { if (!lecture) setLierId(d.id); }}
                           title="Relié à une écriture comptable : voir ou délier"
                           aria-label="Relié à la comptabilité"
                           className="inline-flex text-positive hover:opacity-80"
@@ -1204,7 +1209,7 @@ export default function GestionDons({
                       ) : (
                         <button
                           type="button"
-                          onClick={() => { if (!modeRecherche) setLierId(d.id); }}
+                          onClick={() => { if (!lecture) setLierId(d.id); }}
                           title="Non lié (hors compta) : lier à une écriture comptable"
                           aria-label="Non lié à la comptabilité"
                           className="inline-flex text-gold hover:opacity-80"
@@ -1235,7 +1240,7 @@ export default function GestionDons({
                               />
                             );
                           }
-                          if (modeRecherche) return <span key={c.key} title={c.detail} className={cls}>{c.label}</span>;
+                          if (lecture) return <span key={c.key} title={c.detail} className={cls}>{c.label}</span>;
                           if ((c.key === "etablir" || c.key === "annuel") && estTresorier && !vueCorbeille) {
                             return (
                               <button key={c.key} type="button" onClick={() => ouvrirEtablir(d)}
@@ -1280,7 +1285,7 @@ export default function GestionDons({
                           </span>
                         )}
                       </div>
-                      {!modeRecherche && (demandeParDon.get(d.id) && !numeroEtabli(d.recu_numero) || alertesParDon.get(d.id)) && (
+                      {!lecture && (demandeParDon.get(d.id) && !numeroEtabli(d.recu_numero) || alertesParDon.get(d.id)) && (
                         <div className="mt-1 flex flex-wrap gap-1">
                           {demandeParDon.get(d.id) && !numeroEtabli(d.recu_numero) && (
                             <PastilleDemandeRecu demande={demandeParDon.get(d.id)!} onClick={estTresorier ? () => ouvrirEtablir(d) : undefined} />
@@ -1334,7 +1339,7 @@ export default function GestionDons({
                               etabli={numeroEtabli(d.recu_numero)} prenom={prenomRecherche} />
                           </span>
                         )}
-                        {!modeRecherche && <>
+                        {!lecture && <>
                         <button
                           type="button"
                           onClick={() => ouvrir(d)}

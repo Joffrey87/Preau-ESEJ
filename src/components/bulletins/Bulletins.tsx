@@ -14,8 +14,13 @@ import ConseilClasse from "./ConseilClasse";
 import Absences from "./Absences";
 import ReleveMaternelle from "./ReleveMaternelle";
 import { estMaternelle } from "@/lib/releveMaternelle";
+import { chargerDocs, type ContexteDocs } from "@/lib/relevesTrimestre";
+import DocumentsClasse from "./DocumentsClasse";
+import Trombinoscope from "./Trombinoscope";
+import InscriptionsDirectrice from "@/components/inscriptions/InscriptionsDirectrice";
 
-export type Onglet = "bulletins" | "conseil" | "notes" | "absences" | "maternelle" | "parametres";
+export type Onglet = "releves" | "trimestre" | "bulletins" | "conseil" | "notes" | "absences" | "maternelle" | "trombi" | "inscriptions" | "parametres";
+const ONGLETS: Onglet[] = ["releves", "trimestre", "bulletins", "conseil", "notes", "absences", "maternelle", "trombi", "inscriptions", "parametres"];
 
 /** Ce que le compte peut faire dans la classe affichée (la base le garantit de son côté). */
 export type Droits = {
@@ -42,7 +47,9 @@ export default function Bulletins({
   const [ref, setRef] = useState<Referentiel | null>(null);
   const [classeId, setClasseId] = useState<string | null>(initial.classe ?? null);
   const [periodeId, setPeriodeId] = useState<string | null>(initial.periode ?? null);
-  const [onglet, setOnglet] = useState<Onglet>((["bulletins", "conseil", "notes", "absences", "maternelle", "parametres"].includes(initial.onglet ?? "") ? initial.onglet : "bulletins") as Onglet);
+  const [onglet, setOnglet] = useState<Onglet>((ONGLETS.includes((initial.onglet ?? "") as Onglet) ? initial.onglet : "releves") as Onglet);
+  const [docs, setDocs] = useState<ContexteDocs | null>(null);
+  const [ajoutPour, setAjoutPour] = useState<string | null>(null);
   const [bulletinId, setBulletinId] = useState<string | null>(initial.bulletin ?? null);
   // Bulletin ouvert depuis le Conseil de classe : bouton de retour au Conseil.
   const [depuisConseil, setDepuisConseil] = useState(false);
@@ -80,12 +87,13 @@ export default function Bulletins({
     setErreur(null);
     try {
       setCtx(await chargerClasse(sb, classe, periode));
+      if (ref) setDocs(await chargerDocs(sb, classe, periode, ref.periodes));
     } catch (e) {
       setErreur(e instanceof Error ? e.message : "Chargement impossible.");
     } finally {
       setChargement(false);
     }
-  }, [sb, classe, periode]);
+  }, [sb, classe, periode, ref]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement des données de la classe choisie
@@ -97,7 +105,7 @@ export default function Bulletins({
     const q = new URLSearchParams();
     if (classeId) q.set("classe", classeId);
     if (periodeId) q.set("periode", periodeId);
-    if (onglet !== "bulletins") q.set("onglet", onglet);
+    if (onglet !== "releves") q.set("onglet", onglet);
     if (bulletinId && onglet === "bulletins") q.set("bulletin", bulletinId);
     window.history.replaceState(null, "", `/bulletins?${q}`);
   }, [classeId, periodeId, onglet, bulletinId]);
@@ -126,12 +134,16 @@ export default function Bulletins({
   const classesAnnee = ref.classes.filter((c) => c.annee_scolaire === annee);
   const periodesAnnee = ref.periodes.filter((p) => p.annee_scolaire === annee);
   const onglets: { v: Onglet; label: string }[] = [
-    { v: "bulletins", label: "Bulletins" },
+    { v: "releves", label: "Relevés de notes" },
+    { v: "trimestre", label: "Bulletins" },
     { v: "conseil", label: "Conseil de classe" },
     { v: "notes", label: "Notes" },
     { v: "absences", label: "Appel & absences" },
     ...(classe && estMaternelle(classe.niveaux) ? [{ v: "maternelle" as Onglet, label: "Relevé maternelle" }] : []),
-    ...(directrice ? [{ v: "parametres" as Onglet, label: "Paramètres" }] : []),
+    { v: "trombi", label: "Trombinoscope" },
+    // Bulletins de période d'avant (dont ceux repris d'École Futée) : conservés tels quels.
+    { v: "bulletins", label: "Bulletins de période (archives)" },
+    ...(directrice ? [{ v: "inscriptions" as Onglet, label: "Inscriptions" }, { v: "parametres" as Onglet, label: "Paramètres" }] : []),
   ];
 
   return (
@@ -193,7 +205,20 @@ export default function Bulletins({
               ))}
             </select>
             {titulaire && <span className="text-[12px] text-muted">Titulaire : {nomEnseignant(titulaire)}</span>}
-            <div className="ml-auto flex gap-1">
+            {directrice && classe && (
+              <button
+                type="button"
+                onClick={() => {
+                  setAjoutPour(classe.id);
+                  setOnglet("parametres");
+                  setTimeout(() => document.getElementById(`classe-${classe.id}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 300);
+                }}
+                className="rounded-lg bg-accent px-3 py-1.5 text-[13px] font-semibold text-accent-fg"
+              >
+                + Ajouter un élève
+              </button>
+            )}
+            <div className="flex w-full flex-wrap gap-1 md:ml-auto md:w-auto">
               {onglets.map((o) => (
                 <button
                   key={o.v}
@@ -202,6 +227,7 @@ export default function Bulletins({
                     setOnglet(o.v);
                     setBulletinId(null);
                     setDepuisConseil(false);
+                    setAjoutPour(null);
                   }}
                   className={`rounded-md px-3 py-1.5 text-[13px] font-medium ${onglet === o.v ? "bg-accent text-accent-fg" : "text-foreground hover:bg-surface-2"}`}
                 >
@@ -218,10 +244,28 @@ export default function Bulletins({
               referentiel={ref}
               annee={annee}
               classeId={classeId}
+              ajoutPour={ajoutPour}
               onRecharger={async () => {
                 await chargerRef();
                 await recharger();
               }}
+            />
+          ) : onglet === "inscriptions" && directrice ? (
+            <InscriptionsDirectrice />
+          ) : onglet === "trombi" && classe ? (
+            <Trombinoscope classe={classe} directrice={directrice} />
+          ) : (onglet === "releves" || onglet === "trimestre") && docs && periode && docs.classe.id === classeId ? (
+            <DocumentsClasse
+              key={`${onglet}:${classeId}:${periodeId}`}
+              mode={onglet === "releves" ? "releve" : "trimestre"}
+              ctx={docs}
+              periode={periode}
+              directrice={directrice}
+              titulaire={droits.titulaire}
+              enseignantId={enseignantId}
+              nomTitulaire={titulaire ? nomEnseignant(titulaire) : null}
+              enseignants={enseignants}
+              onRecharger={recharger}
             />
           ) : !ctx || (chargement && !resultats.length) ? (
             <div className="rounded-xl border border-border bg-surface p-6 text-sm text-muted">Chargement…</div>

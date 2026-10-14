@@ -71,7 +71,7 @@ export async function construireBulletinsPdf(syntheses: Synthese[]): Promise<Uin
     const CW = 196, bx = W - M - CW, gx = M + 76, gw = bx - 18 - gx, iw = CW - 26;
     page.drawImage(logo, { x: M, y: y(top + 62), width: 63, height: 62 });
     texte("École du Saint-Enfant-Jésus", gx, top + 16, semi, ajuste("École du Saint-Enfant-Jésus", semi, 13, gw, 10));
-    const sousTitre = `Bulletin scolaire · Année ${s.periode.annee}`;
+    const sousTitre = `${s.mode === "releve" ? "Relevé de notes" : "Bulletin scolaire"} · Année ${s.periode.annee}`;
     texte(sousTitre, gx, top + 31, regular, ajuste(sousTitre, regular, 9.5, gw, 8), GRIS);
     const titre = titrePeriode(s.periode);
     texte(titre, gx, top + 47, semi, ajuste(titre, semi, 10, gw, 8), OR);
@@ -111,21 +111,25 @@ export async function construireBulletinsPdf(syntheses: Synthese[]): Promise<Uin
     top += Math.max(62, hCart) + 18;
 
     // Tableau.
-    const avecRang = s.afficherRang;
-    const cols = { matiere: M, moy: M + 168, classe: M + 213, rang: M + 258, com: avecRang ? M + 292 : M + 262 };
+    // Relevé : aucune colonne chiffrée (les notes vont dans la dernière colonne) ; trimestre : moyenne seule.
+    const releve = s.mode === "releve", trimestre = s.mode === "trimestre";
+    const avecRang = s.afficherRang && !releve && !trimestre;
+    const avecClasse = !releve && !trimestre;
+    const cols = { matiere: M, moy: M + 168, classe: M + 213, rang: M + 258, com: releve ? M + 168 : trimestre ? M + 216 : avecRang ? M + 292 : M + 262 };
     const wCom = W - M - cols.com - 6;
     const entete = () => {
       rect(M, top, W - 2 * M, 18, NAVY);
       texte("Matière", cols.matiere + 6, top + 12, semi, 8, BLANC);
-      centre("Moyenne", cols.moy + 20, top + 12, semi, 8, BLANC);
-      centre("Classe", cols.classe + 20, top + 12, semi, 8, BLANC);
+      if (!releve) centre("Moyenne", cols.moy + 20, top + 12, semi, 8, BLANC);
+      if (avecClasse) centre("Classe", cols.classe + 20, top + 12, semi, 8, BLANC);
       if (avecRang) centre("Rang", cols.rang + 15, top + 12, semi, 8, BLANC);
-      texte("Appréciation", cols.com + 6, top + 12, semi, 8, BLANC);
+      texte(releve ? "Notes de la période" : "Appréciation", cols.com + 6, top + 12, semi, 8, BLANC);
       top += 18;
     };
     const chiffres = (c: Synthese["general"], t: number, font: PDFFont, color: RGB) => {
+      if (releve) return;
       centre(note20(c.moy), cols.moy + 20, t, font, 8.5, color);
-      centre(note20(c.moyClasse), cols.classe + 20, t, regular, 8, color === BLANC ? BLANC : GRIS);
+      if (avecClasse) centre(note20(c.moyClasse), cols.classe + 20, t, regular, 8, color === BLANC ? BLANC : GRIS);
       if (avecRang) centre(rangTexte(c.rang), cols.rang + 15, t, regular, 8, color);
     };
     // Sans notes (grande section) : ni tableau ni moyenne générale, seulement les appréciations.
@@ -148,7 +152,7 @@ export async function construireBulletinsPdf(syntheses: Synthese[]): Promise<Uin
         top += h;
       }
     }
-    if (s.groupes.length) {
+    if (s.groupes.length && !releve) {
       place(22);
       rect(M, top, W - 2 * M, 20, NAVY);
       texte("Moyenne générale", cols.matiere + 6, top + 13.5, semi, 9, BLANC);

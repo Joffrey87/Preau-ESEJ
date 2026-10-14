@@ -1,0 +1,179 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { createClient } from "@/lib/supabase/client";
+import { anneeInscriptions, STATUTS_DOSSIER, type Dossier, type StatutDossier } from "@/lib/inscriptions";
+
+const LIBELLES: Record<string, string> = {
+  date_naissance: "Naissance",
+  lieu_naissance: "Lieu de naissance",
+  classe_demandee: "Classe demandée",
+  ecole_actuelle: "École actuelle",
+  adresse: "Adresse",
+  cp_ville: "Ville",
+  remarques: "Remarques",
+};
+
+/**
+ * Tableau de bord de la Directrice : dossiers de préinscription (lien public) et de réinscription (Espace famille).
+ * Valider, mettre en attente ou refuser ; valider ne crée encore ni élève ni famille. Envoi des liens : courriel
+ * (logiciel de messagerie, destinataires en copie cachée) ou lien à copier, l'onglet Communication n'envoyant pas encore.
+ */
+export default function InscriptionsDirectrice() {
+  const sb = useMemo(() => createClient(), []);
+  const annee = anneeInscriptions();
+  const [dossiers, setDossiers] = useState<Dossier[]>([]);
+  const [filtre, setFiltre] = useState<StatutDossier | "tous">("tous");
+  const [ouvert, setOuvert] = useState<string | null>(null);
+  const [photo, setPhoto] = useState<string | null>(null);
+  const [courriels, setCourriels] = useState<string[]>([]);
+  const [message, setMessage] = useState<string | null>(null);
+  const [copie, setCopie] = useState<string | null>(null);
+  const origine = typeof window !== "undefined" ? window.location.origin : "";
+  const lienPre = `${origine}/preinscription`;
+  const lienRe = `${origine}/espace/inscription`;
+
+  const charger = useCallback(async () => {
+    const [d, c] = await Promise.all([
+      sb.from("inscriptions_dossiers").select("*").order("created_at", { ascending: false }),
+      sb.rpc("inscription_courriels_familles", { p_annee: annee }),
+    ]);
+    if (d.error) setMessage(`Échec : ${d.error.message}`);
+    setDossiers((d.data ?? []) as Dossier[]);
+    setCourriels([...new Set(((c.data ?? []) as { courriel: string }[]).map((x) => x.courriel))]);
+  }, [sb, annee]);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement des dossiers
+    charger();
+  }, [charger]);
+
+  async function ouvrir(d: Dossier) {
+    setOuvert(ouvert === d.id ? null : d.id);
+    setPhoto(null);
+    if (d.photo_path && ouvert !== d.id) {
+      const { data } = await sb.storage.from("inscriptions").createSignedUrl(d.photo_path, 3600);
+      setPhoto(data?.signedUrl ?? null);
+    }
+  }
+  async function decider(d: Dossier, statut: StatutDossier, note?: string) {
+    const { error } = await sb.rpc("inscription_decider", { p_id: d.id, p_statut: statut, p_note: note ?? null });
+    setMessage(error ? `Échec : ${error.message}` : null);
+    if (!error) await charger();
+  }
+  const copier = async (t: string) => {
+    await navigator.clipboard.writeText(t).catch(() => null);
+    setCopie(t);
+    setTimeout(() => setCopie(null), 2000);
+  };
+  const mailto = (sujet: string, corps: string, bcc: string[] = []) =>
+    `mailto:?${bcc.length ? `bcc=${encodeURIComponent(bcc.join(","))}&` : ""}subject=${encodeURIComponent(sujet)}&body=${encodeURIComponent(corps)}`;
+
+  const liste = dossiers.filter((d) => filtre === "tous" || d.statut === filtre);
+  const n = (s: StatutDossier) => dossiers.filter((d) => d.statut === s).length;
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 md:grid-cols-2">
+        {[
+          { titre: "Réinscription (familles de l'école)", lien: lienRe, sujet: `Réinscription ${annee}`, corps: `Bonjour,\n\nLa réinscription pour l'année ${annee} est ouverte. Connectez-vous à votre Espace famille pour vérifier les informations de chaque enfant et envoyer son dossier :\n${lienRe}\n\nBien cordialement,\nLa Directrice`, bcc: courriels },
+          { titre: "Préinscription (nouvelles familles)", lien: lienPre, sujet: `Préinscription ${annee} · École du Saint-Enfant-Jésus`, corps: `Bonjour,\n\nPour demander l'inscription de votre enfant pour l'année ${annee}, merci de remplir ce dossier en ligne :\n${lienPre}\n\nBien cordialement,\nLa Directrice`, bcc: [] },
+        ].map((x) => (
+          <div key={x.titre} className="rounded-xl border border-border bg-surface p-3 text-[13px]">
+            <div className="font-semibold">{x.titre}</div>
+            <div className="mt-1 break-all text-[12px] text-muted">{x.lien}</div>
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button type="button" onClick={() => copier(x.lien)} className="rounded-lg border border-border px-3 py-1.5 hover:bg-surface-2">
+                {copie === x.lien ? "Lien copié ✓" : "Copier le lien"}
+              </button>
+              <a href={mailto(x.sujet, x.corps, x.bcc)} className="rounded-lg bg-accent px-3 py-1.5 font-medium text-accent-fg">
+                Préparer le courriel{x.bcc.length ? ` (${x.bcc.length} adresses en copie cachée)` : ""}
+              </a>
+            </div>
+          </div>
+        ))}
+      </div>
+      <p className="text-[12px] text-muted">
+        Le courriel s&apos;ouvre dans votre logiciel de messagerie. L&apos;envoi depuis l&apos;onglet Communication (courriel et messagerie interne) sera branché dès que ce module sera en ligne.
+      </p>
+
+      <div className="flex flex-wrap items-center gap-1">
+        {(["tous", ...STATUTS_DOSSIER.map((s) => s.v)] as const).map((v) => (
+          <button key={v} type="button" onClick={() => setFiltre(v)} className={`rounded-full px-3 py-1 text-[13px] ${filtre === v ? "bg-accent-soft font-medium text-accent" : "hover:bg-surface-2"}`}>
+            {v === "tous" ? `Tous (${dossiers.length})` : `${STATUTS_DOSSIER.find((s) => s.v === v)?.label} (${n(v)})`}
+          </button>
+        ))}
+      </div>
+      {message && <p className="rounded-lg bg-negative/10 px-3 py-2 text-sm text-negative">{message}</p>}
+      {!liste.length && <p className="text-sm text-muted">Aucun dossier.</p>}
+
+      <div className="space-y-2">
+        {liste.map((d) => {
+          const x = d.donnees;
+          const st = STATUTS_DOSSIER.find((s) => s.v === d.statut);
+          const contact = [x.parent1_courriel, x.parent2_courriel].filter(Boolean) as string[];
+          return (
+            <div key={d.id} className="rounded-xl border border-border bg-surface p-3 text-[13px]">
+              <button type="button" onClick={() => ouvrir(d)} className="flex w-full flex-wrap items-center gap-2 text-left">
+                <span className="font-semibold">{x.enfant_prenom} {x.enfant_nom}</span>
+                <span className="text-[12px] text-muted">{x.classe_demandee || "classe ?"} · {d.type === "preinscription" ? "Préinscription" : "Réinscription"} · {d.annee_scolaire}</span>
+                <span className={`ml-auto rounded-full px-2 py-0.5 text-[11px] ${st?.classe}`}>{st?.label}</span>
+              </button>
+              {ouvert === d.id && (
+                <div className="mt-3 grid gap-3 border-t border-border pt-3 sm:grid-cols-[6rem_1fr]">
+                  <div>
+                    {photo ? (
+                      // eslint-disable-next-line @next/next/no-img-element -- adresse signée temporaire du stockage privé
+                      <img src={photo} alt="" className="h-28 w-24 rounded-lg object-cover" />
+                    ) : (
+                      <div className="flex h-28 w-24 items-center justify-center rounded-lg bg-surface-2 text-[11px] text-muted">Sans photo</div>
+                    )}
+                  </div>
+                  <div className="space-y-1">
+                    {Object.entries(LIBELLES).map(([k, l]) =>
+                      x[k as keyof typeof x] ? (
+                        <div key={k}>
+                          <span className="text-muted">{l} : </span>
+                          {k === "date_naissance" ? String(x.date_naissance).split("-").reverse().join("/") : x[k as keyof typeof x]}
+                        </div>
+                      ) : null,
+                    )}
+                    {([1, 2] as const).map((k) => {
+                      const p = [x[`parent${k}_prenom`], x[`parent${k}_nom`]].filter(Boolean).join(" ");
+                      const c = [x[`parent${k}_telephone`], x[`parent${k}_courriel`]].filter(Boolean).join(" · ");
+                      return p || c ? (
+                        <div key={k}>
+                          <span className="text-muted">Parent {k} : </span>
+                          {p} {c && <span className="text-muted">({c})</span>}
+                        </div>
+                      ) : null;
+                    })}
+                    <div className="text-[11.5px] text-muted">Reçu le {new Date(d.created_at).toLocaleDateString("fr-FR")}{d.traite_le ? ` · traité le ${new Date(d.traite_le).toLocaleDateString("fr-FR")}` : ""}</div>
+                    <textarea
+                      key={d.note_directrice ?? ""}
+                      defaultValue={d.note_directrice ?? ""}
+                      placeholder="Note interne (non visible de la famille)"
+                      rows={2}
+                      onBlur={(e) => e.target.value !== (d.note_directrice ?? "") && decider(d, d.statut, e.target.value)}
+                      className="mt-1 w-full rounded-md border border-border bg-background px-2 py-1 text-[13px]"
+                    />
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      <button type="button" onClick={() => decider(d, "valide")} className="rounded-lg bg-positive px-3 py-1.5 font-medium text-white">Valider</button>
+                      <button type="button" onClick={() => decider(d, "attente")} className="rounded-lg border border-gold px-3 py-1.5 text-gold">Mettre en attente</button>
+                      <button type="button" onClick={() => decider(d, "refuse")} className="rounded-lg border border-negative px-3 py-1.5 text-negative">Refuser</button>
+                      {d.statut !== "recu" && <button type="button" onClick={() => decider(d, "recu")} className="text-[12px] text-muted hover:underline">Remettre à « Reçu »</button>}
+                      {contact.length > 0 && (
+                        <a href={mailto(`Inscription de ${x.enfant_prenom ?? ""} · ${d.annee_scolaire}`, "Bonjour,\n\n", contact)} className="ml-auto text-[12.5px] text-accent hover:underline">
+                          Écrire à la famille
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}

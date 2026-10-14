@@ -47,10 +47,13 @@ export default function ParametresBulletins({
   annee,
   classeId,
   onRecharger,
+  ajoutPour = null,
 }: {
   referentiel: Referentiel;
   annee: string;
   classeId: string | null;
+  /** Classe dont le formulaire « Ajouter un élève » s'ouvre d'emblée (bouton de la barre des Bulletins). */
+  ajoutPour?: string | null;
   onRecharger: () => Promise<void>;
 }) {
   const sb = useMemo(() => createClient(), []);
@@ -125,26 +128,28 @@ export default function ParametresBulletins({
         <div className="space-y-3">
           {classes.map((c) => (
             <CarteClasse
-              key={c.id}
+              key={`${c.id}:${ajoutPour === c.id ? "ajout" : ""}`}
+              ajoutDirect={ajoutPour === c.id}
               c={c}
               enseignants={enseignants}
               eleves={eleves}
               membres={membres}
               classes={classes}
               familles={familles}
-              onAjouterEleve={(p) =>
-                ecrire(
-                  sb.rpc("eleve_ajouter", {
-                    p_famille: p.famille && p.famille !== NOUVELLE ? p.famille : null,
-                    p_prenom: p.prenom,
-                    p_nom: p.nom,
-                    p_niveau: p.niveau,
-                    p_annee: annee,
-                    p_classe: c.id,
-                    p_famille_infos: p.famille && p.famille !== NOUVELLE ? null : (p.infos ?? infosVides(p.nom)),
-                  }),
-                )
-              }
+              onAjouterEleve={async (p) => {
+                const { error } = await sb.rpc("eleve_ajouter", {
+                  p_famille: p.famille && p.famille !== NOUVELLE ? p.famille : null,
+                  p_prenom: p.prenom.trim(),
+                  p_nom: p.nom.trim(),
+                  p_niveau: p.niveau,
+                  p_annee: annee,
+                  p_classe: c.id,
+                  p_famille_infos: p.famille && p.famille !== NOUVELLE ? null : (p.infos ?? infosVides(p.nom)),
+                });
+                if (error) return error.message;
+                await chargerDetails();
+                return null;
+              }}
               onModifier={(p) => ecrire(sb.from("classes").update(p).eq("id", c.id), "tout")}
               onNomUsage={(eleveId, nom) => ecrire(sb.rpc("eleve_nom_usage", { p_eleve: eleveId, p_nom: nom }))}
               onEleve={(eleveId, dedans) =>
@@ -385,6 +390,7 @@ function CarteClasse({
   classes,
   familles,
   onAjouterEleve,
+  ajoutDirect = false,
   onModifier,
   onEleve,
   onNomUsage,
@@ -396,19 +402,22 @@ function CarteClasse({
   membres: { classe_id: string; eleve_id: string }[];
   classes: Classe[];
   familles: { id: string; nom: string }[];
-  onAjouterEleve: (p: Ajout) => Promise<boolean>;
+  /** Message d'erreur, ou null si l'élève est ajouté. */
+  onAjouterEleve: (p: Ajout) => Promise<string | null>;
+  ajoutDirect?: boolean;
   onModifier: (p: Partial<Classe>) => void;
   onEleve: (eleveId: string, dedans: boolean) => void;
   onNomUsage: (eleveId: string, nom: string) => void;
   onSupprimer: () => void;
 }) {
-  const [elevesOuverts, setElevesOuverts] = useState(false);
-  const [ajout, setAjout] = useState<Ajout | null>(null);
+  const [elevesOuverts, setElevesOuverts] = useState(ajoutDirect);
+  const [ajout, setAjout] = useState<Ajout | null>(ajoutDirect ? { famille: "", prenom: "", nom: "", niveau: c.niveaux[0] ?? "PS" } : null);
+  const [erreurAjout, setErreurAjout] = useState<string | null>(null);
   const dedans = new Set(membres.filter((m) => m.classe_id === c.id).map((m) => m.eleve_id));
   const classeDe = (id: string) => classes.find((x) => x.id === membres.find((m) => m.eleve_id === id && m.classe_id !== c.id)?.classe_id)?.nom;
   const scolarises = eleves.filter((e) => niveauDe(e, c.annee_scolaire) !== null);
   return (
-    <div className="rounded-xl border border-border bg-surface p-3">
+    <div id={`classe-${c.id}`} className={`scroll-mt-4 rounded-xl border bg-surface p-3 ${ajoutDirect ? "border-accent" : "border-border"}`}>
       <div className="flex flex-wrap items-center gap-2">
         <input defaultValue={c.nom} onBlur={(e) => e.target.value.trim() && e.target.value.trim() !== c.nom && onModifier({ nom: e.target.value.trim() })} className={`${classeChamp} font-semibold`} aria-label="Nom de la classe" />
         <div className="flex flex-wrap gap-1">
@@ -442,7 +451,17 @@ function CarteClasse({
           <input type="checkbox" checked={c.rang_par_niveau} onChange={(e) => onModifier({ rang_par_niveau: e.target.checked })} />
           Rang et moyenne par niveau
         </label>
-        <button type="button" onClick={() => setElevesOuverts((o) => !o)} className="ml-auto text-accent hover:underline">
+        <button
+          type="button"
+          onClick={() => {
+            setElevesOuverts(true);
+            setAjout({ famille: "", prenom: "", nom: "", niveau: c.niveaux[0] ?? "PS" });
+          }}
+          className="ml-auto rounded-lg bg-accent px-3 py-1.5 text-[12.5px] font-semibold text-accent-fg"
+        >
+          + Ajouter un élève
+        </button>
+        <button type="button" onClick={() => setElevesOuverts((o) => !o)} className="text-accent hover:underline">
           {dedans.size} élève{dedans.size > 1 ? "s" : ""} · {elevesOuverts ? "masquer" : "modifier"}
         </button>
       </div>
@@ -466,20 +485,23 @@ function CarteClasse({
           <div className="col-span-full mt-1">
             {ajout ? (
               <AjoutEleve
+                erreur={erreurAjout}
                 ajout={ajout}
                 familles={familles}
                 niveaux={c.niveaux.length ? c.niveaux : [...CLASSES]}
                 onChange={setAjout}
                 onAnnuler={() => setAjout(null)}
                 onValider={async () => {
-                  if (await onAjouterEleve(ajout)) setAjout(null);
+                  const err = await onAjouterEleve(ajout);
+                  setErreurAjout(err ? `Échec : ${err}` : null);
+                  if (!err) setAjout(null);
                 }}
               />
             ) : (
               <button
                 type="button"
                 onClick={() => setAjout({ famille: "", prenom: "", nom: "", niveau: c.niveaux[0] ?? "PS" })}
-                className="text-[12.5px] text-accent hover:underline"
+                className="rounded-lg bg-accent px-4 py-2 text-[13px] font-semibold text-accent-fg"
               >
                 + Ajouter un élève
               </button>
@@ -511,7 +533,9 @@ function AjoutEleve({
   onChange,
   onAnnuler,
   onValider,
+  erreur,
 }: {
+  erreur?: string | null;
   ajout: Ajout;
   familles: { id: string; nom: string }[];
   niveaux: string[];
@@ -525,7 +549,7 @@ function AjoutEleve({
   const pret = ajout.prenom.trim() && ajout.niveau;
   const nouvelle = ajout.famille === NOUVELLE || !ajout.famille;
   return (
-    <div className="flex flex-wrap items-end gap-2 rounded-lg border border-border bg-surface-2/50 p-2">
+    <div className="grid gap-2 rounded-lg border border-border bg-surface-2/50 p-2 sm:flex sm:flex-wrap sm:items-end">
       <label className="grid gap-0.5 text-[11px] text-muted">
         Famille
         <select
@@ -553,11 +577,11 @@ function AjoutEleve({
       </label>
       <label className="grid gap-0.5 text-[11px] text-muted">
         Prénom
-        <input value={ajout.prenom} onChange={(e) => onChange({ ...ajout, prenom: e.target.value })} className={`${classeChamp} w-32`} />
+        <input value={ajout.prenom} onChange={(e) => onChange({ ...ajout, prenom: e.target.value })} className={`${classeChamp} w-full py-2 text-[15px] sm:w-32 sm:py-1 sm:text-[13px]`} />
       </label>
       <label className="grid gap-0.5 text-[11px] text-muted" title="Nom tel que l'école l'écrit sur le bulletin (celui de la famille par défaut)">
         Nom
-        <input value={ajout.nom} onChange={(e) => onChange({ ...ajout, nom: e.target.value })} className={`${classeChamp} w-40`} />
+        <input value={ajout.nom} onChange={(e) => onChange({ ...ajout, nom: e.target.value })} className={`${classeChamp} w-full py-2 text-[15px] sm:w-40 sm:py-1 sm:text-[13px]`} />
       </label>
       <label className="grid gap-0.5 text-[11px] text-muted">
         Niveau
@@ -569,8 +593,8 @@ function AjoutEleve({
           ))}
         </select>
       </label>
-      <div className="flex gap-2 pb-0.5">
-        <button type="button" onClick={onAnnuler} className="text-[12px] text-muted hover:underline">
+      <div className="flex items-center justify-end gap-3 pb-0.5">
+        <button type="button" onClick={onAnnuler} className="text-[13px] text-muted hover:underline">
           Annuler
         </button>
         <button
@@ -581,11 +605,12 @@ function AjoutEleve({
             await onValider();
             setEnvoi(false);
           }}
-          className="rounded-md bg-accent px-3 py-1 text-[12.5px] font-medium text-accent-fg disabled:opacity-50"
+          className="rounded-lg bg-accent px-5 py-2 text-[14px] font-semibold text-accent-fg disabled:opacity-50 sm:px-3 sm:py-1 sm:text-[12.5px]"
         >
-          Ajouter
+          {envoi ? "Ajout…" : "Ajouter"}
         </button>
       </div>
+      {erreur && <p className="w-full rounded-md bg-negative/10 px-2 py-1 text-[12.5px] text-negative">{erreur}</p>}
       {nouvelle && (
         <p className="w-full text-[11px] text-muted">
           {ajout.famille === NOUVELLE ? (

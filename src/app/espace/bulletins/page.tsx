@@ -2,6 +2,7 @@ import { createClient } from "@/lib/supabase/server";
 import { familleEnApercu } from "@/lib/apercuFamille";
 import { estSynthese, type Synthese } from "@/lib/bulletins";
 import RelevesMaternelleFamille from "@/components/bulletins/RelevesMaternelleFamille";
+import DocumentsFamille, { type DocFamille } from "@/components/bulletins/DocumentsFamille";
 import BulletinsFamille, { type BulletinFamille } from "@/components/bulletins/BulletinsFamille";
 
 /** Bulletins publiés des enfants de la famille (la base ne renvoie que ceux-là). */
@@ -27,6 +28,18 @@ export default async function BulletinsFamillePage() {
     .filter((b) => estSynthese(b.synthese as Synthese))
     .map((b) => ({ id: b.id, eleveId: b.eleve_id, synthese: b.synthese as Synthese, publieLe: b.publie_le, luLe: b.lu_le, ordre: b.periodes?.ordre ?? 0 }));
 
+  // Relevés de notes et bulletins trimestriels publiés (la base ne renvoie que ceux des enfants de la famille).
+  const [rl, bt] = await Promise.all([
+    supabase.from("releves_notes").select("id, synthese, lu_le, publie_le").eq("statut", "publie").order("publie_le", { ascending: false }),
+    supabase.from("bulletins_trimestre").select("id, synthese, lu_le, publie_le").eq("statut", "publie").order("publie_le", { ascending: false }),
+  ]);
+  const enDocs = (rows: unknown, doc: "releve" | "trimestre"): DocFamille[] =>
+    ((rows ?? []) as { id: string; synthese: unknown; lu_le: string | null; publie_le: string | null }[])
+      .filter((r) => estSynthese(r.synthese as Synthese))
+      .map((r) => ({ id: r.id, doc, synthese: r.synthese as Synthese, luLe: r.lu_le, tri: r.publie_le ?? "" }));
+  const trimestriels = enDocs(bt.data, "trimestre");
+  const releves = enDocs(rl.data, "releve");
+
   return (
     <div className="space-y-4">
       <div className="text-center">
@@ -38,6 +51,9 @@ export default async function BulletinsFamillePage() {
           Aperçu : les bulletins ne sont lisibles que par la famille et par l&apos;équipe enseignante ; ils n&apos;apparaissent pas ici.
         </p>
       )}
+      {!apercu && <DocumentsFamille docs={trimestriels} apercu={false} titre="Bulletins trimestriels" />}
+      {!apercu && <DocumentsFamille docs={releves} apercu={false} titre="Relevés de notes" />}
+      {(trimestriels.length > 0 || releves.length > 0) && <h2 className="text-sm font-semibold">Bulletins de période</h2>}
       <BulletinsFamille bulletins={bulletins} apercu={!!apercu} />
       {!apercu && <RelevesMaternelleFamille />}
     </div>

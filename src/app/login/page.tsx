@@ -24,7 +24,7 @@ const dernierChoix = (cle: string) => {
 const ESPACES: { v: Espace; label: string; icone: string }[] = [
   { v: "famille", label: "Famille", icone: "maison" },
   { v: "professeurs", label: "Professeur", icone: "graduation" },
-  { v: "evenement", label: "Événement", icone: "calendar" },
+  { v: "evenement", label: "Évènementiel", icone: "calendar" },
   { v: "bureau", label: "Administration", icone: "ledger" },
 ];
 

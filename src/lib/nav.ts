@@ -47,6 +47,8 @@ export const NAV: NavSection[] = [
       // Vue Recherche de fonds : ses « Dons » juste sous « Relations donateurs ».
       { href: "/recherche/dons", label: "Dons", icon: "gift", ready: true, roles: ["recherche-fonds"], sauf: ["president", "tresorier"] },
       { href: "/recus-fiscaux", label: "Reçus fiscaux", icon: "receipt", ready: true },
+      // Directrice : le tableau des dons pour cocher les médailles (lecture seule par ailleurs).
+      { href: "/dons/medailles", label: "Médailles Don", icon: "gift", ready: true, roles: ["directrice"] },
       // Lettres du Président pour les dons de 500 € et plus.
       { href: "/remerciements", label: "Remerciements", icon: "mail", ready: true, roles: ["president", "tresorier", "administrateur"] },
     ],

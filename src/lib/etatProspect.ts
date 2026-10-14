@@ -56,6 +56,9 @@ export function etatProspect(p: Pick<Prospect, "etat_unifie" | "etape">, h: Suiv
   const choisi = p.etat_unifie === "En pause" ? "Sans réponse, à relancer" : p.etat_unifie === "Perdu" ? "Pas intéressé" : p.etat_unifie;
   if (estEtatProspect(choisi)) return { etat: choisi, auto: false, ancien: null, suggestion: null, affiche: choisi };
   if (aUnDon) return { etat: "Donateur", auto: true, ancien: null, suggestion: null, affiche: "Donateur" };
+  // Anciennes valeurs « Identifié », « Qualifié », « À contacter » : affichées directement comme « Pas contacté »
+  // (rien n'est réécrit en base ; la valeur d'origine reste dans etape / le Suivi).
+  if (!ancien || suggestion === "Pas contacté") return { etat: "Pas contacté", auto: false, ancien: null, suggestion: null, affiche: "Pas contacté" };
   return { etat: null, auto: false, ancien, suggestion, affiche: suggestion ?? "Pas contacté" };
 }
 
@@ -87,3 +90,10 @@ export function etatManuelDonateur(h: SuiviAction[] | undefined): (typeof ETATS_
   const l = h?.find((x) => x.etat === "Aucun" || (ETATS_DONATEUR_MANUELS as readonly string[]).includes(x.etat ?? ""));
   return l && l.etat !== "Aucun" ? (l.etat as (typeof ETATS_DONATEUR_MANUELS)[number]) : null;
 }
+
+/** Icônes des états (colonne État étroite ; le nom s'affiche au survol et dans le menu). */
+export const ICONE_ETAT: Record<string, string> = {
+  "Pas contacté": "○", Contacté: "📞", Promesse: "🤝", Donateur: "💚",
+  "Sans réponse, à relancer": "⏳", "Pas intéressé": "✖", "Ne plus solliciter": "🚫",
+};
+export const LEGENDE_ETATS = (etats: readonly string[]) => "Légende : " + etats.map((e) => `${ICONE_ETAT[e] ?? "•"} ${e}`).join(" · ");

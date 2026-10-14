@@ -31,7 +31,8 @@ import { nomCliquableCls } from "@/lib/ui";
 import { inputCls } from "./GestionComptes";
 import { AjoutSuivi } from "@/components/SuiviDonateur";
 import RelationResponsable, { ChoixColonnes, useColonnesMasquees } from "@/components/RelationResponsable";
-import { ETATS_DONATEUR_MANUELS, TON_ETAT_DONATEUR, etatManuelDonateur, type EtatDonateurAffiche } from "@/lib/etatProspect";
+import SuiviCoche from "@/components/SuiviCoche";
+import { ICONE_ETAT, LEGENDE_ETATS, ETATS_DONATEUR_MANUELS, TON_ETAT_DONATEUR, etatManuelDonateur, type EtatDonateurAffiche } from "@/lib/etatProspect";
 import { TYPES_PROSPECT, type TypeProspect } from "@/lib/pipeline";
 import { TYPES_ACTION_PROSPECT, dernierCommentaire, formatDateHeure, suiviParDonateur, type SuiviAction } from "@/lib/suiviDonateurs";
 import { RAYON_ALENTOURS_KM, distanceReims } from "@/lib/geoReims";
@@ -524,7 +525,7 @@ export default function DonateursPipeline({
               {vis("suivi") && <th className="px-3 py-1 font-medium border-x-2 border-x-blue-900 dark:border-x-blue-400" aria-sort={ariaSort("suivi", "suiviDate")}>
                 {bouton("suiviDate", "Suivi", "Trier par date de la dernière action")}
               </th>}
-              {vis("etat") && th("etat", "État")}
+              {vis("etat") && <th className="w-10 px-1 py-1 font-medium" title={LEGENDE_ETATS(ETATS_DONATEUR_MANUELS)}>{bouton("etat", "État", LEGENDE_ETATS(ETATS_DONATEUR_MANUELS))} <span aria-hidden>ⓘ</span></th>}
               {vis("qualification") && th("qualification", "Qualif.")}
               {vis("cumul") && th("cumul", "Cumul", true)}
               {vis("annee") && th("annee", "Cette année", true)}
@@ -580,28 +581,26 @@ export default function DonateursPipeline({
                       }}
                     />
                   </td>}
-                  {vis("suivi") && <td className="px-3 py-2 border-x-2 border-x-blue-900 dark:border-x-blue-400">
-                    <button type="button" disabled={!peutSuivre} onClick={() => cliquerSuivi(p)}
-                      title={der ? `Dernière action le ${formatDateHeure(der.cree_le)} par ${der.auteur}` : peutSuivre ? "Ajouter une action" : undefined}
-                      className="mx-auto flex flex-wrap items-center justify-center gap-1 rounded enabled:hover:bg-surface-2">
-                      {der && der.actions.length ? der.actions.map((a) => (
-                        <span key={a} className="whitespace-nowrap rounded-full bg-surface-2 px-2 py-0.5 text-xs font-medium">{a}</span>
-                      )) : <span className="text-muted">{peutSuivre ? "+ action" : "—"}</span>}
-                      {der && <span className="text-[11px] text-muted">{new Date(der.cree_le).toLocaleDateString("fr-FR")}</span>}
-                    </button>
+                  {vis("suivi") && <td className="min-w-40 px-2 py-2 border-x-2 border-x-blue-900 dark:border-x-blue-400">
+                    <SuiviCoche der={der} auteur={auteurSuivi} peutSuivre={peutSuivre} cibleType="donateur" cle={p.cle}
+                      donsIds={(donsParCle.get(p.cle) ?? []).map((d) => d.id)} nom={p.nom}
+                      onPlus={(ex) => { setAjoutExistante(ex); setAjoutCle(p.cle); }} />
                   </td>}
-                  {vis("etat") && <td className="px-2 py-2">
-                    <div className="flex flex-col items-center gap-0.5">
-                      {manuel && pastille(manuel)}
+                  {vis("etat") && <td className="w-10 px-1 py-2">
+                    <span className="relative inline-flex">
+                      <span title={manuel ? `${manuel} (état manuel)` : "Aucun état manuel"}
+                        className={`inline-flex h-7 w-7 items-center justify-center rounded-full text-sm ${manuel ? TON_ETAT_DONATEUR[manuel] : "text-muted"}`}>
+                        {manuel ? ICONE_ETAT[manuel] : "·"}
+                      </span>
                       {peutSuivre && (
                         <select value="" onChange={(e) => e.target.value && void ligneSuivi(p, e.target.value, "")}
-                          aria-label={`État manuel : ${p.nom}`} className="rounded border border-border bg-background py-0 text-[11px] text-muted">
-                          <option value="">{manuel ? "Changer…" : "+ état"}</option>
-                          {ETATS_DONATEUR_MANUELS.filter((x) => x !== manuel).map((x) => <option key={x} value={x}>{x}</option>)}
+                          aria-label={`État manuel : ${p.nom}`} title={manuel ?? "Choisir un état manuel"} className="absolute inset-0 cursor-pointer opacity-0">
+                          <option value="">{manuel ? `${ICONE_ETAT[manuel]} ${manuel}` : "— aucun état manuel"}</option>
+                          {ETATS_DONATEUR_MANUELS.filter((x) => x !== manuel).map((x) => <option key={x} value={x}>{ICONE_ETAT[x]} {x}</option>)}
                           {manuel && <option value="Aucun">Retirer l&apos;état manuel</option>}
                         </select>
                       )}
-                    </div>
+                    </span>
                   </td>}
                   {vis("qualification") && <td className="w-24 px-2 py-2">
                     <div className="flex flex-col items-center gap-0.5">

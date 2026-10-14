@@ -6,9 +6,10 @@ import { createClient } from "@/lib/supabase/client";
 import { formatEuros } from "@/lib/format";
 import { Modal, Field, FormFooter, inputCls } from "@/components/GestionComptes";
 import { AjoutSuivi, HistoriqueSuivi } from "@/components/SuiviDonateur";
-import { ETATS_PROSPECT, AIDE_ETAT, TON_ETAT, etatProspect, etatSuivant, type EtatProspect, type EtatCalcule } from "@/lib/etatProspect";
+import { ETATS_PROSPECT, AIDE_ETAT, TON_ETAT, etatProspect, etatSuivant, ICONE_ETAT, LEGENDE_ETATS, type EtatProspect, type EtatCalcule } from "@/lib/etatProspect";
 import { TYPES_ACTION_PROSPECT, dernierCommentaire, formatDateHeure, suiviParCle, type SuiviAction } from "@/lib/suiviDonateurs";
 import { trierListe, useTri } from "@/components/TriColonnes";
+import SuiviCoche from "@/components/SuiviCoche";
 import RelationResponsable from "@/components/RelationResponsable";
 import { nomCliquableCls } from "@/lib/ui";
 import { useCoffre } from "@/components/CoffreProvider";
@@ -573,7 +574,7 @@ export default function GestionPipeline({
               {vis("suivi") && <th className="px-4 py-3 font-medium border-x-2 border-x-blue-900 dark:border-x-blue-400" aria-sort={ariaSort("suivi", "suiviDate")}>
                 {bouton("suiviDate", "Suivi", "Trier par date de la dernière action")}
               </th>}
-              {vis("etat") && thTri("etat", "État")}
+              {vis("etat") && <th className="w-10 px-1 py-3 font-medium" title={LEGENDE_ETATS(ETATS_PROSPECT)}>{bouton("etat", "État", LEGENDE_ETATS(ETATS_PROSPECT))} <span aria-hidden>ⓘ</span></th>}
               {vis("cible") && thTri("cible", "Capacité")}
               {vis("obtenu") && thTri("obtenu", "Obtenu", true)}
               {vis("commentaire") && thTri("commentaire", "Commentaire")}
@@ -645,48 +646,24 @@ export default function GestionPipeline({
                         }}
                       />
                     </td>}
-                    {vis("suivi") && <td className="px-4 py-3 border-x-2 border-x-blue-900 dark:border-x-blue-400">
-                      <button type="button" disabled={!peutSuivre} onClick={() => cliquerSuivi(p)}
-                        title={der ? `Dernière action le ${formatDateHeure(der.cree_le)} par ${der.auteur}${peutSuivre ? (der.auteur === auteurSuivi && Date.now() - new Date(der.cree_le).getTime() < H24 ? " — cliquer pour la modifier" : " — cliquer pour ajouter une action") : ""}` : peutSuivre ? "Ajouter une action" : undefined}
-                        className="mx-auto flex flex-wrap items-center justify-center gap-1 rounded enabled:hover:bg-surface-2">
-                        {der && der.actions.length ? der.actions.map((a) => (
-                          <span key={a} className="whitespace-nowrap rounded-full bg-surface-2 px-2 py-0.5 text-xs font-medium">{a}</span>
-                        )) : <span className="text-muted">{peutSuivre ? "+ action" : "—"}</span>}
-                        {der && <span className="text-[11px] text-muted">{new Date(der.cree_le).toLocaleDateString("fr-FR")}</span>}
-                      </button>
+                    {vis("suivi") && <td className="min-w-40 px-2 py-2 border-x-2 border-x-blue-900 dark:border-x-blue-400">
+                      <SuiviCoche der={der} auteur={auteurSuivi} peutSuivre={peutSuivre} cibleType="prospect" cle={p.id} nom={nomP}
+                        onPlus={(ex) => setAjoutSuiviEtat(ex ? { p, existante: ex } : { p })} />
                     </td>}
-                    {vis("etat") && <td className="whitespace-nowrap px-4 py-3">
-                      {ec.etat || !peutEcrire ? (
-                        peutEcrire && !ec.auto ? (
-                          <select value={ec.etat ?? ""} disabled={busy === p.id} onChange={(e) => void definirEtat(p, e.target.value)}
-                            aria-label={`État : ${nomP}`} title={ec.etat ? AIDE_ETAT[ec.etat] : undefined}
-                            className={`rounded-full border border-transparent px-2 py-0.5 text-xs font-medium hover:border-border ${ec.etat ? TON_ETAT[ec.etat] : ""}`}>
-                            {ETATS_PROSPECT.map((v) => <option key={v} value={v}>{v}</option>)}
+                    {vis("etat") && <td className="w-10 px-1 py-2">
+                      <span className="relative inline-flex">
+                        <span title={`${ec.affiche}${ec.auto ? " (automatique : un don est enregistré)" : ec.ancien ? ` — suggéré (ancienne valeur : ${ec.ancien})` : ""}`}
+                          className={`inline-flex h-7 w-7 items-center justify-center rounded-full text-sm ${TON_ETAT[ec.affiche]} ${!ec.etat ? "border border-dashed border-accent" : ""}`}>
+                          {ICONE_ETAT[ec.affiche]}
+                        </span>
+                        {peutEcrire && !ec.auto && (
+                          <select value={ec.etat ?? ""} disabled={busy === p.id} onChange={(e) => e.target.value && void definirEtat(p, e.target.value)}
+                            aria-label={`État : ${nomP}`} title={ec.affiche} className="absolute inset-0 cursor-pointer opacity-0">
+                            {!ec.etat && <option value="">{ec.ancien ? `Ancien : ${ec.ancien}` : "—"}</option>}
+                            {ETATS_PROSPECT.map((v) => <option key={v} value={v}>{ICONE_ETAT[v]} {v}</option>)}
                           </select>
-                        ) : (
-                          <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${TON_ETAT[ec.affiche]}`} title={ec.auto ? "Automatique : un don est enregistré pour ce prospect" : AIDE_ETAT[ec.affiche]}>
-                            {ec.etat ?? ec.ancien ?? "—"}
-                          </span>
-                        )
-                      ) : (
-                        <div className="flex flex-col items-center gap-0.5">
-                          <span className="text-xs text-muted" title="Ancienne valeur (conservée)">{ec.ancien ?? "—"}</span>
-                          <span className="inline-flex items-center gap-1">
-                            {ec.suggestion && (
-                              <button type="button" disabled={busy === p.id} onClick={() => void definirEtat(p, ec.suggestion!)}
-                                title={`Accepter l'état suggéré : ${ec.suggestion} (${AIDE_ETAT[ec.suggestion]})`}
-                                className={`rounded-full border border-dashed border-accent px-2 py-0.5 text-xs font-medium ${TON_ETAT[ec.suggestion]}`}>
-                                → {ec.suggestion} ✓
-                              </button>
-                            )}
-                            <select value="" disabled={busy === p.id} onChange={(e) => e.target.value && void definirEtat(p, e.target.value)}
-                              aria-label={`Choisir l'état : ${nomP}`} className="rounded border border-border bg-background py-0.5 text-[11px] text-muted">
-                              <option value="">Autre…</option>
-                              {ETATS_PROSPECT.map((v) => <option key={v} value={v}>{v}</option>)}
-                            </select>
-                          </span>
-                        </div>
-                      )}
+                        )}
+                      </span>
                     </td>}
                     {vis("cible") && <td className="px-4 py-3 text-right">
                       <div>

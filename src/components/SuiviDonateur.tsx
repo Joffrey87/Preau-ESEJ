@@ -145,7 +145,7 @@ export function HistoriqueSuivi({ historique }: { historique: SuiviAction[] }) {
         <ol className="divide-y divide-border rounded-lg border border-border bg-surface text-sm">
           {historique.map((h) => (
             <li key={h.id} className="px-3 py-1.5" title={`${formatDateHeure(h.cree_le)} · ${h.auteur}`}>
-              <span className="tabular-nums text-muted">{new Date(h.cree_le).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" })}</span>
+              <span className="tabular-nums text-muted">{h.date_action ? new Date(h.date_action + "T12:00:00").toLocaleDateString("fr-FR") : new Date(h.cree_le).toLocaleDateString("fr-FR", { timeZone: "Europe/Paris" })}</span>
               {" — "}
               <span className="font-medium">{h.actions.length ? h.actions.join(", ") : "Commentaire"}</span>
               {h.etat && <span className="text-accent"> → {h.etat}</span>}

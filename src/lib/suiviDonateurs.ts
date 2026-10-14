@@ -40,6 +40,8 @@ export type SuiviAction = {
   note: string | null;
   auteur: string;
   cree_le: string;
+  /** Date de l'action choisie (sinon cree_le). */
+  date_action?: string | null;
   /** Dons du donateur au moment de l'action : lien stable (renommage, regroupement de fiches). */
   dons_ids?: string[];
 };

@@ -56,6 +56,7 @@ export default async function PipelinePage() {
         obtenus={obtenus}
         peutLier={["tresorier", "president", "administrateur"].includes(slugVu)}
         peutModifierDons={slugVu === "tresorier"}
+        peutModifierRelation={["recherche-fonds", "tresorier", "president"].includes(slugVu)}
         suivi={(suiviData ?? []) as SuiviAction[]}
         peutSuivre={ROLES_SUIVI.includes(slugVu)}
         auteurSuivi={ctx.prenomProfil}

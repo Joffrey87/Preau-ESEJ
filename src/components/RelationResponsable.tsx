@@ -10,7 +10,7 @@ const CADRE = "text-amber-700 dark:text-amber-300";
 
 /**
  * Relation et Responsable dans une seule cellule. Par défaut, la personne de la Relation est aussi le Responsable
- * (texte ambre) ; « Responsable différent » affiche « Marie · Resp. : Paul ».
+ * (texte ambre) ; « Responsable différent » affiche « Marie · Paul (Paul en ambre) ».
  * `responsable` vide = même personne que la relation.
  */
 export default function RelationResponsable({
@@ -43,6 +43,7 @@ export default function RelationResponsable({
   const liste = [...new Set([...PROFILS_RECHERCHE_FONDS, ...PROFILS_ADMIN_RESERVE, ...suggestions])];
   const idListe = `rel-${nom.replace(/\W+/g, "-")}`;
 
+  const modifie = r.trim() !== rel || diff !== different || (diff && rp.trim() !== resp);
   async function valider() {
     setBusy(true);
     setErreur(null);
@@ -56,7 +57,7 @@ export default function RelationResponsable({
   const affichage = !rel && !resp ? (
     <span className="text-muted">—</span>
   ) : different ? (
-    <span title={legende}>{rel && <>{rel} · </>}<span className={CADRE}>Resp. : {resp}</span></span>
+    <span title={legende}>{rel && <>{rel} · </>}<span className={CADRE}>{resp}</span></span>
   ) : (
     <span className={CADRE} title={`${legende} — ici, la Relation est aussi le Responsable`}>{rel}</span>
   );
@@ -70,10 +71,11 @@ export default function RelationResponsable({
       ) : affichage}
       {ouvert && (
         <>
-          <div className="fixed inset-0 z-10" onClick={() => setOuvert(false)} />
+          <div className="fixed inset-0 z-10" onClick={() => (busy ? undefined : modifie ? void valider() : setOuvert(false))} title="Cliquer à côté enregistre" />
           <div className="absolute left-0 top-full z-20 mt-1 w-64 space-y-2 rounded-lg border border-border bg-surface p-3 text-left text-sm shadow-lg">
             <label className="block text-xs text-muted">Relation (qui l&apos;a amené)
-              <input autoFocus type="text" list={idListe} value={r} disabled={!peutRelation} onChange={(e) => setR(e.target.value)}
+              <input autoFocus type="text" list={idListe} value={r} disabled={!peutRelation} onChange={(e) => setR(e.target.value)} maxLength={120}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void valider(); } if (e.key === "Escape") setOuvert(false); }}
                 placeholder="Prénom, profil ou nom libre…" className="mt-0.5 w-full rounded-md border border-border bg-background px-2 py-1 text-sm text-foreground" />
               <datalist id={idListe}>{liste.map((x) => <option key={x} value={x} />)}</datalist>
             </label>

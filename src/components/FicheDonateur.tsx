@@ -10,6 +10,8 @@ import { badgesDe, badgeTemperature, temperatureDe, type ProfilDonateur } from "
 import type { Don } from "@/components/GestionDons";
 import ModifierDonateur from "@/components/ModifierDonateur";
 import { ChoixReserve, HistoriqueSuivi } from "@/components/SuiviDonateur";
+import { PROFILS_ADMIN_RESERVE } from "@/lib/suiviDonateurs";
+import { PROFILS_RECHERCHE_FONDS } from "@/lib/profilsContact";
 import type { SuiviAction } from "@/lib/suiviDonateurs";
 
 /** Recommandation d'action en une phrase, selon le profil. */
@@ -29,7 +31,10 @@ export default function FicheDonateur({
   dons,
   onClose,
   suivi = [],
+  onRelation,
 }: {
+  /** Enregistre la Relation (texte libre) ; absent = lecture seule. */
+  onRelation?: (relation: string) => Promise<string | null>;
   profil: ProfilDonateur;
   dons: Don[];
   /** Historique des actions de suivi, du plus récent au plus ancien. */
@@ -132,6 +137,23 @@ export default function FicheDonateur({
             {recent?.cp_ville && <span>{[recent.adresse, recent.cp_ville].filter(Boolean).join(" · ")}</span>}
             {contactMorale && <span>Contact : {contactMorale}</span>}
           </div>
+          <label className="mt-1 flex flex-wrap items-center gap-2 text-sm">
+            <strong>Relation</strong>
+            {onRelation ? (
+              <input type="text" key={profil.origine ?? ""} defaultValue={profil.origine ?? ""} list="relations-donateurs" maxLength={120}
+                placeholder="Qui l'a amené (texte libre)…" aria-label="Relation (qui l'a amené)"
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); (e.target as HTMLInputElement).blur(); } }}
+                onBlur={async (e) => {
+                  const v = e.target.value.trim();
+                  if (v === (profil.origine ?? "").trim()) return;
+                  setErreur(null);
+                  const err = await onRelation(v);
+                  if (err) setErreur("Relation non enregistrée : " + err);
+                }}
+                className="min-w-48 flex-1 rounded-md border border-border bg-background px-1.5 py-0.5 text-sm" />
+            ) : <span className="text-muted">{profil.origine || "—"}</span>}
+            <datalist id="relations-donateurs">{[...PROFILS_RECHERCHE_FONDS, ...PROFILS_ADMIN_RESERVE].map((x) => <option key={x} value={x} />)}</datalist>
+          </label>
           <div className="mt-1">
             <ModifierDonateur key={recent?.id} dons={dons} />
           </div>

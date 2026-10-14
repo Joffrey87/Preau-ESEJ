@@ -100,6 +100,7 @@ export default function DonateursPipeline({
   filtreInitial = null,
   carteInitiale = false,
   peutModifierDons = false,
+  peutModifierRelation = false,
   suivi = [],
   peutSuivre = false,
   auteurSuivi = null,
@@ -107,6 +108,7 @@ export default function DonateursPipeline({
   donsInit: Don[];
   /** Modification de la relation en ligne (Trésorier, comme les dons). */
   peutModifierDons?: boolean;
+  peutModifierRelation?: boolean;
   /** Historique des actions de suivi (tous donateurs). */
   suivi?: SuiviAction[];
   /** Ajout d'actions et réservation : Recherche de fonds, Trésorier, Administrateur. */
@@ -286,6 +288,16 @@ export default function DonateursPipeline({
     setEditRelation(null);
     setRelationEtat(null);
     router.refresh();
+  }
+
+  /** Relation (texte libre) : enregistrée sur le don qui porte la relation du donateur. */
+  async function majRelation(cle: string, rel: string, rafraichir = true): Promise<string | null> {
+    const don = donDeRelation(cle);
+    if (!don) return "Aucun don pour ce donateur.";
+    const { error } = await createClient().rpc("dons_modifier_relation", { p_dons: [don.id], p_valeur: rel, p_prenom: auteurSuivi ?? "" });
+    if (error) return error.message;
+    if (rafraichir) router.refresh();
+    return null;
   }
 
   /** Clic sur le Suivi : modifier sa dernière action (moins de 24 h, même auteur), sinon en ajouter une. */
@@ -559,17 +571,14 @@ export default function DonateursPipeline({
                     <RelationResponsable
                       relation={p.origine}
                       responsable={p.contactReserveA}
-                      peutRelation={peutModifierDons}
+                      peutRelation={peutModifierRelation}
                       peutResponsable={peutSuivre}
                       nom={p.nom}
                       cible="donateur"
                       onEnregistrer={async (rel, resp) => {
-                        if (peutModifierDons && rel !== (p.origine ?? "").trim()) {
-                          const don = donDeRelation(p.cle);
-                          if (don) {
-                            const { data, error } = await createClient().from("dons").update({ origine: rel || null }).eq("id", don.id).select("id");
-                            if (error || !data?.length) return error?.message ?? "modification refusée";
-                          }
+                        if (peutModifierRelation && rel !== (p.origine ?? "").trim()) {
+                          const e = await majRelation(p.cle, rel, false);
+                          if (e) return e;
                         }
                         if (peutSuivre && (resp ?? "") !== (p.contactReserveA ?? "")) {
                           const ids = (donsParCle.get(p.cle) ?? []).map((x) => x.id);
@@ -704,6 +713,7 @@ export default function DonateursPipeline({
           profil={profilParCle.get(ficheCle)!}
           dons={donsParCle.get(ficheCle) ?? []}
           suivi={suiviCle.get(ficheCle) ?? []}
+          onRelation={peutModifierRelation ? (rel) => majRelation(ficheCle, rel) : undefined}
           onClose={() => setFicheCle(null)}
         />
       )}

@@ -28,24 +28,13 @@ export const MISES_A_JOUR: MiseAJour[] = [
   {
     depuis: "14/10",
     date: "2026-10-14",
-    titre: "MAJ du 14/10",
+    titre: "Mises à jour du 14/10",
     points: [
       { texte: "Suivi des actions à cocher, avec la date", href: "/mecenat/pipeline?volet=prospections" },
       { texte: "Fiche prospect : clic sur le nom", href: "/mecenat/pipeline?volet=prospections" },
       { texte: "États des prospects", href: "/mecenat/pipeline?volet=prospections" },
       { texte: "Onglet Dons et demande de reçu fiscal", href: "/recherche/dons" },
       { texte: "« Responsable » en ambre, « Réservé à » en orange", href: "/mecenat/pipeline" },
-    ],
-  },
-  {
-    depuis: "05/10",
-    date: "2026-10-05",
-    points: [
-      { texte: "Nouvelle jauge des dons", href: "/mecenat/pipeline" },
-      { texte: "Carte des donateurs « Alentours Reims »", href: "/mecenat/pipeline?filtre=alentours&carte=1" },
-      { texte: "Information donateur « Bourse »", href: "/mecenat/pipeline?filtre=bourse" },
-      { texte: "Tableau des prospects modifiable", href: "/mecenat/pipeline?volet=prospections" },
-      { texte: "Import de la Liste prospect d'Axel", href: "/mecenat/pipeline?volet=prospections&liste=Liste%20Axel" },
     ],
   },
 ];

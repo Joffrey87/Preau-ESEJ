@@ -23,7 +23,7 @@ export async function telechargerListeProspects(lignes: LignePdfProspect[], filt
   const w = W - 2 * M;
   for (const l of lignes) {
     const infos = [
-      `Type : ${l.segment} · État : ${l.etape}${l.relation ? ` · Relation : ${l.relation}` : ""}${l.reserve ? ` · Réservé à : ${l.reserve}` : ""}`,
+      `Type : ${l.segment} · État : ${l.etape}${l.relation ? ` · Relation : ${l.relation}` : ""}${l.reserve ? ` · Responsable : ${l.reserve}` : ""}`,
       `Adresse : ${l.adresse || "—"}`,
       `Courriel : ${l.courriel || "—"} · Téléphone : ${l.telephone || "—"}`,
       `Dernière action : ${l.derniereAction || "—"}`,

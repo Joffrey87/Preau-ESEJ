@@ -191,7 +191,7 @@ export function ChoixReserve({
         maxLength={80}
         value={autre}
         placeholder="Nom…"
-        aria-label={label ?? "Réservé à (autre)"}
+        aria-label={label ?? "Responsable (autre)"}
         onChange={(e) => setAutre(e.target.value)}
         onKeyDown={(e) => {
           if (e.key === "Enter") {
@@ -209,7 +209,7 @@ export function ChoixReserve({
     <select
       value={value ?? ""}
       disabled={disabled}
-      aria-label={label ?? "Réservé à"}
+      aria-label={label ?? "Responsable"}
       onChange={(e) => (e.target.value === "__autre" ? setAutre(connu ? "" : value ?? "") : onChange(e.target.value))}
       className={cls}
     >
@@ -290,7 +290,7 @@ export function CellulesSuivi({
       </td>
       <td className="px-4 py-3">
         {peutSuivre ? (
-          <ChoixReserve key={reserve ?? ""} value={reserve} disabled={reserveBusy} onChange={onReserver} compact label={`Réservé à : ${nom}`} />
+          <ChoixReserve key={reserve ?? ""} value={reserve} disabled={reserveBusy} onChange={onReserver} compact label={`Responsable : ${nom}`} />
         ) : (
           reserve ?? <span className="text-muted">—</span>
         )}

@@ -435,9 +435,9 @@ function Fenetre({
                 </select>
               </label>
               <div className="text-xs text-muted">
-                Réservé à
+                Responsable
                 <div className="mt-0.5">
-                  <ChoixReserve key={reserveDefaut} value={reserveDefaut || null} onChange={setReserveDefaut} label="Réservé à (import)" />
+                  <ChoixReserve key={reserveDefaut} value={reserveDefaut || null} onChange={setReserveDefaut} label="Responsable (import)" />
                 </div>
               </div>
             </div>

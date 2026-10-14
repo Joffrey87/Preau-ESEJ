@@ -29,8 +29,11 @@ import { trierListe, useTri } from "@/components/TriColonnes";
 import { PARAMS } from "@/lib/segments";
 import { nomCliquableCls } from "@/lib/ui";
 import { inputCls } from "./GestionComptes";
-import { AjoutSuivi, CellulesSuivi } from "@/components/SuiviDonateur";
-import { dernierCommentaire, etatCourant, suiviParDonateur, type SuiviAction } from "@/lib/suiviDonateurs";
+import { AjoutSuivi } from "@/components/SuiviDonateur";
+import RelationResponsable, { ChoixColonnes, useColonnesMasquees } from "@/components/RelationResponsable";
+import { ETATS_DONATEUR_MANUELS, TON_ETAT_DONATEUR, etatManuelDonateur, type EtatDonateurAffiche } from "@/lib/etatProspect";
+import { TYPES_PROSPECT, type TypeProspect } from "@/lib/pipeline";
+import { TYPES_ACTION_PROSPECT, dernierCommentaire, formatDateHeure, suiviParDonateur, type SuiviAction } from "@/lib/suiviDonateurs";
 import { RAYON_ALENTOURS_KM, distanceReims } from "@/lib/geoReims";
 import type { Don } from "@/components/GestionDons";
 
@@ -58,6 +61,33 @@ const correspond = (p: ProfilDonateur, f: SegFiltre) =>
  * collecte, relances, prochaines actions suggérées).
  */
 type ColTriB = "donateur" | "bourse" | "autres" | "dernier";
+
+const H24 = 24 * 3600 * 1000;
+/** Colonnes masquables du tableau des donateurs (préférence par personne). */
+const COLONNES_D = [
+  { key: "relation", label: "Relation · Responsable" }, { key: "suivi", label: "Suivi" }, { key: "etat", label: "État" },
+  { key: "qualification", label: "Qualification" }, { key: "cumul", label: "Cumul" }, { key: "annee", label: "Cette année" },
+  { key: "dernier", label: "Dernier don" }, { key: "commentaire", label: "Commentaire" }, { key: "bourse", label: "Donateur Bourse" },
+] as const;
+type ColD = (typeof COLONNES_D)[number]["key"];
+const DESCRIPTION_ETAT: Record<EtatDonateurAffiche, string> = {
+  Actif: `Dernier don il y a moins de ${PARAMS.sommeilMois} mois`,
+  "Grand donateur": `Au moins ${PARAMS.seuilGrandDonateur.toLocaleString("fr-FR")} € sur une année`,
+  "En sommeil": `Aucun don depuis ${PARAMS.sommeilMois} à ${PARAMS.perduMois} mois`,
+  Perdu: `Aucun don depuis plus de ${PARAMS.perduMois} mois`,
+  Remercié: "Remerciement fait (état manuel)",
+  "Sans réponse, à relancer": "Pas de réponse : à relancer (état manuel)",
+  "Ne plus solliciter": "Ne plus solliciter ce donateur (état manuel)",
+};
+/** Type d'après la catégorie du donateur. */
+const typeCategorie = (c: string | null | undefined): TypeProspect => {
+  const t = (c ?? "").toLowerCase();
+  if (!t || t.startsWith("particulier")) return "particulier";
+  if (/entreprise|soci/.test(t)) return "pro";
+  if (/association|fondation|fonds/.test(t)) return "association";
+  if (/communaut|religieu|paroisse/.test(t)) return "communaute";
+  return "autre";
+};
 
 type ColTri =
   | "donateur" | "relation" | "suivi" | "suiviDate" | "etat" | "commentaire" | "reserve"
@@ -112,6 +142,11 @@ export default function DonateursPipeline({
     </th>
   );
   const [ajoutCle, setAjoutCle] = useState<string | null>(null);
+  const [ajoutExistante, setAjoutExistante] = useState<SuiviAction | null>(null);
+  const [editCom, setEditCom] = useState<string | null>(null);
+  const [fTypes, setFTypes] = useState<TypeProspect[]>([]);
+  const [fManuels, setFManuels] = useState<string[]>([]);
+  const { vis, basculer: basculerCol } = useColonnesMasquees<ColD>(`donateurs.cols:${auteurSuivi ?? "profil"}`);
   const [reserveBusy, setReserveBusy] = useState<string | null>(null);
   const [relationEtat, setRelationEtat] = useState<{ cle: string; etat: "enregistrement" | "erreur"; message?: string } | null>(null);
 
@@ -180,6 +215,12 @@ export default function DonateursPipeline({
             return d != null && d <= RAYON_ALENTOURS_KM;
           })
       ).filter(correspondRecherche);
+  const typeDe = (cle: string) => typeCategorie([...(donsParCle.get(cle) ?? [])].reverse().map((d) => d.categorie_donateur).find(Boolean));
+  if (fTypes.length || fManuels.length) {
+    const garde = affiches.filter((p) => (fTypes.length === 0 || fTypes.includes(typeDe(p.cle))) &&
+      (fManuels.length === 0 || fManuels.includes(etatManuelDonateur(suiviCle.get(p.cle)) ?? "")));
+    affiches.splice(0, affiches.length, ...garde);
+  }
   // Filtre « Familles » : les actuelles d'abord, puis les anciennes, puis le reste (tri stable : ordre des dons conservé).
   const rangFamille = (p: ProfilDonateur) => (p.famille === "actuelle" ? 0 : p.famille === "ancienne" ? 1 : 2);
   if (estActif("famille")) affiches.sort((a, b) => rangFamille(a) - rangFamille(b));
@@ -191,7 +232,7 @@ export default function DonateursPipeline({
       case "relation": return p.origine?.trim() || null;
       case "suivi": return h?.[0]?.actions.join(", ") || null;
       case "suiviDate": return h?.[0]?.cree_le ?? null;
-      case "etat": return etatCourant(h);
+      case "etat": return etatManuelDonateur(h) ?? (p.estGrand ? "Grand donateur" : p.etat);
       case "commentaire": return dernierCommentaire(h);
       case "reserve": return p.contactReserveA || null;
       case "qualification": return badgesDe(p).map((b) => b.label).join(", ") || null;
@@ -245,6 +286,37 @@ export default function DonateursPipeline({
     setEditRelation(null);
     setRelationEtat(null);
     router.refresh();
+  }
+
+  /** Clic sur le Suivi : modifier sa dernière action (moins de 24 h, même auteur), sinon en ajouter une. */
+  function cliquerSuivi(p: ProfilDonateur) {
+    const der = suiviCle.get(p.cle)?.[0];
+    const ok = der && der.actions.length > 0 && der.auteur === auteurSuivi && Date.now() - new Date(der.cree_le).getTime() < H24;
+    setAjoutExistante(ok ? der : null);
+    setAjoutCle(p.cle);
+  }
+
+  /** Ligne de Suivi sans action (état manuel ou commentaire). */
+  async function ligneSuivi(p: ProfilDonateur, etat: string, note: string) {
+    const { error } = await createClient().rpc("ajouter_suivi_action", {
+      p_cible_type: "donateur", p_cible_cle: p.cle, p_dons_ids: (donsParCle.get(p.cle) ?? []).map((d) => d.id),
+      p_actions: [], p_etat: etat, p_note: note, p_auteur: auteurSuivi ?? "",
+    });
+    if (error) return setErreurBourse("Enregistrement impossible : " + error.message);
+    router.refresh();
+  }
+
+  async function enregistrerCommentaire(p: ProfilDonateur, texte: string) {
+    setEditCom(null);
+    const h = suiviCle.get(p.cle) ?? [];
+    if (texte.trim() === (dernierCommentaire(h) ?? "").trim()) return;
+    const der = h.find((l) => l.note);
+    if (der && der.auteur === auteurSuivi && Date.now() - new Date(der.cree_le).getTime() < H24) {
+      const { error } = await createClient().rpc("modifier_suivi_action", { p_id: der.id, p_actions: der.actions, p_note: texte, p_auteur: auteurSuivi ?? "" });
+      if (error) return setErreurBourse("Commentaire non enregistré : " + error.message);
+      return router.refresh();
+    }
+    await ligneSuivi(p, "", texte);
   }
 
   async function reserver(p: ProfilDonateur, valeur: string) {
@@ -396,6 +468,25 @@ export default function DonateursPipeline({
             {f.label}
           </button>
         ))}
+        <span className="flex flex-wrap items-center gap-1" role="group" aria-label="Filtrer par type">
+          <span className="text-xs text-muted">Type</span>
+          {TYPES_PROSPECT.map((t) => (
+            <button key={t.key} type="button" aria-pressed={fTypes.includes(t.key)}
+              onClick={() => setFTypes((l) => (l.includes(t.key) ? l.filter((x) => x !== t.key) : [...l, t.key]))}
+              className={`rounded-full border px-2.5 py-0.5 text-xs ${fTypes.includes(t.key) ? "border-accent bg-accent-soft font-medium text-accent" : "border-border text-muted hover:bg-surface-2"}`}>
+              {fTypes.includes(t.key) ? "✓ " : ""}{t.label}
+            </button>
+          ))}
+          <span className="ml-1 text-xs text-muted">État</span>
+          {ETATS_DONATEUR_MANUELS.map((e) => (
+            <button key={e} type="button" aria-pressed={fManuels.includes(e)} title={DESCRIPTION_ETAT[e]}
+              onClick={() => setFManuels((l) => (l.includes(e) ? l.filter((x) => x !== e) : [...l, e]))}
+              className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${TON_ETAT_DONATEUR[e]} ${fManuels.includes(e) ? "ring-2 ring-accent" : "opacity-80"}`}>
+              {e}
+            </button>
+          ))}
+        </span>
+        <ChoixColonnes colonnes={COLONNES_D} vis={vis} basculer={basculerCol} pour={auteurSuivi} />
         <span className="ml-auto flex flex-wrap items-center gap-2">
           <ListeProfilsContact profils={profils} onOuvrirFiche={setFicheCle} />
           <ExportRelations profils={profils} donsParCle={donsParCle} aujourdhui={today} />
@@ -430,99 +521,118 @@ export default function DonateursPipeline({
           <thead>
             <tr className="border-b border-border text-center text-xs text-muted">
               {th("donateur", "Donateur")}
-              {th("relation", "Relation")}
-              <th className="px-3 py-1 font-medium" aria-sort={ariaSort("suivi", "suiviDate")}>
+              {vis("relation") && th("relation", "Relation · Responsable")}
+              {vis("suivi") && <th className="px-3 py-1 font-medium" aria-sort={ariaSort("suivi", "suiviDate")}>
                 <span className="inline-flex items-center gap-1">
                   {bouton("suivi", "Suivi", "Trier par action")}
                   {bouton("suiviDate", "date", "Trier par date de la dernière action")}
                 </span>
-              </th>
-              {th("etat", "État")}
-              {th("commentaire", "Commentaire")}
-              {th("reserve", "Réservé à")}
-              {th("qualification", "Qualification")}
-              {th("cumul", "Cumul", true)}
-              {th("annee", "Cette année", true)}
-              {th("dons", "Dons", true)}
-              {th("dernier", "Dernier don")}
-              <th className="w-20 px-2 py-1 text-center text-xs font-medium leading-tight">Donateur Bourse</th>
+              </th>}
+              {vis("etat") && th("etat", "État")}
+              {vis("qualification") && th("qualification", "Qualif.")}
+              {vis("cumul") && th("cumul", "Cumul", true)}
+              {vis("annee") && th("annee", "Cette année", true)}
+              {vis("dernier") && th("dernier", "Dernier don")}
+              {vis("commentaire") && th("commentaire", "Commentaire")}
+              {vis("bourse") && <th className="w-16 px-2 py-1 text-center text-xs font-medium leading-tight">Donateur Bourse</th>}
             </tr>
           </thead>
           <tbody>
             {affiches.length === 0 ? (
-              <tr><td colSpan={12} className="px-4 py-10 text-center text-muted">Aucun donateur pour ce filtre.</td></tr>
+              <tr><td colSpan={11} className="px-4 py-10 text-center text-muted">Aucun donateur pour ce filtre.</td></tr>
             ) : (
-              affichesTries.map((p) => (
+              affichesTries.map((p) => {
+                const h = suiviCle.get(p.cle);
+                const der = h?.[0];
+                const com = dernierCommentaire(h);
+                const manuel = etatManuelDonateur(h);
+                const autos: EtatDonateurAffiche[] = [p.etat === "actif" ? "Actif" : p.etat === "sommeil" ? "En sommeil" : "Perdu", ...(p.estGrand ? ["Grand donateur" as const] : [])];
+                const pastille = (e: EtatDonateurAffiche) => (
+                  <span key={e} title={DESCRIPTION_ETAT[e]} className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${TON_ETAT_DONATEUR[e]}`}>{e}</span>
+                );
+                return (
                 <tr key={p.cle} className="border-b border-border last:border-0">
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-2">
                     <button type="button" onClick={() => setFicheCle(p.cle)} className={nomCliquableCls}>
                       {p.nom}
                     </button>
                     {alentours && <div className="text-xs text-muted">≈ {distanceDe(p.cle)} km de Reims</div>}
                   </td>
-                  <td className="px-4 py-3 text-muted">
-                    {editRelation?.cle === p.cle ? (
-                      <input
-                        autoFocus
-                        type="text"
-                        value={editRelation.valeur}
-                        disabled={relationEtat?.cle === p.cle && relationEtat.etat === "enregistrement"}
-                        onChange={(e) => setEditRelation({ cle: p.cle, valeur: e.target.value })}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") e.currentTarget.blur();
-                          if (e.key === "Escape") {
-                            setRelationEtat(null);
-                            setEditRelation(null);
+                  {vis("relation") && <td className="px-3 py-2 text-muted">
+                    <RelationResponsable
+                      relation={p.origine}
+                      responsable={p.contactReserveA}
+                      peutRelation={peutModifierDons}
+                      peutResponsable={peutSuivre}
+                      nom={p.nom}
+                      onEnregistrer={async (rel, resp) => {
+                        if (peutModifierDons && rel !== (p.origine ?? "").trim()) {
+                          const don = donDeRelation(p.cle);
+                          if (don) {
+                            const { data, error } = await createClient().from("dons").update({ origine: rel || null }).eq("id", don.id).select("id");
+                            if (error || !data?.length) return error?.message ?? "modification refusée";
                           }
-                        }}
-                        onBlur={(e) => void enregistrerRelation(p, e.currentTarget.value)}
-                        aria-label={`Relation : ${p.nom}`}
-                        className={`${inputCls} min-w-32 py-1 text-sm`}
-                      />
-                    ) : peutModifierDons ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setRelationEtat(null);
-                          setEditRelation({ cle: p.cle, valeur: p.origine ?? "" });
-                        }}
-                        title="Modifier la relation"
-                        className="-mx-1 rounded px-1 text-left hover:bg-surface-2"
-                      >
-                        {p.origine?.trim() || "—"}
-                      </button>
-                    ) : (
-                      p.origine?.trim() || "—"
-                    )}
-                    {relationEtat?.cle === p.cle && (
-                      <div className={`text-xs ${relationEtat.etat === "erreur" ? "text-negative" : "text-muted"}`}>
-                        {relationEtat.etat === "erreur" ? `Erreur : ${relationEtat.message}` : "Enregistrement…"}
-                      </div>
-                    )}
-                  </td>
-                  <CellulesSuivi
-                    historique={suiviCle.get(p.cle)}
-                    peutSuivre={peutSuivre}
-                    onAjouter={() => setAjoutCle(p.cle)}
-                    reserve={p.contactReserveA}
-                    reserveBusy={reserveBusy === p.cle}
-                    onReserver={(v) => void reserver(p, v)}
-                    nom={p.nom}
-                  />
-                  <td className="px-4 py-3">
-                    <div className="flex flex-nowrap gap-1 whitespace-nowrap">
-                      {badgesDe(p).map((b) => (
-                        <span key={b.key} className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${TONE_CLASSES[b.tone]}`}>
+                        }
+                        if (peutSuivre && (resp ?? "") !== (p.contactReserveA ?? "")) {
+                          const ids = (donsParCle.get(p.cle) ?? []).map((x) => x.id);
+                          const { error } = await createClient().rpc("definir_contact_reserve", { p_ids: ids, p_valeur: resp ?? "" });
+                          if (error) return error.message;
+                        }
+                        router.refresh();
+                        return null;
+                      }}
+                    />
+                  </td>}
+                  {vis("suivi") && <td className="px-3 py-2">
+                    <button type="button" disabled={!peutSuivre} onClick={() => cliquerSuivi(p)}
+                      title={der ? `Dernière action le ${formatDateHeure(der.cree_le)} par ${der.auteur}` : peutSuivre ? "Ajouter une action" : undefined}
+                      className="flex flex-wrap items-center gap-1 rounded text-left enabled:hover:bg-surface-2">
+                      {der && der.actions.length ? der.actions.map((a) => (
+                        <span key={a} className="whitespace-nowrap rounded-full bg-surface-2 px-2 py-0.5 text-xs font-medium">{a}</span>
+                      )) : <span className="text-muted">{peutSuivre ? "+ action" : "—"}</span>}
+                      {der && <span className="text-[11px] text-muted">{new Date(der.cree_le).toLocaleDateString("fr-FR")}</span>}
+                    </button>
+                  </td>}
+                  {vis("etat") && <td className="px-2 py-2">
+                    <div className="flex flex-col items-start gap-0.5">
+                      {autos.map(pastille)}
+                      {manuel && pastille(manuel)}
+                      {peutSuivre && (
+                        <select value="" onChange={(e) => e.target.value && void ligneSuivi(p, e.target.value, "")}
+                          aria-label={`État manuel : ${p.nom}`} className="rounded border border-border bg-background py-0 text-[11px] text-muted">
+                          <option value="">{manuel ? "Changer…" : "+ état"}</option>
+                          {ETATS_DONATEUR_MANUELS.filter((x) => x !== manuel).map((x) => <option key={x} value={x}>{x}</option>)}
+                          {manuel && <option value="Aucun">Retirer l&apos;état manuel</option>}
+                        </select>
+                      )}
+                    </div>
+                  </td>}
+                  {vis("qualification") && <td className="w-24 px-2 py-2">
+                    <div className="flex flex-col items-start gap-0.5">
+                      {badgesDe(p).filter((b) => !["actif", "sommeil", "perdu", "grand", "reserve"].includes(b.key)).map((b) => (
+                        <span key={b.key} className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${TONE_CLASSES[b.tone]}`}>
                           {b.label}
                         </span>
                       ))}
                     </div>
-                  </td>
-                  <td className="px-4 py-3 text-right font-medium tabular-nums">{formatEuros(p.cumul)}</td>
-                  <td className="px-4 py-3 text-right tabular-nums text-muted">{p.cumulAnnee ? formatEuros(p.cumulAnnee) : "—"}</td>
-                  <td className="px-4 py-3 text-right tabular-nums">{p.nbDons}</td>
-                  <td className="px-4 py-3 tabular-nums">{p.moisDepuisDernier} mois</td>
-                  <td className="px-2 py-3 text-center">
+                  </td>}
+                  {vis("cumul") && <td className="px-3 py-2 text-right font-medium tabular-nums">{formatEuros(p.cumul)}</td>}
+                  {vis("annee") && <td className="px-3 py-2 text-right tabular-nums text-muted">{p.cumulAnnee ? formatEuros(p.cumulAnnee) : "—"}</td>}
+                  {vis("dernier") && <td className="px-3 py-2 whitespace-nowrap tabular-nums">{p.moisDepuisDernier} mois</td>}
+                  {vis("commentaire") && <td className="max-w-56 px-3 py-2 text-muted">
+                    {editCom === p.cle ? (
+                      <textarea autoFocus defaultValue={com ?? ""} rows={2} aria-label={`Commentaire : ${p.nom}`}
+                        onBlur={(e) => void enregistrerCommentaire(p, e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Escape") setEditCom(null); if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); (e.target as HTMLTextAreaElement).blur(); } }}
+                        className="w-52 rounded border border-accent bg-background px-1.5 py-1 text-xs text-foreground" />
+                    ) : (
+                      <button type="button" disabled={!peutSuivre} onClick={() => setEditCom(p.cle)} title={peutSuivre ? "Cliquer pour modifier le commentaire" : com ?? undefined}
+                        className="line-clamp-2 w-full rounded text-left enabled:hover:bg-surface-2">
+                        {com ?? "—"}
+                      </button>
+                    )}
+                  </td>}
+                  {vis("bourse") && <td className="px-2 py-2 text-center">
                     <input
                       type="checkbox"
                       checked={false}
@@ -531,9 +641,10 @@ export default function DonateursPipeline({
                       aria-label={`Donateur Bourse : ${p.nom}`}
                       className="h-3 w-3"
                     />
-                  </td>
+                  </td>}
                 </tr>
-              ))
+                );
+              })
             )}
           </tbody>
         </table>
@@ -601,7 +712,8 @@ export default function DonateursPipeline({
         />
       )}
       {ajoutCle && profilParCle.get(ajoutCle) && (
-        <AjoutSuivi cle={ajoutCle} donsIds={(donsParCle.get(ajoutCle) ?? []).map((d) => d.id)} nom={profilParCle.get(ajoutCle)!.nom} auteur={auteurSuivi} onClose={() => setAjoutCle(null)} />
+        <AjoutSuivi cle={ajoutCle} donsIds={(donsParCle.get(ajoutCle) ?? []).map((d) => d.id)} nom={profilParCle.get(ajoutCle)!.nom} auteur={auteurSuivi}
+          types={TYPES_ACTION_PROSPECT} etats={ETATS_DONATEUR_MANUELS} existante={ajoutExistante} onClose={() => { setAjoutCle(null); setAjoutExistante(null); }} />
       )}
     </div>
   );

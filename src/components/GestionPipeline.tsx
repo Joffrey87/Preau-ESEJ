@@ -5,11 +5,11 @@ import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { formatEuros, todayISO } from "@/lib/format";
 import { Modal, Field, FormFooter, inputCls } from "@/components/GestionComptes";
-import { AjoutSuivi, ChoixReserve, HistoriqueSuivi } from "@/components/SuiviDonateur";
+import { AjoutSuivi, HistoriqueSuivi } from "@/components/SuiviDonateur";
 import { ETATS_PROSPECT, AIDE_ETAT, TON_ETAT, etatProspect, etatSuivant, type EtatProspect, type EtatCalcule } from "@/lib/etatProspect";
 import { TYPES_ACTION_PROSPECT, dernierCommentaire, formatDateHeure, suiviParCle, type SuiviAction } from "@/lib/suiviDonateurs";
 import { trierListe, useTri } from "@/components/TriColonnes";
-import RelationEnLigne from "@/components/RelationEnLigne";
+import RelationResponsable from "@/components/RelationResponsable";
 import { nomCliquableCls } from "@/lib/ui";
 import { useCoffre } from "@/components/CoffreProvider";
 import DeverrouillerCoffre from "@/components/DeverrouillerCoffre";
@@ -63,9 +63,9 @@ type ColTriP =
   | "responsable" | "action" | "cible" | "obtenu";
 /** Colonnes masquables du tableau (préférence par personne). */
 const COLONNES_P = [
-  { key: "relation", label: "Relation" }, { key: "suivi", label: "Suivi" }, { key: "etat", label: "État" },
-  { key: "commentaire", label: "Commentaire" }, { key: "reserve", label: "Réservé à" }, { key: "responsable", label: "Responsable" },
+  { key: "relation", label: "Relation · Responsable" }, { key: "suivi", label: "Suivi" }, { key: "etat", label: "État" },
   { key: "action", label: "Prochaine action" }, { key: "cible", label: "Cible" }, { key: "obtenu", label: "Obtenu" },
+  { key: "commentaire", label: "Commentaire" },
 ] as const;
 type ColP = (typeof COLONNES_P)[number]["key"];
 const H24 = 24 * 3600 * 1000;
@@ -221,7 +221,7 @@ export default function GestionPipeline({
           segment: libelleType(p),
           etape: etatDe(p).affiche + (etatDe(p).etat ? "" : " (suggéré)"),
           relation: p.relation ?? "",
-          reserve: p.reserve_a ?? "",
+          reserve: p.reserve_a ?? p.responsable ?? p.relation ?? "",
           derniereAction: der ? `${[...der.actions, der.etat].filter(Boolean).join(", ") || "Action"} — ${new Date(der.cree_le).toLocaleDateString("fr-FR")}${der.auteur ? ` (${der.auteur})` : ""}` : "",
           commentaire: dernierCommentaire(h) ?? "",
         };
@@ -363,14 +363,7 @@ export default function GestionPipeline({
     router.refresh();
   }
 
-  async function reserverProspect(p: ProspectLisible, valeur: string) {
-    setBusy(p.id);
-    setErreurReserve(null);
-    const { error } = await createClient().rpc("definir_reserve_prospect", { p_id: p.id, p_valeur: valeur });
-    setBusy(null);
-    if (error) return setErreurReserve("Enregistrement impossible : " + error.message);
-    router.refresh();
-  }
+
 
   async function avancer(p: Prospect) {
     const suite = etatSuivant(etatDe(p).affiche);
@@ -583,7 +576,7 @@ export default function GestionPipeline({
           <thead>
             <tr className="border-b border-border text-left text-muted">
               {thTri("prospect", "Prospect")}
-              {vis("relation") && thTri("relation", "Relation")}
+              {vis("relation") && thTri("relation", "Relation · Responsable")}
               {vis("suivi") && <th className="px-4 py-3 font-medium" aria-sort={ariaSort("suivi", "suiviDate")}>
                 <span className="inline-flex items-center gap-1">
                   {bouton("suivi", "Suivi", "Trier par action")}
@@ -591,12 +584,10 @@ export default function GestionPipeline({
                 </span>
               </th>}
               {vis("etat") && thTri("etat", "État")}
-              {vis("commentaire") && thTri("commentaire", "Commentaire")}
-              {vis("reserve") && thTri("reserve", "Réservé à")}
-              {vis("responsable") && thTri("responsable", "Responsable")}
               {vis("action") && thTri("action", "Prochaine action")}
               {vis("cible") && thTri("cible", "Cible", true)}
               {vis("obtenu") && thTri("obtenu", "Obtenu", true)}
+              {vis("commentaire") && thTri("commentaire", "Commentaire")}
               <th className="px-4 py-3 text-right font-medium">Actions</th>
             </tr>
           </thead>
@@ -644,14 +635,23 @@ export default function GestionPipeline({
                       </div>
                     </td>
                     {vis("relation") && <td className="px-4 py-3 text-muted">
-                      <RelationEnLigne
-                        valeur={p.relation ?? null}
-                        modifiable={peutEcrire}
-                        liste="relations-prospects"
-                        nom={p.affiche}
-                        onEnregistrer={async (v) => {
-                          const { data, error: e } = await createClient().from("prospects").update({ relation: v, updated_at: new Date().toISOString() }).eq("id", p.id).select("id");
-                          if (e || !data?.length) return e?.message ?? "modification refusée";
+                      <RelationResponsable
+                        relation={p.relation ?? null}
+                        responsable={p.reserve_a ?? p.responsable ?? null}
+                        peutRelation={peutEcrire}
+                        peutResponsable={peutSuivre}
+                        suggestions={relationsConnues}
+                        nom={nomP}
+                        onEnregistrer={async (rel, resp) => {
+                          const sb = createClient();
+                          if (peutEcrire && rel !== (p.relation ?? "").trim()) {
+                            const { data, error: e } = await sb.from("prospects").update({ relation: rel || null, updated_at: new Date().toISOString() }).eq("id", p.id).select("id");
+                            if (e || !data?.length) return e?.message ?? "modification refusée";
+                          }
+                          if (peutSuivre && (resp ?? "") !== (p.reserve_a ?? "")) {
+                            const { error: e } = await sb.rpc("definir_reserve_prospect", { p_id: p.id, p_valeur: resp ?? "" });
+                            if (e) return e.message;
+                          }
                           router.refresh();
                           return null;
                         }}
@@ -699,35 +699,6 @@ export default function GestionPipeline({
                           </span>
                         </div>
                       )}
-                    </td>}
-                    {vis("commentaire") && <td className="max-w-56 px-4 py-3 text-muted">
-                      {editCom === p.id ? (
-                        <textarea autoFocus defaultValue={com ?? ""} rows={2} aria-label={`Commentaire : ${nomP}`}
-                          onBlur={(e) => void enregistrerCommentaire(p, e.target.value)}
-                          onKeyDown={(e) => { if (e.key === "Escape") setEditCom(null); if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); (e.target as HTMLTextAreaElement).blur(); } }}
-                          className="w-52 rounded border border-accent bg-background px-1.5 py-1 text-xs text-foreground" />
-                      ) : (
-                        <button type="button" disabled={!peutSuivre} onClick={() => setEditCom(p.id)} title={peutSuivre ? "Cliquer pour modifier le commentaire" : com ?? undefined}
-                          className="line-clamp-2 w-full rounded text-left enabled:hover:bg-surface-2">
-                          {com ?? "—"}
-                        </button>
-                      )}
-                    </td>}
-                    {vis("reserve") && <td className="px-4 py-3">
-                      {peutSuivre ? (
-                        <ChoixReserve key={p.reserve_a ?? ""} value={p.reserve_a ?? null} disabled={busy === p.id} onChange={(v) => void reserverProspect(p, v)} compact label={`Réservé à : ${nomP}`} />
-                      ) : (
-                        p.reserve_a ?? <span className="text-muted">—</span>
-                      )}
-                    </td>}
-                    {vis("responsable") && <td className="px-4 py-3">
-                      <ChoixResponsable
-                        key={`${p.id}-${p.responsable ?? ""}`}
-                        value={p.responsable ?? null}
-                        disabled={busy === p.id}
-                        compact
-                        onChange={(v) => void majChamp(p, { responsable: v })}
-                      />
                     </td>}
                     {vis("action") && <td className="px-4 py-3">
                       <input
@@ -796,6 +767,19 @@ export default function GestionPipeline({
                           aria-label="Lier une écriture de Comptabilité"
                         >
                           <Icon name="ledger" className="h-4 w-4" />
+                        </button>
+                      )}
+                    </td>}
+                    {vis("commentaire") && <td className="max-w-56 px-4 py-3 text-muted">
+                      {editCom === p.id ? (
+                        <textarea autoFocus defaultValue={com ?? ""} rows={2} aria-label={`Commentaire : ${nomP}`}
+                          onBlur={(e) => void enregistrerCommentaire(p, e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Escape") setEditCom(null); if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); (e.target as HTMLTextAreaElement).blur(); } }}
+                          className="w-52 rounded border border-accent bg-background px-1.5 py-1 text-xs text-foreground" />
+                      ) : (
+                        <button type="button" disabled={!peutSuivre} onClick={() => setEditCom(p.id)} title={peutSuivre ? "Cliquer pour modifier le commentaire" : com ?? undefined}
+                          className="line-clamp-2 w-full rounded text-left enabled:hover:bg-surface-2">
+                          {com ?? "—"}
                         </button>
                       )}
                     </td>}
@@ -887,7 +871,7 @@ export default function GestionPipeline({
                   <span className="mt-1 block text-xs text-muted">Ancienne valeur : {etatDe(edit).ancien ?? "—"} {etatDe(edit).suggestion ? ` · suggestion : ${etatDe(edit).suggestion}` : ""}</span>
                 )}
               </Field>
-              <Field label="Responsable (comité)">
+              <Field label="Comité (ancien champ Responsable)">
                 <ChoixResponsable value={form.responsable || null} onChange={(v) => setForm({ ...form, responsable: v ?? "" })} />
               </Field>
             </div>
@@ -915,7 +899,7 @@ export default function GestionPipeline({
               <div className="space-y-2 rounded-lg border border-border p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
                   <span className="font-medium">Suivi des actions</span>
-                  <span className="text-xs text-muted">Réservé à : {edit.reserve_a || "—"}</span>
+                  <span className="text-xs text-muted">Responsable : {edit.reserve_a || edit.responsable || edit.relation || "—"}</span>
                 </div>
                 <HistoriqueSuivi historique={suiviProspect.get(edit.id) ?? []} />
                 {peutSuivre && (

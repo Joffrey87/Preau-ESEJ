@@ -65,3 +65,25 @@ export function etatSuivant(e: EtatProspect): EtatProspect | null {
   const i = flux.indexOf(e);
   return i >= 0 && i < flux.length - 1 ? flux[i + 1] : null;
 }
+
+// ————— Donateurs : états automatiques (règles de lib/segments.ts) et manuels (portés par le Suivi) —————
+
+export const ETATS_DONATEUR_AUTO = ["Actif", "Grand donateur", "En sommeil", "Perdu"] as const;
+export const ETATS_DONATEUR_MANUELS = ["Remercié", "Sans réponse, à relancer", "Ne plus solliciter"] as const;
+export type EtatDonateurAffiche = (typeof ETATS_DONATEUR_AUTO)[number] | (typeof ETATS_DONATEUR_MANUELS)[number];
+
+export const TON_ETAT_DONATEUR: Record<EtatDonateurAffiche, string> = {
+  Actif: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300",
+  "Grand donateur": "bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300",
+  "En sommeil": "bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300",
+  Perdu: "bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-300",
+  Remercié: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300",
+  "Sans réponse, à relancer": "bg-yellow-100 text-yellow-800 dark:bg-yellow-950 dark:text-yellow-300",
+  "Ne plus solliciter": "bg-gray-200 text-gray-700 dark:bg-gray-800 dark:text-gray-300",
+};
+
+/** État manuel courant : dernier état manuel du Suivi (« Aucun » l'efface). */
+export function etatManuelDonateur(h: SuiviAction[] | undefined): (typeof ETATS_DONATEUR_MANUELS)[number] | null {
+  const l = h?.find((x) => x.etat === "Aucun" || (ETATS_DONATEUR_MANUELS as readonly string[]).includes(x.etat ?? ""));
+  return l && l.etat !== "Aucun" ? (l.etat as (typeof ETATS_DONATEUR_MANUELS)[number]) : null;
+}

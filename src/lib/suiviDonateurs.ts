@@ -17,7 +17,7 @@ export const TYPES_ACTION_PROSPECT = [
   "Rencontre",
   "Invitation à un événement",
   "Relance",
-  "Remerciement",
+  "Remercié",
 ] as const;
 
 export const ETATS_SUIVI = [

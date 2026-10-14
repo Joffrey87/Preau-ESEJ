@@ -65,8 +65,8 @@ type ColTriB = "donateur" | "bourse" | "autres" | "dernier";
 const H24 = 24 * 3600 * 1000;
 /** Colonnes masquables du tableau des donateurs (préférence par personne). */
 const COLONNES_D = [
-  { key: "relation", label: "Relation · Responsable" }, { key: "suivi", label: "Suivi" }, { key: "etat", label: "État" },
-  { key: "qualification", label: "Qualification" }, { key: "cumul", label: "Cumul" }, { key: "annee", label: "Cette année" },
+  { key: "relation", label: "Relation · Responsable" }, { key: "suivi", label: "Suivi" }, { key: "etat", label: "État manuel" },
+  { key: "qualification", label: "Qualification (état auto)" }, { key: "cumul", label: "Cumul" }, { key: "annee", label: "Cette année" },
   { key: "dernier", label: "Dernier don" }, { key: "commentaire", label: "Commentaire" }, { key: "bourse", label: "Donateur Bourse" },
 ] as const;
 type ColD = (typeof COLONNES_D)[number]["key"];
@@ -75,7 +75,6 @@ const DESCRIPTION_ETAT: Record<EtatDonateurAffiche, string> = {
   "Grand donateur": `Au moins ${PARAMS.seuilGrandDonateur.toLocaleString("fr-FR")} € sur une année`,
   "En sommeil": `Aucun don depuis ${PARAMS.sommeilMois} à ${PARAMS.perduMois} mois`,
   Perdu: `Aucun don depuis plus de ${PARAMS.perduMois} mois`,
-  Remercié: "Remerciement fait (état manuel)",
   "Sans réponse, à relancer": "Pas de réponse : à relancer (état manuel)",
   "Ne plus solliciter": "Ne plus solliciter ce donateur (état manuel)",
 };
@@ -522,11 +521,8 @@ export default function DonateursPipeline({
             <tr className="border-b border-border text-center text-xs text-muted">
               {th("donateur", "Donateur")}
               {vis("relation") && th("relation", "Relation · Responsable")}
-              {vis("suivi") && <th className="px-3 py-1 font-medium" aria-sort={ariaSort("suivi", "suiviDate")}>
-                <span className="inline-flex items-center gap-1">
-                  {bouton("suivi", "Suivi", "Trier par action")}
-                  {bouton("suiviDate", "date", "Trier par date de la dernière action")}
-                </span>
+              {vis("suivi") && <th className="px-3 py-1 font-medium border-x-2 border-x-blue-900 dark:border-x-blue-400" aria-sort={ariaSort("suivi", "suiviDate")}>
+                {bouton("suiviDate", "Suivi", "Trier par date de la dernière action")}
               </th>}
               {vis("etat") && th("etat", "État")}
               {vis("qualification") && th("qualification", "Qualif.")}
@@ -584,7 +580,7 @@ export default function DonateursPipeline({
                       }}
                     />
                   </td>}
-                  {vis("suivi") && <td className="px-3 py-2">
+                  {vis("suivi") && <td className="px-3 py-2 border-x-2 border-x-blue-900 dark:border-x-blue-400">
                     <button type="button" disabled={!peutSuivre} onClick={() => cliquerSuivi(p)}
                       title={der ? `Dernière action le ${formatDateHeure(der.cree_le)} par ${der.auteur}` : peutSuivre ? "Ajouter une action" : undefined}
                       className="mx-auto flex flex-wrap items-center justify-center gap-1 rounded enabled:hover:bg-surface-2">
@@ -596,7 +592,6 @@ export default function DonateursPipeline({
                   </td>}
                   {vis("etat") && <td className="px-2 py-2">
                     <div className="flex flex-col items-center gap-0.5">
-                      {autos.map(pastille)}
                       {manuel && pastille(manuel)}
                       {peutSuivre && (
                         <select value="" onChange={(e) => e.target.value && void ligneSuivi(p, e.target.value, "")}
@@ -610,6 +605,7 @@ export default function DonateursPipeline({
                   </td>}
                   {vis("qualification") && <td className="w-24 px-2 py-2">
                     <div className="flex flex-col items-center gap-0.5">
+                      {autos.map(pastille)}
                       {badgesDe(p).filter((b) => !["actif", "sommeil", "perdu", "grand", "reserve"].includes(b.key)).map((b) => (
                         <span key={b.key} className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${TONE_CLASSES[b.tone]}`}>
                           {b.label}

@@ -570,11 +570,8 @@ export default function GestionPipeline({
             <tr className="border-b border-border text-left text-muted">
               {thTri("prospect", "Prospect")}
               {vis("relation") && thTri("relation", "Relation · Responsable")}
-              {vis("suivi") && <th className="px-4 py-3 font-medium" aria-sort={ariaSort("suivi", "suiviDate")}>
-                <span className="inline-flex items-center gap-1">
-                  {bouton("suivi", "Suivi", "Trier par action")}
-                  {bouton("suiviDate", "date", "Trier par date de la dernière action")}
-                </span>
+              {vis("suivi") && <th className="px-4 py-3 font-medium border-x-2 border-x-blue-900 dark:border-x-blue-400" aria-sort={ariaSort("suivi", "suiviDate")}>
+                {bouton("suiviDate", "Suivi", "Trier par date de la dernière action")}
               </th>}
               {vis("etat") && thTri("etat", "État")}
               {vis("cible") && thTri("cible", "Capacité")}
@@ -648,7 +645,7 @@ export default function GestionPipeline({
                         }}
                       />
                     </td>}
-                    {vis("suivi") && <td className="px-4 py-3">
+                    {vis("suivi") && <td className="px-4 py-3 border-x-2 border-x-blue-900 dark:border-x-blue-400">
                       <button type="button" disabled={!peutSuivre} onClick={() => cliquerSuivi(p)}
                         title={der ? `Dernière action le ${formatDateHeure(der.cree_le)} par ${der.auteur}${peutSuivre ? (der.auteur === auteurSuivi && Date.now() - new Date(der.cree_le).getTime() < H24 ? " — cliquer pour la modifier" : " — cliquer pour ajouter une action") : ""}` : peutSuivre ? "Ajouter une action" : undefined}
                         className="mx-auto flex flex-wrap items-center justify-center gap-1 rounded enabled:hover:bg-surface-2">

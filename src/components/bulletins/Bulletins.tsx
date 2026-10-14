@@ -168,8 +168,8 @@ export default function Bulletins({
   return (
     <div className="mx-auto max-w-7xl px-5 py-6 md:px-8">
       <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
-        <h1 className="text-lg font-semibold tracking-tight">{evaluation ? "Notes & Bulletins" : onglets.find((o) => o.v === onglet)?.label}</h1>
-        {annee && <p className="text-xs text-muted">Année {annee}</p>}
+        {/* Pages de l'École : l'année en cours pour titre (le menu latéral dit déjà où l'on est). */}
+        {annee && <h1 className="text-lg font-bold tracking-tight">Année {annee}</h1>}
       </div>
 
       {!ref.classes.length ? (

@@ -451,38 +451,12 @@ function CarteClasse({
           <input type="checkbox" checked={c.rang_par_niveau} onChange={(e) => onModifier({ rang_par_niveau: e.target.checked })} />
           Rang et moyenne par niveau
         </label>
-        <button
-          type="button"
-          onClick={() => {
-            setElevesOuverts(true);
-            setAjout({ famille: "", prenom: "", nom: "", niveau: c.niveaux[0] ?? "PS" });
-          }}
-          className="ml-auto rounded-lg bg-accent px-3 py-1.5 text-[12.5px] font-semibold text-accent-fg"
-        >
-          + Ajouter un élève
-        </button>
-        <button type="button" onClick={() => setElevesOuverts((o) => !o)} className="text-accent hover:underline">
+        <button type="button" onClick={() => setElevesOuverts((o) => !o)} className="ml-auto text-accent hover:underline">
           {dedans.size} élève{dedans.size > 1 ? "s" : ""} · {elevesOuverts ? "masquer" : "modifier"}
         </button>
       </div>
-      {elevesOuverts && (
-        <div className="mt-2 grid gap-x-4 gap-y-0.5 border-t border-border pt-2 text-[13px] sm:grid-cols-2 lg:grid-cols-3">
-          {scolarises.map((e) => (
-            <label key={e.id} className="flex items-center gap-2">
-              <input type="checkbox" checked={dedans.has(e.id)} onChange={(ev) => onEleve(e.id, ev.target.checked)} />
-              <span>{e.prenom}</span>
-              <input
-                defaultValue={e.nom}
-                onBlur={(ev) => ev.target.value.trim() && ev.target.value.trim() !== e.nom && onNomUsage(e.id, ev.target.value.trim())}
-                className="w-32 rounded border border-transparent bg-transparent px-1 text-[13px] outline-none hover:border-border focus:border-accent"
-                title="Nom tel que l'école l'écrit sur le bulletin"
-                aria-label={`Nom de ${e.prenom}`}
-              />
-              <span className="text-[11px] text-muted">{niveauDe(e, c.annee_scolaire)}</span>
-              {!dedans.has(e.id) && classeDe(e.id) && <span className="text-[10.5px] text-gold">({classeDe(e.id)})</span>}
-            </label>
-          ))}
-          <div className="col-span-full mt-1">
+      {/* Un seul bouton « Ajouter un élève », juste au-dessus de la liste des élèves. */}
+      <div className="mt-2 border-t border-border pt-2">
             {ajout ? (
               <AjoutEleve
                 erreur={erreurAjout}
@@ -507,6 +481,23 @@ function CarteClasse({
               </button>
             )}
           </div>
+      {elevesOuverts && (
+        <div className="mt-2 grid gap-x-4 gap-y-0.5 border-t border-border pt-2 text-[13px] sm:grid-cols-2 lg:grid-cols-3">
+          {scolarises.map((e) => (
+            <label key={e.id} className="flex items-center gap-2">
+              <input type="checkbox" checked={dedans.has(e.id)} onChange={(ev) => onEleve(e.id, ev.target.checked)} />
+              <span>{e.prenom}</span>
+              <input
+                defaultValue={e.nom}
+                onBlur={(ev) => ev.target.value.trim() && ev.target.value.trim() !== e.nom && onNomUsage(e.id, ev.target.value.trim())}
+                className="w-32 rounded border border-transparent bg-transparent px-1 text-[13px] outline-none hover:border-border focus:border-accent"
+                title="Nom tel que l'école l'écrit sur le bulletin"
+                aria-label={`Nom de ${e.prenom}`}
+              />
+              <span className="text-[11px] text-muted">{niveauDe(e, c.annee_scolaire)}</span>
+              {!dedans.has(e.id) && classeDe(e.id) && <span className="text-[10.5px] text-gold">({classeDe(e.id)})</span>}
+            </label>
+          ))}
         </div>
       )}
       {!elevesOuverts && (

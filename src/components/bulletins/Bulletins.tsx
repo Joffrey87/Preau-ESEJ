@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import PageHeader from "@/components/PageHeader";
 import { todayISO } from "@/lib/format";
 import { calculerClasse, libellePeriode, nomEnseignant, type ContexteClasse, type Enseignant, type Matiere, type Bulletin } from "@/lib/bulletins";
 import { chargerClasse, chargerReferentiel, periodeCourante, type Referentiel } from "@/lib/bulletinsDonnees";
@@ -20,6 +19,9 @@ import Trombinoscope from "./Trombinoscope";
 import InscriptionsDirectrice from "@/components/inscriptions/InscriptionsDirectrice";
 
 export type Onglet = "releves" | "trimestre" | "bulletins" | "conseil" | "notes" | "absences" | "maternelle" | "trombi" | "inscriptions" | "parametres";
+const GROUPE_EVAL: Onglet[] = ["notes", "releves", "trimestre", "conseil", "maternelle", "bulletins"];
+const GROUPE_VIE: Onglet[] = ["absences", "trombi"];
+const GROUPE_ADMIN: Onglet[] = ["inscriptions", "parametres"];
 const ONGLETS: Onglet[] = ["releves", "trimestre", "bulletins", "conseil", "notes", "absences", "maternelle", "trombi", "inscriptions", "parametres"];
 
 /** Ce que le compte peut faire dans la classe affichée (la base le garantit de son côté). */
@@ -134,21 +136,44 @@ export default function Bulletins({
   const classesAnnee = ref.classes.filter((c) => c.annee_scolaire === annee);
   const periodesAnnee = ref.periodes.filter((p) => p.annee_scolaire === annee);
   const onglets: { v: Onglet; label: string }[] = [
+    { v: "notes", label: "Notes" },
     { v: "releves", label: "Relevés de notes" },
     { v: "trimestre", label: "Bulletins" },
     { v: "conseil", label: "Conseil de classe" },
-    { v: "notes", label: "Notes" },
     { v: "absences", label: "Appel & absences" },
     ...(classe && estMaternelle(classe.niveaux) ? [{ v: "maternelle" as Onglet, label: "Relevé maternelle" }] : []),
     { v: "trombi", label: "Trombinoscope" },
     // Bulletins de période d'avant (dont ceux repris d'École Futée) : conservés tels quels.
-    { v: "bulletins", label: "Bulletins de période (archives)" },
+    { v: "bulletins", label: "Archives (périodes)" },
     ...(directrice ? [{ v: "inscriptions" as Onglet, label: "Inscriptions" }, { v: "parametres" as Onglet, label: "Paramètres" }] : []),
   ];
 
+  const choisirOnglet = (v: Onglet) => {
+    setOnglet(v);
+    setBulletinId(null);
+    setDepuisConseil(false);
+    setAjoutPour(null);
+  };
+
   return (
     <div className="mx-auto max-w-7xl px-5 py-6 md:px-8">
-      <PageHeader title="Bulletins" subtitle={annee ? `Année ${annee}` : undefined} />
+      <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
+        <h1 className="text-lg font-semibold tracking-tight">Bulletins</h1>
+        {annee && <p className="text-xs text-muted">Année {annee}</p>}
+        {directrice &&
+          onglets
+            .filter((o) => GROUPE_ADMIN.includes(o.v))
+            .map((o) => (
+              <button
+                key={o.v}
+                type="button"
+                onClick={() => choisirOnglet(o.v)}
+                className={`rounded-md border px-2.5 py-1 text-[13px] font-medium ${onglet === o.v ? "border-accent bg-accent text-accent-fg" : "border-border hover:bg-surface-2"}`}
+              >
+                {o.label}
+              </button>
+            ))}
+      </div>
 
       {!ref.classes.length ? (
         <div className="rounded-xl border border-border bg-surface p-6 text-sm text-muted">
@@ -205,34 +230,23 @@ export default function Bulletins({
               ))}
             </select>
             {titulaire && <span className="text-[12px] text-muted">Titulaire : {nomEnseignant(titulaire)}</span>}
-            {directrice && classe && (
-              <button
-                type="button"
-                onClick={() => {
-                  setAjoutPour(classe.id);
-                  setOnglet("parametres");
-                  setTimeout(() => document.getElementById(`classe-${classe.id}`)?.scrollIntoView({ behavior: "smooth", block: "start" }), 300);
-                }}
-                className="rounded-lg bg-accent px-3 py-1.5 text-[13px] font-semibold text-accent-fg"
-              >
-                + Ajouter un élève
-              </button>
-            )}
-            <div className="flex w-full flex-wrap gap-1 md:ml-auto md:w-auto">
-              {onglets.map((o) => (
-                <button
-                  key={o.v}
-                  type="button"
-                  onClick={() => {
-                    setOnglet(o.v);
-                    setBulletinId(null);
-                    setDepuisConseil(false);
-                    setAjoutPour(null);
-                  }}
-                  className={`rounded-md px-3 py-1.5 text-[13px] font-medium ${onglet === o.v ? "bg-accent text-accent-fg" : "text-foreground hover:bg-surface-2"}`}
-                >
-                  {o.label}
-                </button>
+            {/* Onglets par catégorie : évaluation (notes, relevés, bulletins…) puis vie de classe (absences, trombinoscope). */}
+            <div className="flex w-full flex-wrap items-center gap-2 md:ml-auto md:w-auto">
+              {[GROUPE_EVAL, GROUPE_VIE].map((groupe, gi) => (
+                <div key={gi} className="flex flex-wrap gap-1 rounded-lg border border-border p-0.5">
+                  {onglets
+                    .filter((o) => groupe.includes(o.v))
+                    .map((o) => (
+                      <button
+                        key={o.v}
+                        type="button"
+                        onClick={() => choisirOnglet(o.v)}
+                        className={`rounded-md px-2.5 py-1.5 text-[13px] font-medium ${onglet === o.v ? "bg-accent text-accent-fg" : "text-foreground hover:bg-surface-2"}`}
+                      >
+                        {o.label}
+                      </button>
+                    ))}
+                </div>
               ))}
             </div>
           </div>

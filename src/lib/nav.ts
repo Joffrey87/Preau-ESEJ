@@ -32,10 +32,10 @@ export const NAV: NavSection[] = [
       { href: "/comptabilite", label: "Comptabilité", icon: "ledger", ready: true },
       { href: "/budget", label: "Budget", icon: "chart", ready: true },
       { href: "/scolarite", label: "Frais de scolarité", icon: "graduation", ready: true },
-      // Photo d'une remise de chèques, saisie des chèques et lien avec la comptabilité.
-      { href: "/cheques", label: "Dépôt de chèques", icon: "billets", ready: true, roles: ["tresorier", "president", "directrice"] },
       { href: "/ventes-diverses", label: "Ventes diverses", icon: "invoice", ready: true, roles: ["tresorier", "directrice"] },
       { href: "/caisses", label: "Caisses", icon: "billets", ready: true, roles: ["tresorier", "directrice"] },
+      // Photo d'une remise de chèques, saisie des chèques et lien avec la comptabilité.
+      { href: "/cheques", label: "Dépôt de chèques", icon: "billets", ready: true, roles: ["tresorier", "president", "directrice"] },
     ],
   },
   {

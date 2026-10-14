@@ -7,7 +7,7 @@ import {
   normaliserCategorieDonateur,
 } from "@/lib/categoriesDonateur";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { formatEuros, formatDate, todayISO } from "@/lib/format";
@@ -191,6 +191,7 @@ export default function GestionDons({
   sousEntete,
   modeRecherche = false,
   modeMedailles = false,
+  numeros,
   prenomRecherche = null,
   demandes = [],
   alertes = [],
@@ -199,6 +200,8 @@ export default function GestionDons({
   modeRecherche?: boolean;
   /** Onglet « Médailles Don » de la Directrice : lecture seule, seule la colonne Médaille se coche. */
   modeMedailles?: boolean;
+  /** Numéro de chaque don dans l'exercice (Médailles Don), affiché juste avant la colonne Médaille. */
+  numeros?: Record<string, number>;
   prenomRecherche?: string | null;
   /** Demandes de reçu fiscal en cours (Recherche de fonds → Trésorier). */
   demandes?: DemandeRecu[];
@@ -1135,7 +1138,9 @@ export default function GestionDons({
                 const centre = c.key === "medaille";
                 const actif = tri.key === c.key;
                 return (
-                  <th key={c.key} className={`${cellPad} font-medium ${aligneD ? "text-right" : ""} ${centre ? "text-center" : ""}`}>
+                  <Fragment key={c.key}>
+                  {c.key === "medaille" && numeros && <th className={`${cellPad} font-medium text-center`}>N°</th>}
+                  <th className={`${cellPad} font-medium ${aligneD ? "text-right" : ""} ${centre ? "text-center" : ""}`}>
                     {c.sortable ? (
                       <button
                         type="button"
@@ -1149,6 +1154,7 @@ export default function GestionDons({
                       c.label
                     )}
                   </th>
+                  </Fragment>
                 );
               })}
               {!modeMedailles && <th className={`${cellPad} font-medium text-right`}>Actions</th>}
@@ -1157,7 +1163,7 @@ export default function GestionDons({
           <tbody>
             {donsTries.length === 0 ? (
               <tr>
-                <td colSpan={COLONNES.filter((c) => colsAff[c.key]).length + (modeMedailles ? 0 : 1)} className="px-4 py-12 text-center text-muted">
+                <td colSpan={COLONNES.filter((c) => colsAff[c.key]).length + (modeMedailles ? 0 : 1) + (numeros ? 1 : 0)} className="px-4 py-12 text-center text-muted">
                   {vueCorbeille
                     ? "Corbeille vide."
                     : dons.length === 0
@@ -1303,6 +1309,9 @@ export default function GestionDons({
                         <p className="mt-1 text-xs text-muted">{d.recu_etat}</p>
                       )}
                     </td>
+                  )}
+                  {colsAff.medaille && numeros && (
+                    <td className={`${cellPad} text-center whitespace-nowrap tabular-nums text-muted`}>{numeros[d.id] ? `n° ${numeros[d.id]}` : ""}</td>
                   )}
                   {colsAff.medaille && (
                     <td className={`${cellPad} text-center`}>

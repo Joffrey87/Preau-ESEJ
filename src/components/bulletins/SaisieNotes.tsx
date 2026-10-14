@@ -30,12 +30,18 @@ export default function SaisieNotes({
   droits,
   enseignants,
   onMaj,
+  matiereImposee,
+  verrouEleve,
 }: {
   ctx: ContexteClasse;
   resultats: ResultatEleve[];
   droits: Droits;
   enseignants: Map<string, Enseignant>;
   onMaj: (f: (c: ContexteClasse | null) => ContexteClasse | null) => void;
+  /** Ouverte depuis les Relevés de notes : la matière est choisie là-bas (pas de sélecteur ici). */
+  matiereImposee?: string;
+  /** Relevé publié : les notes de l'élève ne se modifient plus (la base le refuse aussi). */
+  verrouEleve?: (eleveId: string) => boolean;
 }) {
   const sb = useMemo(() => createClient(), []);
   const matieres = useMemo(() => {
@@ -45,7 +51,7 @@ export default function SaisieNotes({
       .sort((a, b) => (ordreGroupe.get(a.groupe_id) ?? 0) - (ordreGroupe.get(b.groupe_id) ?? 0) || a.ordre - b.ordre);
   }, [ctx]);
   const [matiereId, setMatiereId] = useState<string>(() => (matieres.find((m) => droits.peutNoter(m) && !droits.directrice && !droits.titulaire) ?? matieres[0])?.id ?? "");
-  const matiere = matieres.find((m) => m.id === matiereId) ?? matieres[0];
+  const matiere = matieres.find((m) => m.id === (matiereImposee ?? matiereId)) ?? matieres[0];
   const [nouvelle, setNouvelle] = useState<Partial<Evaluation> | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   // Grille (notes + appréciations) ou saisie des appréciations élève par élève.
@@ -129,7 +135,7 @@ export default function SaisieNotes({
   return (
     <div className="space-y-3">
       {/* Choix de la matière : les miennes d'abord mises en valeur, le nombre d'évaluations en pastille. */}
-      <div className="space-y-1.5 rounded-xl border border-border bg-surface p-3">
+      {!matiereImposee && <div className="space-y-1.5 rounded-xl border border-border bg-surface p-3">
         {parGroupe.map(({ g, ms }) => (
           <div key={g.id} className="flex flex-wrap items-center gap-1">
             <span className="w-40 shrink-0 text-[11px] font-semibold uppercase tracking-wide text-muted">{g.nom}</span>
@@ -153,7 +159,7 @@ export default function SaisieNotes({
             })}
           </div>
         ))}
-      </div>
+      </div>}
 
       <div className="flex flex-wrap items-center gap-2">
         <h3 className="text-sm font-semibold">{matiere.nom}</h3>
@@ -244,6 +250,7 @@ export default function SaisieNotes({
                   <td className="sticky left-0 z-10 bg-surface px-3 py-1">
                     {nomEleve(r.eleve)}
                     {r.niveau && <span className="ml-1.5 rounded bg-surface-2 px-1 text-[10px] text-muted">{r.niveau}</span>}
+                    {verrouEleve?.(r.eleve.id) && <span className="ml-1.5 text-[10px] text-muted" title="Relevé publié : notes verrouillées">🔒</span>}
                   </td>
                   {evals.map((ev, ci) => {
                     const n = notes.get(`${ev.id}:${r.eleve.id}`);
@@ -253,7 +260,7 @@ export default function SaisieNotes({
                         <CaseNote
                           key={`${ev.id}:${r.eleve.id}:${valeur}`}
                           valeur={valeur}
-                          disabled={!peutNoter}
+                          disabled={!peutNoter || !!verrouEleve?.(r.eleve.id)}
                           data={`${li}:${ci}`}
                           onKeyDown={(e) => bouger(e, li, ci)}
                           onEnregistrer={(v) => enregistrerNote(ev, r.eleve.id, v)}

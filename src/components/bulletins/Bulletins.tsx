@@ -7,7 +7,6 @@ import { calculerClasse, libellePeriode, nomEnseignant, type ContexteClasse, typ
 import { chargerClasse, chargerReferentiel, periodeCourante, type Referentiel } from "@/lib/bulletinsDonnees";
 import ListeBulletins from "./ListeBulletins";
 import FicheBulletin from "./FicheBulletin";
-import SaisieNotes from "./SaisieNotes";
 import ParametresBulletins from "./ParametresBulletins";
 import ConseilClasse from "./ConseilClasse";
 import Absences from "./Absences";
@@ -15,14 +14,15 @@ import ReleveMaternelle from "./ReleveMaternelle";
 import { estMaternelle } from "@/lib/releveMaternelle";
 import { chargerDocs, type ContexteDocs } from "@/lib/relevesTrimestre";
 import DocumentsClasse from "./DocumentsClasse";
+import ReleveClasse from "./ReleveClasse";
 import Trombinoscope from "./Trombinoscope";
 import InscriptionsDirectrice from "@/components/inscriptions/InscriptionsDirectrice";
 
-export type Onglet = "releves" | "trimestre" | "bulletins" | "conseil" | "notes" | "absences" | "maternelle" | "trombi" | "inscriptions" | "parametres";
+export type Onglet = "releves" | "trimestre" | "bulletins" | "conseil" | "absences" | "maternelle" | "trombi" | "inscriptions" | "parametres";
 // Onglets de « Notes & Bulletins » ; les autres (Appel & absences, Trombinoscope, Gestion des classes, Inscriptions)
 // s'ouvrent par le menu latéral, sans cette barre.
-const GROUPE_EVAL: Onglet[] = ["notes", "releves", "trimestre", "conseil", "maternelle", "bulletins"];
-const ONGLETS: Onglet[] = ["releves", "trimestre", "bulletins", "conseil", "notes", "absences", "maternelle", "trombi", "inscriptions", "parametres"];
+const GROUPE_EVAL: Onglet[] = ["releves", "trimestre", "conseil", "maternelle", "bulletins"];
+const ONGLETS: Onglet[] = ["releves", "trimestre", "bulletins", "conseil", "absences", "maternelle", "trombi", "inscriptions", "parametres"];
 
 /** Ce que le compte peut faire dans la classe affichée (la base le garantit de son côté). */
 export type Droits = {
@@ -49,11 +49,13 @@ export default function Bulletins({
   const [ref, setRef] = useState<Referentiel | null>(null);
   const [classeId, setClasseId] = useState<string | null>(initial.classe ?? null);
   const [periodeId, setPeriodeId] = useState<string | null>(initial.periode ?? null);
-  const [onglet, setOnglet] = useState<Onglet>((ONGLETS.includes((initial.onglet ?? "") as Onglet) ? initial.onglet : "releves") as Onglet);
+  // « Notes » est fusionné dans « Relevés de notes » (saisie en ouvrant une matière) : les anciens liens y mènent.
+  const ongletInitial = initial.onglet === "notes" ? "releves" : initial.onglet;
+  const [onglet, setOnglet] = useState<Onglet>((ONGLETS.includes((ongletInitial ?? "") as Onglet) ? ongletInitial : "releves") as Onglet);
   const [docs, setDocs] = useState<ContexteDocs | null>(null);
   // Menu latéral (professeurs) : un lien vers un autre onglet change l'adresse ; l'écran suit.
   useEffect(() => {
-    const o = initial.onglet as Onglet | undefined;
+    const o = (initial.onglet === "notes" ? "releves" : initial.onglet) as Onglet | undefined;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- l'onglet suit l'adresse
     if (o && ONGLETS.includes(o)) setOnglet(o);
     // Lien « Notes & Bulletins » (sans onglet) : retour aux onglets d'évaluation.
@@ -144,7 +146,6 @@ export default function Bulletins({
   const classesAnnee = ref.classes.filter((c) => c.annee_scolaire === annee);
   const periodesAnnee = ref.periodes.filter((p) => p.annee_scolaire === annee);
   const onglets: { v: Onglet; label: string }[] = [
-    { v: "notes", label: "Notes" },
     { v: "releves", label: "Relevés de notes" },
     { v: "trimestre", label: "Bulletins" },
     { v: "conseil", label: "Conseil de classe" },
@@ -266,10 +267,23 @@ export default function Bulletins({
             <InscriptionsDirectrice />
           ) : onglet === "trombi" && classe ? (
             <Trombinoscope classe={classe} directrice={directrice} />
-          ) : (onglet === "releves" || onglet === "trimestre") && docs && periode && docs.classe.id === classeId ? (
+          ) : onglet === "releves" && docs && periode && docs.classe.id === classeId && ctx && ctx.classe.id === classeId && ctx.periode.id === periodeId ? (
+            <ReleveClasse
+              key={`${classeId}:${periodeId}`}
+              ctx={ctx}
+              resultats={resultats}
+              droits={droits}
+              enseignants={enseignants}
+              onMaj={setCtx}
+              docs={docs}
+              periode={periode}
+              nomTitulaire={titulaire ? nomEnseignant(titulaire) : null}
+              onRecharger={recharger}
+            />
+          ) : onglet === "trimestre" && docs && periode && docs.classe.id === classeId ? (
             <DocumentsClasse
               key={`${onglet}:${classeId}:${periodeId}`}
-              mode={onglet === "releves" ? "releve" : "trimestre"}
+              mode="trimestre"
               ctx={docs}
               periode={periode}
               directrice={directrice}
@@ -309,8 +323,6 @@ export default function Bulletins({
               titulaire={droits.titulaire}
               nomTitulaire={titulaire ? nomEnseignant(titulaire) : null}
             />
-          ) : onglet === "notes" ? (
-            <SaisieNotes ctx={ctx} resultats={resultats} droits={droits} enseignants={enseignants} onMaj={setCtx} />
           ) : bulletinId && resultats.some((r) => r.bulletin?.id === bulletinId) ? (
             <>
               {depuisConseil && (

@@ -257,7 +257,7 @@ export default function ListeBulletins({
             {!visibles.length && (
               <tr>
                 <td colSpan={9} className="px-3 py-6 text-center text-sm text-muted">
-                  {lignes.length ? "Aucun bulletin dans cet état." : "Aucun élève dans cette classe : la Directrice les ajoute dans Paramètres."}
+                  {lignes.length ? "Aucun bulletin dans cet état." : "Aucun élève dans cette classe : la Directrice les ajoute dans Gestion des classes."}
                 </td>
               </tr>
             )}

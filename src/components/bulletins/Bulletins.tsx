@@ -21,7 +21,6 @@ import InscriptionsDirectrice from "@/components/inscriptions/InscriptionsDirect
 export type Onglet = "releves" | "trimestre" | "bulletins" | "conseil" | "notes" | "absences" | "maternelle" | "trombi" | "inscriptions" | "parametres";
 const GROUPE_EVAL: Onglet[] = ["notes", "releves", "trimestre", "conseil", "maternelle", "bulletins"];
 const GROUPE_VIE: Onglet[] = ["absences", "trombi"];
-const GROUPE_ADMIN: Onglet[] = ["inscriptions", "parametres"];
 const ONGLETS: Onglet[] = ["releves", "trimestre", "bulletins", "conseil", "notes", "absences", "maternelle", "trombi", "inscriptions", "parametres"];
 
 /** Ce que le compte peut faire dans la classe affichée (la base le garantit de son côté). */
@@ -151,7 +150,7 @@ export default function Bulletins({
     { v: "trombi", label: "Trombinoscope" },
     // Bulletins de période d'avant (dont ceux repris d'École Futée) : conservés tels quels.
     { v: "bulletins", label: "Archives (périodes)" },
-    ...(directrice ? [{ v: "inscriptions" as Onglet, label: "Inscriptions" }, { v: "parametres" as Onglet, label: "Paramètres" }] : []),
+    ...(directrice ? [{ v: "inscriptions" as Onglet, label: "Inscriptions" }, { v: "parametres" as Onglet, label: "Gestion des classes" }] : []),
   ];
 
   const choisirOnglet = (v: Onglet) => {
@@ -166,19 +165,6 @@ export default function Bulletins({
       <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
         <h1 className="text-lg font-semibold tracking-tight">Bulletins</h1>
         {annee && <p className="text-xs text-muted">Année {annee}</p>}
-        {directrice &&
-          onglets
-            .filter((o) => GROUPE_ADMIN.includes(o.v))
-            .map((o) => (
-              <button
-                key={o.v}
-                type="button"
-                onClick={() => choisirOnglet(o.v)}
-                className={`rounded-md border px-2.5 py-1 text-[13px] font-medium ${onglet === o.v ? "border-accent bg-accent text-accent-fg" : "border-border hover:bg-surface-2"}`}
-              >
-                {o.label}
-              </button>
-            ))}
       </div>
 
       {!ref.classes.length ? (
@@ -237,8 +223,9 @@ export default function Bulletins({
             </select>
             {titulaire && <span className="text-[12px] text-muted">Titulaire : {nomEnseignant(titulaire)}</span>}
             {/* Onglets par catégorie : évaluation (notes, relevés, bulletins…) puis vie de classe (absences, trombinoscope). */}
-            <div className="flex w-full flex-wrap items-center gap-2 md:ml-auto md:w-auto">
-              {[GROUPE_EVAL, GROUPE_VIE].map((groupe, gi) => (
+            {/* Directrice : Appel & absences, Trombinoscope, Gestion des classes et Inscriptions sont dans le menu latéral. */}
+            <div className="flex w-full flex-wrap items-center justify-start gap-2">
+              {(directrice ? [GROUPE_EVAL] : [GROUPE_EVAL, GROUPE_VIE]).map((groupe, gi) => (
                 <div key={gi} className="flex flex-wrap gap-1 rounded-lg border border-border p-0.5">
                   {onglets
                     .filter((o) => groupe.includes(o.v))

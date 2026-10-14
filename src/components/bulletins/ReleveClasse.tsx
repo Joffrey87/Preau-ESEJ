@@ -196,8 +196,8 @@ export default function ReleveClasse({
         <div className="rounded-xl border-2 border-accent/40 bg-accent-soft/20 p-3">
           <div className="mb-2 flex items-center gap-2">
             <span className="text-[12px] font-semibold uppercase tracking-wide text-accent">Saisie des notes</span>
-            <button type="button" onClick={() => setMatiereOuverte(null)} className="ml-auto rounded-md px-2 py-0.5 text-[12.5px] text-muted hover:bg-surface-2">
-              Fermer ✕
+            <button type="button" onClick={() => setMatiereOuverte(null)} className="ml-auto rounded-lg border border-border bg-surface px-3 py-1.5 text-[13px] font-medium text-accent hover:bg-accent-soft">
+              ← Retour Relevés de notes
             </button>
           </div>
           <SaisieNotes ctx={ctx} resultats={resultats} droits={droits} enseignants={enseignants} onMaj={onMaj} matiereImposee={matiere.id} verrouEleve={verrou} />

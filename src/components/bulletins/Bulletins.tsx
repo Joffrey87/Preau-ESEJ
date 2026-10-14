@@ -51,6 +51,12 @@ export default function Bulletins({
   const [periodeId, setPeriodeId] = useState<string | null>(initial.periode ?? null);
   const [onglet, setOnglet] = useState<Onglet>((ONGLETS.includes((initial.onglet ?? "") as Onglet) ? initial.onglet : "releves") as Onglet);
   const [docs, setDocs] = useState<ContexteDocs | null>(null);
+  // Menu latéral (professeurs) : un lien vers un autre onglet change l'adresse ; l'écran suit.
+  useEffect(() => {
+    const o = initial.onglet as Onglet | undefined;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- l'onglet suit l'adresse
+    if (o && ONGLETS.includes(o)) setOnglet(o);
+  }, [initial.onglet]);
   const [ajoutPour, setAjoutPour] = useState<string | null>(null);
   const [bulletinId, setBulletinId] = useState<string | null>(initial.bulletin ?? null);
   // Bulletin ouvert depuis le Conseil de classe : bouton de retour au Conseil.

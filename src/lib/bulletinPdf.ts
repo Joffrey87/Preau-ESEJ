@@ -1,4 +1,4 @@
-// Bulletin scolaire en PDF : une page A4 par élève (suite sur une seconde page si les commentaires débordent).
+// Bulletin scolaire en PDF : une page A4 par élève, réduite au besoin pour tenir sur une page (voir ECHELLE_MIN).
 // Même charte que les reçus et factures : Montserrat, logo de l'école, marine et or. Construit à partir de la
 // synthèse (celle figée à la publication, ou calculée pour un aperçu).
 
@@ -9,24 +9,34 @@ import { texteAbsences } from "@/lib/absences";
 import { tauxTexte } from "@/lib/calendrier";
 
 const W = 595.28, H = 841.89, M = 40;
+/** Réduction maximale (0,8) : le corps du texte (8,5–9 pt) ne descend pas sous 7 pt environ. */
+export const ECHELLE_MIN = 0.8;
 
-export async function construireBulletinsPdf(syntheses: Synthese[]): Promise<Uint8Array> {
+type Rendu = { octets: Uint8Array; pages: number };
+
+/**
+ * Bulletin sur UNE page A4 : on le compose sur une page virtuelle agrandie (A4 / k), puis on la pose sur l'A4 à
+ * l'échelle k. k part de 1 et diminue par pas de 0,02 jusqu'à ECHELLE_MIN, tant que le contenu déborde. Rien n'est
+ * tronqué : si le contenu dépasse encore à l'échelle minimale, la suite va sur une seconde page (signalé dans `debordements`).
+ */
+export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { echelles: number[]; debordements: number[] }): Promise<Uint8Array> {
   const [{ PDFDocument, rgb }, { default: fontkit }, res] = await Promise.all([import("pdf-lib"), import("@pdf-lib/fontkit"), chargerRessources()]);
-  const doc = await PDFDocument.create();
-  doc.registerFontkit(fontkit);
-  const [regular, semi, italic] = await Promise.all([
-    doc.embedFont(res.regular, { subset: true }),
-    doc.embedFont(res.semi, { subset: true }),
-    doc.embedFont(res.italic, { subset: true }),
-  ]);
-  const logo = await doc.embedPng(res.logo);
   const NAVY = rgb(0.008, 0.114, 0.318), OR = rgb(0.784, 0.584, 0.184), OR_DOUX = rgb(0.953, 0.902, 0.788);
   const GRIS = rgb(0.42, 0.45, 0.5), TRAIT = rgb(0.9, 0.875, 0.808), BLANC = rgb(1, 1, 1), CREME = rgb(0.969, 0.953, 0.918);
 
-  for (const s of syntheses) {
-    let page: PDFPage = doc.addPage([W, H]);
+  async function rendre(s: Synthese, k: number): Promise<Rendu> {
+    const brouillon = await PDFDocument.create();
+    brouillon.registerFontkit(fontkit);
+    const [regular, semi, italic] = await Promise.all([
+      brouillon.embedFont(res.regular, { subset: true }),
+      brouillon.embedFont(res.semi, { subset: true }),
+      brouillon.embedFont(res.italic, { subset: true }),
+    ]);
+    const logo = await brouillon.embedPng(res.logo);
+    const Wp = W / k, Hp = H / k;
+    let page: PDFPage = brouillon.addPage([Wp, Hp]);
     let top = M;
-    const y = (t: number) => H - t;
+    const y = (t: number) => Hp - t;
     const texte = (str: string, x: number, t: number, font: PDFFont, size: number, color: RGB = NAVY) =>
       page.drawText(assainir(str), { x, y: y(t), size, font, color });
     const largeur = (str: string, font: PDFFont, size: number) => font.widthOfTextAtSize(assainir(str), size);
@@ -49,13 +59,13 @@ export async function construireBulletinsPdf(syntheses: Synthese[]): Promise<Uin
     const centre = (str: string, xc: number, t: number, font: PDFFont, size: number, color: RGB = NAVY) =>
       texte(str, xc - largeur(str, font, size) / 2, t, font, size, color);
     const nouvellePage = () => {
-      page = doc.addPage([W, H]);
+      page = brouillon.addPage([Wp, Hp]);
       top = M;
       texte(`${s.eleve.prenom} ${s.eleve.nom} — ${titrePeriode(s.periode)} (suite)`, M, top + 8, italic, 8.5, GRIS);
       top += 22;
     };
     const place = (h: number) => {
-      if (top + h > H - M - 30) nouvellePage();
+      if (top + h > Hp - M - 30) nouvellePage();
     };
 
     // Taille de police qui fait tenir `str` dans `w` (sans descendre sous `min`).
@@ -68,7 +78,7 @@ export async function construireBulletinsPdf(syntheses: Synthese[]): Promise<Uin
     // En-tête : logo, école, période (dates sur leur propre ligne) ; cartouche de l'élève à droite, séparé du
     // bloc de gauche par une gouttière, et dont la hauteur suit le nom (prénom au-dessus, nom réduit puis coupé
     // s'il est long : jamais de débordement).
-    const CW = 196, bx = W - M - CW, gx = M + 76, gw = bx - 18 - gx, iw = CW - 26;
+    const CW = 196, bx = Wp - M - CW, gx = M + 76, gw = bx - 18 - gx, iw = CW - 26;
     page.drawImage(logo, { x: M, y: y(top + 62), width: 63, height: 62 });
     texte("École du Saint-Enfant-Jésus", gx, top + 16, semi, ajuste("École du Saint-Enfant-Jésus", semi, 13, gw, 10));
     const sousTitre = `${s.mode === "releve" ? "Relevé de notes" : "Bulletin scolaire"} · Année ${s.periode.annee}`;
@@ -116,9 +126,9 @@ export async function construireBulletinsPdf(syntheses: Synthese[]): Promise<Uin
     const avecRang = s.afficherRang && !releve && !trimestre;
     const avecClasse = !releve && !trimestre;
     const cols = { matiere: M, moy: M + 168, classe: M + 213, rang: M + 258, com: releve ? M + 168 : trimestre ? M + 216 : avecRang ? M + 292 : M + 262 };
-    const wCom = W - M - cols.com - 6;
+    const wCom = Wp - M - cols.com - 6;
     const entete = () => {
-      rect(M, top, W - 2 * M, 18, NAVY);
+      rect(M, top, Wp - 2 * M, 18, NAVY);
       texte("Matière", cols.matiere + 6, top + 12, semi, 8, BLANC);
       if (!releve) centre("Moyenne", cols.moy + 20, top + 12, semi, 8, BLANC);
       if (avecClasse) centre("Classe", cols.classe + 20, top + 12, semi, 8, BLANC);
@@ -136,7 +146,7 @@ export async function construireBulletinsPdf(syntheses: Synthese[]): Promise<Uin
     if (s.groupes.length) entete();
     for (const g of s.groupes) {
       place(18 + 22);
-      rect(M, top, W - 2 * M, 17, OR_DOUX);
+      rect(M, top, Wp - 2 * M, 17, OR_DOUX);
       texte(g.nom, cols.matiere + 6, top + 11.5, semi, 8.5);
       chiffres(g.chiffre, top + 11.5, semi, NAVY);
       top += 17;
@@ -148,13 +158,13 @@ export async function construireBulletinsPdf(syntheses: Synthese[]): Promise<Uin
         if (m.enseignants) texte(m.enseignants, cols.matiere + 12, top + 20, regular, 6.5, GRIS);
         chiffres(m.chiffre, top + 11, semi, NAVY);
         com.forEach((l, i) => texte(l, cols.com + 6, top + 11 + i * 10, regular, 7.8));
-        page.drawLine({ start: { x: M, y: y(top + h) }, end: { x: W - M, y: y(top + h) }, thickness: 0.5, color: TRAIT });
+        page.drawLine({ start: { x: M, y: y(top + h) }, end: { x: Wp - M, y: y(top + h) }, thickness: 0.5, color: TRAIT });
         top += h;
       }
     }
     if (s.groupes.length && !releve) {
       place(22);
-      rect(M, top, W - 2 * M, 20, NAVY);
+      rect(M, top, Wp - 2 * M, 20, NAVY);
       texte("Moyenne générale", cols.matiere + 6, top + 13.5, semi, 9, BLANC);
       chiffres(s.general, top + 13.5, semi, BLANC);
       top += 30;
@@ -183,19 +193,19 @@ export async function construireBulletinsPdf(syntheses: Synthese[]): Promise<Uin
     }
     // Commentaires par rubrique (Catéchisme, Travail…), repris d'École Futée.
     for (const x of s.rubriques ?? []) {
-      const lignes = coupe(x.texte, regular, 9, W - 2 * M - 24);
+      const lignes = coupe(x.texte, regular, 9, Wp - 2 * M - 24);
       const h = 24 + lignes.length * 12.5;
       place(h);
-      page.drawRectangle({ x: M, y: y(top + h), width: W - 2 * M, height: h, borderColor: TRAIT, borderWidth: 0.8 });
+      page.drawRectangle({ x: M, y: y(top + h), width: Wp - 2 * M, height: h, borderColor: TRAIT, borderWidth: 0.8 });
       texte(x.titre, M + 12, top + 15, semi, 9);
       lignes.forEach((l, i) => texte(l, M + 12, top + 29 + i * 12.5, regular, 9));
       top += h + 8;
     }
 
-    const app = s.appreciation ? coupe(s.appreciation, regular, 9, W - 2 * M - 24) : [];
+    const app = s.appreciation ? coupe(s.appreciation, regular, 9, Wp - 2 * M - 24) : [];
     const hApp = 28 + Math.max(1, app.length) * 12.5;
     place(hApp);
-    page.drawRectangle({ x: M, y: y(top + hApp), width: W - 2 * M, height: hApp, borderColor: OR, borderWidth: 0.8, color: CREME });
+    page.drawRectangle({ x: M, y: y(top + hApp), width: Wp - 2 * M, height: hApp, borderColor: OR, borderWidth: 0.8, color: CREME });
     texte("Appréciation générale", M + 12, top + 16, semi, 9.5);
     app.forEach((l, i) => texte(l, M + 12, top + 32 + i * 12.5, regular, 9));
     if (!app.length) texte("—", M + 12, top + 32, regular, 9, GRIS);
@@ -203,14 +213,33 @@ export async function construireBulletinsPdf(syntheses: Synthese[]): Promise<Uin
 
     // Signatures.
     place(40);
-    texte("La Directrice", W - M - 160, top + 10, semi, 9);
+    texte("La Directrice", Wp - M - 160, top + 10, semi, 9);
     if (s.classe.titulaire) texte(s.classe.titulaire, M, top + 10, semi, 9);
     texte(s.classe.titulaire ? "Titulaire de la classe" : "", M, top + 22, regular, 8, GRIS);
+  
+    return { octets: await brouillon.save(), pages: brouillon.getPageCount() };
   }
+
+  const doc = await PDFDocument.create();
+  doc.registerFontkit(fontkit);
+  const regular = await doc.embedFont(res.regular, { subset: true });
+  for (const [n, s] of syntheses.entries()) {
+    let k = 1;
+    let r = await rendre(s, k);
+    while (r.pages > 1 && k > ECHELLE_MIN + 1e-9) {
+      k = Math.max(ECHELLE_MIN, Math.round((k - 0.02) * 100) / 100);
+      r = await rendre(s, k);
+    }
+    infos?.echelles.push(k);
+    if (r.pages > 1) infos?.debordements.push(n);
+    const poses = await doc.embedPdf(r.octets, [...Array(r.pages).keys()]);
+    for (const p of poses) doc.addPage([W, H]).drawPage(p, { x: 0, y: 0, xScale: k, yScale: k });
+  }
+  const GRIS_PIED = GRIS;
   const pages = doc.getPages();
   pages.forEach((p, i) => {
     const pied = `ARIL · École du Saint-Enfant-Jésus — bulletin édité avec Préau${pages.length > 1 ? ` — page ${i + 1}/${pages.length}` : ""}`;
-    p.drawText(assainir(pied), { x: M, y: 22, size: 7, font: regular, color: GRIS });
+    p.drawText(assainir(pied), { x: M, y: 14, size: 6.5, font: regular, color: GRIS_PIED });
   });
   return doc.save();
 }

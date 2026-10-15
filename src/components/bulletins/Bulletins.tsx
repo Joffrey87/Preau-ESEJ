@@ -36,13 +36,36 @@ export type Droits = {
   peutCommenter: (m: Matiere, b: Bulletin | null) => boolean;
 };
 
+/** Nom de matière comparable (sans accents ni casse). */
+const nomMatiere = (n: string) => n.normalize("NFD").replace(/\p{Diacritic}/gu, "").trim().toLowerCase();
+
+/** Ne garde d'un contexte que la matière donnée (avec ses évaluations, lignes, appréciations et groupes). */
+function seulementMatiere<T extends { groupes: { id: string }[]; matieres: Matiere[]; evaluations: { matiere_id: string }[]; lignes: { matiere_id: string }[] }>(x: T, nom: string): T {
+  const matieres = x.matieres.filter((m) => nomMatiere(m.nom) === nomMatiere(nom));
+  const ids = new Set(matieres.map((m) => m.id));
+  const groupes = new Set(matieres.map((m) => m.groupe_id));
+  const r = {
+    ...x,
+    groupes: x.groupes.filter((g) => groupes.has(g.id)),
+    matieres,
+    evaluations: x.evaluations.filter((e) => ids.has(e.matiere_id)),
+    lignes: x.lignes.filter((l) => ids.has(l.matiere_id)),
+  };
+  if ("appreciations" in x && Array.isArray(x.appreciations))
+    return { ...r, appreciations: (x.appreciations as { matiere_id: string }[]).filter((a) => ids.has(a.matiere_id)) };
+  return r;
+}
+
 export default function Bulletins({
   directrice,
   enseignantId,
+  matiereSeule,
   initial,
 }: {
   directrice: boolean;
   enseignantId: string | null;
+  /** Directeur spirituel : seule cette matière (Catéchisme) est montrée, et seules les classes qui l'enseignent. */
+  matiereSeule?: string;
   initial: { classe?: string; periode?: string; onglet?: string; bulletin?: string };
 }) {
   const sb = useMemo(() => createClient(), []);
@@ -71,9 +94,14 @@ export default function Bulletins({
 
   const chargerRef = useCallback(async () => {
     const r = await chargerReferentiel(sb);
+    if (matiereSeule) {
+      const { data } = await sb.from("matieres").select("classe_id, nom").eq("actif", true);
+      const avec = new Set(((data ?? []) as { classe_id: string; nom: string }[]).filter((m) => nomMatiere(m.nom) === nomMatiere(matiereSeule)).map((m) => m.classe_id));
+      r.classes = r.classes.filter((c) => avec.has(c.id));
+    }
     setRef(r);
     return r;
-  }, [sb]);
+  }, [sb, matiereSeule]);
 
   // Référentiel, puis choix par défaut : la classe dont on est titulaire, la période en cours.
   useEffect(() => {
@@ -98,14 +126,18 @@ export default function Bulletins({
     setChargement(true);
     setErreur(null);
     try {
-      setCtx(await chargerClasse(sb, classe, periode));
-      if (ref) setDocs(await chargerDocs(sb, classe, periode, ref.periodes));
+      const c = await chargerClasse(sb, classe, periode);
+      setCtx(matiereSeule ? seulementMatiere(c, matiereSeule) : c);
+      if (ref) {
+        const d = await chargerDocs(sb, classe, periode, ref.periodes);
+        setDocs(matiereSeule ? seulementMatiere(d, matiereSeule) : d);
+      }
     } catch (e) {
       setErreur(e instanceof Error ? e.message : "Chargement impossible.");
     } finally {
       setChargement(false);
     }
-  }, [sb, classe, periode, ref]);
+  }, [sb, classe, periode, ref, matiereSeule]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement des données de la classe choisie

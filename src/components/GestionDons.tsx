@@ -730,7 +730,8 @@ export default function GestionDons({
     router.refresh();
   }
 
-  async function genererRecu(d: Don) {
+  /** Avec `ouvrir`, affiche le reçu dans un onglet ; sinon le télécharge sous son nom propre (« Reçu fiscal … .pdf »). */
+  async function genererRecu(d: Don, ouvrir = true) {
     setGenErreur(null);
     if (d.pii_chiffre && !coffre.estOuvert) {
       setGenErreur("Déverrouillez le coffre (Paramètres → Sécurité) pour générer un reçu.");
@@ -750,7 +751,7 @@ export default function GestionDons({
         montant: couverts.reduce((s, x) => s + Number(x.montant), 0),
         versements: couverts.map((x) => ({ date: x.date_don, montant: Number(x.montant), mode: x.mode_paiement })),
         date_edition: couverts.find((x) => x.recu_emis_le)?.recu_emis_le ?? undefined,
-      }, { ouvrir: true });
+      }, { ouvrir });
     } catch (e) {
       setGenErreur(e instanceof Error ? e.message : "Génération impossible.");
     }
@@ -1341,7 +1342,18 @@ export default function GestionDons({
                       </>
                     ) : (
                       <>
-                        {numeroEtabli(d.recu_numero) && (
+                        {/* Recherche de fonds : téléchargement direct, le fichier porte le nom du reçu (un PDF ouvert en onglet
+                            serait enregistré sous un nom codé) ; l'icône « reçu établi » devient alors inutile. */}
+                        {numeroEtabli(d.recu_numero) && (modeRecherche ? (
+                          <button
+                            type="button"
+                            onClick={() => genererRecu(d, false)}
+                            title="Télécharger le reçu fiscal (PDF)"
+                            className="whitespace-nowrap text-accent hover:underline"
+                          >
+                            Télécharger le reçu
+                          </button>
+                        ) : (
                           <button
                             type="button"
                             onClick={() => genererRecu(d)}
@@ -1349,11 +1361,11 @@ export default function GestionDons({
                           >
                             Reçu
                           </button>
-                        )}
-                        {modeRecherche && (
+                        ))}
+                        {modeRecherche && !numeroEtabli(d.recu_numero) && (
                           <span className="ml-3 inline-flex align-middle">
                             <BoutonDemandeRecu donId={d.id} demande={demandeParDon.get(d.id) ?? null}
-                              etabli={numeroEtabli(d.recu_numero)} prenom={prenomRecherche} />
+                              etabli={false} prenom={prenomRecherche} />
                           </span>
                         )}
                         {!lecture && <>

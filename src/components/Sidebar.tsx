@@ -7,7 +7,7 @@ import { NAV } from "@/lib/nav";
 import type { Niveau } from "@/lib/acces";
 import { estEvenement, estProfesseur, pagesAutorisees, roleByEmail } from "@/lib/roles";
 import { ICONES_ROLES, PROFILS_VUE } from "@/lib/vueRole";
-import { MISES_A_JOUR, entreeEnAmbre, titreEnAmbre } from "@/lib/misesAJour";
+import { MISES_A_JOUR, entreeEnAmbre } from "@/lib/misesAJour";
 import { todayISO } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
 import Icon from "./Icon";
@@ -281,15 +281,9 @@ export default function Sidebar({
           {/* Mises à jour : encart à part, pour le profil Recherche de fonds ; chaque point mène à l'endroit concerné. */}
           {roleByEmail(userEmail)?.slug === "recherche-fonds" && (
             <div className="mb-2 rounded-lg border border-border bg-surface-2 px-3 py-2">
-              {/* Titre en ambre pendant 3 jours après chaque ajout, puis discret. */}
-              <div
-                suppressHydrationWarning
-                className={`text-[11px] font-semibold ${titreEnAmbre(todayISO()) ? "text-gold" : "text-muted"}`}
-              >
-                Mises à jour
-              </div>
-              {MISES_A_JOUR.map((m) => (
-                <div key={m.depuis} className="mt-1.5">
+              {/* Chaque entrée porte son propre titre (« Mises à jour du … »), en ambre pendant 3 jours après l'ajout. */}
+              {MISES_A_JOUR.map((m, i) => (
+                <div key={m.depuis} className={i ? "mt-1.5" : ""}>
                   <div suppressHydrationWarning className={`text-[10.5px] ${entreeEnAmbre(m, todayISO()) ? "font-semibold text-gold" : "text-muted"}`}>{m.titre ?? `Depuis le ${m.depuis}`}</div>
                   <ul className="mt-0.5 space-y-0.5 text-[12px] leading-snug">
                     {m.points.map((p) => (

@@ -35,7 +35,10 @@ export default function SaisieNotes({
   matiereImposee,
   verrouEleve,
   niveauSeul,
+  barreNiveaux,
 }: {
+  /** Filtre « Afficher : CE1 · 4 … » du relevé, repris au-dessus de « + Évaluation ». */
+  barreNiveaux?: React.ReactNode;
   ctx: ContexteClasse;
   resultats: ResultatEleve[];
   droits: Droits;
@@ -59,6 +62,8 @@ export default function SaisieNotes({
   const matiere = matieres.find((m) => m.id === (matiereImposee ?? matiereId)) ?? matieres[0];
   const [nouvelle, setNouvelle] = useState<Partial<Evaluation> | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  // Notes saisies dans le formulaire de création, enregistrées avec l'évaluation (élève → saisie).
+  const [notesNouvelle, setNotesNouvelle] = useState<Record<string, string>>({});
   // Grille (notes + appréciations) ou saisie des appréciations élève par élève.
   // Grille seule : le choix « Élève par élève » n'est plus proposé.
   const [vue] = useState<"grille" | "eleve">("grille");
@@ -77,6 +82,9 @@ export default function SaisieNotes({
   const multiNiveaux = niveauxPossibles.length > 1;
   // Tous les niveaux cochés = toute la classe (enregistré vide).
   const niveauxEnregistres = (choix: string[]) => (choix.length >= niveauxPossibles.length ? [] : niveauxPossibles.filter((n) => choix.includes(n)));
+
+  // Élèves qui suivent l'évaluation en cours de création : ceux des niveaux cochés.
+  const elevesNouvelle = lignes.filter((r) => !multiNiveaux || (nouvelle?.niveaux ?? []).includes(r.niveau ?? ""));
 
   async function enregistrerNote(ev: Evaluation, eleveId: string, saisie: string) {
     const t = saisie.trim().toLowerCase().replace(",", ".");
@@ -116,8 +124,12 @@ export default function SaisieNotes({
     const { data, error } = await sb.from("evaluations").insert(ligne).select().single();
     if (error) return setMessage(`Échec : ${error.message}`);
     onMaj((c) => c && { ...c, evaluations: [...c.evaluations, data as Evaluation] });
+    // Notes déjà saisies pour les élèves concernés.
+    for (const [eleveId, saisie] of Object.entries(notesNouvelle)) {
+      if (saisie.trim() && elevesNouvelle.some((r) => r.eleve.id === eleveId)) await enregistrerNote(data as Evaluation, eleveId, saisie);
+    }
+    setNotesNouvelle({});
     setNouvelle(null);
-    setMessage(null);
   }
 
   async function modifierEvaluation(ev: Evaluation, patch: Partial<Evaluation>) {
@@ -176,6 +188,7 @@ export default function SaisieNotes({
         ))}
       </div>}
 
+      {barreNiveaux}
       <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
         <div className="flex flex-wrap items-center gap-2">
         <h3 className="text-sm font-semibold">{matiere.nom}</h3>
@@ -226,9 +239,60 @@ export default function SaisieNotes({
           <button type="button" onClick={creerEvaluation} className="rounded-lg bg-accent px-3 py-1.5 font-medium text-accent-fg hover:opacity-90">
             Créer
           </button>
-          <button type="button" onClick={() => setNouvelle(null)} className="rounded-lg px-3 py-1.5 hover:bg-surface-2">
+          <button type="button" onClick={() => { setNouvelle(null); setNotesNouvelle({}); }} className="rounded-lg px-3 py-1.5 hover:bg-surface-2">
             Annuler
           </button>
+        </div>
+      )}
+
+      {/* Saisie immédiate : note et appréciation des élèves des niveaux cochés (la note part avec « Créer »). */}
+      {nouvelle && (
+        <div className="overflow-x-auto rounded-xl border border-border bg-surface">
+          <table className="text-[13px]">
+            <thead>
+              <tr className="border-b border-border text-[11px] text-muted">
+                <th className="min-w-48 px-3 py-2 text-left font-medium uppercase tracking-wide">Élève</th>
+                <th className="min-w-24 border-l border-border/60 px-2 py-2 text-center font-medium uppercase tracking-wide">Note /{String(nouvelle.bareme ?? 20).replace(".", ",")}</th>
+                <th className="w-[min(36rem,55vw)] min-w-56 border-l border-border px-2 py-2 text-left font-medium uppercase tracking-wide">Appréciation</th>
+              </tr>
+            </thead>
+            <tbody>
+              {elevesNouvelle.map((r) => (
+                <tr key={r.eleve.id} className="border-t border-border/60">
+                  <td className="px-3 py-1">
+                    {nomEleve(r.eleve)}
+                    {multiNiveaux && <span className="ml-1.5 text-[10.5px] text-muted">{r.niveau}</span>}
+                  </td>
+                  <td className="border-l border-border/60 px-1 py-0.5 text-center">
+                    <input
+                      value={notesNouvelle[r.eleve.id] ?? ""}
+                      disabled={!!verrouEleve?.(r.eleve.id)}
+                      inputMode="decimal"
+                      onChange={(e) => setNotesNouvelle({ ...notesNouvelle, [r.eleve.id]: e.target.value })}
+                      className="w-16 rounded-md border border-border bg-background px-1 py-0.5 text-center tabular-nums outline-none focus:border-accent"
+                    />
+                  </td>
+                  <td className="border-l border-border px-2 py-1 align-top">
+                    <ChampAppreciation
+                      key={`${r.bulletin?.id ?? r.eleve.id}:${matiere.id}`}
+                      valeur={r.groupes.flatMap((g) => g.matieres).find((x) => x.matiere.id === matiere.id)?.ligne?.commentaire ?? ""}
+                      disabled={!!raisonVerrou(droits, matiere, r)}
+                      raison={raisonVerrou(droits, matiere, r)}
+                      lignes={1}
+                      onEnregistrer={(t) => (r.bulletin ? enregistrerAppreciation(sb, onMaj, r.bulletin.id, matiere.id, t) : Promise.resolve("Bulletin pas encore créé."))}
+                    />
+                  </td>
+                </tr>
+              ))}
+              {!elevesNouvelle.length && (
+                <tr>
+                  <td colSpan={3} className="px-3 py-4 text-center text-muted">
+                    Cochez un niveau pour saisir les notes des élèves concernés.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       )}
 

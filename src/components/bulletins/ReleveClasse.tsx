@@ -202,9 +202,19 @@ export default function ReleveClasse({
     return () => window.removeEventListener("popstate", retour);
   }, [panneauOuvert, eleveOuvert, onRecharger]);
   // Au moins une appréciation saisie pour l'élève (générale ou d'une matière en appréciation seule).
+  // Les appréciations par matière saisies dans la grille de notes sont celles du bulletin de la période (ctx.lignes).
+  const bulletinPeriode = (eleveId: string) => ctx.bulletins.find((b) => b.eleve_id === eleveId);
+  const commentaireMatiere = (eleveId: string, m: Matiere) => {
+    const b = bulletinPeriode(eleveId);
+    return !!b && !!ctx.lignes.find((l) => l.bulletin_id === b.id && l.matiere_id === m.id)?.commentaire?.trim();
+  };
   const aAppreciation = (eleveId: string) => {
     const d = docDe(eleveId);
-    return !!d && (!!d.appreciation?.trim() || vue.appreciations.some((x) => x.bulletin_id === d.id && !!x.texte?.trim()));
+    const b = bulletinPeriode(eleveId);
+    return (
+      (!!d && (!!d.appreciation?.trim() || vue.appreciations.some((x) => x.bulletin_id === d.id && !!x.texte?.trim()))) ||
+      (!!b && ctx.lignes.some((l) => l.bulletin_id === b.id && !!l.commentaire?.trim()))
+    );
   };
   const ecrire = async (p: PromiseLike<{ error: { message: string } | null }>) => (await p).error?.message ?? null;
   const haut = useRef<HTMLDivElement>(null);
@@ -226,6 +236,31 @@ export default function ReleveClasse({
   const tousNiveaux = !multiNiveaux || niveauChoisi === "*";
   const niveauAffiche = groupesNiveau.some((g) => g.niveau === niveauChoisi) ? niveauChoisi : (groupesNiveau[0]?.niveau ?? "");
   const visibles = tousNiveaux ? eleves : eleves.filter((e) => niveauEleve(e) === niveauAffiche);
+
+  // « Afficher : CE1 · 4 … Tous les niveaux » : au-dessus du tableau, et au-dessus de « + Évaluation » dans la saisie.
+  const barreNiveaux =
+    multiNiveaux && eleves.length > 0 ? (
+      <div className="flex flex-wrap items-center justify-center gap-1.5">
+        <span className="text-[12.5px] text-muted">Afficher :</span>
+        {groupesNiveau.map((g) => (
+          <button
+            key={g.niveau}
+            type="button"
+            onClick={() => setNiveauChoisi(g.niveau)}
+            className={`rounded-lg border px-3 py-1 text-[12.5px] font-semibold ${!tousNiveaux && niveauAffiche === g.niveau ? "border-gold/50 bg-gold-soft text-gold" : "border-border bg-surface text-muted hover:bg-surface-2"}`}
+          >
+            {g.niveau || "?"} <span className="font-normal opacity-80">· {g.eleves.length}</span>
+          </button>
+        ))}
+        <button
+          type="button"
+          onClick={() => setNiveauChoisi("*")}
+          className={`rounded-lg border px-3 py-1 text-[12.5px] font-semibold ${tousNiveaux ? "border-gold/50 bg-gold-soft text-gold" : "border-border bg-surface text-muted hover:bg-surface-2"}`}
+        >
+          Tous les niveaux
+        </button>
+      </div>
+    ) : null;
 
   const boutons = (
     <div className="ml-auto flex flex-wrap gap-2">
@@ -274,7 +309,7 @@ export default function ReleveClasse({
             </button>
             <span />
           </div>
-          <SaisieNotes ctx={ctx} resultats={resultats} droits={droits} enseignants={enseignants} onMaj={onMaj} matiereImposee={matiere.id} verrouEleve={verrou} niveauSeul={tousNiveaux ? null : niveauAffiche} />
+          <SaisieNotes ctx={ctx} resultats={resultats} droits={droits} enseignants={enseignants} onMaj={onMaj} matiereImposee={matiere.id} verrouEleve={verrou} niveauSeul={tousNiveaux ? null : niveauAffiche} barreNiveaux={barreNiveaux} />
         </div>
       )}
 
@@ -344,28 +379,7 @@ export default function ReleveClasse({
         })()}
 
       {!eleves.length && <p className="text-sm text-muted">Aucun élève dans cette classe.</p>}
-      {multiNiveaux && eleves.length > 0 && !matiere && (
-        <div className="flex flex-wrap items-center justify-center gap-1.5">
-          <span className="text-[12.5px] text-muted">Afficher :</span>
-          {groupesNiveau.map((g) => (
-            <button
-              key={g.niveau}
-              type="button"
-              onClick={() => setNiveauChoisi(g.niveau)}
-              className={`rounded-lg border px-3 py-1 text-[12.5px] font-semibold ${!tousNiveaux && niveauAffiche === g.niveau ? "border-gold/50 bg-gold-soft text-gold" : "border-border bg-surface text-muted hover:bg-surface-2"}`}
-            >
-              {g.niveau || "?"} <span className="font-normal opacity-80">· {g.eleves.length}</span>
-            </button>
-          ))}
-          <button
-            type="button"
-            onClick={() => setNiveauChoisi("*")}
-            className={`rounded-lg border px-3 py-1 text-[12.5px] font-semibold ${tousNiveaux ? "border-gold/50 bg-gold-soft text-gold" : "border-border bg-surface text-muted hover:bg-surface-2"}`}
-          >
-            Tous les niveaux
-          </button>
-        </div>
-      )}
+      {!matiere && barreNiveaux}
       {/* Tableau transposé : une ligne par matière (par ensemble : Français, Mathématiques…), une colonne par élève
           (par niveau). Un clic sur une matière ou une case ouvre la saisie ; un clic sur un élève, ses appréciations. */}
       <div ref={defilementRef} className={`mx-auto max-h-[calc(100vh-8rem)] w-fit max-w-full overflow-auto rounded-xl border border-border bg-surface ${matiere ? "hidden" : ""}`}>
@@ -394,19 +408,11 @@ export default function ReleveClasse({
                       <button
                         type="button"
                         onClick={() => basculerEleve(actif ? null : e.id)}
-                        className="text-center text-[12.5px] font-semibold leading-tight text-foreground hover:text-accent hover:underline"
+                        className="text-center text-[12.5px] font-normal leading-tight text-foreground hover:text-accent hover:underline"
                         title={`Appréciations · ${nomEleve(e)}`}
                       >
                         {e.prenom ?? ""}
-                        <span className="block text-[12.5px] font-semibold">{e.nom}</span>
-                        {aAppreciation(e.id) && (
-                          <span title="Appréciation renseignée" aria-label="Appréciation renseignée" className="mt-0.5 inline-flex text-positive">
-                            <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                              <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z" />
-                              <path d="m8.5 12 2.5 2.5 4.5-5" />
-                            </svg>
-                          </span>
-                        )}
+                        <span className="block text-[12.5px] font-normal">{e.nom}</span>
                       </button>
                       {verrou(e.id) && (
                         <span className="text-[10px]" title="Relevé publié : notes verrouillées">
@@ -488,12 +494,9 @@ export default function ReleveClasse({
                             className={`group px-1.5 py-2 text-center tabular-nums ${bord} ${droit ? "cursor-pointer hover:bg-accent-soft/50" : concerne ? "" : "bg-surface-2/50"}`}
                           >
                             <span className="whitespace-nowrap text-[12.5px]">{t.join(" · ")}</span>
-                            {concerne && appreciationDe(d, m)?.texte?.trim() && (
-                              <span title="Appréciation renseignée" aria-label="Appréciation renseignée" className="ml-1 inline-flex align-middle text-positive">
-                                <svg viewBox="0 0 24 24" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                                  <path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12Z" />
-                                  <path d="m8.5 12 2.5 2.5 4.5-5" />
-                                </svg>
+                            {concerne && !t.length && (appreciationDe(d, m)?.texte?.trim() || commentaireMatiere(e.id, m)) && (
+                              <span title="Appréciation renseignée" aria-label="Appréciation renseignée" className="ml-1 text-[13px] text-white">
+                                ...
                               </span>
                             )}
                             {/* Au survol : « + » pour ajouter une évaluation ou une note. */}

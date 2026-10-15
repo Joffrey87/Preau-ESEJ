@@ -1,7 +1,7 @@
 "use client";
 
 import { extensible } from "./outils";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useSauvegardeAuto } from "@/lib/sauvegardeAuto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { nomEleve, note20, type ContexteClasse, type Evaluation, type Ligne, type Matiere, type Note, type ResultatEleve, type Statut } from "@/lib/bulletins";
@@ -58,15 +58,8 @@ export function ChampAppreciation({
   const { valeur: texte, changer: changerTexte, envoyer, etat, erreur } = useSauvegardeAuto(valeur, onEnregistrer);
   const changer = (t: string) => changerTexte(t.slice(0, LIMITE_APPRECIATION));
   const sauver = () => envoyer();
-  // Coche verte juste après un enregistrement réussi, puis elle s'efface.
-  const [coche, setCoche] = useState(false);
-  useEffect(() => {
-    if (etat !== "ok") return;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- coche passagère après l'enregistrement
-    setCoche(true);
-    const t = window.setTimeout(() => setCoche(false), 2500);
-    return () => window.clearTimeout(t);
-  }, [etat]);
+  // Coche verte tant que la dernière saisie est enregistrée (elle disparaît à la frappe suivante, et en quittant la matière).
+  const coche = etat === "ok";
 
   return (
     <div>

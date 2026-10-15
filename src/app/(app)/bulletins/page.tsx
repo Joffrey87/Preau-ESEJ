@@ -1,5 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import { roleByEmail } from "@/lib/roles";
+import { emailVue } from "@/lib/vueRoleServeur";
 import Bulletins from "@/components/bulletins/Bulletins";
 
 // Bulletins : la Directrice (tout), la titulaire d'une classe (toutes ses matières, mention, appréciation),
@@ -13,7 +14,8 @@ export default async function BulletinsPage({
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  const directrice = roleByEmail(user?.email)?.slug === "directrice";
+  // Profil affiché (vue du Webmestre comprise) : le Webmestre en vue Directrice voit exactement l'écran de la Directrice.
+  const directrice = roleByEmail(await emailVue(user?.email))?.slug === "directrice";
   const { data: moi } = await supabase.from("enseignants").select("id").eq("user_id", user?.id ?? "").maybeSingle();
   const initial = await searchParams;
   return <Bulletins directrice={directrice} enseignantId={(moi?.id as string | undefined) ?? null} initial={initial} />;

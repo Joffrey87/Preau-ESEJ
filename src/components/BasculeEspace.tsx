@@ -10,7 +10,7 @@ export type LiensEspace = {
   prenom: string | null;
   directrice: boolean;
   president?: boolean;
-  /** Membre Événement relié à la famille : son compte Événement (adresse interne) et son libellé. */
+  /** Membre Événement relié à la famille : son compte Événementiel (adresse interne) et son libellé. */
   evenement?: { libelle: string; email: string } | null;
   /** Accès Professeurs donné par le Webmestre : compte nominatif du professeur. */
   professeur?: { libelle: string; email: string } | null;
@@ -20,7 +20,7 @@ export type LiensEspace = {
   retourLiee?: Partial<Record<Espace, string>>;
 };
 
-/** Libellé membre Événement (« Marie W. ») → prénom seul pour le sous-titre du basculeur. */
+/** Libellé membre Événementiel (« Marie W. ») → prénom seul pour le sous-titre du basculeur. */
 function prenomDuLibelle(libelle: string): string {
   const t = libelle.trim();
   if (!t) return t;
@@ -48,7 +48,7 @@ export function PanneauBascule({ actuel, liens }: { actuel: Espace; liens: Liens
     ...(prenom ? [{ espace: "recherche" as Espace, titre: "Recherche de fonds", detail: prenom, icone: "users" }] : []),
     ...(liens.directrice ? [{ espace: "directrice" as Espace, titre: "Directrice", detail: "Notes & Bulletins", icone: "graduation" }] : []),
     ...(liens.president ? [{ espace: "president" as Espace, titre: "Président", detail: "Administration de l'ARIL", icone: "ledger" }] : []),
-    ...(liens.evenement ? [{ espace: "evenement" as Espace, titre: "Événement", detail: prenomDuLibelle(liens.evenement.libelle), icone: "calendar" }] : []),
+    ...(liens.evenement ? [{ espace: "evenement" as Espace, titre: "Événementiel", detail: prenomDuLibelle(liens.evenement.libelle), icone: "calendar" }] : []),
     ...(liens.professeur ? [{ espace: "professeur" as Espace, titre: "Professeur", detail: liens.professeur.libelle, icone: "graduation" }] : []),
   ];
   return (

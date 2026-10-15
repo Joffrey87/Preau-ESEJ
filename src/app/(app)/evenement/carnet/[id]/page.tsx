@@ -19,7 +19,7 @@ export default async function FicheFournisseurPage({ params }: { params: Promise
     supabase.rpc("categories_depense_facture"),
   ]);
   const liste = (factures ?? []) as FactureFournisseur[];
-  // Opérations bancaires liées : la base ne les montre qu'au bureau (le profil Événement n'en voit aucune).
+  // Opérations bancaires liées : la base ne les montre qu'au bureau (le profil Événementiel n'en voit aucune).
   const idsOps = liste.map((f) => f.operation_id).filter((x): x is string => !!x);
   const { data: operations } =
     estTresorier && idsOps.length

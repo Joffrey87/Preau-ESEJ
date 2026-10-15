@@ -11,6 +11,7 @@ import { MISES_A_JOUR, entreeEnAmbre } from "@/lib/misesAJour";
 import { todayISO } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
 import Icon from "./Icon";
+import PastilleNonLus from "./communication/PastilleNonLus";
 import BasculeTheme from "./BasculeTheme";
 import { PanneauBascule, type LiensEspace } from "./BasculeEspace";
 import { oublierSessions, type Espace } from "@/lib/basculeEspace";
@@ -267,6 +268,7 @@ export default function Sidebar({
                     >
                       <Icon name={item.icon} className="h-4 w-4 shrink-0" />
                       <span className="truncate">{item.label}</span>
+                      {item.href === "/communication" && <PastilleNonLus />}
                     </Link>
                   </li>
                 );
@@ -329,6 +331,7 @@ const NAV_PROFESSEUR: typeof NAV = [
       { href: "/bulletins?onglet=trombi", label: "Élèves", icon: "users", ready: true },
     ],
   },
+  { title: "Aide", items: [{ href: "/guide-professeurs", label: "Guide", icon: "ampoule", ready: true }] },
 ];
 
 /** Menu du compte : un profil restreint ne voit que ses pages. */

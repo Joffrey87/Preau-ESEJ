@@ -75,10 +75,10 @@ export const ACCES_PAR_ROLE: Record<string, Acces> = {
   president: ALL,
   tresorier: ALL,
   administrateur: ALL,
-  "resp-mecenat": ["donateur", "partenaire", "bureau", "autre"],
+  "resp-mecenat": ["donateur", "parent", "partenaire", "bureau", "autre"],
   secretaire: ["parent", "enseignant", "bureau", "vendeur", "partenaire", "evenement", "autre"],
   directrice: ["parent", "enseignant", "bureau", "autre"],
-  "directeur-spirituel": ["bureau", "enseignant", "autre"],
+  "directeur-spirituel": ["parent", "bureau", "enseignant", "autre"],
 };
 
 // Seuls ces rôles voient les IBAN (données bancaires sensibles).

@@ -2,7 +2,7 @@
 
 import { Fragment, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { estSynthese, nomEleve, note20, type Enseignant, type Matiere, type Periode, type Statut, type Synthese } from "@/lib/bulletins";
+import { estSynthese, nomEleve, note20, trimestreEnLettres, type Enseignant, type Matiere, type Periode, type Statut, type Synthese } from "@/lib/bulletins";
 import { telechargerBulletins } from "@/lib/bulletinPdf";
 import {
   matieresIntervenants,
@@ -90,12 +90,12 @@ export default function DocumentsClasse({
     <div className="space-y-3">
       <div className="rounded-xl border border-border bg-surface p-3 text-[13px]">
         <div className="font-semibold">
-          {mode === "releve" ? `Relevés de notes · Période ${periode.ordre}` : `Bulletins · ${titreTrimestre(ctx.trimestre)}`}
+          {mode === "releve" ? `Relevés de notes · Période ${periode.ordre}` : `Bulletins · ${trimestreEnLettres(ctx.trimestre)}`}
         </div>
         <p className="text-[12px] text-muted">
           {mode === "releve"
             ? "Les notes de la période uniquement, sans moyenne, avec une appréciation générale."
-            : `Moyennes simples sur 20, calculées sur toutes les notes du trimestre (périodes ${ctx.periodes.map((p) => p.ordre).join(", ")}). Chaque professeur intervenant écrit l'appréciation de sa matière ; la titulaire écrit l'appréciation générale, validée par la Directrice.`}
+            : `Moyennes simples sur 20, calculées sur toutes les notes du trimestre (périodes ${ctx.periodes.map((p) => p.ordre).join(", ")}). Catéchisme : une appréciation seule, sans moyenne. Chaque professeur intervenant écrit l'appréciation de sa matière ; la titulaire écrit l'appréciation du trimestre (les appréciations des relevés ne sont pas reprises), validée par la Directrice.`}
         </p>
         <div className="mt-2 flex flex-wrap gap-2">
           {(directrice || titulaire) && (
@@ -168,7 +168,7 @@ export default function DocumentsClasse({
                         <Fragment key={g.nom}>
                           <tr className="bg-gold-soft/50 font-semibold">
                             <td className="px-2 py-1">{g.nom}</td>
-                            <td className="px-2 py-1 text-center tabular-nums">{mode === "trimestre" ? note20(g.chiffre.moy) : ""}</td>
+                            <td className="px-2 py-1 text-center tabular-nums">{mode === "trimestre" && !g.matieres.every((m) => m.appreciationSeule) ? note20(g.chiffre.moy) : ""}</td>
                             <td />
                           </tr>
                           {g.matieres.map((m) => {
@@ -179,7 +179,7 @@ export default function DocumentsClasse({
                               <tr key={m.nom} className="border-t border-border/60 align-middle">
                                 <td className="w-[9rem] px-2 py-0.5 pl-4">{m.nom}</td>
                                 <td className={`px-2 py-0.5 ${mode === "trimestre" ? "w-[4.5rem] text-center tabular-nums" : "text-muted"}`}>
-                                  {mode === "trimestre" ? note20(m.chiffre.moy) : m.commentaire ?? "–"}
+                                  {m.appreciationSeule ? "" : mode === "trimestre" ? note20(m.chiffre.moy) : m.commentaire ?? "–"}
                                 </td>
                                 <td className="px-1 py-0.5">
                                   {mat && d ? (
@@ -210,7 +210,7 @@ export default function DocumentsClasse({
 
               {d && (
                 <div className="mt-1.5 flex items-start gap-2 border-t border-border pt-1.5">
-                  <span className="w-[9rem] shrink-0 px-2 pt-1 text-[12px] font-semibold">Appréciation générale</span>
+                  <span className="w-[9rem] shrink-0 px-2 pt-1 text-[12px] font-semibold">{mode === "trimestre" ? "Appréciation du trimestre" : "Appréciation générale"}</span>
                   <textarea
                     key={`${d.id}:${d.appreciation ?? ""}`}
                     defaultValue={d.appreciation ?? ""}

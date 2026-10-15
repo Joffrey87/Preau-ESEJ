@@ -6,6 +6,7 @@ import { depuis, prenomEleve, termineEnJuin } from "@/lib/eleves";
 import CoordonneesFamille from "@/components/CoordonneesFamille";
 import PropositionsFamille from "@/components/PropositionsFamille";
 import type { PropositionFamille } from "@/components/CarnetFamilles";
+import NaissancesEnfants from "@/components/NaissancesEnfants";
 
 export default async function MaFamille() {
   const supabase = await createClient();
@@ -66,6 +67,7 @@ export default async function MaFamille() {
           </ul>
         )}
       </section>
+      <NaissancesEnfants ids={espace.eleves.filter((e) => !e.sorti_le).map((e) => e.id)} lectureSeule={!!apercu} />
     </div>
   );
 }

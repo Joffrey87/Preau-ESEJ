@@ -91,7 +91,7 @@ export type Bulletin = {
   updated_at: string;
 };
 export type Ligne = { bulletin_id: string; matiere_id: string; commentaire: string | null; afficher: boolean; moyenne_saisie: number | null };
-export type EleveBulletin = Eleve & { id: string; prenom: string | null; nom: string; famille_id: string };
+export type EleveBulletin = Eleve & { id: string; prenom: string | null; nom: string; famille_id: string; date_naissance?: string | null };
 
 /** Synthèse figée : ce que lisent la famille et le PDF. */
 export type Synthese = {
@@ -99,12 +99,13 @@ export type Synthese = {
   /** Relevé de notes (période : notes seules, sans moyenne) ou bulletin trimestriel (moyennes simples, sans classe ni rang). Absent : bulletin de période historique. */
   mode?: "releve" | "trimestre";
   source?: string | null;
-  eleve: { prenom: string; nom: string; niveau: string | null };
+  /** naissance : date ISO, imprimée sur le bulletin trimestriel. */
+  eleve: { prenom: string; nom: string; niveau: string | null; naissance?: string | null };
   classe: { nom: string; titulaire: string | null };
   periode: { libelle: string; annee: string; trimestre: number | null; numero?: number };
   afficherRang: boolean;
   general: Chiffre;
-  groupes: { nom: string; chiffre: Chiffre; matieres: { nom: string; enseignants: string; chiffre: Chiffre; commentaire: string | null }[] }[];
+  groupes: { nom: string; chiffre: Chiffre; matieres: { nom: string; enseignants: string; chiffre: Chiffre; commentaire: string | null; appreciationSeule?: boolean }[] }[];
   mention: Mention | null;
   appreciation: string | null;
   publieLe?: string | null;
@@ -329,7 +330,27 @@ export const estSynthese = (s: Bulletin["synthese"]): s is Synthese => !!s && (s
 export const titrePeriode = (p: Synthese["periode"]) =>
   [p.numero ? `Période ${p.numero}` : p.libelle, p.trimestre ? `${p.trimestre === 1 ? "1er" : `${p.trimestre}e`} trimestre` : null].filter(Boolean).join(" · ");
 
+/** « Premier Trimestre », « Deuxième Trimestre »… (bulletins trimestriels). */
+export const trimestreEnLettres = (t: number) => `${["Premier", "Deuxième", "Troisième"][t - 1] ?? `${t}e`} Trimestre`;
+
+/**
+ * Titre d'un document : relevé de notes, les dates de la période seules ; bulletin trimestriel, « Premier Trimestre » ;
+ * bulletin de période historique, « Période 2 · 1er trimestre ».
+ */
+export const titreDocument = (s: Pick<Synthese, "mode" | "periode">) =>
+  s.mode === "releve" ? s.periode.libelle : s.mode === "trimestre" && s.periode.trimestre ? trimestreEnLettres(s.periode.trimestre) : titrePeriode(s.periode);
+
+/** Matière notée par une appréciation seule, sans note ni moyenne (Catéchisme). */
+export const estAppreciationSeule = (nom: string) => nom.normalize("NFD").replace(/\p{Diacritic}/gu, "").trim().toLowerCase() === "catechisme";
+
+/** Classe affichée pour un élève : sa section (« Classe : CE1 »), jamais le regroupement de classes (CE1 CE2 CM1). */
+export const classeEleve = (s: Pick<Synthese, "eleve"> | null | undefined) => (s?.eleve.niveau ? `Classe : ${s.eleve.niveau}` : "");
+
+/** Date ISO (aaaa-mm-jj) en jj/mm/aaaa. */
+export const dateJJMMAAAA = (iso: string | null | undefined) => (iso ? iso.slice(0, 10).split("-").reverse().join("/") : "");
+
 export const nomFichierBulletin = (s: Synthese) =>
-  `${s.mode === "releve" ? "Relevé de notes" : "Bulletin"} ${s.eleve.prenom} ${s.eleve.nom} - ${
-    s.mode === "trimestre" && s.periode.trimestre ? `${s.periode.trimestre === 1 ? "1er" : `${s.periode.trimestre}e`} trimestre` : s.periode.numero ? `Période ${s.periode.numero}` : s.periode.libelle
-  }`.replace(/[\\/:*?"<>|]/g, "-") + ".pdf";
+  `${s.mode === "releve" ? "Relevé de notes" : "Bulletin"} ${s.eleve.prenom} ${s.eleve.nom} - ${s.mode ? titreDocument(s) : s.periode.numero ? `Période ${s.periode.numero}` : s.periode.libelle}`.replace(
+    /[\\/:*?"<>|]/g,
+    "-",
+  ) + ".pdf";

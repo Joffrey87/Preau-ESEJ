@@ -26,7 +26,7 @@ export async function telechargerRelevesMaternelle(releves: ReleveImprimable[], 
     p.rect(M, p.top, W - 2 * M, 34, CREME);
     p.rect(M, p.top, 2.5, 34, OR);
     p.texte(`${r.eleve.prenom} ${r.eleve.nom.toUpperCase()}`, M + 14, p.top + 15, p.semi, 11.5);
-    p.texte(`${r.classe.nom}${r.eleve.niveau ? ` · ${r.eleve.niveau}` : ""}${r.classe.titulaire ? ` · ${r.classe.titulaire}` : ""}`, M + 14, p.top + 28, p.regular, 8.5, GRIS);
+    p.texte([r.eleve.niveau && `Classe : ${r.eleve.niveau}`, r.classe.titulaire].filter(Boolean).join(" · "), M + 14, p.top + 28, p.regular, 8.5, GRIS);
     p.top += 46;
 
     const cols = { nom: M + 6, niveau: M + 150, com: M + 262 };

@@ -42,7 +42,7 @@ export const PAGES_RESTREINTES: Record<string, string[]> = {
   // Profils pas encore configurés : rien de visible (une page d'attente) tant que leurs accès ne sont pas définis.
   secretaire: ["/en-attente"],
   administrateur: ["/en-attente"],
-  directrice: ["/", "/bulletins", "/carnet", "/cheques", "/ventes-diverses", "/caisses", "/dons/medailles"],
+  directrice: ["/", "/bulletins", "/guide-professeurs", "/carnet", "/communication", "/ventes-diverses", "/caisses", "/dons/medailles"],
   "resp-mecenat": ["/en-attente"],
 };
 
@@ -63,8 +63,8 @@ export const PAGES_RESERVEES: { prefixe: string; roles: string[] }[] = [
   // Accès des familles à leur espace (comptes, invitations) : Administrateur (aujourd'hui le Trésorier).
   { prefixe: "/acces-familles", roles: ["tresorier", "administrateur"] },
   // Comptabilité : le Président la consulte seulement (pas d'import de relevé ni de règles de correspondance).
-  // Dépôt de chèques : Trésorier, Président et Directrice (le lien avec la comptabilité est confirmé par le Trésorier).
-  { prefixe: "/cheques", roles: ["tresorier", "president", "directrice"] },
+  // Dépôt en banque : Trésorier et Président (le lien avec la comptabilité est confirmé par le Trésorier).
+  { prefixe: "/cheques", roles: ["tresorier", "president"] },
   { prefixe: "/comptabilite/import", roles: ["tresorier", "administrateur"] },
   { prefixe: "/comptabilite/correspondances", roles: ["tresorier", "administrateur"] },
 ];
@@ -79,12 +79,12 @@ export function pageReserveeInterdite(email: string | null | undefined, chemin: 
 /** Comptes nominatifs des professeurs : <identifiant>@professeurs.esej, cantonnés aux bulletins. */
 export const DOMAINE_PROFESSEURS = "professeurs.esej";
 export const estProfesseur = (email?: string | null) => !!email?.endsWith(`@${DOMAINE_PROFESSEURS}`);
-export const PAGES_PROFESSEURS = ["/bulletins"];
+export const PAGES_PROFESSEURS = ["/bulletins", "/guide-professeurs"];
 
-/** Comptes du profil Événement : <identifiant>@evenement.esej, cantonnés à leurs quatre onglets. */
+/** Comptes du profil Événementiel : <identifiant>@evenement.esej, cantonnés à leurs quatre onglets. */
 export const DOMAINE_EVENEMENT = "evenement.esej";
 export const estEvenement = (email?: string | null) => !!email?.endsWith(`@${DOMAINE_EVENEMENT}`);
-export const PAGES_EVENEMENT = ["/evenement", "/evenement/membres", "/evenement/facturation", "/evenement/carnet", "/ventes-diverses", "/caisses"];
+export const PAGES_EVENEMENT = ["/evenement", "/evenement/membres", "/evenement/facturation", "/evenement/carnet", "/ventes-diverses", "/caisses", "/communication"];
 
 /** Pages autorisées pour ce compte ; null = pas de restriction. */
 export function pagesAutorisees(email?: string | null): string[] | null {

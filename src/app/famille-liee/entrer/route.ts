@@ -5,7 +5,7 @@ import { COOKIE_VUE } from "@/lib/vueRole";
 
 /**
  * Ouvre, sans changer de compte, l'Espace de la famille réservée reliée au compte connecté (Président → Antona,
- * membre Événement → sa famille). Le cookie ne donne aucun droit : la base décide (ma_famille / ma_famille_liee).
+ * membre Événementiel → sa famille). Le cookie ne donne aucun droit : la base décide (ma_famille / ma_famille_liee).
  */
 export async function GET(request: NextRequest) {
   const reponse = NextResponse.redirect(new URL("/espace", request.url));

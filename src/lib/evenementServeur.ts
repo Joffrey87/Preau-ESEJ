@@ -2,7 +2,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { roleByEmail } from "@/lib/roles";
 
-/** Session des pages Événement : membres Événement et Trésorier modifient ; Président et Directrice lisent. */
+/** Session des pages Événementiel : membres Événementiel et Trésorier modifient ; Président et Directrice lisent. */
 export async function sessionEvenement() {
   const supabase = await createClient();
   const {

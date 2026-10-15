@@ -20,7 +20,7 @@ export async function finirBasculeReelle() {
 }
 
 type Cible = { userId: string; prenom?: string; libelle: string; groupe: string };
-const GROUPES = ["Bureau", "Recherche de fonds", "Professeurs", "Événement", "Familles"];
+const GROUPES = ["Bureau", "Recherche de fonds", "Professeurs", "Événementiel", "Familles"];
 
 async function poster(corps: Record<string, string>): Promise<{ ok: boolean; url?: string; raison?: string }> {
   try {

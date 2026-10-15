@@ -31,6 +31,8 @@ export const NAV: NavSection[] = [
       { href: "/bulletins?onglet=trombi", label: "Élèves", icon: "users", ready: true, roles: ["directrice"] },
       { href: "/bulletins?onglet=parametres", label: "Gestion des classes", titre: "Classes, année", icon: "check", ready: true, roles: ["directrice"] },
       { href: "/bulletins?onglet=inscriptions", label: "Inscriptions", icon: "mail", ready: true, roles: ["directrice"] },
+      // Le guide remis aux Professeurs, consultable par la Directrice.
+      { href: "/guide-professeurs", label: "Guide Professeurs", icon: "ampoule", ready: true, roles: ["directrice"] },
     ],
   },
   {
@@ -41,8 +43,8 @@ export const NAV: NavSection[] = [
       { href: "/scolarite", label: "Frais de scolarité", icon: "graduation", ready: true },
       { href: "/ventes-diverses", label: "Ventes diverses", icon: "invoice", ready: true, roles: ["tresorier", "directrice"] },
       { href: "/caisses", label: "Caisses", icon: "billets", ready: true, roles: ["tresorier", "directrice"] },
-      // Photo d'une remise de chèques, saisie des chèques et lien avec la comptabilité.
-      { href: "/cheques", label: "Dépôt de chèques", icon: "billets", ready: true, roles: ["tresorier", "president", "directrice"] },
+      // Dépôt en banque : photo d'une remise de chèques, saisie des chèques et lien avec la comptabilité.
+      { href: "/cheques", label: "Dépôt en banque", icon: "billets", ready: true, roles: ["tresorier", "president"] },
     ],
   },
   {
@@ -63,6 +65,8 @@ export const NAV: NavSection[] = [
   {
     title: "Communication",
     items: [
+      // Messagerie avec les familles : un service par profil (Direction, Secrétariat, Trésorerie, Événementiel).
+      { href: "/communication", label: "Messagerie", icon: "bulle", ready: true, roles: ["directrice", "tresorier", "secretaire", "administrateur"] },
       { href: "/acces-familles", label: "Accès des familles", icon: "users", ready: true, roles: ["tresorier", "administrateur"] },
       { href: "/mails", label: "Mails", icon: "mail", ready: true },
       { href: "/courriers", label: "Courriers à confirmer", icon: "receipt", ready: true, roles: ["secretaire", "tresorier", "president", "administrateur"] },
@@ -77,7 +81,7 @@ export const NAV: NavSection[] = [
     ],
   },
   {
-    // Profil Événement (et lecture : Président, Directrice ; Trésorier).
+    // Profil Événementiel (et lecture : Président, Directrice ; Trésorier).
     title: "Événements",
     items: [
       { href: "/evenement", label: "Événements", icon: "calendar", ready: true, roles: ["tresorier", "president", "directrice"] },

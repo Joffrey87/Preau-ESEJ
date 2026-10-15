@@ -28,7 +28,7 @@ export default function ListeMembres({ peutModifier, membres }: { peutModifier: 
       supabase.rpc("ajouter_membre_evenement", { p_prenom: mb.prenom, p_nom: mb.nom, p_courriel: mb.courriel }),
     );
     if (ok) {
-      setInfo(`Compte créé : ${mb.prenom} se connecte avec le bouton « Événement », son prénom et le mot de passe « ${mb.prenom.toLowerCase()} ».`);
+      setInfo(`Compte créé : ${mb.prenom} se connecte avec le bouton « Événementiel », son prénom et le mot de passe « ${mb.prenom.toLowerCase()} ».`);
       setMb({ prenom: "", nom: "", courriel: "" });
     }
   }

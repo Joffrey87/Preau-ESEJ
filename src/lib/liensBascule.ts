@@ -40,7 +40,7 @@ async function liensDuCompte(supabase: SupabaseClient, user: User, prenomVisite:
   if (estEvenement(user.email)) {
     const l = (((await supabase.rpc("mes_liens_evenement")).data ?? []) as { famille: string; membre_recherche: string | null; directrice: boolean }[])[0];
     if (!l) return null;
-    // Depuis un compte Événement : jamais le profil Président.
+    // Depuis un compte Événementiel : jamais le profil Président.
     return { famille: l.famille, prenom: l.membre_recherche, directrice: l.directrice, president: false, evenement: user.email ?? null };
   }
   return null;

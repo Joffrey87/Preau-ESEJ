@@ -55,7 +55,7 @@ export async function middleware(request: NextRequest) {
   const estFamille = (user?.app_metadata as { espace?: string } | undefined)?.espace === "famille";
   const versEspace = request.nextUrl.pathname.startsWith("/espace");
 
-  // Profil Événement : uniquement /evenement (la base le garantit aussi : RLS). Côté bureau : Trésorier, Président et Directrice (lecture).
+  // Profil Événementiel : uniquement /evenement (la base le garantit aussi : RLS). Côté bureau : Trésorier, Président et Directrice (lecture).
   const estEvenement = (user?.app_metadata as { espace?: string } | undefined)?.espace === "evenement";
   const chemin = request.nextUrl.pathname;
   const versEvenement =
@@ -65,6 +65,8 @@ export async function middleware(request: NextRequest) {
     chemin.startsWith("/ventes-diverses/") ||
     chemin === "/caisses" ||
     chemin.startsWith("/caisses/") ||
+    // Messagerie : boîte « Événementiel ».
+    chemin === "/communication" ||
     // Lecture de photos (caisse, ventes) : la route vérifie elle-même l'accès aux Ventes diverses.
     chemin === "/api/lecture-caisse" ||
     chemin === "/api/lecture-ventes";
@@ -124,7 +126,7 @@ export async function middleware(request: NextRequest) {
   const versWebmestre = chemin0 === PAGE_WEBMESTRE || chemin0.startsWith(PAGE_WEBMESTRE + "/");
   // Page du catalogue (ou page Webmestre) : la base décide ; sinon, règles du code.
   const parBase = !!user && !estFamille && (niveau !== null || versWebmestre);
-  // Pages Événement côté bureau : la grille Webmestre décide ; hors catalogue (repli), Trésorier, Président et Directrice seulement.
+  // Pages Événementiel côté bureau : la grille Webmestre décide ; hors catalogue (repli), Trésorier, Président et Directrice seulement.
   if (user && versEvenement && !parBase && !["tresorier", "president", "directrice"].includes(roleByEmail(emailVue)?.slug ?? "")) {
     return NextResponse.redirect(Object.assign(request.nextUrl.clone(), { pathname: "/", search: "" }));
   }

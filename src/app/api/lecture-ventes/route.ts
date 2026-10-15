@@ -3,7 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { lireVentesAvecClaude } from "@/lib/lectureVentes";
 
 // Lecture automatique d'une liste de ventes (photo ou PDF). Réservé aux profils qui ont accès aux Ventes diverses
-// (Trésorier, Directrice, Événement). Ni le fichier ni la clé ne sont journalisés.
+// (Trésorier, Directrice, Événementiel). Ni le fichier ni la clé ne sont journalisés.
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
@@ -15,7 +15,7 @@ export async function POST(req: Request) {
   const { data: u } = await supabase.auth.getUser();
   if (!u.user) return NextResponse.json({ erreur: "Session expirée : reconnectez-vous." }, { status: 401 });
   const { data: autorise } = await supabase.rpc("voit_ventes_diverses");
-  if (autorise !== true) return NextResponse.json({ erreur: "Lecture réservée au Trésorier, à la Directrice et à Événement." }, { status: 403 });
+  if (autorise !== true) return NextResponse.json({ erreur: "Lecture réservée au Trésorier, à la Directrice et à l'Événementiel." }, { status: 403 });
 
   const cle = process.env.ANTHROPIC_API_KEY;
   if (!cle) return NextResponse.json({ erreur: "Lecture automatique non configurée (clé manquante sur le serveur)." }, { status: 503 });

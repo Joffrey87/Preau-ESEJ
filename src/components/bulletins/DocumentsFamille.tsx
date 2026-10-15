@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { titrePeriode, type Synthese } from "@/lib/bulletins";
+import { titreDocument, type Synthese } from "@/lib/bulletins";
 import { telechargerBulletins } from "@/lib/bulletinPdf";
 import VueBulletin from "./VueBulletin";
 
@@ -21,7 +21,7 @@ export default function DocumentsFamille({ docs, apercu, titre }: { docs: DocFam
         <div key={d.id} className="rounded-xl border border-border bg-surface p-3">
           <div className="flex flex-wrap items-center gap-2 text-[13px]">
             <span className="font-medium">{d.synthese.eleve.prenom}</span>
-            <span className="text-muted">{titrePeriode(d.synthese.periode)} · {d.synthese.periode.annee}</span>
+            <span className="text-muted">{titreDocument(d.synthese)} · {d.synthese.periode.annee}</span>
             {!lus.has(d.id) && <span className="rounded-full bg-gold-soft px-2 py-0.5 text-[11px] text-gold">Nouveau</span>}
             <div className="ml-auto flex gap-3">
               <button

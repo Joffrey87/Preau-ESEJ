@@ -53,7 +53,7 @@ type Lue = {
 export type CategorieDepense = { id: string; nom: string };
 
 /**
- * Factures fournisseurs (profil Événement ; réutilisable côté Trésorier). `fournisseurFixe` : fiche d'un fournisseur.
+ * Factures fournisseurs (profil Événementiel ; réutilisable côté Trésorier). `fournisseurFixe` : fiche d'un fournisseur.
  * Import d'une facture (photo ou fichier) lue automatiquement, puis tout reste modifiable.
  * « Payée » n'est jamais choisi à la main : la base le pose quand le Trésorier relie l'opération bancaire.
  */

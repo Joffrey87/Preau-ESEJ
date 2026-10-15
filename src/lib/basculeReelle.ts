@@ -1,6 +1,6 @@
 // Côté serveur : bascule réelle du Webmestre. Après ressaisie de son mot de passe, il reçoit un jeton de 4 h
 // (cookie httpOnly ; la base n'en garde que l'empreinte, table webmestre_jetons) qui lui permet d'ouvrir la session de
-// n'importe quel compte (bureau, Recherche de fonds, Événement, professeurs, familles), puis d'en changer ou de revenir
+// n'importe quel compte (bureau, Recherche de fonds, Événementiel, professeurs, familles), puis d'en changer ou de revenir
 // au sien. Le jeton ne sert qu'au compte du Webmestre et au compte qu'il a ouvert en dernier : quelqu'un qui se connecte
 // ensuite sur le même appareil ne peut pas s'en servir. Chaque ouverture et chaque bascule sont journalisées.
 
@@ -67,7 +67,7 @@ export async function journaliser(admin: SupabaseClient, action: string, detail:
 
 // ─── Comptes cibles ──────────────────────────────────────────────────────────────────────────────────────────────
 
-export type Cible = { userId: string; prenom?: string; libelle: string; groupe: "Bureau" | "Recherche de fonds" | "Professeurs" | "Événement" | "Familles" };
+export type Cible = { userId: string; prenom?: string; libelle: string; groupe: "Bureau" | "Recherche de fonds" | "Professeurs" | "Événementiel" | "Familles" };
 
 const domaine = (email?: string | null) => email?.split("@")[1] ?? "";
 
@@ -112,7 +112,7 @@ export async function listerCibles(admin: SupabaseClient): Promise<Cible[]> {
       cibles.push({ userId: p.user_id, libelle: `${p.prenom} ${p.nom}`, groupe: "Professeurs" });
   }
   for (const e of (evts ?? []) as { libelle: string; user_id: string }[]) {
-    if (idsParUser.has(e.user_id)) cibles.push({ userId: e.user_id, libelle: e.libelle, groupe: "Événement" });
+    if (idsParUser.has(e.user_id)) cibles.push({ userId: e.user_id, libelle: e.libelle, groupe: "Événementiel" });
   }
   for (const f of (fams ?? []) as { nom: string; identifiant: string }[]) {
     const id = comptes.get(`${f.identifiant}@${DOMAINE_FAMILLES}`);
@@ -130,7 +130,7 @@ export async function libelleDuCompte(admin: SupabaseClient, userId: string, ema
   }
   if (d === DOMAINE_EVENEMENT) {
     const { data } = await admin.from("evenement_membres").select("libelle").eq("user_id", userId).maybeSingle();
-    return `Événement — ${(data?.libelle as string | undefined) ?? email}`;
+    return `Événementiel — ${(data?.libelle as string | undefined) ?? email}`;
   }
   if (d === DOMAINE_PROFESSEURS) {
     const { data } = await admin.from("enseignants").select("prenom, nom").eq("user_id", userId).maybeSingle();

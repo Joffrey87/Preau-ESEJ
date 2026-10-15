@@ -25,7 +25,7 @@ const SOURCES: Record<string, string> = {
   famille: "Famille",
   contact: "Carnet d’adresses",
   enseignant: "Professeur",
-  evenement: "Événement",
+  evenement: "Événementiel",
   recherche: "Recherche de fonds",
 };
 

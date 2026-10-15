@@ -54,7 +54,7 @@ const cookiePrenom = (prenom: string | null) => {
 /**
  * Passe de l'espace `quitte` à l'espace `vers`. `prenom` : prénom du membre Recherche de fonds (pour aller vers la
  * Recherche de fonds) ; `famille` : nom de la famille (pour préremplir la connexion quand l'espace n'a pas encore été
- * ouvert ici) ; `evenement` : adresse interne du compte Événement du membre relié.
+ * ouvert ici) ; `evenement` : adresse interne du compte Événementiel du membre relié.
  */
 export async function basculerVers(vers: Espace, quitte: Espace, infos: { prenom?: string | null; famille?: string | null; evenement?: string | null; professeur?: string | null }) {
   const supabase = createClient();

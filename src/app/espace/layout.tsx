@@ -19,7 +19,7 @@ export default async function EspaceLayout({ children }: { children: React.React
   // Compte famille : sa famille. Bureau : uniquement en aperçu d'une famille.
   const apercu = await familleEnApercu(user);
   const estFamille = (user.app_metadata as { espace?: string } | undefined)?.espace === "famille";
-  // Famille réservée ouverte depuis un compte relié (Président, membre Événement) : la base dit laquelle.
+  // Famille réservée ouverte depuis un compte relié (Président, membre Événementiel) : la base dit laquelle.
   const liee = !estFamille && !apercu && (await enFamilleLiee(user))
     ? ((((await supabase.rpc("ma_famille_liee")).data ?? []) as { id: string; nom: string }[])[0] ?? null)
     : null;
@@ -32,7 +32,7 @@ export default async function EspaceLayout({ children }: { children: React.React
     : await supabase.from("familles").select("id, nom, revalide_annee, membre_recherche, directrice_liee, profil_lie").maybeSingle();
   // Campagne annuelle de revalidation des coordonnées (1er août → 30 septembre).
   const { data: campagne } = await supabase.rpc("annee_revalidation");
-  // Membre Événement relié à la famille : le logo propose aussi son espace Événement.
+  // Membre Événement relié à la famille : le logo propose aussi son espace Événementiel.
   const evenement = apercu || liee ? null : ((((await supabase.rpc("membres_evenement_lies")).data ?? []) as { libelle: string; email: string }[])[0] ?? null);
   // Retour vers l'espace du compte relié, dans la même session.
   let basculeLiee: Omit<LiensEspace, "famille"> | undefined;
@@ -57,6 +57,8 @@ export default async function EspaceLayout({ children }: { children: React.React
   }
   // Bascule réelle du Webmestre (jeton de 4 h) : bandeau permanent et choix des comptes depuis le logo.
   const reelle = await contexteBasculeReelle(user, "");
+  // Webmestre dans l'Espace d'une famille : bandeau de retour.
+  const parWebmestre = !!liee && !!(await supabase.rpc("famille_du_webmestre")).data;
   const aRevalider = !apercu && campagne != null && famille?.revalide_annee !== campagne;
 
   return (
@@ -75,6 +77,17 @@ export default async function EspaceLayout({ children }: { children: React.React
             {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
             <a href="/apercu-famille/quitter?vers=accueil" className="ml-auto font-medium text-accent hover:underline">
               Revenir au Trésorier
+            </a>
+          </div>
+        )}
+        {parWebmestre && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-gold/40 bg-gold/15 px-5 py-2 text-[13px] md:px-8">
+            <span className="font-semibold text-gold">⚠</span>
+            <span>
+              Webmestre : vous êtes dans l&apos;Espace de la <strong>famille {famille?.nom ?? ""}</strong>, avec ses droits. Ouverture journalisée.
+            </span>
+            <a href="/famille-liee/quitter?vers=/" className="ml-auto font-medium text-accent hover:underline">
+              Revenir au Webmestre
             </a>
           </div>
         )}

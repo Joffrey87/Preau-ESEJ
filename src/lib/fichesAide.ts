@@ -67,7 +67,7 @@ export const ONGLETS: { href: string; label: string; famille?: boolean }[] = [
   { href: "/scolarite/activites", label: "Frais de scolarité · Activités" },
   { href: "/financement", label: "Financement" },
   { href: "/dons", label: "Dons" },
-  { href: "/cheques", label: "Dépôt de chèques" },
+  { href: "/cheques", label: "Dépôt en banque" },
   { href: "/dons/import", label: "Dons · Import" },
   { href: "/dons/depuis-compta", label: "Dons · Depuis la Comptabilité" },
   { href: "/mecenat", label: "Mécénat" },
@@ -77,6 +77,9 @@ export const ONGLETS: { href: string; label: string; famille?: boolean }[] = [
   { href: "/recherche/suivi", label: "Suivi des actions" },
   { href: "/mails", label: "Mails" },
   { href: "/carnet", label: "Carnet d'adresses" },
+  { href: "/bulletins", label: "Notes & Bulletins" },
+  { href: "/guide-professeurs", label: "Guide Professeurs" },
+  { href: "/communication", label: "Messagerie" },
   { href: "/ca", label: "Conseil d'administration" },
   { href: "/parametres", label: "Paramètres" },
   { href: "/processus", label: "Processus" },
@@ -87,6 +90,7 @@ export const ONGLETS: { href: string; label: string; famille?: boolean }[] = [
 
 export const PROFILS: { slug: string; label: string }[] = [
   ...ROLES.map((r) => ({ slug: r.slug, label: r.label })),
+  { slug: "professeur", label: "Professeur" },
   { slug: "famille", label: "Famille" },
 ];
 
@@ -111,9 +115,9 @@ export function ongletDe(pathname: string): string {
   return meilleur;
 }
 
-/** La fiche concerne-t-elle ce profil ? (aucun profil coché = tout le bureau) */
+/** La fiche concerne-t-elle ce profil ? (aucun profil coché = tout le bureau, ni familles ni professeurs) */
 export function pourProfil(f: Pick<FicheAide, "profils">, profil: string): boolean {
-  if (f.profils.length === 0) return profil !== "famille";
+  if (f.profils.length === 0) return profil !== "famille" && profil !== "professeur";
   return f.profils.includes(profil);
 }
 

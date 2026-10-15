@@ -24,12 +24,12 @@ export type DonneesWebmestre = {
 
 /** Profils Administration (le Webmestre ne peut être que l'un d'eux). */
 const ADMINISTRATION = ["president", "tresorier", "secretaire", "administrateur", "directrice", "directeur-spirituel", "resp-mecenat"];
-/** Profils montrés dans la vue d'ensemble : ceux du bureau et Recherche de fonds, plus Événement (comptes nominatifs, accès propres). */
-const PROFILS_APERCU: { slug: string; label: string }[] = [...ROLES.map((r) => ({ slug: r.slug, label: r.label })), { slug: "evenement", label: "Événement" }];
-/** Espaces à plusieurs membres : chacun peut ouvrir les autres (ex. un professeur dans Événement). */
+/** Profils montrés dans la vue d'ensemble : ceux du bureau et Recherche de fonds, plus Événementiel (comptes nominatifs, accès propres). */
+const PROFILS_APERCU: { slug: string; label: string }[] = [...ROLES.map((r) => ({ slug: r.slug, label: r.label })), { slug: "evenement", label: "Événementiel" }];
+/** Espaces à plusieurs membres : chacun peut ouvrir les autres (ex. un professeur dans Événementiel). */
 const ESPACES_MEMBRES = [
   { slug: "recherche-fonds", label: "Recherche de fonds", court: "Rech. de fonds", annuaire: "recherche", source: "recherche" },
-  { slug: "evenement", label: "Événement", court: "Événement", annuaire: "evenement", source: "evenement" },
+  { slug: "evenement", label: "Événementiel", court: "Événementiel", annuaire: "evenement", source: "evenement" },
   { slug: "professeur", label: "Professeurs", court: "Professeurs", annuaire: "professeur", source: "enseignant" },
 ] as const;
 const label = (slug: string | null) => (slug === "professeur" ? "Professeurs" : undefined) ?? PROFILS_APERCU.find((r) => r.slug === slug)?.label ?? slug ?? "";
@@ -280,11 +280,11 @@ export default function GestionWebmestre({ donnees }: { donnees: DonneesWebmestr
                                       fn: "acces_membre_profil",
                                       args: { p_source: esp.source, p_ref: m.ref, p_prenom: m.prenom, p_nom: m.nom, p_profil: cible.slug, p_lie: lie },
                                       libelle: `${nomAffiche} : accès ${cible.label} ${lie ? "ajouté" : "retiré"}`,
-                                      sensible: compte ? (lie ? "Création (ou réactivation) du compte Événement" : "Désactivation du compte Événement") : undefined,
+                                      sensible: compte ? (lie ? "Création (ou réactivation) du compte Événementieliel" : "Désactivation du compte Événementieliel") : undefined,
                                       apres: compte
                                         ? lie
-                                          ? `Compte Événement de ${nomAffiche} prêt : son identifiant apparaît dans la colonne Événement, mot de passe = son prénom (sans accents ni majuscules).`
-                                          : `Compte Événement de ${nomAffiche} désactivé (non supprimé) : recocher le réactive.`
+                                          ? `Compte Événementiel de ${nomAffiche} prêt : son identifiant apparaît dans la colonne Événementiel, mot de passe = son prénom (sans accents ni majuscules).`
+                                          : `Compte Événementiel de ${nomAffiche} désactivé (non supprimé) : recocher le réactive.`
                                         : undefined,
                                     },
                                     lie === origine,
@@ -312,7 +312,7 @@ export default function GestionWebmestre({ donnees }: { donnees: DonneesWebmestr
       </div>
       <p className="mt-2 text-xs text-muted">
         Espace famille garde ses accès propres. Un accès coché ouvre l’espace par le logo quand la personne y a un compte
-        (membre Événement, professeur avec identifiant, prénom de la Recherche de fonds).
+        (membre Événementieliel, professeur avec identifiant, prénom de la Recherche de fonds).
       </p>
 
       <Titre>Droits par profil et par onglet</Titre>

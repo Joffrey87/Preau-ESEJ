@@ -24,7 +24,7 @@ const dernierChoix = (cle: string) => {
 const ESPACES: { v: Espace; label: string; icone: string }[] = [
   { v: "famille", label: "Famille", icone: "maison" },
   { v: "professeurs", label: "Professeur", icone: "graduation" },
-  { v: "evenement", label: "Évènementiel", icone: "calendar" },
+  { v: "evenement", label: "Événementiel", icone: "calendar" },
   { v: "bureau", label: "Administration", icone: "ledger" },
 ];
 
@@ -39,7 +39,7 @@ export default function LoginPage() {
       .rpc("professeurs_connexion")
       .then(({ data }) => setProfesseurs((data ?? []) as { libelle: string; email: string }[]));
   }, []);
-  // Événement : comptes simples (identifiant et mot de passe = prénom), liste fournie par la base.
+  // Événementiel : comptes simples (identifiant et mot de passe = prénom), liste fournie par la base.
   const [membresEvenement, setMembresEvenement] = useState<{ libelle: string; email: string }[]>([]);
   useEffect(() => {
     createClient()
@@ -195,7 +195,7 @@ export default function LoginPage() {
           />
           <h1 className="sr-only">Préau</h1>
           <p className="text-sm text-muted">
-            ARIL · École du Saint-Enfant-Jésus
+            École du Saint-Enfant-Jésus
           </p>
         </div>
 

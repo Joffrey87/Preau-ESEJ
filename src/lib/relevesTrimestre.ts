@@ -6,10 +6,13 @@
 // simple de ses matières notées ; la moyenne générale, la moyenne simple des ensembles notés. Aucun coefficient.
 // Une période sans évaluation saisie dans Préau mais avec une moyenne reprise d'École Futée (bulletin_lignes) compte
 // cette moyenne comme une note.
+// Catéchisme (15/10/2026) : une appréciation seule, sans note ni moyenne, sur le relevé comme sur le bulletin ; il
+// n'entre dans aucune moyenne. Le bulletin ne reprend pas les appréciations des relevés : il a la sienne, celle du trimestre.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   arrondi,
+  estAppreciationSeule,
   matiereConcerne,
   niveauDe,
   nomEnseignant,
@@ -39,6 +42,7 @@ export type DocReleve = {
   lu_le: string | null;
 };
 export type DocTrimestre = Omit<DocReleve, "periode_id"> & { annee_scolaire: string; trimestre: number };
+/** bulletin_id : le bulletin trimestriel, ou le relevé de la période (appréciation du Catéchisme). */
 export type AppreciationIntervenant = { bulletin_id: string; matiere_id: string; texte: string | null };
 
 export type ContexteDocs = {
@@ -89,11 +93,15 @@ export async function chargerDocs(sb: SupabaseClient, classe: Classe, periode: P
   const evaluations = (ev.data ?? []) as Evaluation[];
   const bulletinsPeriode = (bp.data ?? []) as ContexteDocs["bulletinsPeriode"];
   const trimestriels = (bt.data ?? []) as DocTrimestre[];
-  const [n, l, ap] = await Promise.all([
+  const releves = (rl.data ?? []) as DocReleve[];
+  const [n, l, ap, ar] = await Promise.all([
     evaluations.length ? sb.from("evaluation_notes").select("*").in("evaluation_id", evaluations.map((x) => x.id)) : Promise.resolve({ data: [] }),
     bulletinsPeriode.length ? sb.from("bulletin_lignes").select("*").in("bulletin_id", bulletinsPeriode.map((x) => x.id)) : Promise.resolve({ data: [] }),
     trimestriels.length
       ? sb.from("bulletins_trimestre_appreciations").select("bulletin_id, matiere_id, texte").in("bulletin_id", trimestriels.map((x) => x.id))
+      : Promise.resolve({ data: [] }),
+    releves.length
+      ? sb.from("releves_notes_appreciations").select("releve_id, matiere_id, texte").in("releve_id", releves.map((x) => x.id))
       : Promise.resolve({ data: [] }),
   ]);
   return {
@@ -107,9 +115,13 @@ export async function chargerDocs(sb: SupabaseClient, classe: Classe, periode: P
     notes: (n.data ?? []) as Note[],
     bulletinsPeriode,
     lignes: (l.data ?? []) as Ligne[],
-    releves: (rl.data ?? []) as DocReleve[],
+    releves,
     trimestriels,
-    appreciations: (ap.data ?? []) as AppreciationIntervenant[],
+    // Les identifiants (uuid) des relevés et des bulletins trimestriels ne se recouvrent pas : une seule liste.
+    appreciations: [
+      ...((ap.data ?? []) as AppreciationIntervenant[]),
+      ...((ar.data ?? []) as { releve_id: string; matiere_id: string; texte: string | null }[]).map((x) => ({ bulletin_id: x.releve_id, matiere_id: x.matiere_id, texte: x.texte })),
+    ],
   };
 }
 
@@ -181,6 +193,10 @@ export function syntheseReleve(ctx: ContexteDocs, periode: Periode, eleve: Eleve
       nom: g.groupe.nom,
       chiffre: vide,
       matieres: g.matieres.map((m) => {
+        if (estAppreciationSeule(m.nom)) {
+          const a = ctx.appreciations.find((x) => x.bulletin_id === doc?.id && x.matiere_id === m.id);
+          return { nom: m.nom, enseignants: profs(m, o), chiffre: vide, commentaire: a?.texte?.trim() || null, appreciationSeule: true };
+        }
         const { textes } = notesPeriode(ctx, eleve.id, m, periode);
         return { nom: m.nom, enseignants: profs(m, o), chiffre: vide, commentaire: textes.join(" · ") || null };
       }),
@@ -191,9 +207,12 @@ export function syntheseReleve(ctx: ContexteDocs, periode: Periode, eleve: Eleve
   };
 }
 
-/** Matières dont l'appréciation revient à un professeur intervenant (un enseignant autre que la titulaire). */
+/**
+ * Matières qui ont leur propre appréciation sur le bulletin : celles d'un professeur intervenant (un enseignant autre
+ * que la titulaire) et le Catéchisme (appréciation seule).
+ */
 export const matieresIntervenants = (ctx: ContexteDocs) =>
-  ctx.matieres.filter((m) => m.actif && m.enseignants.some((id) => id !== ctx.classe.titulaire_id));
+  ctx.matieres.filter((m) => m.actif && (estAppreciationSeule(m.nom) || m.enseignants.some((id) => id !== ctx.classe.titulaire_id)));
 
 /** Bulletin trimestriel d'un élève : moyennes simples sur 20 ; appréciations des intervenants dans leur matière. */
 export function syntheseTrimestre(ctx: ContexteDocs, eleve: EleveBulletin, doc: DocTrimestre | undefined, o: Outils): Synthese {
@@ -202,18 +221,21 @@ export function syntheseTrimestre(ctx: ContexteDocs, eleve: EleveBulletin, doc: 
   const app = new Map(ctx.appreciations.filter((a) => a.bulletin_id === doc?.id).map((a) => [a.matiere_id, a.texte?.trim() || null]));
   const gs = groupes.map((g) => {
     const matieres = g.matieres.map((m) => {
+      // Catéchisme : appréciation seule, hors des moyennes.
+      if (estAppreciationSeule(m.nom))
+        return { nom: m.nom, enseignants: profs(m, o), chiffre: vide, commentaire: app.get(m.id) ?? null, brut: null, appreciationSeule: true as const };
       const valeurs = ctx.periodes.flatMap((p) => notesPeriode(ctx, eleve.id, m, p).valeurs);
       const moy = moyenne(valeurs);
-      return { nom: m.nom, enseignants: profs(m, o), chiffre: { ...vide, moy: arrondi(moy) }, commentaire: intervenants.has(m.id) ? (app.get(m.id) ?? null) : null, brut: moy };
+      return { nom: m.nom, enseignants: profs(m, o), chiffre: { ...vide, moy: arrondi(moy) }, commentaire: intervenants.has(m.id) ? (app.get(m.id) ?? null) : null, brut: moy, appreciationSeule: undefined };
     });
     const moy = moyenne(matieres.map((m) => m.brut).filter((x): x is number => x !== null));
-    return { nom: g.groupe.nom, chiffre: { ...vide, moy: arrondi(moy) }, matieres: matieres.map((x) => ({ nom: x.nom, enseignants: x.enseignants, chiffre: x.chiffre, commentaire: x.commentaire })), brut: moy };
+    return { nom: g.groupe.nom, chiffre: { ...vide, moy: arrondi(moy) }, matieres: matieres.map((x) => ({ nom: x.nom, enseignants: x.enseignants, chiffre: x.chiffre, commentaire: x.commentaire, ...(x.appreciationSeule ? { appreciationSeule: true } : {}) })), brut: moy };
   });
   const general = moyenne(gs.map((g) => g.brut).filter((x): x is number => x !== null));
   return {
     v: 1,
     mode: "trimestre",
-    eleve: { prenom: eleve.prenom ?? "", nom: eleve.nom, niveau },
+    eleve: { prenom: eleve.prenom ?? "", nom: eleve.nom, niveau, naissance: eleve.date_naissance ?? null },
     classe: { nom: ctx.classe.nom, titulaire: o.titulaire },
     periode: { libelle: "", annee: ctx.classe.annee_scolaire, trimestre: ctx.trimestre },
     afficherRang: false,

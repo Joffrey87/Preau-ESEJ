@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { note20, titrePeriode, type Synthese } from "@/lib/bulletins";
+import { classeEleve, note20, titrePeriode, type Synthese } from "@/lib/bulletins";
 import { telechargerBulletins } from "@/lib/bulletinPdf";
 import { anneeScolaireDe } from "@/lib/absences";
 import { todayISO } from "@/lib/format";
@@ -160,7 +160,7 @@ export default function BulletinsFamille({ bulletins, apercu }: { bulletins: Bul
             <div key={id} className="space-y-2">
               <div className="flex items-center gap-2">
                 {pastille(prenom, siens.filter((b) => !lus.has(b.id)).length)}
-                <span className="text-[12px] text-positive">{[...siens].sort(recentsDabord)[0]?.synthese.classe.nom}</span>
+                <span className="text-[12px] text-positive">{classeEleve([...siens].sort(recentsDabord)[0]?.synthese)}</span>
               </div>
               <div className="space-y-2 border-l-2 border-border pl-3">{blocAnnee(siens)}</div>
             </div>
@@ -196,7 +196,7 @@ export default function BulletinsFamille({ bulletins, apercu }: { bulletins: Bul
                     <div key={e.id} className="space-y-2">
                       <div className="flex items-center gap-2">
                         {pastille(e.prenom, e.lot.filter((b) => !lus.has(b.id)).length)}
-                        <span className="text-[12px] text-positive">{[...e.lot].sort(recentsDabord)[0]?.synthese.classe.nom}</span>
+                        <span className="text-[12px] text-positive">{classeEleve([...e.lot].sort(recentsDabord)[0]?.synthese)}</span>
                       </div>
                       <div className="space-y-2 border-l-2 border-border pl-3">{blocAnnee(e.lot)}</div>
                     </div>

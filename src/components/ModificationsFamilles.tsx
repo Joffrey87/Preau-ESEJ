@@ -49,7 +49,8 @@ const LIBELLE: Record<string, string> = {
  * l'annule : l'ancienne valeur est restaurée). Après « Vu », on peut reporter les nouvelles coordonnées sur le
  * contact du carnet et la fiche donateur correspondants. Suivi de la revalidation annuelle en dessous.
  */
-export default function ModificationsFamilles({ campagne }: { campagne: number | null }) {
+export default function ModificationsFamilles({ campagne, directrice = false }: { campagne: number | null; directrice?: boolean }) {
+  const [prenoms, setPrenoms] = useState<Map<string, string>>(new Map());
   const router = useRouter();
   const [modifs, setModifs] = useState<Modif[]>([]);
   const [familles, setFamilles] = useState<Map<string, FamilleLue>>(new Map());
@@ -69,7 +70,13 @@ export default function ModificationsFamilles({ campagne }: { campagne: number |
         )
         .order("nom"),
     ]);
-    setModifs((m ?? []) as Modif[]);
+    const ms = (m ?? []) as Modif[];
+    setModifs(ms);
+    const idsEnfants = ms.filter((x) => x.champ.startsWith("date_naissance:")).map((x) => x.champ.slice(15));
+    if (idsEnfants.length) {
+      const { data: es } = await supabase.from("eleves").select("id, prenom").in("id", idsEnfants);
+      setPrenoms(new Map(((es ?? []) as { id: string; prenom: string | null }[]).map((e) => [e.id, e.prenom ?? "enfant"])));
+    }
     setFamilles(new Map(((f ?? []) as FamilleLue[]).map((x) => [x.id, x])));
   }, []);
 
@@ -126,7 +133,7 @@ export default function ModificationsFamilles({ campagne }: { campagne: number |
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="font-medium">Famille {fam?.nom ?? "—"}</span>
                     <span className="flex flex-wrap gap-2">
-                      {fam && (
+                      {fam && !directrice && (
                         <button
                           type="button"
                           onClick={() => setAReporter(fam)}
@@ -149,7 +156,7 @@ export default function ModificationsFamilles({ campagne }: { campagne: number |
                   <ul className="mt-2 space-y-1 text-xs">
                     {liste.map((m) => (
                       <li key={m.id} className="flex flex-wrap items-center gap-x-2">
-                        <span className="w-44 shrink-0 text-muted">{LIBELLE[m.champ] ?? m.champ}</span>
+                        <span className="w-44 shrink-0 text-muted">{m.champ.startsWith("date_naissance:") ? `Date de naissance — ${prenoms.get(m.champ.slice(15)) ?? "enfant"}` : (LIBELLE[m.champ] ?? m.champ)}</span>
                         <span className="text-muted line-through">{m.ancien || "—"}</span>
                         <span aria-hidden="true">→</span>
                         <span className="font-medium">{m.nouveau || "—"}</span>

@@ -3,7 +3,7 @@ import ListeMembres from "@/components/evenement/ListeMembres";
 import { sessionEvenement } from "@/lib/evenementServeur";
 import type { MembreEvenement } from "@/lib/evenement";
 
-/** Bénévoles du profil Événement : liste, ajout (crée le compte), modification du nom et du courriel. */
+/** Bénévoles du profil Événementiel : liste, ajout (crée le compte), modification du nom et du courriel. */
 export default async function MembresEvenementPage() {
   const { supabase, peutModifier } = await sessionEvenement();
   const { data: liste } = await supabase.from("evenement_membres").select("id, libelle, prenom, nom, courriel").order("libelle");

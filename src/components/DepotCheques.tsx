@@ -84,7 +84,7 @@ function PastilleLien({ lien }: { lien: Lien }) {
   );
 }
 
-/** Onglet Dépôt de chèques : remises (photo + chèques) et rapprochement avec la comptabilité. */
+/** Onglet Dépôt en banque : remises (photo + chèques) et rapprochement avec la comptabilité. */
 export default function DepotCheques({
   remisesInit,
   chequesInit,

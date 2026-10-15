@@ -4,7 +4,7 @@
 
 import type { PDFFont, PDFPage, RGB } from "pdf-lib";
 import { chargerRessources, assainir } from "@/lib/recuPdf";
-import { mentionLabel, nomFichierBulletin, note20, rangTexte, titrePeriode, type Synthese } from "@/lib/bulletins";
+import { classeEleve, dateJJMMAAAA, mentionLabel, nomFichierBulletin, note20, rangTexte, titreDocument, type Synthese } from "@/lib/bulletins";
 import { texteAbsences } from "@/lib/absences";
 import { tauxTexte } from "@/lib/calendrier";
 
@@ -61,7 +61,7 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
     const nouvellePage = () => {
       page = brouillon.addPage([Wp, Hp]);
       top = M;
-      texte(`${s.eleve.prenom} ${s.eleve.nom} — ${titrePeriode(s.periode)} (suite)`, M, top + 8, italic, 8.5, GRIS);
+      texte(`${s.eleve.prenom} ${s.eleve.nom} — ${titreDocument(s)} (suite)`, M, top + 8, italic, 8.5, GRIS);
       top += 22;
     };
     const place = (h: number) => {
@@ -83,9 +83,11 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
     texte("École du Saint-Enfant-Jésus", gx, top + 16, semi, ajuste("École du Saint-Enfant-Jésus", semi, 13, gw, 10));
     const sousTitre = `${s.mode === "releve" ? "Relevé de notes" : "Bulletin scolaire"} · Année ${s.periode.annee}`;
     texte(sousTitre, gx, top + 31, regular, ajuste(sousTitre, regular, 9.5, gw, 8), GRIS);
-    const titre = titrePeriode(s.periode);
+    // Relevé : les dates de la période seules ; bulletin trimestriel : « Premier Trimestre » ; ni l'un ni l'autre
+    // ne porte de numéro de période.
+    const titre = titreDocument(s);
     texte(titre, gx, top + 47, semi, ajuste(titre, semi, 10, gw, 8), OR);
-    if (s.periode.numero && s.periode.libelle) texte(s.periode.libelle, gx, top + 60, regular, ajuste(s.periode.libelle, regular, 8.5, gw, 7), GRIS);
+    if (!s.mode && s.periode.numero && s.periode.libelle) texte(s.periode.libelle, gx, top + 60, regular, ajuste(s.periode.libelle, regular, 8.5, gw, 7), GRIS);
 
     // Nom : réduit jusqu'à 10,5 pt ; au-delà, coupé aux espaces et aux traits d'union (le trait reste en fin
     // de ligne), puis chaque ligne encore trop large réduit l'ensemble.
@@ -105,8 +107,15 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
       if (ligne.trim()) lignesNom.push(ligne.trimEnd());
       tNom = Math.min(...lignesNom.map((l) => ajuste(l, semi, tNom, iw, 7)));
     }
-    // Lignes de base : prénom à 16, nom(s) tous les tNom + 3, classe 15 plus bas, titulaire 13 plus bas ; 9 de marge.
-    const hCart = 16 + lignesNom.length * (tNom + 3) + 15 + (s.classe.titulaire ? 13 : 0) + 9;
+    // La classe de l'élève seule (son niveau), jamais le regroupement de classes ; bulletin trimestriel : la date de
+    // naissance en plus.
+    const ligneClasse = classeEleve(s);
+    const naissance = s.mode === "trimestre" && s.eleve.naissance ? `Né(e) le ${dateJJMMAAAA(s.eleve.naissance)}` : "";
+    const infos = [ligneClasse && { t: ligneClasse, gris: false }, naissance && { t: naissance, gris: true }, s.classe.titulaire && { t: `Titulaire : ${s.classe.titulaire}`, gris: true }].filter(
+      (x): x is { t: string; gris: boolean } => !!x,
+    );
+    // Lignes de base : prénom à 16, nom(s) tous les tNom + 3, première information 15 plus bas, les suivantes 13 ; 9 de marge.
+    const hCart = 16 + lignesNom.length * (tNom + 3) + (infos.length ? 15 + (infos.length - 1) * 13 : 0) + 9;
     rect(bx, top, CW, hCart, CREME);
     page.drawRectangle({ x: bx, y: y(top + hCart), width: 2.5, height: hCart, color: OR });
     let tc = top + 16;
@@ -115,9 +124,10 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
       tc += tNom + 3;
       texte(l, bx + 14, tc, semi, tNom);
     }
-    tc += 15;
-    texte(`${s.classe.nom}${s.eleve.niveau ? ` · ${s.eleve.niveau}` : ""}`, bx + 14, tc, regular, 9);
-    if (s.classe.titulaire) texte(`Titulaire : ${s.classe.titulaire}`, bx + 14, tc + 13, regular, 8.5, GRIS);
+    infos.forEach((x, i) => {
+      tc += i === 0 ? 15 : 13;
+      texte(x.t, bx + 14, tc, regular, x.gris ? 8.5 : 9, x.gris ? GRIS : NAVY);
+    });
     top += Math.max(62, hCart) + 18;
 
     // Tableau.
@@ -148,7 +158,7 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
       place(18 + 22);
       rect(M, top, Wp - 2 * M, 17, OR_DOUX);
       texte(g.nom, cols.matiere + 6, top + 11.5, semi, 8.5);
-      chiffres(g.chiffre, top + 11.5, semi, NAVY);
+      if (!g.matieres.every((m) => m.appreciationSeule)) chiffres(g.chiffre, top + 11.5, semi, NAVY);
       top += 17;
       for (const m of g.matieres) {
         const com = m.commentaire ? coupe(m.commentaire, regular, 7.8, wCom) : [];
@@ -156,8 +166,9 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
         place(h);
         texte(m.nom, cols.matiere + 12, top + 11, regular, 8.5);
         if (m.enseignants) texte(m.enseignants, cols.matiere + 12, top + 20, regular, 6.5, GRIS);
-        chiffres(m.chiffre, top + 11, semi, NAVY);
-        com.forEach((l, i) => texte(l, cols.com + 6, top + 11 + i * 10, regular, 7.8));
+        // Catéchisme : l'appréciation seule, sans note ni moyenne.
+        if (!m.appreciationSeule) chiffres(m.chiffre, top + 11, semi, NAVY);
+        com.forEach((l, i) => texte(l, cols.com + 6, top + 11 + i * 10, m.appreciationSeule ? italic : regular, 7.8));
         page.drawLine({ start: { x: M, y: y(top + h) }, end: { x: Wp - M, y: y(top + h) }, thickness: 0.5, color: TRAIT });
         top += h;
       }
@@ -168,7 +179,7 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
       texte("Moyenne générale", cols.matiere + 6, top + 13.5, semi, 9, BLANC);
       chiffres(s.general, top + 13.5, semi, BLANC);
       top += 30;
-    }
+    } else if (s.groupes.length) top += 12;
 
     if (s.absences) {
       place(20);
@@ -206,17 +217,29 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
     const hApp = 28 + Math.max(1, app.length) * 12.5;
     place(hApp);
     page.drawRectangle({ x: M, y: y(top + hApp), width: Wp - 2 * M, height: hApp, borderColor: OR, borderWidth: 0.8, color: CREME });
-    texte("Appréciation générale", M + 12, top + 16, semi, 9.5);
+    texte(s.mode === "trimestre" ? "Appréciation du trimestre" : "Appréciation générale", M + 12, top + 16, semi, 9.5);
     app.forEach((l, i) => texte(l, M + 12, top + 32 + i * 12.5, regular, 9));
     if (!app.length) texte("—", M + 12, top + 32, regular, 9, GRIS);
     top += hApp + 18;
 
-    // Signatures.
-    place(40);
-    texte("La Directrice", Wp - M - 160, top + 10, semi, 9);
-    if (s.classe.titulaire) texte(s.classe.titulaire, M, top + 10, semi, 9);
-    texte(s.classe.titulaire ? "Titulaire de la classe" : "", M, top + 22, regular, 8, GRIS);
-  
+    // Signatures. Relevé et bulletin trimestriel : pas de signature de la Directrice, un encart pour celle des parents.
+    if (s.mode) {
+      const hSig = 62, wSig = 200;
+      place(hSig);
+      if (s.classe.titulaire) {
+        texte(s.classe.titulaire, M, top + 12, semi, 9);
+        texte("Titulaire de la classe", M, top + 24, regular, 8, GRIS);
+      }
+      page.drawRectangle({ x: Wp - M - wSig, y: y(top + hSig), width: wSig, height: hSig, borderColor: TRAIT, borderWidth: 0.8 });
+      texte("Signature des parents", Wp - M - wSig + 10, top + 13, semi, 8.5);
+      top += hSig;
+    } else {
+      place(40);
+      texte("La Directrice", Wp - M - 160, top + 10, semi, 9);
+      if (s.classe.titulaire) texte(s.classe.titulaire, M, top + 10, semi, 9);
+      texte(s.classe.titulaire ? "Titulaire de la classe" : "", M, top + 22, regular, 8, GRIS);
+    }
+
     return { octets: await brouillon.save(), pages: brouillon.getPageCount() };
   }
 

@@ -27,7 +27,7 @@ export default function DemoCheques() {
       <p className="rounded-lg border-2 border-gold bg-gold-soft px-3 py-2 text-sm font-semibold text-foreground" role="status">
         Données fictives — démonstration du dépôt de chèques. Rien n&apos;est enregistré.
       </p>
-      <h1 className="text-xl font-semibold">Dépôt de chèques</h1>
+      <h1 className="text-xl font-semibold">Dépôt en banque</h1>
       <section className="space-y-4 rounded-xl border border-border bg-surface p-4">
         <h2 className="text-sm font-semibold">Nouvelle remise de chèques</h2>
         <div className="flex items-center gap-3 rounded-lg border border-border bg-surface-2 p-2 text-sm">

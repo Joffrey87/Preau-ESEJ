@@ -61,7 +61,7 @@ export default async function DepotChequesPage() {
   return (
     <div className="mx-auto max-w-5xl px-5 py-8 md:px-8">
       <PageHeader
-        title="Dépôt de chèques"
+        title="Dépôt en banque"
       />
       {error ? (
         <p className="rounded-xl border border-negative/40 bg-negative/10 px-4 py-3 text-sm text-negative">Lecture impossible : {error.message}</p>

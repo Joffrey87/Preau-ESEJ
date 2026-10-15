@@ -1,4 +1,4 @@
-// Profil Événement : types partagés (événements, membres, carnet restreint, factures fournisseurs).
+// Profil Événementiel : types partagés (événements, membres, carnet restreint, factures fournisseurs).
 // Les factures fournisseurs sont prévues pour être reprises côté Trésorier (même table, mêmes composants).
 
 export type MembreEvenement = {

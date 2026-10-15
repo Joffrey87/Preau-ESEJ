@@ -3,7 +3,7 @@ import CarnetEvenement from "@/components/evenement/CarnetEvenement";
 import { sessionEvenement } from "@/lib/evenementServeur";
 import type { ContactEvenement } from "@/lib/evenement";
 
-/** Carnet d'adresses du profil Événement : fournisseurs et contacts événements uniquement (vue `contacts_evenement`). */
+/** Carnet d'adresses du profil Événementiel : fournisseurs et contacts événements uniquement (vue `contacts_evenement`). */
 export default async function CarnetEvenementPage() {
   const { supabase, peutModifier } = await sessionEvenement();
   const { data } = await supabase.from("contacts_evenement").select("*").order("nom");

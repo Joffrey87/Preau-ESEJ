@@ -175,7 +175,7 @@ export default function GestionCaisses({
     router.refresh();
   }
 
-  // Les trois positions sont toujours proposées (Directrice et Événement inclus) : lecture des deux caisses ;
+  // Les trois positions sont toujours proposées (Directrice et Événementiel inclus) : lecture des deux caisses ;
   // l'écriture reste limitée aux domaines accordés par le Webmestre.
   const positions: { v: VueCaisse; label: string; montant: number }[] = [
     { v: "ecole", label: "Caisse école", montant: soldeEcole },

@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { oublierSessions } from "@/lib/basculeEspace";
+import PastilleNonLus from "@/components/communication/PastilleNonLus";
 import Icon from "./Icon";
 import BasculeTheme from "./BasculeTheme";
 import { PanneauBascule, type LiensEspace } from "./BasculeEspace";
@@ -23,6 +24,7 @@ const NAV: { titre: string | null; liens: Lien[] }[] = [
     ],
   },
   { titre: "Finance", liens: [{ href: "/espace/paiements", label: "Paiements", icon: "invoice", exact: false }] },
+  { titre: "Communication", liens: [{ href: "/espace/messages", label: "Messages", icon: "bulle", exact: false }] },
   { titre: "Informations", liens: [{ href: "/espace/famille", label: "Ma famille", icon: "maison", exact: false }] },
 ];
 
@@ -147,6 +149,7 @@ export default function SidebarFamille({
                 >
                   <Icon name={item.icon} className="h-4 w-4 shrink-0" />
                   <span className="truncate">{item.label}</span>
+                  {item.href === "/espace/messages" && <PastilleNonLus />}
                 </Link>
               </li>
             );

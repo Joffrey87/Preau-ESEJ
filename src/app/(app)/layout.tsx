@@ -4,7 +4,7 @@ import Sidebar from "@/components/Sidebar";
 import CoffreProvider from "@/components/CoffreProvider";
 import { createClient } from "@/lib/supabase/server";
 import AideFlottante from "@/components/AideFlottante";
-import { COOKIE_PRENOM, estEvenement, pagesAutorisees, roleByEmail } from "@/lib/roles";
+import { COOKIE_PRENOM, estEvenement, estProfesseur, pagesAutorisees, roleByEmail } from "@/lib/roles";
 import { COOKIE_VUE, emailEffectif, peutChangerDeVue } from "@/lib/vueRole";
 import type { ContexteAcces } from "@/lib/acces";
 import { emailVue } from "@/lib/vueRoleServeur";
@@ -67,7 +67,7 @@ export default async function AppLayout({
     const { data: f } = await supabase.from("familles").select("nom, membre_recherche").eq("profil_lie", "president").maybeSingle();
     if (f) bascule = { famille: f.nom as string, prenom: (f.membre_recherche as string | null) ?? null, directrice: false, president: true };
   }
-  // Espace Événement : membre relié à la famille (aller), ou retour depuis le compte Événement vers les espaces de sa famille.
+  // Espace Événementiel : membre relié à la famille (aller), ou retour depuis le compte Événementiel vers les espaces de sa famille.
   type Lie = { libelle: string; email: string };
   if (bascule) {
     const lies = ((await supabase.rpc("membres_evenement_lies", { p_prenom: prenomVisite || null })).data ?? []) as Lie[];
@@ -80,7 +80,7 @@ export default async function AppLayout({
         famille: l.famille,
         prenom: l.membre_recherche,
         directrice: l.directrice,
-        // Depuis un compte Événement : jamais le profil Président (Marie A. → Espace famille Antona seulement).
+        // Depuis un compte Événementiel : jamais le profil Président (Marie A. → Espace famille Antona seulement).
         president: false,
         evenement: { libelle: (moi?.libelle as string) ?? "", email: user.email ?? "" },
       };
@@ -159,7 +159,7 @@ export default async function AppLayout({
         </main>
       </div>
       {/* Profil restreint : pas d'accès à l'onglet Processus. */}
-      <AideFlottante profil={roleVu?.slug ?? ""} peutGerer={!pagesAutorisees(emailAffiche)} />
+      <AideFlottante profil={estProfesseur(emailAffiche) ? "professeur" : (roleVu?.slug ?? "")} peutGerer={!pagesAutorisees(emailAffiche)} />
     </CoffreProvider>
   );
 }

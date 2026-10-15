@@ -4,6 +4,7 @@ import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import {
   arrondi,
+  estAppreciationSeule,
   estSynthese,
   matiereConcerne,
   niveauDe,
@@ -32,6 +33,7 @@ const nombre = (n: number) => String(arrondi(n)).replace(".", ",");
  * notes de la période dans chaque matière (aucune moyenne), l'appréciation générale et l'état du relevé. Un clic sur
  * une matière ou une case ouvre la saisie de cette matière (évaluations, notes, + Évaluation) ; un clic sur l'élève
  * ouvre son appréciation générale. Relevé publié : notes de l'élève verrouillées (aussi en base).
+ * Catéchisme : une appréciation seule, sans note ; sa case ouvre la ligne de l'élève, où elle se rédige.
  */
 export default function ReleveClasse({
   ctx,
@@ -157,6 +159,9 @@ export default function ReleveClasse({
     await telechargerBulletins(ss, `Relevés de notes ${vue.classe.nom} - Période ${periode.ordre}`);
   };
   const matiere = vue.matieres.find((m) => m.id === matiereOuverte);
+  const appreciationDe = (d: DocReleve | undefined, m: Matiere) => (d ? vue.appreciations.find((x) => x.bulletin_id === d.id && x.matiere_id === m.id) : undefined);
+  const peutApprecier = (d: DocReleve | undefined, m: Matiere) => !!d && droits.peutNoter(m) && (directrice || OUVERTS.includes(d.statut));
+  const champ = "w-full rounded-md border border-border bg-background px-2 py-1 text-[12.5px] outline-none focus:border-accent read-only:border-transparent read-only:bg-transparent";
   const nbColonnes = 1 + colonnes.reduce((s, c) => s + c.ms.length, 0) + 3;
 
   return (
@@ -230,6 +235,13 @@ export default function ReleveClasse({
                 <Fragment key={g.id}>
                   {ms.map((m, i) => {
                     const nb = evalsDe(m).length;
+                    if (estAppreciationSeule(m.nom))
+                      return (
+                        <th key={m.id} className={`max-w-24 border-b border-border px-1.5 py-1 font-normal ${i === 0 ? "border-l" : ""}`} title={`${m.nom} : une appréciation, sans note (cliquez une case)`}>
+                          <span className="line-clamp-2">{m.nom}</span>
+                          <span className="text-[9.5px] opacity-80">appréciation</span>
+                        </th>
+                      );
                     return (
                       <th key={m.id} className={`max-w-24 border-b border-border p-0 font-normal ${i === 0 ? "border-l" : ""}`}>
                         <button
@@ -284,6 +296,18 @@ export default function ReleveClasse({
                       <Fragment key={g.id}>
                         {ms.map((m, i) => {
                           const concerne = matiereConcerne(m, niveau);
+                          if (estAppreciationSeule(m.nom)) {
+                            const a = concerne ? appreciationDe(d, m)?.texte?.trim() : null;
+                            return (
+                              <td
+                                key={m.id}
+                                onClick={() => concerne && setEleveOuvert(actif ? null : e.id)}
+                                className={`max-w-40 px-1.5 py-0.5 ${i === 0 ? "border-l border-border" : ""} ${concerne ? "cursor-pointer hover:bg-accent-soft/50" : "bg-surface-2/50"}`}
+                              >
+                                {a ? <span className="line-clamp-1 text-[12px]">{a}</span> : concerne && d ? <span className="text-[11px] text-gold">✎</span> : null}
+                              </td>
+                            );
+                          }
                           const t = concerne ? notesCourtes(e, m) : [];
                           return (
                             <td
@@ -311,7 +335,31 @@ export default function ReleveClasse({
                   </tr>
                   {actif && d && (
                     <tr className="bg-accent-soft/20">
-                      <td colSpan={nbColonnes} className="px-3 py-2">
+                      <td colSpan={nbColonnes} className="space-y-1.5 px-3 py-2">
+                        {vue.matieres
+                          .filter((m) => estAppreciationSeule(m.nom) && matiereConcerne(m, niveau))
+                          .map((m) => {
+                            const a = appreciationDe(d, m);
+                            const modifiable = peutApprecier(d, m);
+                            return (
+                              <div key={m.id} className="sticky left-3 flex max-w-3xl items-start gap-2">
+                                <span className="w-[9rem] shrink-0 pt-1 text-[12px] font-semibold">{m.nom}</span>
+                                <textarea
+                                  key={`${d.id}:${m.id}:${a?.texte ?? ""}`}
+                                  defaultValue={a?.texte ?? ""}
+                                  readOnly={!modifiable}
+                                  rows={2}
+                                  placeholder={modifiable ? `Appréciation · ${m.nom}` : ""}
+                                  onBlur={(ev) => {
+                                    const v = ev.target.value.trim();
+                                    if (!modifiable || v === (a?.texte ?? "").trim()) return;
+                                    agir(sb.from("releves_notes_appreciations").upsert({ releve_id: d.id, matiere_id: m.id, texte: v || null }));
+                                  }}
+                                  className={champ}
+                                />
+                              </div>
+                            );
+                          })}
                         <div className="sticky left-3 flex max-w-3xl items-start gap-2">
                           <span className="w-[9rem] shrink-0 pt-1 text-[12px] font-semibold">Appréciation générale</span>
                           <textarea
@@ -325,7 +373,7 @@ export default function ReleveClasse({
                               if (!peutEditer(d) || v === (d.appreciation ?? "").trim()) return;
                               agir(sb.from("releves_notes").update({ appreciation: v || null }).eq("id", d.id));
                             }}
-                            className="w-full rounded-md border border-border bg-background px-2 py-1 text-[12.5px] outline-none focus:border-accent read-only:border-transparent read-only:bg-transparent"
+                            className={champ}
                           />
                         </div>
                       </td>

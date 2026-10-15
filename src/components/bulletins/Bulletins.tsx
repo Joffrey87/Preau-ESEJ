@@ -1,5 +1,6 @@
 "use client";
 
+import ModificationsFamilles from "@/components/ModificationsFamilles";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { todayISO } from "@/lib/format";
@@ -17,6 +18,7 @@ import DocumentsClasse from "./DocumentsClasse";
 import ReleveClasse from "./ReleveClasse";
 import Trombinoscope from "./Trombinoscope";
 import InscriptionsDirectrice from "@/components/inscriptions/InscriptionsDirectrice";
+import LiensInvitationFamilles from "@/components/LiensInvitationFamilles";
 
 export type Onglet = "releves" | "trimestre" | "bulletins" | "conseil" | "absences" | "maternelle" | "trombi" | "inscriptions" | "parametres";
 // Onglets de « Notes & Bulletins » ; les autres (Appel & absences, Trombinoscope, Gestion des classes, Inscriptions)
@@ -207,6 +209,8 @@ export default function Bulletins({
         {annee && <p className="text-sm font-bold">Année {annee}</p>}
       </div>
 
+      {/* Alerte « À valider » : coordonnées ou dates de naissance modifiées par les familles. */}
+      {directrice && <ModificationsFamilles campagne={null} directrice />}
       {!ref.classes.length ? (
         <div className="rounded-xl border border-border bg-surface p-6 text-sm text-muted">
           {directrice ? (
@@ -299,7 +303,10 @@ export default function Bulletins({
               }}
             />
           ) : onglet === "inscriptions" && directrice ? (
-            <InscriptionsDirectrice />
+            <div className="space-y-4">
+              <InscriptionsDirectrice />
+              <LiensInvitationFamilles />
+            </div>
           ) : onglet === "trombi" && classe ? (
             <Trombinoscope classe={classe} directrice={directrice} />
           ) : onglet === "releves" && docs && periode && docs.classe.id === classeId && ctx && ctx.classe.id === classeId && ctx.periode.id === periodeId ? (

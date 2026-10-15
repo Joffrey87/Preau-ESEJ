@@ -195,7 +195,7 @@ export default function LoginPage() {
           />
           <h1 className="sr-only">Préau</h1>
           <p className="text-sm text-muted">
-            ARIL · École du Saint-Enfant-Jésus
+            École du Saint-Enfant-Jésus
           </p>
         </div>
 

@@ -6,6 +6,7 @@ import GestionOrganisation, { type Organisation } from "@/components/GestionOrga
 import MonProfil from "@/components/MonProfil";
 import ChoixTheme from "@/components/ChoixTheme";
 import SecuriteDonnees from "@/components/SecuriteDonnees";
+import QrCodesPaiement from "@/components/QrCodesPaiement";
 import { createClient } from "@/lib/supabase/server";
 import { emailVue } from "@/lib/vueRoleServeur";
 import { roleByEmail } from "@/lib/roles";
@@ -37,6 +38,8 @@ export default async function ParametresPage() {
         <ChoixTheme />
         <SecuriteDonnees />
         <GestionOrganisation organisation={(organisationRes.data ?? null) as Organisation | null} />
+        {/* QR codes IBAN (SumUp, Crédit Mutuel), affichés dans Ventes diverses : Trésorier seulement. */}
+        {role?.slug === "tresorier" && <QrCodesPaiement />}
         <GestionExercices exercices={exercicesRes.data ?? []} />
         <GestionComptes comptes={comptesRes.data ?? []} />
         <GestionCategories categories={categoriesRes.data ?? []} />

@@ -64,7 +64,10 @@ export async function middleware(request: NextRequest) {
     chemin === "/ventes-diverses" ||
     chemin.startsWith("/ventes-diverses/") ||
     chemin === "/caisses" ||
-    chemin.startsWith("/caisses/");
+    chemin.startsWith("/caisses/") ||
+    // Lecture de photos (caisse, ventes) : la route vérifie elle-même l'accès aux Ventes diverses.
+    chemin === "/api/lecture-caisse" ||
+    chemin === "/api/lecture-ventes";
   // Famille reliée ouverte sans changer de compte (cookie sans droit propre : la base filtre).
   const enFamilleLiee = !!user && !estFamille && request.cookies.get("famille_liee")?.value === "1";
   const cheminLiee = request.nextUrl.pathname.startsWith("/famille-liee/");

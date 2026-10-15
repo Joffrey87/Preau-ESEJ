@@ -7,6 +7,8 @@ import { createClient } from "@/lib/supabase/client";
 import { formatDate, formatEuros, todayISO } from "@/lib/format";
 import { telechargerVentesPdf } from "@/lib/ventesPdf";
 import { Modal } from "./GestionComptes";
+import ImportVentes from "./ImportVentes";
+import { LiensQrCodes } from "./QrCodesPaiement";
 import {
   DOMAINES,
   MODES,
@@ -320,7 +322,12 @@ export default function GestionVentesDiverses({
             </button>
           </div>
         )}
-        <button type="button" onClick={exporterPdf} disabled={busy} className={btnGhost + " ml-auto"}>
+        <span className="ml-auto" />
+        <LiensQrCodes />
+        {peutModifier && vue === "ventes" && (
+          <ImportVentes domaine={domaine} exerciceId={exerciceId} objets={sousDuDomaine} payeurs={payeurs} onFini={() => router.refresh()} />
+        )}
+        <button type="button" onClick={exporterPdf} disabled={busy} className={btnGhost}>
           Export PDF
         </button>
         <Link href="/caisses" className={btnGhost}>

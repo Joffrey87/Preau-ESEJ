@@ -53,6 +53,8 @@ export default async function EspaceLayout({ children }: { children: React.React
       };
     }
   }
+  // Webmestre dans l'Espace d'une famille : bandeau de retour.
+  const parWebmestre = !!liee && !!(await supabase.rpc("famille_du_webmestre")).data;
   const aRevalider = !apercu && campagne != null && famille?.revalide_annee !== campagne;
 
   return (
@@ -70,6 +72,17 @@ export default async function EspaceLayout({ children }: { children: React.React
             {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
             <a href="/apercu-famille/quitter?vers=accueil" className="ml-auto font-medium text-accent hover:underline">
               Revenir au Trésorier
+            </a>
+          </div>
+        )}
+        {parWebmestre && (
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-gold/40 bg-gold/15 px-5 py-2 text-[13px] md:px-8">
+            <span className="font-semibold text-gold">⚠</span>
+            <span>
+              Webmestre : vous êtes dans l&apos;Espace de la <strong>famille {famille?.nom ?? ""}</strong>, avec ses droits. Ouverture journalisée.
+            </span>
+            <a href="/famille-liee/quitter?vers=/" className="ml-auto font-medium text-accent hover:underline">
+              Revenir au Webmestre
             </a>
           </div>
         )}

@@ -18,6 +18,7 @@ import { chargerDocs, type ContexteDocs } from "@/lib/relevesTrimestre";
 import DocumentsClasse from "./DocumentsClasse";
 import Trombinoscope from "./Trombinoscope";
 import InscriptionsDirectrice from "@/components/inscriptions/InscriptionsDirectrice";
+import LiensInvitationFamilles from "@/components/LiensInvitationFamilles";
 
 export type Onglet = "releves" | "trimestre" | "bulletins" | "conseil" | "notes" | "absences" | "maternelle" | "trombi" | "inscriptions" | "parametres";
 const GROUPE_EVAL: Onglet[] = ["notes", "releves", "trimestre", "conseil", "maternelle", "bulletins"];
@@ -261,7 +262,10 @@ export default function Bulletins({
               }}
             />
           ) : onglet === "inscriptions" && directrice ? (
-            <InscriptionsDirectrice />
+            <div className="space-y-4">
+              <InscriptionsDirectrice />
+              <LiensInvitationFamilles />
+            </div>
           ) : onglet === "trombi" && classe ? (
             <Trombinoscope classe={classe} directrice={directrice} />
           ) : (onglet === "releves" || onglet === "trimestre") && docs && periode && docs.classe.id === classeId ? (

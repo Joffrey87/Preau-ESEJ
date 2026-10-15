@@ -190,6 +190,7 @@ export default function GestionDons({
   modeleRecu,
   sousEntete,
   modeRecherche = false,
+  avecMedaille = false,
   modeMedailles = false,
   numeros,
   prenomRecherche = null,
@@ -198,6 +199,8 @@ export default function GestionDons({
 }: {
   /** Onglet Dons de la Recherche de fonds : lecture seule, sans médaille ; fiche contact et demande de reçu. */
   modeRecherche?: boolean;
+  /** Avec `modeRecherche` (Directeur spirituel) : la colonne Médaille reste affichée et se coche. */
+  avecMedaille?: boolean;
   /** Onglet « Médailles Don » de la Directrice : lecture seule, seule la colonne Médaille se coche. */
   modeMedailles?: boolean;
   /** Numéro de chaque don dans l'exercice (Médailles Don), affiché juste avant la colonne Médaille. */
@@ -780,7 +783,7 @@ export default function GestionDons({
     router.refresh();
   }
 
-  const colsAff = modeRecherche ? { ...cols, medaille: false } : modeMedailles ? { ...cols, statut: false, recu: false } : cols;
+  const colsAff = modeRecherche && !avecMedaille ? { ...cols, medaille: false } : modeMedailles ? { ...cols, statut: false, recu: false } : cols;
   const cellPad = compact ? "px-3 py-1.5" : "px-4 py-3";
   const ringManque = (estVide: boolean) =>
     signaler && estVide ? " ring-2 ring-negative/60 !border-negative" : "";
@@ -1037,7 +1040,7 @@ export default function GestionDons({
                 <div className="fixed inset-0 z-10" onClick={() => setMenuCols(false)} />
                 <div className="absolute right-0 z-20 mt-1 w-52 rounded-lg border border-border bg-surface p-2 shadow-lg">
                   <p className="px-2 py-1 text-xs font-medium text-muted">Colonnes affichées</p>
-                  {COLONNES.filter((c) => !modeRecherche || c.key !== "medaille").map((c) => (
+                  {COLONNES.filter((c) => !modeRecherche || avecMedaille || c.key !== "medaille").map((c) => (
                     <label key={c.key} className="flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-surface-2">
                       <input
                         type="checkbox"

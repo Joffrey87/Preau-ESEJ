@@ -90,6 +90,7 @@ export default function GestionVentesDiverses({
   );
   const duesFiltrees = useMemo(() => dues.filter((d) => d.domaine === domaine), [dues, domaine]);
   const payeDe = (id: string) => paiements.filter((p) => p.vente_due_id === id).reduce((s, p) => s + Number(p.montant), 0);
+  const duesOuvertesDomaine = duesFiltrees.filter((d) => statutVente(Number(d.montant_attendu), payeDe(d.id)) === "a_payer");
   const familles = payeurs.filter((p) => p.kind === "famille").map((p) => ({ id: p.id, nom: p.libelle }));
   const contacts = payeurs.filter((p) => p.kind === "contact").map((p) => ({ id: p.id, libelle: p.libelle }));
   const exerciceLib = exercices.find((e) => e.id === exerciceId)?.libelle ?? "";
@@ -494,7 +495,7 @@ export default function GestionVentesDiverses({
             </Modal>
           )}
 
-          {/* Tableau dus / payés */}
+          {/* Ventes encore dues : une vente payée (ou trop perçue) quitte la liste et ne figure plus que dans les Totaux. */}
           <section className="overflow-hidden rounded-xl border border-border bg-surface">
             <div className="border-b border-border px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted">Ventes attendues</div>
             <div className="overflow-x-auto">
@@ -505,44 +506,33 @@ export default function GestionVentesDiverses({
                     <th className="px-4 py-2 font-medium">Objet de vente</th>
                     <th className="px-4 py-2 font-medium">Mode</th>
                     <th className="px-4 py-2 font-medium text-right">Attendu</th>
-                    <th className="px-4 py-2 font-medium text-right">Payé</th>
-                    <th className="px-4 py-2 font-medium">Statut</th>
+                    <th className="px-4 py-2 font-medium text-right">Déjà payé</th>
                     {peutModifier && <th className="px-4 py-2 font-medium" />}
                   </tr>
                 </thead>
                 <tbody>
-                  {duesFiltrees.length === 0 ? (
+                  {duesOuvertesDomaine.length === 0 ? (
                     <tr>
-                      <td colSpan={7} className="px-4 py-8 text-center text-muted">
-                        Aucune vente pour ce domaine.
+                      <td colSpan={6} className="px-4 py-8 text-center text-muted">
+                        Aucune vente attendue pour ce domaine.
                       </td>
                     </tr>
                   ) : (
-                    duesFiltrees.map((d) => {
+                    duesOuvertesDomaine.map((d) => {
                       const paye = payeDe(d.id);
-                      const st = statutVente(Number(d.montant_attendu), paye);
-                      const stInfo = STATUTS.find((s) => s.v === st)!;
                       const cat = sousCategories.find((s) => s.id === d.sous_categorie_id)?.nom ?? "—";
                       return (
                         <tr key={d.id} className="border-b border-border/60">
                           <td className="px-4 py-2 font-medium">
                             {libellePayeur(d, familles, contacts)}
-                            {st === "paye" || st === "trop_percu" ? (
-                              <span className="ml-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-700" title="Payé">
-                                ✓
-                              </span>
-                            ) : null}
                           </td>
                           <td className="px-4 py-2">{cat}</td>
                           <td className="px-4 py-2 text-muted">{MODES.find((m) => m.v === d.mode_attendu)?.label}</td>
                           <td className="px-4 py-2 text-right tabular-nums">{formatEuros(Number(d.montant_attendu))}</td>
-                          <td className="px-4 py-2 text-right tabular-nums">{formatEuros(paye)}</td>
-                          <td className="px-4 py-2">
-                            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${stInfo.cls}`}>{stInfo.label}</span>
-                          </td>
+                          <td className="px-4 py-2 text-right tabular-nums text-muted">{paye > 0 ? formatEuros(paye) : "—"}</td>
                           {peutModifier && (
                             <td className="px-4 py-2 text-right whitespace-nowrap">
-                              {d.mode_attendu === "liquide" && st === "a_payer" && (
+                              {d.mode_attendu === "liquide" && (
                                 <button type="button" disabled={busy} className={btnGhost + " mr-1"} onClick={() => payerLiquide(d)}>
                                   Marquer payé (caisse)
                                 </button>

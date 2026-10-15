@@ -102,6 +102,18 @@ export type Don = {
 const CATEGORIES = CATEGORIES_DONATEUR;
 const MODES = ["Virement", "Chèque", "Carte bancaire", "Espèces", "Nature", "Autre"];
 
+/** Icônes du reçu fiscal (Trésorier) : télécharger (flèche vers le bas) et voir (œil). */
+const IconeTelecharger = () => (
+  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M12 4v11" /><path d="M7 10l5 5 5-5" /><path d="M5 20h14" />
+  </svg>
+);
+const IconeVoir = () => (
+  <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z" /><circle cx="12" cy="12" r="3" />
+  </svg>
+);
+
 /** À qui passer un reçu postal : choix de base, sinon un nom libre (« Autre »). */
 const PASSER_A = ["Secrétaire", "Président", "Chanoine"];
 const passerA = (d: Pick<Don, "passer_a">) => d.passer_a?.trim() || "Secrétaire";
@@ -334,6 +346,8 @@ export default function GestionDons({
   }, [alertes]);
   const estTresorier = roleSlug === "tresorier";
   const lecture = modeRecherche || modeMedailles;
+  // Colonne Reçu fiscal en 4 sous-colonnes alignées : télécharger, voir, état, demande d'un autre profil.
+  const sousColonnesRecu = !lecture;
   const [etablirGroupe, setEtablirGroupe] = useState<Groupe | null>(null);
   const [contactId, setContactId] = useState<string | null>(null);
   const numeroEtabli = (n: string | null) => !!n && /^RE_\d+/.test(n);
@@ -1191,7 +1205,7 @@ export default function GestionDons({
                 return (
                   <Fragment key={c.key}>
                   {c.key === "medaille" && numeros && <th className={`${cellPad} font-medium text-center`}>N°</th>}
-                  <th className={`${cellPad} font-medium ${aligneD ? "text-right" : ""} ${centre ? "text-center" : ""}`}>
+                  <th colSpan={c.key === "statut" && sousColonnesRecu ? 4 : undefined} className={`${cellPad} font-medium ${aligneD ? "text-right" : ""} ${centre ? "text-center" : ""}`}>
                     {c.sortable || (avecMedaille && c.key === "statut") ? (
                       <button
                         type="button"
@@ -1215,7 +1229,7 @@ export default function GestionDons({
           <tbody>
             {donsTries.length === 0 ? (
               <tr>
-                <td colSpan={COLONNES.filter((c) => colsAff[c.key]).length + (modeMedailles ? 0 : 1) + (numeros ? 1 : 0)} className="px-4 py-12 text-center text-muted">
+                <td colSpan={COLONNES.filter((c) => colsAff[c.key]).length + (modeMedailles ? 0 : 1) + (numeros ? 1 : 0) + (colsAff.statut && sousColonnesRecu ? 3 : 0)} className="px-4 py-12 text-center text-muted">
                   {vueCorbeille
                     ? "Corbeille vide."
                     : dons.length === 0
@@ -1286,6 +1300,26 @@ export default function GestionDons({
                         </button>
                       )}
                     </td>
+                  )}
+                  {cols.statut && sousColonnesRecu && (
+                    <>
+                      <td className={`${compact ? "py-1.5" : "py-3"} pl-3 pr-1 text-center`}>
+                        {numeroEtabli(d.recu_numero) && !vueCorbeille && (
+                          <button type="button" onClick={() => genererRecu(d, false)} title={`Télécharger le reçu ${d.recu_numero} (PDF)`}
+                            aria-label="Télécharger le reçu" className="inline-flex align-middle text-muted hover:text-accent">
+                            <IconeTelecharger />
+                          </button>
+                        )}
+                      </td>
+                      <td className={`${compact ? "py-1.5" : "py-3"} px-1 text-center`}>
+                        {numeroEtabli(d.recu_numero) && !vueCorbeille && (
+                          <button type="button" onClick={() => genererRecu(d)} title={`Voir le reçu ${d.recu_numero}`}
+                            aria-label="Voir le reçu" className="inline-flex align-middle text-muted hover:text-accent">
+                            <IconeVoir />
+                          </button>
+                        )}
+                      </td>
+                    </>
                   )}
                   {cols.statut && (
                     <td className={cellPad}>
@@ -1360,17 +1394,19 @@ export default function GestionDons({
                           </span>
                         )}
                       </div>
-                      {!lecture && (demandeParDon.get(d.id) && !numeroEtabli(d.recu_numero) || alertesParDon.get(d.id)) && (
-                        <div className="mt-1 flex flex-wrap gap-1">
-                          {demandeParDon.get(d.id) && !numeroEtabli(d.recu_numero) && (
-                            <PastilleDemandeRecu demande={demandeParDon.get(d.id)!} onClick={estTresorier ? () => ouvrirEtablir(d) : undefined} />
-                          )}
-                          {estTresorier && alertesParDon.get(d.id) && <AlerteInfosDonateur donId={d.id} alertes={alertesParDon.get(d.id)!} />}
-                        </div>
-                      )}
                       {!compact && d.recu_etat && d.recu_etat.trim() && (
                         <p className="mt-1 text-xs text-muted">{d.recu_etat}</p>
                       )}
+                    </td>
+                  )}
+                  {cols.statut && sousColonnesRecu && (
+                    <td className={cellPad}>
+                      <div className="flex flex-wrap gap-1">
+                        {demandeParDon.get(d.id) && !numeroEtabli(d.recu_numero) && (
+                          <PastilleDemandeRecu demande={demandeParDon.get(d.id)!} onClick={estTresorier ? () => ouvrirEtablir(d) : undefined} />
+                        )}
+                        {estTresorier && alertesParDon.get(d.id) && <AlerteInfosDonateur donId={d.id} alertes={alertesParDon.get(d.id)!} />}
+                      </div>
                     </td>
                   )}
                   {colsAff.medaille && numeros && (
@@ -1404,7 +1440,7 @@ export default function GestionDons({
                       <>
                         {/* Recherche de fonds : téléchargement direct, le fichier porte le nom du reçu (un PDF ouvert en onglet
                             serait enregistré sous un nom codé) ; l'icône « reçu établi » devient alors inutile. */}
-                        {numeroEtabli(d.recu_numero) && (modeRecherche ? (
+                        {numeroEtabli(d.recu_numero) && modeRecherche && (
                           <button
                             type="button"
                             onClick={() => genererRecu(d, false)}
@@ -1413,15 +1449,7 @@ export default function GestionDons({
                           >
                             Télécharger le reçu
                           </button>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => genererRecu(d)}
-                            className="text-accent hover:underline"
-                          >
-                            Reçu
-                          </button>
-                        ))}
+                        )}
                         {modeRecherche && !numeroEtabli(d.recu_numero) && (
                           <span className="ml-3 inline-flex align-middle">
                             <BoutonDemandeRecu donId={d.id} demande={demandeParDon.get(d.id) ?? null}

@@ -17,6 +17,7 @@ type Ligne = {
   date_naissance: string | null;
   photo_path: string | null;
   famille: string;
+  famille_id: string | null;
   parent1: string | null;
   parent1_telephone: string | null;
   parent1_courriel: string | null;
@@ -24,6 +25,8 @@ type Ligne = {
   parent2_telephone: string | null;
   parent2_courriel: string | null;
   adresse: string | null;
+  /** INE : Directrice seulement (jamais sur les PDF). */
+  ine: string | null;
 };
 
 const BUCKET = "eleves-photos";
@@ -38,6 +41,7 @@ const parentsDe = (l: Ligne) =>
 
 /** Trombinoscope et liste d'élèves d'une classe. La Directrice modifie photos, prénoms, noms et dates de naissance. */
 export default function Trombinoscope({ classe, directrice }: { classe: Classe; directrice: boolean }) {
+  const [coordOuvert, setCoordOuvert] = useState<string | null>(null);
   const sb = useMemo(() => createClient(), []);
   const [lignes, setLignes] = useState<Ligne[]>([]);
   const [urls, setUrls] = useState<Record<string, string>>({});
@@ -73,6 +77,38 @@ export default function Trombinoscope({ classe, directrice }: { classe: Classe; 
     if (!error) await charger();
   }
 
+  async function definirIne(l: Ligne, v: string) {
+    if (v.trim().toUpperCase() === (l.ine ?? "")) return;
+    const { error } = await sb.rpc("eleve_ine_definir", { p_eleve: l.id, p_ine: v });
+    setMessage(error ? `Échec : ${error.message}` : null);
+    if (!error) await charger();
+  }
+
+  async function coordonnees(famille: string, infos: Record<string, string>) {
+    const { error } = await sb.rpc("famille_coordonnees_modifier", { p_famille: famille, p_infos: infos });
+    setMessage(error ? `Échec : ${error.message}` : null);
+    if (!error) {
+      setCoordOuvert(null);
+      await charger();
+    }
+  }
+
+  /** Export tableur de la classe (Directrice) : élèves, naissance, INE, parents, adresse. */
+  function exporterCsv() {
+    const cel = (v: string | null | undefined) => `"${(v ?? "").replace(/"/g, '""')}"`;
+    const entetes = ["Nom", "Prénom", "Niveau", "Date de naissance", "INE", "Parent 1", "Téléphone 1", "Courriel 1", "Parent 2", "Téléphone 2", "Courriel 2", "Adresse"];
+    const corps = lignes.map((l) =>
+      [l.nom, l.prenom, classeEn({ ...l, famille_id: undefined, initiale: null }, classe.annee_scolaire), (l.date_naissance ?? "").split("-").reverse().join("/"), l.ine,
+        l.parent1, l.parent1_telephone, l.parent1_courriel, l.parent2, l.parent2_telephone, l.parent2_courriel, l.adresse].map(cel).join(";"),
+    );
+    const blob = new Blob(["\ufeff" + [entetes.map(cel).join(";"), ...corps].join("\r\n")], { type: "text/csv;charset=utf-8" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `Élèves ${classe.nom} ${classe.annee_scolaire}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
   async function photo(l: Ligne, f: File) {
     setOccupe(l.id);
     try {
@@ -101,7 +137,8 @@ export default function Trombinoscope({ classe, directrice }: { classe: Classe; 
             const r = await fetch(u).catch(() => null);
             if (r?.ok) octets = new Uint8Array(await (await versJpeg(await r.blob(), 500)).arrayBuffer());
           }
-          return { id: l.id, prenom: l.prenom, nom: l.nom, niveau: classeEn({ ...l, initiale: null }, classe.annee_scolaire), date_naissance: l.date_naissance, photo: octets, parents: parentsDe(l), adresse: l.adresse };
+          // INE jamais imprimé.
+          return { id: l.id, prenom: l.prenom, nom: l.nom, niveau: classeEn({ ...l, famille_id: undefined, initiale: null }, classe.annee_scolaire), date_naissance: l.date_naissance, photo: octets, parents: parentsDe(l), adresse: l.adresse };
         }),
       );
       const octets = await construireTrombiPdf(classe.nom, classe.annee_scolaire, eleves, type);
@@ -119,18 +156,23 @@ export default function Trombinoscope({ classe, directrice }: { classe: Classe; 
         <div className="flex gap-1 rounded-lg bg-surface-2 p-1">
           {(["trombi", "liste"] as const).map((v) => (
             <button key={v} type="button" onClick={() => setVue(v)} className={`rounded-md px-3 py-1 text-[13px] font-medium ${vue === v ? "bg-surface text-accent shadow-sm" : "text-muted"}`}>
-              {v === "trombi" ? "Trombinoscope" : "Liste des élèves"}
+              {v === "trombi" ? "Trombinoscope" : "Élèves"}
             </button>
           ))}
         </div>
         <span className="text-[12px] text-muted">{lignes.length} élève{lignes.length > 1 ? "s" : ""}</span>
-        <div className="ml-auto flex gap-2">
+        <div className="ml-auto flex flex-wrap gap-2">
           <button type="button" disabled={!!occupe} onClick={() => exporter("trombi")} className="rounded-lg border border-border px-3 py-1.5 text-[13px] hover:bg-surface-2 disabled:opacity-50">
             PDF trombinoscope
           </button>
           <button type="button" disabled={!!occupe} onClick={() => exporter("liste")} className="rounded-lg border border-border px-3 py-1.5 text-[13px] hover:bg-surface-2 disabled:opacity-50">
             PDF liste
           </button>
+          {directrice && (
+            <button type="button" disabled={!!occupe} onClick={exporterCsv} className="rounded-lg border border-border px-3 py-1.5 text-[13px] hover:bg-surface-2 disabled:opacity-50" title="Tableur avec INE et adresses (non imprimé sur les PDF)">
+              Export tableur
+            </button>
+          )}
         </div>
       </div>
       {message && <p className="rounded-lg bg-negative/10 px-3 py-2 text-sm text-negative">{message}</p>}
@@ -181,7 +223,8 @@ export default function Trombinoscope({ classe, directrice }: { classe: Classe; 
                 <th className="px-3 py-2 text-left font-medium">Élève</th>
                 <th className="px-2 py-2 font-medium">Niveau</th>
                 <th className="px-2 py-2 font-medium">Date de naissance</th>
-                {directrice && <th className="px-3 py-2 text-left font-medium">Parents</th>}
+                {directrice && <th className="px-2 py-2 font-medium">INE</th>}
+                {lignes.some((l) => l.parent1 || l.parent2 || l.parent1_courriel || l.parent2_courriel) && <th className="px-3 py-2 text-left font-medium">Parents</th>}
               </tr>
             </thead>
             <tbody>
@@ -190,7 +233,7 @@ export default function Trombinoscope({ classe, directrice }: { classe: Classe; 
                   <td className="px-3 py-1.5">
                     <span className="font-medium">{l.nom.toUpperCase()}</span> {l.prenom}
                   </td>
-                  <td className="px-2 py-1.5 text-center">{classeEn({ ...l, initiale: null }, classe.annee_scolaire)}</td>
+                  <td className="px-2 py-1.5 text-center">{classeEn({ ...l, famille_id: undefined, initiale: null }, classe.annee_scolaire)}</td>
                   <td className="px-2 py-1.5 text-center">
                     {directrice ? (
                       <input type="date" key={l.date_naissance ?? ""} defaultValue={l.date_naissance ?? ""} aria-label={`Date de naissance de ${l.prenom}`}
@@ -201,11 +244,25 @@ export default function Trombinoscope({ classe, directrice }: { classe: Classe; 
                     )}
                   </td>
                   {directrice && (
+                    <td className="px-2 py-1.5 text-center">
+                      <input key={`i${l.ine ?? ""}`} defaultValue={l.ine ?? ""} aria-label={`INE de ${l.prenom}`} onBlur={(e) => definirIne(l, e.target.value)}
+                        className="w-28 rounded-md border border-border bg-background px-1.5 py-0.5 text-center font-mono text-[12px]" />
+                    </td>
+                  )}
+                  {lignes.some((x) => x.parent1 || x.parent2 || x.parent1_courriel || x.parent2_courriel) && (
                     <td className="px-3 py-1.5 text-[12px]">
                       {parentsDe(l).map((p) => (
                         <div key={p}>{p}</div>
                       ))}
                       {l.adresse && <div className="text-muted">{l.adresse}</div>}
+                      {directrice && l.famille_id && (
+                        <button type="button" onClick={() => setCoordOuvert(coordOuvert === l.id ? null : l.id)} className="mt-0.5 text-[11px] text-accent hover:underline">
+                          {coordOuvert === l.id ? "Fermer" : "Modifier les coordonnées"}
+                        </button>
+                      )}
+                      {directrice && l.famille_id && coordOuvert === l.id && (
+                        <FormCoordonnees famille={l.famille_id} onEnregistrer={coordonnees} />
+                      )}
                     </td>
                   )}
                 </tr>
@@ -215,5 +272,63 @@ export default function Trombinoscope({ classe, directrice }: { classe: Classe; 
         </div>
       )}
     </div>
+  );
+}
+
+const CHAMPS_COORD: [string, string, string][] = [
+  ["parent1_prenom", "Monsieur — prénom", "text"],
+  ["parent1_nom", "Monsieur — nom", "text"],
+  ["parent1_telephone", "Monsieur — téléphone", "tel"],
+  ["parent1_courriel", "Monsieur — courriel", "email"],
+  ["parent2_prenom", "Madame — prénom", "text"],
+  ["parent2_nom", "Madame — nom", "text"],
+  ["parent2_telephone", "Madame — téléphone", "tel"],
+  ["parent2_courriel", "Madame — courriel", "email"],
+  ["adresse", "Adresse", "text"],
+  ["cp_ville", "Code postal et ville", "text"],
+];
+
+/** Coordonnées d'une famille, modifiables par la Directrice (fiche famille + fiches parents du Carnet). */
+function FormCoordonnees({ famille, onEnregistrer }: { famille: string; onEnregistrer: (famille: string, infos: Record<string, string>) => Promise<void> }) {
+  const [valeurs, setValeurs] = useState<Record<string, string> | null>(null);
+  const [occupe, setOccupe] = useState(false);
+  useEffect(() => {
+    let annule = false;
+    createClient()
+      .from("familles")
+      .select(CHAMPS_COORD.map((c) => c[0]).join(", "))
+      .eq("id", famille)
+      .single()
+      .then(({ data }) => {
+        if (annule || !data) return;
+        const d = data as unknown as Record<string, string | null>;
+        setValeurs(Object.fromEntries(CHAMPS_COORD.map(([k]) => [k, d[k] ?? ""])));
+      });
+    return () => {
+      annule = true;
+    };
+  }, [famille]);
+  if (!valeurs) return <p className="mt-1 text-[11px] text-muted">Chargement…</p>;
+  return (
+    <form
+      className="mt-2 grid gap-1.5 rounded-lg border border-border bg-surface-2 p-2 sm:grid-cols-2"
+      onSubmit={async (e) => {
+        e.preventDefault();
+        setOccupe(true);
+        await onEnregistrer(famille, valeurs);
+        setOccupe(false);
+      }}
+    >
+      {CHAMPS_COORD.map(([k, label, type]) => (
+        <label key={k} className="block text-[11px] text-muted">
+          {label}
+          <input type={type} value={valeurs[k]} onChange={(e) => setValeurs({ ...valeurs, [k]: e.target.value })}
+            className="mt-0.5 w-full rounded-md border border-border bg-background px-1.5 py-1 text-[13px] text-foreground" />
+        </label>
+      ))}
+      <button type="submit" disabled={occupe} className="rounded-md bg-accent px-3 py-1.5 text-[13px] font-medium text-accent-fg disabled:opacity-50 sm:col-span-2">
+        Enregistrer les coordonnées
+      </button>
+    </form>
   );
 }

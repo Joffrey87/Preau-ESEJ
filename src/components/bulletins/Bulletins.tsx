@@ -1,5 +1,6 @@
 "use client";
 
+import ModificationsFamilles from "@/components/ModificationsFamilles";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { todayISO } from "@/lib/format";
@@ -167,6 +168,8 @@ export default function Bulletins({
         {annee && <p className="text-xs text-muted">Année {annee}</p>}
       </div>
 
+      {/* Alerte « À valider » : coordonnées ou dates de naissance modifiées par les familles. */}
+      {directrice && <ModificationsFamilles campagne={null} directrice />}
       {!ref.classes.length ? (
         <div className="rounded-xl border border-border bg-surface p-6 text-sm text-muted">
           {directrice ? (

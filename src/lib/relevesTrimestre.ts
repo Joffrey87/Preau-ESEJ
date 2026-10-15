@@ -208,16 +208,15 @@ export function syntheseReleve(ctx: ContexteDocs, periode: Periode, eleve: Eleve
 }
 
 /**
- * Matières qui ont leur propre appréciation sur le bulletin : celles d'un professeur intervenant (un enseignant autre
- * que la titulaire) et le Catéchisme (appréciation seule).
+ * Matières qui ont leur appréciation sur le bulletin : toutes (15/10/2026). Le professeur de la matière l'écrit, ou la
+ * titulaire ; le Catéchisme n'a que la sienne (pas de moyenne).
  */
-export const matieresIntervenants = (ctx: ContexteDocs) =>
-  ctx.matieres.filter((m) => m.actif && (estAppreciationSeule(m.nom) || m.enseignants.some((id) => id !== ctx.classe.titulaire_id)));
+export const matieresAvecAppreciation = (ctx: ContexteDocs) => ctx.matieres.filter((m) => m.actif);
 
-/** Bulletin trimestriel d'un élève : moyennes simples sur 20 ; appréciations des intervenants dans leur matière. */
+/** Bulletin trimestriel d'un élève : moyennes simples sur 20 ; une appréciation par matière. */
 export function syntheseTrimestre(ctx: ContexteDocs, eleve: EleveBulletin, doc: DocTrimestre | undefined, o: Outils): Synthese {
   const { niveau, groupes } = groupesDe(ctx, eleve);
-  const intervenants = new Set(matieresIntervenants(ctx).map((m) => m.id));
+  const avecAppreciation = new Set(matieresAvecAppreciation(ctx).map((m) => m.id));
   const app = new Map(ctx.appreciations.filter((a) => a.bulletin_id === doc?.id).map((a) => [a.matiere_id, a.texte?.trim() || null]));
   const gs = groupes.map((g) => {
     const matieres = g.matieres.map((m) => {
@@ -226,7 +225,7 @@ export function syntheseTrimestre(ctx: ContexteDocs, eleve: EleveBulletin, doc: 
         return { nom: m.nom, enseignants: profs(m, o), chiffre: vide, commentaire: app.get(m.id) ?? null, brut: null, appreciationSeule: true as const };
       const valeurs = ctx.periodes.flatMap((p) => notesPeriode(ctx, eleve.id, m, p).valeurs);
       const moy = moyenne(valeurs);
-      return { nom: m.nom, enseignants: profs(m, o), chiffre: { ...vide, moy: arrondi(moy) }, commentaire: intervenants.has(m.id) ? (app.get(m.id) ?? null) : null, brut: moy, appreciationSeule: undefined };
+      return { nom: m.nom, enseignants: profs(m, o), chiffre: { ...vide, moy: arrondi(moy) }, commentaire: avecAppreciation.has(m.id) ? (app.get(m.id) ?? null) : null, brut: moy, appreciationSeule: undefined };
     });
     const moy = moyenne(matieres.map((m) => m.brut).filter((x): x is number => x !== null));
     return { nom: g.groupe.nom, chiffre: { ...vide, moy: arrondi(moy) }, matieres: matieres.map((x) => ({ nom: x.nom, enseignants: x.enseignants, chiffre: x.chiffre, commentaire: x.commentaire, ...(x.appreciationSeule ? { appreciationSeule: true } : {}) })), brut: moy };

@@ -239,7 +239,7 @@ export default function SaisieNotes({
                 </th>
               ))}
               <th className="min-w-24 border-l border-border bg-surface-2/60 px-2 py-2 text-center font-medium uppercase tracking-wide">Moyenne</th>
-              <th className="min-w-72 border-l border-border px-2 py-2 text-left font-medium uppercase tracking-wide">Appréciation</th>
+              <th className="min-w-72 border-l border-border px-2 py-2 text-left font-medium uppercase tracking-wide lg:min-w-[36rem]">Appréciation</th>
             </tr>
           </thead>
           <tbody>

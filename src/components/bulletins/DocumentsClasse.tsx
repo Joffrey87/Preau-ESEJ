@@ -5,7 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { estSynthese, nomEleve, note20, trimestreEnLettres, type Enseignant, type Matiere, type Periode, type Statut, type Synthese } from "@/lib/bulletins";
 import { telechargerBulletins } from "@/lib/bulletinPdf";
 import {
-  matieresIntervenants,
+  matieresAvecAppreciation,
   syntheseReleve,
   syntheseTrimestre,
   titreTrimestre,
@@ -13,13 +13,13 @@ import {
   type DocReleve,
   type DocTrimestre,
 } from "@/lib/relevesTrimestre";
-import { BoutonLot, PastilleStatut } from "./outils";
+import { BoutonLot, PastilleStatut, extensible } from "./outils";
 
 const OUVERTS: Statut[] = ["nouveau", "en_cours", "pret"];
 
 /**
  * Relevés de notes (une période : notes seules, appréciation générale) ou bulletins trimestriels (moyennes simples,
- * appréciation de chaque professeur intervenant dans sa matière, appréciation générale de la titulaire). Même circuit
+ * une appréciation par matière (son professeur ou la titulaire), appréciation du trimestre de la titulaire). Même circuit
  * que les bulletins : Prêt (titulaire), Validé puis Publié (Directrice) ; la famille lit les documents publiés.
  */
 export default function DocumentsClasse({
@@ -51,7 +51,7 @@ export default function DocumentsClasse({
   const docs: (DocReleve | DocTrimestre)[] = mode === "releve" ? ctx.releves : ctx.trimestriels;
   const docDe = (eleveId: string) => docs.find((d) => d.eleve_id === eleveId);
   const outils = { titulaire: nomTitulaire, enseignants };
-  const intervenants = mode === "trimestre" ? matieresIntervenants(ctx) : [];
+  const avecAppreciation = mode === "trimestre" ? matieresAvecAppreciation(ctx) : [];
   const peutNoter = (m: Matiere) => directrice || titulaire || (!!enseignantId && m.enseignants.includes(enseignantId));
   const peutEditer = (d: { statut: Statut } | undefined) => !!d && (directrice || (titulaire && OUVERTS.includes(d.statut)));
 
@@ -95,7 +95,7 @@ export default function DocumentsClasse({
         <p className="text-[12px] text-muted">
           {mode === "releve"
             ? "Les notes de la période uniquement, sans moyenne, avec une appréciation générale."
-            : `Moyennes simples sur 20, calculées sur toutes les notes du trimestre (périodes ${ctx.periodes.map((p) => p.ordre).join(", ")}). Catéchisme : une appréciation seule, sans moyenne. Chaque professeur intervenant écrit l'appréciation de sa matière ; la titulaire écrit l'appréciation du trimestre (les appréciations des relevés ne sont pas reprises), validée par la Directrice.`}
+            : `Moyennes simples sur 20, calculées sur toutes les notes du trimestre (périodes ${ctx.periodes.map((p) => p.ordre).join(", ")}). Catéchisme : une appréciation seule, sans moyenne. Chaque matière a son appréciation, écrite par son professeur (ou la titulaire) ; la titulaire écrit l'appréciation du trimestre (les appréciations des relevés ne sont pas reprises), validée par la Directrice.`}
         </p>
         <div className="mt-2 flex flex-wrap gap-2">
           {(directrice || titulaire) && (
@@ -159,7 +159,7 @@ export default function DocumentsClasse({
                 )}
               </div>
 
-              {/* Le document, ligne par ligne : chaque appréciation d'intervenant face à sa matière. */}
+              {/* Le document, ligne par ligne : l'appréciation de chaque matière face à sa moyenne. */}
               {s && s.groupes.length > 0 && (
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[28rem] text-[12.5px]">
@@ -172,7 +172,7 @@ export default function DocumentsClasse({
                             <td />
                           </tr>
                           {g.matieres.map((m) => {
-                            const mat = intervenants.find((x) => x.nom === m.nom);
+                            const mat = avecAppreciation.find((x) => x.nom === m.nom);
                             const a = mat && d ? ctx.appreciations.find((x) => x.bulletin_id === d.id && x.matiere_id === mat.id) : undefined;
                             const modifiable = !!mat && !!d && peutNoter(mat) && (directrice || OUVERTS.includes(d.statut));
                             return (
@@ -195,6 +195,7 @@ export default function DocumentsClasse({
                                         agir(sb.from("bulletins_trimestre_appreciations").upsert({ bulletin_id: d.id, matiere_id: mat.id, texte: v || null }));
                                       }}
                                       className={`${champ} min-h-[1.9rem] resize-y`}
+                                      {...extensible}
                                     />
                                   ) : null}
                                 </td>
@@ -222,6 +223,7 @@ export default function DocumentsClasse({
                       agir(sb.from(table).update({ appreciation: v || null }).eq("id", d.id));
                     }}
                     className={champ}
+                    {...extensible}
                   />
                 </div>
               )}

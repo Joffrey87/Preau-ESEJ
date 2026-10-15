@@ -16,6 +16,23 @@ export function PastilleStatut({ statut }: { statut: Statut }) {
   return <span className={`inline-block whitespace-nowrap rounded-full px-2 py-0.5 text-[11px] font-medium ${s.classe}`}>{s.label}</span>;
 }
 
+/** Hauteur d'une zone de texte ajustée à son contenu (tout le texte visible). */
+export const ajusterHauteur = (el: HTMLTextAreaElement) => {
+  el.style.height = "auto";
+  el.style.height = `${el.scrollHeight + 2}px`;
+};
+
+/**
+ * Zone d'appréciation extensible : sa hauteur suit le texte, qui reste visible en entier pendant la saisie comme
+ * après (à l'affichage et à chaque frappe). À répandre sur un <textarea> (n'occupe ni onChange ni onBlur).
+ */
+export const extensible = {
+  ref: (el: HTMLTextAreaElement | null) => {
+    if (el) ajusterHauteur(el);
+  },
+  onInput: (e: React.FormEvent<HTMLTextAreaElement>) => ajusterHauteur(e.currentTarget),
+};
+
 export const dateFr = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("fr-FR", { day: "numeric", month: "short" }) : "");
 
 /** Bouton d'action groupée, avec son compteur. */

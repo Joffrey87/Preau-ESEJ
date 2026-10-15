@@ -1,5 +1,6 @@
 "use client";
 
+import { extensible } from "./outils";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { libellePeriode, niveauDe, nomEleve, type Classe, type EleveBulletin, type Periode } from "@/lib/bulletins";
@@ -352,6 +353,7 @@ export default function ReleveMaternelle({
                       onChange={(e) => maj({ commentaire: e.target.value })}
                       rows={2}
                       placeholder="Commentaire"
+                      {...extensible}
                       className={`${champ} w-full`}
                     />
                   </li>
@@ -364,6 +366,7 @@ export default function ReleveMaternelle({
                 value={brouillon.appreciation}
                 disabled={!modifiable}
                 onChange={(e) => setBrouillon({ ...brouillon, appreciation: e.target.value })}
+                {...extensible}
                 rows={3}
                 className={`${champ} w-full`}
               />

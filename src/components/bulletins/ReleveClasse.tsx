@@ -22,7 +22,7 @@ import { telechargerBulletins } from "@/lib/bulletinPdf";
 import { syntheseReleve, type ContexteDocs, type DocReleve } from "@/lib/relevesTrimestre";
 import type { Droits } from "./Bulletins";
 import SaisieNotes from "./SaisieNotes";
-import { BoutonLot, PastilleStatut } from "./outils";
+import { BoutonLot, PastilleStatut, extensible } from "./outils";
 
 const OUVERTS: Statut[] = ["nouveau", "en_cours", "pret"];
 const ETAT_COURT: Record<string, string> = { absent: "abs", dispense: "disp", non_rendu: "nr" };
@@ -199,11 +199,13 @@ export default function ReleveClasse({
       {/* Saisie de la matière ouverte, juste au-dessus du tableau. */}
       {matiere && (
         <div className="rounded-xl border-2 border-accent/40 bg-accent-soft/20 p-3">
-          <div className="mb-2 flex items-center gap-2">
+          {/* Bouton de retour au centre ; le libellé à gauche, la colonne de droite l'équilibre. */}
+          <div className="mb-2 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
             <span className="text-[12px] font-semibold uppercase tracking-wide text-accent">Saisie des notes</span>
-            <button type="button" onClick={() => setMatiereOuverte(null)} className="ml-auto rounded-lg border border-border bg-surface px-3 py-1.5 text-[13px] font-medium text-accent hover:bg-accent-soft">
+            <button type="button" onClick={() => setMatiereOuverte(null)} className="rounded-lg bg-amber-600 px-4 py-1.5 text-[13px] font-semibold text-white shadow-sm hover:bg-amber-700">
               ← Retour Relevés de notes
             </button>
+            <span />
           </div>
           <SaisieNotes ctx={ctx} resultats={resultats} droits={droits} enseignants={enseignants} onMaj={onMaj} matiereImposee={matiere.id} verrouEleve={verrou} />
         </div>
@@ -342,7 +344,7 @@ export default function ReleveClasse({
                             const a = appreciationDe(d, m);
                             const modifiable = peutApprecier(d, m);
                             return (
-                              <div key={m.id} className="sticky left-3 flex max-w-3xl items-start gap-2">
+                              <div key={m.id} className="sticky left-3 flex max-w-3xl items-start gap-2 lg:max-w-6xl">
                                 <span className="w-[9rem] shrink-0 pt-1 text-[12px] font-semibold">{m.nom}</span>
                                 <textarea
                                   key={`${d.id}:${m.id}:${a?.texte ?? ""}`}
@@ -356,11 +358,12 @@ export default function ReleveClasse({
                                     agir(sb.from("releves_notes_appreciations").upsert({ releve_id: d.id, matiere_id: m.id, texte: v || null }));
                                   }}
                                   className={champ}
+                                  {...extensible}
                                 />
                               </div>
                             );
                           })}
-                        <div className="sticky left-3 flex max-w-3xl items-start gap-2">
+                        <div className="sticky left-3 flex max-w-3xl items-start gap-2 lg:max-w-6xl">
                           <span className="w-[9rem] shrink-0 pt-1 text-[12px] font-semibold">Appréciation générale</span>
                           <textarea
                             key={`${d.id}:${d.appreciation ?? ""}`}
@@ -374,6 +377,7 @@ export default function ReleveClasse({
                               agir(sb.from("releves_notes").update({ appreciation: v || null }).eq("id", d.id));
                             }}
                             className={champ}
+                            {...extensible}
                           />
                         </div>
                       </td>

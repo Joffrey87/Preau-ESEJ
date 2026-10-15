@@ -84,7 +84,7 @@ export const GUIDE_PROFESSEURS: SectionGuide[] = [
     resume: "Le bulletin calcule seul les moyennes du trimestre à partir de toutes les notes de ses périodes.",
     etapes: [
       "Moyennes automatiques : moyenne simple sur 20 de chaque matière, puis de chaque ensemble (Français, Mathématiques…) et moyenne générale.",
-      "Professeur intervenant (Anglais, Sport…) : écrivez l'appréciation de votre matière, face à sa moyenne.",
+      "Chaque matière a son appréciation, face à sa moyenne : écrivez celle de vos matières (la titulaire peut les écrire toutes).",
       "Titulaire : rédigez l'« Appréciation du trimestre » ; les appréciations des relevés ne sont pas reprises.",
       "Catéchisme : une appréciation seule, sans moyenne, hors de la moyenne générale.",
       "Même circuit que le relevé : « Marquer prêt », puis validation et publication par la Directrice.",
@@ -97,7 +97,7 @@ export const GUIDE_PROFESSEURS: SectionGuide[] = [
       titre: "Les appréciations du bulletin",
       legende: [
         "Les moyennes sont calculées seules : rien à saisir.",
-        "Professeur intervenant : l'appréciation de votre matière, face à sa moyenne.",
+        "L'appréciation de chaque matière, face à sa moyenne (son professeur ou la titulaire).",
         "Catéchisme : une appréciation seule, sans moyenne.",
         "Titulaire : l'appréciation du trimestre.",
       ],

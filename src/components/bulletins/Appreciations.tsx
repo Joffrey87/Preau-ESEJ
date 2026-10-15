@@ -1,5 +1,6 @@
 "use client";
 
+import { extensible } from "./outils";
 import { useEffect, useRef, useState } from "react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { nomEleve, note20, type ContexteClasse, type Evaluation, type Ligne, type Matiere, type Note, type ResultatEleve, type Statut } from "@/lib/bulletins";
@@ -109,6 +110,7 @@ export function ChampAppreciation({
         placeholder={disabled ? "" : "Appréciation…"}
         onChange={(e) => changer(e.target.value)}
         onBlur={() => void sauver(texte)}
+        {...extensible}
         className="w-full resize-y rounded-md border border-border/70 bg-background px-2 py-1 text-[13px] leading-snug outline-none focus:border-accent disabled:border-transparent disabled:bg-transparent"
       />
       <div className="flex items-center justify-between gap-2 text-[10.5px]">

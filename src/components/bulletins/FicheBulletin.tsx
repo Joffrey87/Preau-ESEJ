@@ -22,7 +22,7 @@ import {
 import { telechargerBulletins } from "@/lib/bulletinPdf";
 import type { Droits } from "./Bulletins";
 import VueBulletin from "./VueBulletin";
-import { PastilleStatut, dateFr, syntheseDe } from "./outils";
+import { PastilleStatut, dateFr, syntheseDe, extensible } from "./outils";
 import { LIMITE_APPRECIATION } from "./Appreciations";
 
 /** Un bulletin : commentaires, moyennes, mention et appréciation, enregistrés au fil de la saisie. */
@@ -369,6 +369,7 @@ export function ChampTexte({
         rows={Math.max(lignes, Math.min(6, Math.ceil(texte.length / 70)))}
         onChange={(e) => setTexte(e.target.value)}
         onBlur={() => texte.trim() !== valeur.trim() && onEnregistrer(texte.trim())}
+        {...extensible}
         className="w-full resize-y rounded-md border border-transparent bg-transparent px-1.5 py-1 text-[13px] leading-snug outline-none hover:border-border focus:border-accent focus:bg-background disabled:hover:border-transparent"
       />
       {max && !disabled && texte.length > max * 0.8 && <div className="text-right text-[10.5px] text-muted">{texte.length}/{max}</div>}

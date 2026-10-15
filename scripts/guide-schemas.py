@@ -71,8 +71,8 @@ for i, (n, v) in enumerate([("Louise Martin", ["14 · 16", "12", "15"]), ("Paul 
 a.cible(202, 98, 96, 32); a.pastille(196, 96, 1)
 a.rect(16, 198, 788, 346, "#eef1f8", NAVY, 12, 1.5)
 a.t(30, 222, "SAISIE DES NOTES", 10.5, NAVY, 700)
-a.btn(624, 206, 166, "← Retour Relevés de notes", False)
-a.cible(624, 206, 166, 26); a.pastille(796, 206, 5)
+a.rect(327, 206, 166, 26, "#d97706", None, 7); a.t(410, 223.5, "← Retour Relevés de notes", 12, "#fff", 700, "middle")
+a.cible(327, 206, 166, 26); a.pastille(499, 206, 5)
 a.t(30, 252, "Lecture", 14, TXT, 700); a.t(92, 252, "Mlle Exemple · coef 1", 11, MUT)
 a.btn(560, 236, 110, "+ Évaluation"); a.cible(560, 236, 110, 26); a.pastille(556, 234, 2)
 a.rect(680, 236, 110, 26, S2, None, 7); a.t(735, 253, "Grille | Élève", 11, MUT, 500, "middle")
@@ -149,7 +149,7 @@ c.rect(30, 78, 10, 10, SURF, BORD, 2); c.t(48, 88, "Louise Martin", 13, TXT, 700
 c.rect(160, 76, 62, 18, GOLDS, None, 9); c.t(191, 89, "En cours", 10, GOLD, 600, "middle")
 c.t(240, 88, "Moyenne générale", 11.5, MUT); c.t(344, 88, "15,20", 12.5, NAVY, 700)
 c.t(780, 88, "PDF", 11, NAVY, 600)
-rows = [("g", "Français", "14,80", None), ("m", "Lecture", "15,00", None), ("m", "Grammaire", "14,60", None),
+rows = [("g", "Français", "14,80", None), ("m", "Lecture", "15,00", "Lit avec aisance et plaisir."), ("m", "Grammaire", "14,60", "Bonnes bases, à consolider."),
         ("g", "Matières complémentaires", "16,00", None), ("m", "Anglais", "16,00", "Very good work! Louise participe volontiers."),
         ("g", "Catéchisme", "", None), ("m", "Catéchisme", "", "Louise participe avec joie et attention aux séances.")]
 y = 120
@@ -162,7 +162,7 @@ for k, nom, moy, app in rows:
             c.rect(290, y - 13, 490, 24, SURF, BORD, 5); c.t(300, y + 3, app, 11.5)
     y += 30
 c.cible(224, 104, 52, 82); c.pastille(282, 102, 1)
-c.cible(286, 227, 498, 28); c.pastille(790, 224, 2)
+c.cible(286, 137, 498, 118); c.pastille(790, 134, 2)
 c.cible(286, 287, 498, 28); c.pastille(790, 284, 3)
 c.line(30, 322, 790, 322)
 c.t(44, 352, "Appréciation du trimestre", 12, TXT, 700)

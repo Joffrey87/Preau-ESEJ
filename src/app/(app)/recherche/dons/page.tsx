@@ -15,7 +15,7 @@ export default async function DonsRecherchePage() {
     supabase
       .from("dons")
       .select(
-        "id, exercice_id, origine, categorie_donateur, est_personne_morale, donateur_titre, donateur_nom, donateur_prenom, raison_sociale, adresse, cp_ville, courriel, telephone, pii_chiffre, montant, date_don, mode_paiement, recu_numero, recu_etat, recu_emis_le, envoi_prefere, observations, supprime_le, supprime_par, don_boursier, operation_id",
+        "id, exercice_id, origine, categorie_donateur, est_personne_morale, donateur_titre, donateur_nom, donateur_prenom, raison_sociale, adresse, cp_ville, courriel, telephone, pii_chiffre, montant, date_don, mode_paiement, recu_numero, recu_etat, recu_emis_le, envoi_prefere, observations, supprime_le, supprime_par, don_boursier, passer_a, operation_id",
       )
       .is("supprime_le", null)
       .or("don_boursier.is.null,don_boursier.eq.false")

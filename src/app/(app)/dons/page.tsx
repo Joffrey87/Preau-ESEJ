@@ -21,7 +21,7 @@ export default async function DonsPage() {
   const { data: dons } = await supabase
     .from("dons")
     .select(
-      "id, exercice_id, origine, categorie_donateur, est_personne_morale, donateur_titre, donateur_nom, donateur_prenom, raison_sociale, adresse, cp_ville, courriel, telephone, pii_chiffre, montant, date_don, mode_paiement, recu_numero, recu_etat, recu_emis_le, envoi_prefere, observations, supprime_le, supprime_par, don_boursier, medaille_affichee, medaille_par, medaille_le, operation_id, operation:operations!dons_operation_id_fkey(date_operation)",
+      "id, exercice_id, origine, categorie_donateur, est_personne_morale, donateur_titre, donateur_nom, donateur_prenom, raison_sociale, adresse, cp_ville, courriel, telephone, pii_chiffre, montant, date_don, mode_paiement, recu_numero, recu_etat, recu_emis_le, envoi_prefere, observations, supprime_le, supprime_par, don_boursier, medaille_affichee, medaille_par, medaille_le, passer_a, operation_id, operation:operations!dons_operation_id_fkey(date_operation)",
     )
     .order("date_don", { ascending: false });
 
@@ -68,7 +68,7 @@ async function DonsDirecteurSpirituel({ roleSlug }: { roleSlug: string }) {
     supabase
       .from("dons")
       .select(
-        "id, exercice_id, origine, categorie_donateur, est_personne_morale, donateur_titre, donateur_nom, donateur_prenom, raison_sociale, adresse, cp_ville, courriel, telephone, pii_chiffre, montant, date_don, mode_paiement, recu_numero, recu_etat, recu_emis_le, envoi_prefere, observations, supprime_le, supprime_par, don_boursier, medaille_affichee, medaille_par, medaille_le, operation_id, created_at",
+        "id, exercice_id, origine, categorie_donateur, est_personne_morale, donateur_titre, donateur_nom, donateur_prenom, raison_sociale, adresse, cp_ville, courriel, telephone, pii_chiffre, montant, date_don, mode_paiement, recu_numero, recu_etat, recu_emis_le, envoi_prefere, observations, supprime_le, supprime_par, don_boursier, medaille_affichee, medaille_par, medaille_le, passer_a, operation_id, created_at",
       )
       .is("supprime_le", null)
       .or("don_boursier.is.null,don_boursier.eq.false")

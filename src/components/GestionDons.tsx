@@ -80,6 +80,8 @@ export type Don = {
   medaille_affichee?: boolean;
   medaille_par?: string | null;
   medaille_le?: string | null;
+  /** Reçu « À passer » : à qui le remettre (null = Secrétaire). */
+  passer_a?: string | null;
   pii_chiffre: string | null;
   montant: number;
   date_don: string;
@@ -99,6 +101,41 @@ export type Don = {
 
 const CATEGORIES = CATEGORIES_DONATEUR;
 const MODES = ["Virement", "Chèque", "Carte bancaire", "Espèces", "Nature", "Autre"];
+
+/** À qui passer un reçu postal : choix de base, sinon un nom libre (« Autre »). */
+const PASSER_A = ["Secrétaire", "Président", "Chanoine"];
+const passerA = (d: Pick<Don, "passer_a">) => d.passer_a?.trim() || "Secrétaire";
+
+/** Trésorier : choix de la personne à qui passer le reçu (porté par tous les dons du reçu). */
+function ChoixPasserA({ valeur, idsDons }: { valeur: string; idsDons: string[] }) {
+  const router = useRouter();
+  const [erreur, setErreur] = useState<string | null>(null);
+  async function definir(v: string) {
+    let cible: string | null = v;
+    if (v === "__autre") {
+      const saisie = window.prompt("À passer à :", PASSER_A.includes(valeur) ? "" : valeur)?.trim();
+      if (!saisie) return;
+      cible = saisie;
+    }
+    const { error } = await createClient().from("dons").update({ passer_a: cible === "Secrétaire" ? null : cible }).in("id", idsDons);
+    if (error) return setErreur(error.message);
+    router.refresh();
+  }
+  return (
+    <select
+      value={PASSER_A.includes(valeur) ? valeur : "__valeur"}
+      onChange={(e) => void definir(e.target.value)}
+      onClick={(e) => e.stopPropagation()}
+      title={erreur ?? "À qui passer ce reçu"}
+      aria-label="À qui passer ce reçu"
+      className={`rounded-md border bg-background px-1 py-0.5 text-xs ${erreur ? "border-negative" : "border-border"}`}
+    >
+      {PASSER_A.map((x) => <option key={x} value={x}>à {x}</option>)}
+      {!PASSER_A.includes(valeur) && <option value="__valeur">à {valeur}</option>}
+      <option value="__autre">Autre…</option>
+    </select>
+  );
+}
 
 // Colonnes affichables du tableau (le n° de reçu est masqué par défaut).
 type ColKey = "date" | "donateur" | "categorie" | "montant" | "mode" | "recu" | "compta" | "statut" | "medaille";
@@ -407,13 +444,19 @@ export default function GestionDons({
       else if (tri.key === "categorie") r = (a.categorie_donateur ?? "").localeCompare(b.categorie_donateur ?? "");
       else if (tri.key === "mode") r = (a.mode_paiement ?? "").localeCompare(b.mode_paiement ?? "");
       else if (tri.key === "donateur") r = nomTri(a).localeCompare(nomTri(b));
+      // Directeur spirituel : reçus « À passer » d'abord, groupés par la personne à qui les passer.
+      else if (tri.key === "statut") {
+        const aP = chipsParDon.get(a.id)?.some((c) => c.key === "passer") ? 0 : 1;
+        const bP = chipsParDon.get(b.id)?.some((c) => c.key === "passer") ? 0 : 1;
+        r = aP - bP || passerA(a).localeCompare(passerA(b), "fr") || (a.date_don ?? "").localeCompare(b.date_don ?? "");
+      }
       else r = (a.date_don ?? "").localeCompare(b.date_don ?? ""); // date par défaut
       // Médailles Don : à date égale, l'ordre des numéros du don (mêmes départages que leur calcul).
       if (r === 0 && numeros) r = (numeros[a.id] ?? 0) - (numeros[b.id] ?? 0);
       return r * dir;
     });
     return arr;
-  }, [donsAffiches, tri, numeros]);
+  }, [donsAffiches, tri, numeros, chipsParDon]);
 
   function trierPar(key: ColKey) {
     setTri((t) =>
@@ -783,7 +826,7 @@ export default function GestionDons({
     router.refresh();
   }
 
-  const colsAff = modeRecherche && !avecMedaille ? { ...cols, medaille: false } : modeMedailles ? { ...cols, statut: false, recu: false } : cols;
+  const colsAff = avecMedaille ? { ...cols, statut: true, medaille: true } : modeRecherche ? { ...cols, medaille: false } : modeMedailles ? { ...cols, statut: false, recu: false } : cols;
   const cellPad = compact ? "px-3 py-1.5" : "px-4 py-3";
   const ringManque = (estVide: boolean) =>
     signaler && estVide ? " ring-2 ring-negative/60 !border-negative" : "";
@@ -1095,7 +1138,7 @@ export default function GestionDons({
 
       {!modeMedailles && (<>
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        {FILTRES.filter((item) => plusFiltres || FILTRES_VISIBLES.includes(item.key) || filtreActif(item.key)).map((item) => {
+        {FILTRES.filter((item) => (avecMedaille ? item.key === "passer" : plusFiltres || FILTRES_VISIBLES.includes(item.key) || filtreActif(item.key))).map((item) => {
           const n = compteParStatut.get(item.key) ?? 0;
           const actif = filtreActif(item.key);
           return (
@@ -1114,6 +1157,7 @@ export default function GestionDons({
             </button>
           );
         })}
+        {!avecMedaille && <>
         <button
           type="button"
           onClick={() => setPlusFiltres((v) => !v)}
@@ -1123,6 +1167,7 @@ export default function GestionDons({
           {plusFiltres ? "− de filtres" : "+ de filtres"}
         </button>
         <BoutonFiltresMultiples actif={filtreMultiple} onClick={basculerFiltreMultiple} nombre={filtres.length} />
+        </>}
         {filtres.length > 0 && (
           <button
             type="button"
@@ -1147,10 +1192,11 @@ export default function GestionDons({
                   <Fragment key={c.key}>
                   {c.key === "medaille" && numeros && <th className={`${cellPad} font-medium text-center`}>N°</th>}
                   <th className={`${cellPad} font-medium ${aligneD ? "text-right" : ""} ${centre ? "text-center" : ""}`}>
-                    {c.sortable ? (
+                    {c.sortable || (avecMedaille && c.key === "statut") ? (
                       <button
                         type="button"
                         onClick={() => trierPar(c.key)}
+                        title={avecMedaille && c.key === "statut" ? "Trier : reçus « À passer » d'abord, par personne à qui les passer" : undefined}
                         className={`inline-flex items-center gap-1 hover:text-foreground ${aligneD ? "flex-row-reverse" : ""} ${actif ? "text-foreground" : ""}`}
                       >
                         {c.label}
@@ -1247,18 +1293,29 @@ export default function GestionDons({
                         {(compact ? chips.filter((x) => x.key !== "nonlie").slice(0, 1) : chips.filter((x) => x.key !== "nonlie")).map((c) => {
                           const cls = `inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${TONE_CLASSES[c.tone]}`;
                           // Courrier postal : la pastille est une liste (À passer / Vérifier envoi postal / Posté).
-                          if ((c.key === "passer" || c.key === "verifier_poste" || c.key === "poste") && d.recu_numero) {
+                          // Lecture seule : l'étape en texte, avec la personne à qui passer le reçu.
+                          if (lecture && c.key === "passer") return <span key={c.key} title={c.detail} className={cls}>À passer · {passerA(d)}</span>;
+                          if (lecture) return <span key={c.key} title={c.detail} className={cls}>{c.label}</span>;
+                          if (c.key === "passer" && d.recu_numero) {
+                            const ids = donsInit.filter((x) => x.recu_numero === d.recu_numero && !x.supprime_le).map((x) => x.id);
+                            return (
+                              <span key={c.key} className="inline-flex items-center gap-1">
+                                <EtapePostaleListe numero={d.recu_numero} idsDons={ids} etape="passer" libelleEnvoye="Posté" />
+                                <ChoixPasserA valeur={passerA(d)} idsDons={ids} />
+                              </span>
+                            );
+                          }
+                          if ((c.key === "verifier_poste" || c.key === "poste") && d.recu_numero) {
                             return (
                               <EtapePostaleListe
                                 key={c.key}
                                 numero={d.recu_numero}
                                 idsDons={donsInit.filter((x) => x.recu_numero === d.recu_numero && !x.supprime_le).map((x) => x.id)}
-                                etape={c.key === "passer" ? "passer" : c.key === "verifier_poste" ? "verifier" : "envoye"}
+                                etape={c.key === "verifier_poste" ? "verifier" : "envoye"}
                                 libelleEnvoye="Posté"
                               />
                             );
                           }
-                          if (lecture) return <span key={c.key} title={c.detail} className={cls}>{c.label}</span>;
                           if ((c.key === "etablir" || c.key === "annuel") && estTresorier && !vueCorbeille) {
                             return (
                               <button key={c.key} type="button" onClick={() => ouvrirEtablir(d)}

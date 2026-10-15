@@ -1,5 +1,6 @@
 "use client";
 
+import { createPortal } from "react-dom";
 import { Fragment, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { estSynthese, nomEleve, note20, trimestreEnLettres, type Enseignant, type Matiere, type Periode, type Statut, type Synthese, niveauDe, type EleveBulletin } from "@/lib/bulletins";
@@ -13,7 +14,7 @@ import {
   type DocReleve,
   type DocTrimestre,
 } from "@/lib/relevesTrimestre";
-import { BoutonEnregistrer, BoutonLot, PastilleStatut, ZoneAppreciation } from "./outils";
+import { BoutonEnregistrer, BoutonLot, CommutateurPret, ZoneAppreciation } from "./outils";
 import { enregistrerTout } from "@/lib/sauvegardeAuto";
 
 const OUVERTS: Statut[] = ["nouveau", "en_cours", "pret"];
@@ -34,6 +35,7 @@ export default function DocumentsClasse({
   nomTitulaire,
   enseignants,
   onRecharger,
+  emplacement,
 }: {
   mode: "releve" | "trimestre";
   ctx: ContexteDocs;
@@ -46,9 +48,10 @@ export default function DocumentsClasse({
   nomTitulaire: string | null;
   enseignants: Map<string, Enseignant>;
   onRecharger: () => Promise<void>;
+  /** Barre de la page où se placent les boutons d'état (une seule tuile en haut). */
+  emplacement?: HTMLElement | null;
 }) {
   const sb = useMemo(() => createClient(), []);
-  const [choix, setChoix] = useState<Set<string>>(new Set());
   const [message, setMessage] = useState<string | null>(null);
   const [occupe, setOccupe] = useState(false);
   const table = mode === "releve" ? "releves_notes" : "bulletins_trimestre";
@@ -79,15 +82,14 @@ export default function DocumentsClasse({
   const ecrire = async (p: PromiseLike<{ error: { message: string } | null }>) => (await p).error?.message ?? null;
   const haut = useRef<HTMLDivElement>(null);
 
-  const selection = docs.filter((d) => choix.has(d.id));
-  const cible = selection.length ? selection : docs;
+  const cible = docs;
   const changer = (statut: Statut) => agir(sb.rpc("releves_changer_statut", { p_doc: mode, p_ids: cible.map((d) => d.id), p_statut: statut }));
   const publier = () => {
     const items = cible.filter((d) => d.statut === "valide").map((d) => ({ id: d.id, synthese: synthese(d.eleve_id) }));
     return agir(sb.rpc("releves_publier", { p_doc: mode, p_items: items }));
   };
   const pdf = async () => {
-    const ss = (selection.length ? selection : docs).map((d) => synthese(d.eleve_id)).filter((s): s is Synthese => !!s);
+    const ss = docs.map((d) => synthese(d.eleve_id)).filter((s): s is Synthese => !!s);
     await telechargerBulletins(ss, `${mode === "releve" ? "Relevés de notes" : "Bulletins"} ${ctx.classe.nom} - ${mode === "releve" ? `Période ${periode.ordre}` : titreTrimestre(ctx.trimestre)}`);
   };
 
@@ -111,8 +113,8 @@ export default function DocumentsClasse({
     void enregistrerTout();
     setTous(false);
     setCourant(id);
-    // Remonter seulement jusqu'au prénom de l'élève (en-tête du bulletin), pas en haut de la page.
-    window.requestAnimationFrame(() => document.getElementById("bulletin-eleve")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    // Remonter jusqu'en haut des blocs de prénoms (la navigation reste sous les yeux), pas jusqu'au titre de l'élève.
+    window.requestAnimationFrame(() => document.getElementById("blocs-eleves")?.scrollIntoView({ behavior: "smooth", block: "start" }));
   };
   const groupesNiveau = eleves.reduce<{ niveau: string; eleves: EleveBulletin[] }[]>((acc, e) => {
     const nv = multiNiveaux ? niveauEleve(e) : "";
@@ -121,59 +123,91 @@ export default function DocumentsClasse({
     else acc.push({ niveau: nv, eleves: [e] });
     return acc;
   }, []);
-  const POINT: Record<Statut, string> = { nouveau: "bg-muted/50", en_cours: "bg-gold", pret: "bg-accent", valide: "bg-positive", publie: "bg-positive" };
+
+  const boutons = (
+    <div className="ml-auto flex flex-wrap gap-2">
+            {(directrice || titulaire) && (
+          <CommutateurPret
+            publie={docs.length > 0 && docs.every((d) => d.statut === "publie")}
+            pret={docs.length > 0 && docs.every((d) => ["pret", "valide", "publie"].includes(d.statut))}
+            onChange={(v) => changer(v ? "pret" : "en_cours")}
+            disabled={occupe || !docs.length}
+            titre={mode === "releve" ? "Relevés : En cours / Prêt" : "Bulletins : En cours / Prêt"}
+          />
+        )}
+            {directrice && (
+              <>
+                <BoutonLot n={n("nouveau") + n("en_cours") + n("pret")} onClick={() => changer("valide")} disabled={occupe}>
+                  Valider
+                </BoutonLot>
+                <BoutonLot n={n("valide")} onClick={publier} fort disabled={occupe}>
+                  Publier aux familles
+                </BoutonLot>
+              </>
+            )}
+            {directrice && <BoutonLot onClick={pdf}>PDF de la classe</BoutonLot>}
+          </div>
+  );
+
+  // Bouton d'élève précédent / suivant (haut et bas de la fiche) ; le passage à un autre niveau est signalé.
+  const boutonNav = (cible: EleveBulletin | undefined, suivant: boolean) => {
+    const changeNiveau = !!cible && multiNiveaux && niveauEleve(cible) !== niveauEleve(eleves[rang]);
+    return (
+      <button
+        key={suivant ? "suivant" : "precedent"}
+        type="button"
+        disabled={!cible}
+        onClick={() => cible && allerA(cible.id)}
+        className={`flex w-56 max-w-[45%] items-center gap-2 rounded-lg border px-3 py-1.5 text-left transition-colors disabled:opacity-30 ${suivant ? "flex-row-reverse text-right" : ""} ${
+          changeNiveau ? "border-gold/50 bg-gold-soft/30 hover:bg-gold-soft/60" : "border-border bg-surface hover:bg-accent-soft/50"
+        }`}
+      >
+        <span className="text-lg leading-none text-accent">{suivant ? "›" : "‹"}</span>
+        <span className="min-w-0">
+          {cible ? (
+            <span className="block text-[12.5px] font-semibold leading-tight">
+              {cible.prenom ?? ""}
+              <span className="block">{cible.nom}</span>
+              {multiNiveaux && niveauEleve(cible) ? <span className="block text-[11px] font-normal text-muted">{niveauEleve(cible)}</span> : null}
+            </span>
+          ) : (
+            <span className="block text-[13px] text-muted">{suivant ? "Dernier élève" : "Premier élève"}</span>
+          )}
+          {changeNiveau && <span className="mt-0.5 inline-block rounded bg-gold-soft px-1.5 text-[10.5px] font-bold text-gold">Passage en {niveauEleve(cible!) || "?"}</span>}
+        </span>
+      </button>
+    );
+  };
 
   return (
-    <div ref={haut} className="scroll-mt-4 space-y-3">
-      <div className="rounded-xl border border-border bg-surface p-3 text-[13px]">
-        <div className="font-semibold">
+    <div ref={haut} className="mx-auto max-w-5xl scroll-mt-4 space-y-3">
+      {emplacement && createPortal(boutons, emplacement)}
+      {(!emplacement || message) && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-border bg-surface px-2 py-1 text-[13px]">
+        {!emplacement && (
+        <span className="font-semibold">
           {mode === "releve" ? `Relevés de notes · Période ${periode.ordre}` : `Bulletins · ${trimestreEnLettres(ctx.trimestre)}`}
+        </span>
+        )}
+        {!emplacement && boutons}
+        {message && <p className="w-full text-[12.5px] text-negative">{message}</p>}
         </div>
-        {mode === "releve" && <p className="text-[12px] text-muted">Les notes de la période uniquement, sans moyenne, avec une appréciation générale.</p>}
-        <div className="mt-2 flex flex-wrap gap-2">
-          {(directrice || titulaire) && (
-            <BoutonLot n={n("nouveau") + n("en_cours")} onClick={() => changer("pret")} disabled={occupe}>
-              Marquer prêt
-            </BoutonLot>
-          )}
-          {directrice && (
-            <>
-              <BoutonLot n={n("nouveau") + n("en_cours") + n("pret")} onClick={() => changer("valide")} disabled={occupe}>
-                Valider
-              </BoutonLot>
-              <BoutonLot n={n("valide")} onClick={publier} fort disabled={occupe}>
-                Publier aux familles
-              </BoutonLot>
-            </>
-          )}
-          {(directrice || titulaire) && (
-            <BoutonLot n={directrice ? n("pret") + n("valide") + n("publie") : n("pret")} onClick={() => changer("en_cours")} disabled={occupe}>
-              Repasser en cours
-            </BoutonLot>
-          )}
-          <BoutonLot onClick={pdf}>PDF{selection.length ? ` (${selection.length})` : " de la classe"}</BoutonLot>
-        </div>
-        {message && <p className="mt-2 text-[12px] text-negative">{message}</p>}
-      </div>
+      )}
 
       {!eleves.length && <p className="text-sm text-muted">Aucun élève dans cette classe.</p>}
       {eleves.length > 0 && (
-        <div className="rounded-xl border border-border bg-surface p-2">
+        <div id="blocs-eleves" className="scroll-mt-[70px] rounded-xl border border-border bg-surface p-1 md:scroll-mt-2">
           <div className="flex items-center gap-2">
-            <button type="button" disabled={tous || !precedent} onClick={() => precedent && allerA(precedent.id)} className="shrink-0 rounded-md px-2 py-1 text-[13px] text-accent hover:bg-accent-soft disabled:opacity-30" aria-label="Élève précédent">
-              ‹
-            </button>
             {/* Un bouton par élève. Classe à plusieurs niveaux : un bloc horizontal par niveau (élèves à la suite), blocs
                 empilés ; sinon, les élèves à la suite. */}
-            <div className="flex min-w-0 flex-1 flex-col items-start gap-1.5">
+            <div className="flex min-w-0 flex-1 flex-row flex-wrap items-start justify-center gap-x-4 gap-y-1.5">
               {groupesNiveau.map((g) => (
                 <div
                   key={g.niveau}
-                  className={multiNiveaux ? "flex flex-wrap items-center gap-1 rounded-lg border border-gold/50 bg-gold-soft/30 p-1.5" : "flex flex-wrap items-center gap-1"}
+                  className="flex flex-wrap items-center gap-1"
                 >
-                  {multiNiveaux && <span className="mr-1 w-10 shrink-0 rounded bg-gold-soft px-1.5 py-0.5 text-center text-[11px] font-bold text-gold">{g.niveau || "?"}</span>}
+                  {multiNiveaux && <span className="mr-0.5 flex w-16 shrink-0 items-center justify-center rounded border border-transparent bg-gold-soft px-2.5 py-1 text-center text-[12.5px] font-bold text-gold">{g.niveau || "?"}</span>}
                   {g.eleves.map((e) => {
-                    const d = docDe(e.id);
                     const choisi = !tous && e.id === idCourant;
                     return (
                       <button
@@ -188,7 +222,6 @@ export default function DocumentsClasse({
                           choisi ? "border-accent bg-accent text-accent-fg" : "border-border bg-background hover:bg-accent-soft"
                         }`}
                       >
-                        {d && <span className={`h-2 w-2 rounded-full ${POINT[d.statut]}`} aria-hidden />}
                         {e.prenom ?? nomEleve(e)}
                       </button>
                     );
@@ -196,16 +229,6 @@ export default function DocumentsClasse({
                 </div>
               ))}
             </div>
-            <button type="button" disabled={tous || !suivant} onClick={() => suivant && allerA(suivant.id)} className="shrink-0 rounded-md px-2 py-1 text-[13px] text-accent hover:bg-accent-soft disabled:opacity-30" aria-label="Élève suivant">
-              ›
-            </button>
-            <button
-              type="button"
-              onClick={() => setTous((t) => !t)}
-              className={`shrink-0 rounded-md border px-2 py-1 text-[12px] ${tous ? "border-accent bg-accent-soft text-accent" : "border-border text-muted hover:bg-surface-2"}`}
-            >
-              Tous
-            </button>
           </div>
         </div>
       )}
@@ -224,55 +247,22 @@ export default function DocumentsClasse({
             )}
             <div id={!tous ? "bulletin-eleve" : undefined} className="scroll-mt-[70px] rounded-xl border border-border bg-surface p-2.5 md:scroll-mt-2">
               {/* En-tête de l'élève : reste affiché au défilement (un élève à la fois), avec la navigation ‹ › . */}
-              <div className={`mb-1.5 flex flex-wrap items-center gap-2 ${!tous ? "sticky top-[62px] z-10 -mx-2.5 -mt-2.5 md:top-0 rounded-t-xl border-b border-border bg-surface px-2.5 py-2 shadow-sm" : ""}`}>
-                {d && (
-                  <input
-                    type="checkbox"
-                    checked={choix.has(d.id)}
-                    onChange={(ev) => setChoix((c) => {
-                      const x = new Set(c);
-                      if (ev.target.checked) x.add(d.id);
-                      else x.delete(d.id);
-                      return x;
-                    })}
-                    aria-label={`Choisir ${nomEleve(e)}`}
-                  />
-                )}
-                <span className="font-medium">{nomEleve(e)}</span>
-                {multiNiveaux && niveauEleve(e) && <span className="rounded bg-gold-soft px-1.5 py-0.5 text-[11px] font-bold text-gold">{niveauEleve(e)}</span>}
-                {d && <PastilleStatut statut={d.statut} />}
-                {mode === "trimestre" && s?.general.moy != null && (
-                  <span className="text-[12px] text-muted">
-                    Moyenne générale <strong className="text-accent">{note20(s.general.moy)}</strong>
-                  </span>
-                )}
-                {s && (
-                  <button type="button" onClick={() => telechargerBulletins([s])} className="ml-auto text-[12px] text-accent hover:underline">
-                    PDF
-                  </button>
-                )}
-                {!tous && eleves.length > 1 && (
-                  <span className="flex items-center gap-1">
-                    {[precedent, suivant].map((cible, i) => {
-                      const changeNiveau = !!cible && multiNiveaux && niveauEleve(cible) !== niveauEleve(e);
-                      return (
-                        <button
-                          key={i}
-                          type="button"
-                          disabled={!cible}
-                          onClick={() => cible && allerA(cible.id)}
-                          title={cible ? `${i ? "Élève suivant" : "Élève précédent"} : ${nomEleve(cible)}${changeNiveau ? ` (passage en ${niveauEleve(cible)})` : ""}` : undefined}
-                          className={`flex items-center gap-1 rounded-lg border px-2 py-1 text-[12px] disabled:opacity-30 ${changeNiveau ? "border-gold/50 bg-gold-soft/40 text-gold hover:bg-gold-soft" : "border-border bg-background text-accent hover:bg-accent-soft"}`}
-                        >
-                          {i ? null : "‹"}
-                          <span className="max-w-24 truncate">{cible ? (cible.prenom ?? nomEleve(cible)) : i ? "Fin" : "Début"}</span>
-                          {changeNiveau && <span className="text-[10px] font-bold">{niveauEleve(cible!)}</span>}
-                          {i ? "›" : null}
-                        </button>
-                      );
-                    })}
-                  </span>
-                )}
+              <div className={`mb-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 ${!tous ? "sticky top-[62px] z-10 -mx-2.5 -mt-2.5 md:top-0 rounded-t-xl border-b border-border bg-surface px-2.5 py-2 shadow-sm" : ""}`}>
+                {!tous && eleves.length > 1 && boutonNav(precedent, false)}
+                <div className="min-w-0 flex-1 basis-40 text-center">
+                  <div className="flex flex-wrap items-center justify-center gap-2">
+                    <span className="font-medium">{nomEleve(e)}</span>
+                    {multiNiveaux && niveauEleve(e) && <span className="rounded bg-gold-soft px-1.5 py-0.5 text-[11px] font-bold text-gold">{niveauEleve(e)}</span>}
+                  </div>
+                  <div className="text-[12.5px] text-muted">
+                    {mode === "trimestre" && s?.general.moy != null && (
+                      <>
+                        Moyenne générale <strong className="text-accent">{note20(s.general.moy)}</strong>
+                      </>
+                    )}
+                  </div>
+                </div>
+                {!tous && eleves.length > 1 && boutonNav(suivant, true)}
               </div>
 
               {/* Le document, ligne par ligne : l'appréciation de chaque matière face à sa moyenne. */}
@@ -324,7 +314,7 @@ export default function DocumentsClasse({
 
               {d && (
                 <div className="mt-1.5 flex items-start gap-2 border-t border-border pt-1.5">
-                  <span className="w-[9rem] shrink-0 px-2 pt-1 text-[12px] font-semibold">{mode === "trimestre" ? "Appréciation du trimestre" : "Appréciation générale"}</span>
+                  <span className="w-[9rem] shrink-0 px-2 pt-1 text-[12.5px] font-semibold">{mode === "trimestre" ? "Appréciation du trimestre" : "Appréciation générale"}</span>
                   <div className="w-full max-w-[36rem]">
                   <ZoneAppreciation
                     key={d.id}
@@ -345,35 +335,7 @@ export default function DocumentsClasse({
       {/* Navigation d'un élève à l'autre, en bas du bulletin (le passage à un autre niveau est signalé). */}
       {!tous && eleves.length > 1 && (
         <div className="flex flex-wrap items-stretch justify-center gap-2">
-          {[precedent, suivant].map((cible, i) => {
-            const suivant = i === 1;
-            const changeNiveau = !!cible && multiNiveaux && niveauEleve(cible) !== niveauEleve(eleves[rang]);
-            return (
-              <button
-                key={suivant ? "suivant" : "precedent"}
-                type="button"
-                disabled={!cible}
-                onClick={() => cible && allerA(cible.id)}
-                className={`flex w-56 max-w-[45%] items-center gap-2 rounded-lg border px-3 py-1.5 text-left transition-colors disabled:opacity-30 ${suivant ? "flex-row-reverse text-right" : ""} ${
-                  changeNiveau ? "border-gold/50 bg-gold-soft/30 hover:bg-gold-soft/60" : "border-border bg-surface hover:bg-accent-soft/50"
-                }`}
-              >
-                <span className="text-lg leading-none text-accent">{suivant ? "›" : "‹"}</span>
-                <span className="min-w-0">
-                  <span className="block text-[10px] uppercase tracking-wide text-muted">{suivant ? "Élève suivant" : "Élève précédent"}</span>
-                  {cible ? (
-                    <span className="block truncate text-[12.5px] font-semibold">
-                      {nomEleve(cible)}
-                      {multiNiveaux && niveauEleve(cible) ? <span className="ml-1.5 text-[11px] font-normal text-muted">{niveauEleve(cible)}</span> : null}
-                    </span>
-                  ) : (
-                    <span className="block text-[13px] text-muted">{suivant ? "Dernier élève" : "Premier élève"}</span>
-                  )}
-                  {changeNiveau && <span className="mt-0.5 inline-block rounded bg-gold-soft px-1.5 text-[10.5px] font-bold text-gold">Passage en {niveauEleve(cible!) || "?"}</span>}
-                </span>
-              </button>
-            );
-          })}
+          {[precedent, suivant].map((cible, i) => boutonNav(cible, i === 1))}
         </div>
       )}
       <BoutonEnregistrer

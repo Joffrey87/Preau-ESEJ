@@ -60,10 +60,11 @@ export default function SaisieNotes({
   const [nouvelle, setNouvelle] = useState<Partial<Evaluation> | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   // Grille (notes + appréciations) ou saisie des appréciations élève par élève.
-  const [vue, setVue] = useState<"grille" | "eleve">("grille");
+  // Grille seule : le choix « Élève par élève » n'est plus proposé.
+  const [vue] = useState<"grille" | "eleve">("grille");
 
   if (!matiere) return <p className="text-sm text-muted">Aucune matière dans cette classe.</p>;
-  const peutNoter = droits.peutNoter(matiere);
+  const peutNoter = droits.peutSaisirNotes(matiere);
   const evals = ctx.evaluations
     .filter((e) => e.matiere_id === matiere.id && (!niveauSeul || evaluationConcerne(e, niveauSeul)))
     .sort((a, b) => a.date.localeCompare(b.date) || a.titre.localeCompare(b.titre));
@@ -175,43 +176,31 @@ export default function SaisieNotes({
         ))}
       </div>}
 
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
         <h3 className="text-sm font-semibold">{matiere.nom}</h3>
         <span className="text-[12px] text-muted">
           {matiere.enseignants
+            .filter((id) => id !== ctx.classe.titulaire_id)
             .map((id) => enseignants.get(id))
             .filter((e): e is Enseignant => !!e)
             .map(nomEnseignant)
             .join(", ") || "—"}{" "}
           · coef {String(matiere.coef).replace(".", ",")}
         </span>
-        {peutNoter && !nouvelle && (
+        </div>
+        {peutNoter && !nouvelle ? (
           <button
             type="button"
             onClick={() => setNouvelle({ titre: `Évaluation ${evals.length + 1}`, date: todayISO() <= ctx.periode.fin ? todayISO() : ctx.periode.fin, coef: 1, bareme: 20, niveaux: niveauSeul && niveauxPossibles.includes(niveauSeul) ? [niveauSeul] : [] })}
-            className="ml-auto rounded-lg bg-accent px-3 py-1.5 text-[13px] font-medium text-accent-fg hover:opacity-90"
+            className="rounded-lg bg-accent px-3 py-1.5 text-[13px] font-medium text-accent-fg hover:opacity-90"
           >
             + Évaluation
           </button>
+        ) : (
+          <span />
         )}
-        <div className={`flex gap-1 rounded-lg bg-surface-2 p-1 ${peutNoter && !nouvelle ? "" : "ml-auto"}`}>
-          {(
-            [
-              ["grille", "Grille"],
-              ["eleve", "Élève par élève"],
-            ] as const
-          ).map(([v, l]) => (
-            <button
-              key={v}
-              type="button"
-              onClick={() => setVue(v)}
-              className={`rounded-md px-2.5 py-1 text-[12.5px] font-medium ${vue === v ? "bg-surface text-accent shadow-sm" : "text-muted hover:text-foreground"}`}
-            >
-              {l}
-            </button>
-          ))}
-        </div>
-        {!peutNoter && <span className="ml-auto text-[12px] text-muted">Consultation seule : cette matière ne vous est pas attribuée.</span>}
+        {!peutNoter ? <span className="text-right text-[12px] text-muted">Consultation seule : cette matière ne vous est pas attribuée.</span> : <span />}
       </div>
 
       {nouvelle && (
@@ -245,7 +234,8 @@ export default function SaisieNotes({
 
       {message && <p className="rounded-lg bg-negative/10 px-3 py-1.5 text-[13px] text-negative">{message}</p>}
 
-      {vue === "eleve" ? (
+      {/* Création d'une évaluation : le formulaire seul, sans le tableau de notes dessous. */}
+      {nouvelle ? null : vue === "eleve" ? (
         <AppreciationsEleveParEleve sb={sb} ctx={ctx} matiere={matiere} lignes={lignes} evals={evals} notes={notes} droits={droits} onMaj={onMaj} />
       ) : (
       <div className="overflow-x-auto rounded-xl border border-border bg-surface">
@@ -288,7 +278,6 @@ export default function SaisieNotes({
                 <tr className="border-t border-border/60">
                   <td className="sticky left-0 z-10 bg-surface px-3 py-1">
                     {nomEleve(r.eleve)}
-                    {r.niveau && <span className="ml-1.5 rounded bg-surface-2 px-1 text-[10px] text-muted">{r.niveau}</span>}
                     {verrouEleve?.(r.eleve.id) && <span className="ml-1.5 text-[10px] text-muted" title="Relevé publié : notes verrouillées">🔒</span>}
                   </td>
                   {evals.map((ev, ci) => {

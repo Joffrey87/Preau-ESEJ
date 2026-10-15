@@ -53,6 +53,37 @@ export const extensible = {
 export const dateFr = (iso: string | null | undefined) => (iso ? new Date(iso).toLocaleDateString("fr-FR", { day: "numeric", month: "short" }) : "");
 
 /** Bouton d'action groupée, avec son compteur. */
+/** Commutateur « En cours / Prêt » d'une classe : bascule tous les documents (relevés ou bulletins) à la fois. */
+export function CommutateurPret({ pret, publie = false, onChange, disabled = false, titre }: { pret: boolean; publie?: boolean; onChange: (pret: boolean) => void; disabled?: boolean; titre?: string }) {
+  // Tout est publié aux familles : l'état est figé.
+  if (publie)
+    return (
+      <span title="Publié aux familles" className="inline-flex items-center rounded-lg bg-positive px-3 py-1.5 text-[13px] font-medium text-white">
+        <span aria-hidden className="mr-1">✓</span>
+        Publié
+      </span>
+    );
+  const option = (valeur: boolean, libelle: string, actif: string) => (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={pret === valeur}
+      disabled={disabled}
+      onClick={() => onChange(!pret)}
+      className={`rounded-md px-3 py-1 text-[13px] font-medium transition-colors disabled:opacity-60 ${pret === valeur ? actif : "text-muted hover:bg-surface"}`}
+    >
+      {valeur && pret && <span aria-hidden className="mr-1">✓</span>}
+      {libelle}
+    </button>
+  );
+  return (
+    <div role="radiogroup" title={titre} className="inline-flex gap-0.5 rounded-lg bg-surface-2 p-0.5">
+      {option(false, "En cours", "bg-gold-soft text-gold shadow-sm")}
+      {option(true, "Prêt", "bg-positive text-white shadow-sm")}
+    </div>
+  );
+}
+
 export function BoutonLot({
   children,
   n,
@@ -107,7 +138,7 @@ export function ZoneAppreciation({
 }) {
   const { valeur: texte, changer, envoyer, etat, erreur } = useSauvegardeAuto(valeur, onEnregistrer);
   return (
-    <div className="w-full">
+    <div className="relative w-full">
       <textarea
         value={texte}
         readOnly={readOnly}
@@ -119,7 +150,17 @@ export function ZoneAppreciation({
         className={className}
         {...extensible}
       />
-      {/* Pas d'état « Enregistré » à chaque champ (une mention unique en bas de page) : seules les erreurs s'affichent. */}
+      {/* Petite coche verte : le texte est enregistré (infobulle au survol). Les erreurs s'affichent en dessous. */}
+      {!readOnly && (etat === "attente" || etat === "envoi") && (
+        <span title="Enregistrement…" aria-label="Enregistrement…" className="absolute right-2 top-1.5 cursor-default text-[12px] leading-none text-muted">
+          …
+        </span>
+      )}
+      {!readOnly && texte.trim() !== "" && (etat === "" || etat === "ok") && (
+        <span title="Enregistré" aria-label="Enregistré" className="absolute right-2 top-1.5 cursor-default text-[12px] font-bold leading-none text-positive">
+          ✓
+        </span>
+      )}
       {!readOnly && etat === "erreur" && <div className="text-[10.5px] text-negative">Échec de l&apos;enregistrement : {erreur ?? ""}</div>}
     </div>
   );

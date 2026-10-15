@@ -4,8 +4,9 @@ import ModificationsFamilles from "@/components/ModificationsFamilles";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { todayISO } from "@/lib/format";
-import { calculerClasse, libellePeriode, nomEnseignant, type ContexteClasse, type Enseignant, type Matiere, type Bulletin, estAppreciationSeule } from "@/lib/bulletins";
+import { calculerClasse, nomEnseignant, trimestreEnLettres, type ContexteClasse, type Enseignant, type Matiere, type Bulletin, estAppreciationSeule } from "@/lib/bulletins";
 import { chargerClasse, chargerReferentiel, periodeCourante, type Referentiel } from "@/lib/bulletinsDonnees";
+import Chargement from "@/components/Chargement";
 import ListeBulletins from "./ListeBulletins";
 import FicheBulletin from "./FicheBulletin";
 import ParametresBulletins from "./ParametresBulletins";
@@ -23,7 +24,7 @@ import LiensInvitationFamilles from "@/components/LiensInvitationFamilles";
 export type Onglet = "releves" | "trimestre" | "bulletins" | "conseil" | "absences" | "maternelle" | "trombi" | "inscriptions" | "parametres";
 // Onglets de « Notes & Bulletins » ; les autres (Appel & absences, Trombinoscope, Gestion des classes, Inscriptions)
 // s'ouvrent par le menu latéral, sans cette barre.
-const GROUPE_EVAL: Onglet[] = ["releves", "trimestre", "conseil", "maternelle", "bulletins"];
+const GROUPE_EVAL: Onglet[] = ["releves", "trimestre", "maternelle"];
 const ONGLETS: Onglet[] = ["releves", "trimestre", "bulletins", "conseil", "absences", "maternelle", "trombi", "inscriptions", "parametres"];
 
 /** Ce que le compte peut faire dans la classe affichée (la base le garantit de son côté). */
@@ -32,6 +33,8 @@ export type Droits = {
   titulaire: boolean;
   enseignantId: string | null;
   peutNoter: (m: Matiere) => boolean;
+  /** Notes et évaluations : la Directrice, ou le professeur responsable de la matière (pas la titulaire pour les autres matières). */
+  peutSaisirNotes: (m: Matiere) => boolean;
   /** Mention, appréciation, statut Prêt : titulaire ou Directrice, tant que le bulletin n'est pas validé (Directrice : toujours). */
   peutEditer: (b: Bulletin | null) => boolean;
   /** Commentaire et moyenne d'une matière dans un bulletin. */
@@ -60,6 +63,9 @@ function seulementMatiere<T extends { groupes: { id: string }[]; matieres: Matie
   return r;
 }
 
+/** « 2026-10-05 » → « 5.10 » (liste des périodes compacte). */
+const jourMois = (iso: string) => `${Number(iso.slice(8, 10))}.${iso.slice(5, 7)}`;
+
 export default function Bulletins({
   directrice,
   enseignantId,
@@ -74,6 +80,23 @@ export default function Bulletins({
 }) {
   const sb = useMemo(() => createClient(), []);
   const [ref, setRef] = useState<Referentiel | null>(null);
+  // Emplacement, dans la barre du haut, des boutons d'état (Marquer prêt, Valider, PDF…) : une seule tuile.
+  const [emplacement, setEmplacement] = useState<HTMLDivElement | null>(null);
+
+  // Molette sur un tableau plus large que l'écran : défilement horizontal (la page ne défile qu'au bord du tableau).
+  useEffect(() => {
+    const surMolette = (e: WheelEvent) => {
+      if (e.defaultPrevented || e.ctrlKey || Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
+      const el = (e.target as HTMLElement | null)?.closest<HTMLElement>(".overflow-x-auto");
+      if (!el || el.scrollWidth <= el.clientWidth || el.scrollHeight > el.clientHeight + 1) return;
+      const max = el.scrollWidth - el.clientWidth;
+      if ((e.deltaY < 0 && el.scrollLeft <= 0) || (e.deltaY > 0 && el.scrollLeft >= max - 1)) return;
+      el.scrollLeft += e.deltaY;
+      e.preventDefault();
+    };
+    document.addEventListener("wheel", surMolette, { passive: false });
+    return () => document.removeEventListener("wheel", surMolette);
+  }, []);
   const [classeId, setClasseId] = useState<string | null>(initial.classe ?? null);
   const [periodeId, setPeriodeId] = useState<string | null>(initial.periode ?? null);
   // « Notes » est fusionné dans « Relevés de notes » (saisie en ouvrant une matière) : les anciens liens y mènent.
@@ -167,19 +190,21 @@ export default function Bulletins({
     const ouvert = (b: Bulletin | null) => !!b && ["nouveau", "en_cours", "pret"].includes(b.statut);
     const peutNoter = (m: Matiere) => directrice || estTitulaire || (!!enseignantId && m.enseignants.includes(enseignantId));
     // Catéchisme : appréciation du seul Directeur spirituel (la base applique la même règle : peut_apprecier).
+    const peutSaisirNotes = (m: Matiere) => directrice || (!!enseignantId && m.enseignants.includes(enseignantId));
     const peutApprecier = (m: Matiere) => (estAppreciationSeule(m.nom) ? !!matiereSeule : peutNoter(m));
     return {
       directrice,
       titulaire: estTitulaire,
       enseignantId,
       peutNoter,
+      peutSaisirNotes,
       peutEditer: (b) => !!b && (directrice || (estTitulaire && ouvert(b))),
       peutCommenter: (m, b) => !!b && peutApprecier(m) && (directrice || ouvert(b)),
       peutApprecier,
     };
   }, [directrice, enseignantId, classe, matiereSeule]);
 
-  if (!ref) return <div className="mx-auto max-w-7xl px-5 py-8 text-sm text-muted md:px-8">Chargement…</div>;
+  if (!ref) return <Chargement className="mx-auto max-w-7xl" />;
 
   const annee = classe?.annee_scolaire ?? ref.classes.at(-1)?.annee_scolaire ?? "";
   const classesAnnee = ref.classes.filter((c) => c.annee_scolaire === annee);
@@ -197,6 +222,8 @@ export default function Bulletins({
   ];
 
   const evaluation = GROUPE_EVAL.includes(onglet);
+  // Relevés de notes : les périodes passées, la période en cours et la suivante seulement.
+  const ordreMax = (periodeCourante(periodesAnnee, todayISO())?.ordre ?? 0) + 1;
   const sansChoixClasse = onglet === "inscriptions" || onglet === "parametres";
 
   const choisirOnglet = (v: Onglet) => {
@@ -211,6 +238,7 @@ export default function Bulletins({
       <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
         {/* Pages de l'École : le titre de l'onglet du menu, puis l'année en cours en gras. */}
         <h1 className="text-lg font-semibold tracking-tight">{evaluation ? "Notes & Bulletins" : onglets.find((o) => o.v === onglet)?.label}</h1>
+        {classe && !sansChoixClasse && <p className="text-sm font-bold">{classe.niveaux.join(" / ")}</p>}
         {annee && <p className="text-sm font-bold">Année {annee}</p>}
       </div>
 
@@ -233,53 +261,28 @@ export default function Bulletins({
         <>
           {/* Barre de choix : classe, période, onglet (inutile pour les Inscriptions et la Gestion des classes). */}
           {!sansChoixClasse && (
-          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-border bg-surface p-1.5">
-            <div className="flex flex-wrap gap-1 rounded-lg bg-surface-2 p-1">
-              {classesAnnee.map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => {
-                    setClasseId(c.id);
-                    setBulletinId(null);
-                  }}
-                  className={`rounded-md px-3 py-1 text-[13px] font-medium ${c.id === classeId ? "bg-surface text-accent shadow-sm" : "text-muted hover:text-foreground"}`}
-                >
-                  {c.nom}
-                  {/* Niveaux à côté du nom, seulement s'ils n'y figurent pas déjà (« CE1 / CE2 / CM1 » : pas de doublon). */}
-                  {c.niveaux.some((n) => !c.nom.toUpperCase().includes(n.toUpperCase())) && (
-                    <span className="ml-1.5 text-[11px] font-normal text-muted">{c.niveaux.join("·")}</span>
-                  )}
-                </button>
-              ))}
-            </div>
+          <div className="mx-auto mb-2 flex w-fit max-w-full flex-wrap items-center justify-center gap-x-2 gap-y-1 rounded-xl border border-border bg-surface p-1.5">
+            {classesAnnee.length > 1 && (
             <select
-              value={periodeId ?? ""}
+              value={classeId ?? ""}
               onChange={(e) => {
-                setPeriodeId(e.target.value);
+                setClasseId(e.target.value);
                 setBulletinId(null);
               }}
-              className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-[13px] outline-none focus:border-accent"
-              aria-label="Période"
+              className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-[13px] font-semibold outline-none focus:border-accent"
+              aria-label="Classe"
             >
-              {[1, 2, 3].map((t) => (
-                <optgroup key={t} label={`${t === 1 ? "1er" : `${t}e`} trimestre`}>
-                  {periodesAnnee
-                    .filter((p) => p.trimestre === t)
-                    .map((p) => (
-                      <option key={p.id} value={p.id}>
-                        Période {p.ordre} — {libellePeriode(p)}
-                      </option>
-                    ))}
-                </optgroup>
+              {classesAnnee.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.nom}
+                  {c.niveaux.some((n) => !c.nom.toUpperCase().includes(n.toUpperCase())) ? ` · ${c.niveaux.join("·")}` : ""}
+                </option>
               ))}
             </select>
-            {titulaire && <span className="text-[12px] text-muted">Titulaire : {nomEnseignant(titulaire)}</span>}
-          </div>
+            )}
             {/* Onglets de Notes & Bulletins seulement ; les autres pages s'ouvrent par le menu latéral. */}
             {evaluation && (
-              <div className="ml-auto flex flex-wrap gap-1 rounded-xl border border-border bg-surface p-1.5">
+              <div className="flex flex-wrap gap-1 rounded-lg border border-border p-0.5">
                 {onglets
                   .filter((o) => GROUPE_EVAL.includes(o.v))
                   .map((o) => (
@@ -294,6 +297,48 @@ export default function Bulletins({
                   ))}
               </div>
             )}
+            {onglet === "trimestre" ? (
+              // Un bulletin couvre un trimestre : on choisit le trimestre (sa première période sert de repère).
+              <select
+                value={periode?.trimestre ?? ""}
+                onChange={(e) => {
+                  const p = periodesAnnee.filter((x) => x.trimestre === Number(e.target.value)).sort((x, y) => x.ordre - y.ordre)[0];
+                  if (p) setPeriodeId(p.id);
+                  setBulletinId(null);
+                }}
+                className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-[13px] outline-none focus:border-accent"
+                aria-label="Trimestre"
+              >
+                {[1, 2, 3].filter((t) => periodesAnnee.some((p) => p.trimestre === t)).map((t) => (
+                  <option key={t} value={t}>
+                    {trimestreEnLettres(t)}
+                  </option>
+                ))}
+              </select>
+            ) : (
+            <select
+              value={periodeId ?? ""}
+              onChange={(e) => {
+                setPeriodeId(e.target.value);
+                setBulletinId(null);
+              }}
+              className="rounded-lg border border-border bg-background px-2.5 py-1.5 text-[13px] outline-none focus:border-accent"
+              aria-label="Période"
+            >
+              {[1, 2, 3].map((t) => (
+                <optgroup key={t} label={`${t === 1 ? "1er" : `${t}e`} trimestre`}>
+                  {periodesAnnee
+                    .filter((p) => p.trimestre === t && (onglet !== "releves" || p.ordre <= ordreMax || p.id === periodeId))
+                    .map((p) => (
+                      <option key={p.id} value={p.id}>
+                        Période {p.ordre} · {jourMois(p.debut)} → {jourMois(p.fin)}
+                      </option>
+                    ))}
+                </optgroup>
+              ))}
+            </select>
+            )}
+            {evaluation && <div ref={setEmplacement} className="flex flex-wrap gap-2" />}
           </div>
           )}
 
@@ -329,6 +374,7 @@ export default function Bulletins({
               periode={periode}
               nomTitulaire={titulaire ? nomEnseignant(titulaire) : null}
               onRecharger={recharger}
+              emplacement={emplacement}
             />
           ) : onglet === "trimestre" && docs && periode && docs.classe.id === classeId ? (
             <DocumentsClasse
@@ -343,9 +389,10 @@ export default function Bulletins({
               nomTitulaire={titulaire ? nomEnseignant(titulaire) : null}
               enseignants={enseignants}
               onRecharger={recharger}
+              emplacement={emplacement}
             />
-          ) : !ctx || (chargement && !resultats.length) ? (
-            <div className="rounded-xl border border-border bg-surface p-6 text-sm text-muted">Chargement…</div>
+          ) : !ctx || (chargement && !resultats.length) || onglet === "releves" || onglet === "trimestre" ? (
+            <Chargement />
           ) : onglet === "conseil" ? (
             <ConseilClasse
               ctx={ctx}

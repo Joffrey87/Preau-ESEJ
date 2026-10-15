@@ -313,7 +313,7 @@ export function construireSynthese(r: ResultatEleve, ctx: { classe: Classe; peri
         .filter((m) => m.ligne?.afficher !== false)
         .map((m) => ({
           nom: m.matiere.nom,
-          enseignants: m.matiere.enseignants.map((id) => ctx.enseignants.get(id)).filter((e): e is Enseignant => !!e).map(nomEnseignant).join(", "),
+          enseignants: m.matiere.enseignants.filter((id) => id !== ctx.classe.titulaire_id).map((id) => ctx.enseignants.get(id)).filter((e): e is Enseignant => !!e).map(nomEnseignant).join(", "),
           chiffre: { ...m.chiffre, moy: arrondi(m.chiffre.moy), moyClasse: arrondi(m.chiffre.moyClasse) },
           commentaire: m.ligne?.commentaire?.trim() || null,
         })),

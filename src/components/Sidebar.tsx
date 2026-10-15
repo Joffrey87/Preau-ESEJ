@@ -256,17 +256,17 @@ export default function Sidebar({
                 }
 
                 return (
-                  <li key={item.href}>
+                  <li key={item.href} className={item.sous ? "ml-5 border-l border-border pl-1" : undefined}>
                     <Link
                       href={item.href}
                       title={item.titre}
-                      className={`flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-[13px] transition-colors ${
+                      className={`flex items-center gap-2.5 rounded-md px-2.5 ${item.sous ? "py-1 text-[12.5px]" : "py-1.5 text-[13px]"} transition-colors ${
                         active
                           ? "bg-accent-soft font-medium text-accent"
                           : "text-foreground hover:bg-surface-2"
                       }`}
                     >
-                      <Icon name={item.icon} className="h-4 w-4 shrink-0" />
+                      {!item.sous && <Icon name={item.icon} className="h-4 w-4 shrink-0" />}
                       <span className="truncate">{item.label}</span>
                       {item.href === "/communication" && <PastilleNonLus />}
                     </Link>
@@ -327,6 +327,8 @@ const NAV_PROFESSEUR: typeof NAV = [
     title: "École",
     items: [
       { href: "/bulletins", label: "Notes & Bulletins", icon: "bulletin", ready: true },
+      { href: "/bulletins?onglet=conseil", label: "Conseil de classe", icon: "users", ready: true, sous: true },
+      { href: "/bulletins?onglet=bulletins", label: "Archives (périodes)", icon: "ledger", ready: true, sous: true },
       { href: "/bulletins?onglet=absences", label: "Appel & absences", icon: "calendar", ready: true },
       { href: "/bulletins?onglet=trombi", label: "Élèves", icon: "users", ready: true },
     ],

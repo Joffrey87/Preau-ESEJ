@@ -9,6 +9,8 @@ export type NavItem = {
   titre?: string;
   /** Masqué pour ces rôles (même page proposée ailleurs dans leur menu). */
   sauf?: string[];
+  /** Sous-menu du lien qui précède : affiché en retrait, sans icône. */
+  sous?: boolean;
 };
 
 export type NavSection = {
@@ -27,6 +29,8 @@ export const NAV: NavSection[] = [
       // Directrice, Directeur spirituel (catéchisme) et Professeurs ; aucun autre profil du bureau (données d'élèves).
       { href: "/bulletins", label: "Notes & Bulletins", icon: "bulletin", ready: true, roles: ["directrice", "directeur-spirituel"] },
       // Directrice : les onglets de vie de classe et d'administration des Bulletins, directement dans le menu.
+      { href: "/bulletins?onglet=conseil", label: "Conseil de classe", icon: "users", ready: true, sous: true, roles: ["directrice"] },
+      { href: "/bulletins?onglet=bulletins", label: "Archives (périodes)", icon: "ledger", ready: true, sous: true, roles: ["directrice"] },
       { href: "/bulletins?onglet=absences", label: "Appel & absences", icon: "calendar", ready: true, roles: ["directrice"] },
       { href: "/bulletins?onglet=trombi", label: "Élèves", icon: "users", ready: true, roles: ["directrice"] },
       { href: "/bulletins?onglet=parametres", label: "Gestion des classes", titre: "Classes, année", icon: "check", ready: true, roles: ["directrice"] },

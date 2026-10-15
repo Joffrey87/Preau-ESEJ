@@ -196,7 +196,7 @@ export default function FicheBulletin({
             <Action onClick={() => statut("valide", "Retirer ce bulletin de l'espace de la famille (il redevient « Validé ») ?")}>Dépublier</Action>
           )}
           {!publie && <Action onClick={() => setApercu((a) => !a)}>{apercu ? "Revenir à la saisie" : "Aperçu famille"}</Action>}
-          <Action onClick={() => telechargerBulletins([syntheseDe(r, ctx, titulaire, enseignants)])}>PDF</Action>
+          {droits.directrice && <Action onClick={() => telechargerBulletins([syntheseDe(r, ctx, titulaire, enseignants)])}>PDF</Action>}
         </div>
       </div>
 
@@ -231,6 +231,7 @@ export default function FicheBulletin({
                             <div>{m.matiere.nom}</div>
                             <div className="text-[10.5px] text-muted">
                               {m.matiere.enseignants
+                                .filter((id) => id !== ctx.classe.titulaire_id)
                                 .map((id) => enseignants.get(id))
                                 .filter((e): e is Enseignant => !!e)
                                 .map(nomEnseignant)

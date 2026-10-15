@@ -1,7 +1,7 @@
 "use client";
 
 import { extensible } from "./outils";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSauvegardeAuto } from "@/lib/sauvegardeAuto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { nomEleve, note20, type ContexteClasse, type Evaluation, type Ligne, type Matiere, type Note, type ResultatEleve, type Statut } from "@/lib/bulletins";
@@ -58,9 +58,19 @@ export function ChampAppreciation({
   const { valeur: texte, changer: changerTexte, envoyer, etat, erreur } = useSauvegardeAuto(valeur, onEnregistrer);
   const changer = (t: string) => changerTexte(t.slice(0, LIMITE_APPRECIATION));
   const sauver = () => envoyer();
+  // Coche verte juste après un enregistrement réussi, puis elle s'efface.
+  const [coche, setCoche] = useState(false);
+  useEffect(() => {
+    if (etat !== "ok") return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- coche passagère après l'enregistrement
+    setCoche(true);
+    const t = window.setTimeout(() => setCoche(false), 2500);
+    return () => window.clearTimeout(t);
+  }, [etat]);
 
   return (
     <div>
+      <div className="relative">
       <textarea
         value={texte}
         disabled={disabled}
@@ -73,6 +83,12 @@ export function ChampAppreciation({
         {...extensible}
         className="w-full resize-y rounded-md border border-border/70 bg-background px-2 py-1 text-[13px] leading-snug outline-none focus:border-accent disabled:border-transparent disabled:bg-transparent"
       />
+      {coche && !disabled && (
+        <span title="Enregistré" aria-label="Enregistré" className="pointer-events-none absolute right-2.5 top-1.5 text-[13px] font-bold leading-none text-positive">
+          ✓
+        </span>
+      )}
+      </div>
       <div className="flex items-center justify-between gap-2 text-[10.5px]">
         {/* Pas d'état « Enregistré » à chaque champ (mention unique en bas de page) : la raison d'un verrou, ou l'erreur. */}
         <span className={etat === "erreur" ? "text-negative" : "text-muted"} title={erreur ?? undefined}>

@@ -9,6 +9,8 @@ export type SectionGuide = {
   etapes: string[];
   /** Encadré « Bon à savoir ». */
   astuce?: string;
+  /** Schéma annoté de l'écran (public/guide, données fictives) et la légende de ses pastilles numérotées. */
+  schema?: { src: string; largeur: number; hauteur: number; titre: string; legende: string[] };
 };
 
 export const GUIDE_PROFESSEURS: SectionGuide[] = [
@@ -36,6 +38,19 @@ export const GUIDE_PROFESSEURS: SectionGuide[] = [
       "Touche Entrée ou flèche vers le bas : élève suivant. « Retour Relevés de notes » referme la saisie.",
     ],
     astuce: "Vous ne pouvez noter que les matières qui vous sont attribuées ; les autres sont en consultation seule.",
+    schema: {
+      src: "/guide/saisie-notes.svg",
+      largeur: 820,
+      hauteur: 560,
+      titre: "Créer une évaluation et saisir les notes",
+      legende: [
+        "Cliquez sur la matière : sa saisie s'ouvre sous le tableau.",
+        "« + Évaluation » ouvre le formulaire du devoir.",
+        "Titre, date, coefficient et barème (« Noté sur »), puis « Créer ».",
+        "Tapez les notes dans la nouvelle colonne : un nombre, ou abs, disp, nr.",
+        "« Retour Relevés de notes » referme la saisie.",
+      ],
+    },
   },
   {
     id: "releve",
@@ -49,6 +64,18 @@ export const GUIDE_PROFESSEURS: SectionGuide[] = [
       "« PDF » télécharge le relevé d'un élève ; « PDF de la classe » ceux de toute la classe.",
     ],
     astuce: "Un relevé publié verrouille les notes de l'élève pour la période (cadenas).",
+    schema: {
+      src: "/guide/appreciation-releve.svg",
+      largeur: 820,
+      hauteur: 400,
+      titre: "Rédiger les appréciations du relevé",
+      legende: [
+        "Cliquez sur le nom de l'élève : sa ligne s'ouvre.",
+        "Rédigez l'appréciation générale (et celle du Catéchisme) ; elle s'enregistre en quittant le champ.",
+        "Classe complète : « Marquer prêt », la Directrice valide puis publie.",
+        "« PDF » : le relevé de l'élève, à imprimer.",
+      ],
+    },
   },
   {
     id: "bulletin",
@@ -63,6 +90,18 @@ export const GUIDE_PROFESSEURS: SectionGuide[] = [
       "Même circuit que le relevé : « Marquer prêt », puis validation et publication par la Directrice.",
     ],
     astuce: "Le bulletin porte la date de naissance de l'élève et un encart pour la signature des parents.",
+    schema: {
+      src: "/guide/appreciations-bulletin.svg",
+      largeur: 820,
+      hauteur: 460,
+      titre: "Les appréciations du bulletin",
+      legende: [
+        "Les moyennes sont calculées seules : rien à saisir.",
+        "Professeur intervenant : l'appréciation de votre matière, face à sa moyenne.",
+        "Catéchisme : une appréciation seule, sans moyenne.",
+        "Titulaire : l'appréciation du trimestre.",
+      ],
+    },
   },
   {
     id: "appel",

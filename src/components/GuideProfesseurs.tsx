@@ -39,7 +39,7 @@ export default function GuideProfesseurs() {
 
       <div className="grid gap-4 lg:grid-cols-2">
         {GUIDE_PROFESSEURS.map((s, i) => (
-          <section key={s.id} id={s.id} className="scroll-mt-4 overflow-hidden rounded-xl border border-border bg-surface">
+          <section key={s.id} id={s.id} className={`scroll-mt-4 overflow-hidden rounded-xl border border-border bg-surface ${s.schema ? "lg:col-span-2" : ""}`}>
             <div className="flex items-center gap-3 bg-accent px-4 py-2.5 text-accent-fg">
               <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-gold text-[13px] font-semibold text-white">{i + 1}</span>
               <h2 className="flex-1 text-[15px] font-semibold">{s.titre}</h2>
@@ -55,6 +55,22 @@ export default function GuideProfesseurs() {
                   </li>
                 ))}
               </ol>
+              {s.schema && (
+                <figure className="mx-auto max-w-3xl space-y-2">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={s.schema.src} width={s.schema.largeur} height={s.schema.hauteur} alt={s.schema.titre} className="h-auto w-full rounded-lg border border-border" />
+                  <figcaption>
+                    <ol className="space-y-1">
+                      {s.schema.legende.map((l, k) => (
+                        <li key={k} className="flex gap-2 text-[12.5px]">
+                          <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-gold text-[11px] font-semibold text-white">{k + 1}</span>
+                          <span>{l}</span>
+                        </li>
+                      ))}
+                    </ol>
+                  </figcaption>
+                </figure>
+              )}
               {s.astuce && (
                 <p className="rounded-lg border-l-[3px] border-gold bg-gold-soft/50 px-3 py-2 text-[12.5px]">
                   <strong className="text-gold">Bon à savoir · </strong>

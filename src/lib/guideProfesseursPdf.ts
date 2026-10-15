@@ -6,7 +6,11 @@ import { GUIDE_PROFESSEURS } from "@/lib/guideProfesseurs";
 
 const W = 595.28, H = 841.89, M = 46;
 
-export async function construireGuidePdf(): Promise<Uint8Array> {
+/**
+ * `images` : schémas déjà convertis en PNG (clé = chemin du SVG), voir `schemasEnPng` ; sans eux (hors navigateur), le
+ * PDF reste complet, sans les schémas.
+ */
+export async function construireGuidePdf(images: Record<string, Uint8Array> = {}): Promise<Uint8Array> {
   const [{ PDFDocument, rgb }, { default: fontkit }, res] = await Promise.all([import("pdf-lib"), import("@pdf-lib/fontkit"), chargerRessources()]);
   const NAVY = rgb(0.008, 0.114, 0.318), OR = rgb(0.784, 0.584, 0.184), GRIS = rgb(0.42, 0.45, 0.5);
   const CREME = rgb(0.969, 0.953, 0.918), OR_DOUX = rgb(0.953, 0.902, 0.788), BLANC = rgb(1, 1, 1);
@@ -53,10 +57,11 @@ export async function construireGuidePdf(): Promise<Uint8Array> {
   top += 18;
 
   const larg = W - 2 * M;
-  GUIDE_PROFESSEURS.forEach((s, i) => {
+  for (const [i, s] of GUIDE_PROFESSEURS.entries()) {
     const resume = coupe(s.resume, italic, 9, larg - 24);
     const etapes = s.etapes.map((e) => coupe(e, regular, 9, larg - 44));
     const astuce = s.astuce ? coupe(`Bon à savoir · ${s.astuce}`, regular, 8.5, larg - 44) : [];
+    const png = s.schema && images[s.schema.src] ? await doc.embedPng(images[s.schema.src]) : null;
     const h = 26 + resume.length * 12 + etapes.reduce((n, l) => n + l.length * 12 + 3, 0) + (astuce.length ? 12 + astuce.length * 11.5 : 0) + 10;
     place(h);
     // Bandeau de section : numéro dans une pastille or, titre sur fond marine.
@@ -91,8 +96,30 @@ export async function construireGuidePdf(): Promise<Uint8Array> {
         top += 11.5;
       });
     }
+    // Schéma annoté et sa légende, sous l'encadré de la section (nouvelle page au besoin).
+    if (png && s.schema) {
+      const wImg = larg - 60, hImg = (wImg * s.schema.hauteur) / s.schema.largeur;
+      const legende = s.schema.legende.map((l) => coupe(l, regular, 8.5, larg - 90));
+      const hLeg = legende.reduce((n, l) => n + l.length * 11 + 3, 0);
+      place(18 + hImg + 10 + hLeg);
+      texte(s.schema.titre, M + 30, top + 4, semi, 9.5, OR);
+      top += 12;
+      page.drawImage(png, { x: M + 30, y: y(top + hImg), width: wImg, height: hImg });
+      top += hImg + 12;
+      legende.forEach((lignes, k) => {
+        page.drawCircle({ x: M + 37, y: y(top - 3), size: 6, color: OR });
+        const n = String(k + 1);
+        texte(n, M + 37 - semi.widthOfTextAtSize(n, 7.5) / 2, top - 0.5, semi, 7.5, BLANC);
+        lignes.forEach((l) => {
+          texte(l, M + 50, top, regular, 8.5);
+          top += 11;
+        });
+        top += 3;
+      });
+      top += 8;
+    }
     top += 18;
-  });
+  }
 
   const pages = doc.getPages();
   pages.forEach((p, i) => {
@@ -107,8 +134,33 @@ export async function construireGuidePdf(): Promise<Uint8Array> {
   return doc.save();
 }
 
+/** Navigateur : convertit les schémas SVG du guide en PNG (2×, net à l'impression). */
+async function schemasEnPng(): Promise<Record<string, Uint8Array>> {
+  const sortie: Record<string, Uint8Array> = {};
+  for (const s of GUIDE_PROFESSEURS) {
+    if (!s.schema) continue;
+    const { src, largeur, hauteur } = s.schema;
+    try {
+      const img = new Image();
+      img.src = src;
+      await img.decode();
+      const canvas = document.createElement("canvas");
+      canvas.width = largeur * 2;
+      canvas.height = hauteur * 2;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) continue;
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const blob = await new Promise<Blob | null>((ok) => canvas.toBlob(ok, "image/png"));
+      if (blob) sortie[src] = new Uint8Array(await blob.arrayBuffer());
+    } catch {
+      // Schéma indisponible : le guide part sans lui.
+    }
+  }
+  return sortie;
+}
+
 export async function telechargerGuide() {
-  const octets = await construireGuidePdf();
+  const octets = await construireGuidePdf(await schemasEnPng());
   const url = URL.createObjectURL(new Blob([octets as BlobPart], { type: "application/pdf" }));
   const a = document.createElement("a");
   a.href = url;

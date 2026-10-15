@@ -49,29 +49,32 @@ class Svg:
 
 
 # 1. Créer une évaluation et saisir les notes
-a = Svg(820, 560)
+a = Svg(820, 610)
 a.rect(16, 16, 788, 40, SURF, BORD, 10)
 a.t(30, 41, "Période 1", 13, TXT, 700)
-a.t(104, 41, "Notes de la période, sans moyenne · cliquez une matière pour saisir les notes", 11.5, MUT)
+a.t(104, 41, "Notes de la période, sans moyenne · cliquez une matière ou une case pour saisir les notes", 11.5, MUT)
 a.rect(16, 66, 788, 120, SURF, BORD, 10)
-a.t(30, 90, "ÉLÈVE", 10.5, MUT, 600)
-a.rect(200, 72, 300, 22, GOLDS, None, 4); a.t(350, 87, "Français", 11.5, TXT, 700, "middle")
-a.rect(504, 72, 290, 22, GOLDS, None, 4); a.t(649, 87, "Mathématiques", 11.5, TXT, 700, "middle")
-for nom, x in [("Lecture", 200), ("Grammaire", 300), ("Dictée", 400), ("Calcul", 504), ("Géométrie", 600), ("Problèmes", 700)]:
-    hl = nom == "Lecture"
-    a.rect(x + 2, 98, 96, 32, NAVY if hl else SURF, None, 5)
-    a.t(x + 50, 112, nom, 11.5, "#fff" if hl else TXT, 600 if hl else 400, "middle")
-    a.t(x + 50, 125, "2 éval." if hl else "+ éval.", 9.5, "#fff" if hl else MUT, 400, "middle")
-for i, (n, v) in enumerate([("Louise Martin", ["14 · 16", "12", "15"]), ("Paul Durand", ["11 · abs", "13", "9,5"])]):
-    y = 148 + i * 20
-    a.line(16, y - 12, 804, y - 12)
-    a.t(30, y + 3, n, 12, TXT, 500)
-    for j, val in enumerate(v):
-        a.t(250 + j * 100, y + 3, val, 11.5, TXT, 400, "middle")
-a.cible(202, 98, 96, 32); a.pastille(196, 96, 1)
-a.rect(16, 198, 788, 346, "#eef1f8", NAVY, 12, 1.5)
+a.t(30, 84, "MATIÈRE", 10.5, MUT, 600)
+for nom, prenom, x in [("Martin", "Louise", 330), ("Durand", "Paul", 470), ("Petit", "Jeanne", 610)]:
+    a.t(x, 80, prenom, 11.5, TXT, 600, "middle"); a.t(x, 91, nom, 9.5, MUT, 400, "middle")
+def bande(y, nom):
+    a.rect(17, y, 786, 18, GOLDS, None, 0); a.t(30, y + 13, nom, 11.5, TXT, 700)
+def ligne_m(y, nom, nb, vals, act=False):
+    if act:
+        a.rect(17, y, 184, 18, NAVY, None, 0)
+    a.t(30, y + 13, nom, 11.5, "#fff" if act else TXT, 600 if act else 400)
+    a.t(160, y + 13, nb, 9.5, "#fff" if act else MUT, 400)
+    for j, v in enumerate(vals):
+        a.t(330 + j * 140, y + 13, v, 11.5, TXT, 400, "middle")
+bande(96, "Français")
+ligne_m(114, "Lecture", "2 éval.", ["14 · 16", "11 · abs", "17 · 15"], True)
+a.cible(17, 114, 184, 18); a.pastille(206, 112, 1)
+ligne_m(132, "Grammaire", "+ éval.", ["12", "13", "15"])
+bande(150, "Mathématiques")
+ligne_m(168, "Calcul", "+ éval.", ["15", "9,5", "16"])
+a.rect(16, 198, 788, 396, "#eef1f8", NAVY, 12, 1.5)
 a.t(30, 222, "SAISIE DES NOTES", 10.5, NAVY, 700)
-a.rect(327, 206, 166, 26, "#d97706", None, 7); a.t(410, 223.5, "← Retour Relevés de notes", 12, "#fff", 700, "middle")
+a.rect(327, 206, 166, 26, NAVY, None, 7); a.t(410, 223.5, "← Retour Relevés de notes", 12, GOLD, 700, "middle")
 a.cible(327, 206, 166, 26); a.pastille(499, 206, 5)
 a.t(30, 252, "Lecture", 14, TXT, 700); a.t(92, 252, "Mlle Exemple · coef 1", 11, MUT)
 a.btn(560, 236, 110, "+ Évaluation"); a.cible(560, 236, 110, 26); a.pastille(556, 234, 2)
@@ -99,51 +102,47 @@ for i, (n, ns, m) in enumerate(rows):
         a.t(x, y + 4, v, 12, MUT if v in ("abs", "disp") else TXT, 400, "middle", ital=v in ("abs", "disp"))
     a.t(640, y + 4, m, 12, TXT, 700, "middle")
 a.cible(456, 394, 68, 124); a.pastille(540, 404, 4)
+a.rect(282, 548, 256, 32, NAVY, None, 8); a.t(410, 569, "Enregistrer et revenir au relevé", 12.5, GOLD, 700, "middle")
+a.cible(282, 548, 256, 32); a.pastille(546, 546, 6)
 open(os.path.join(OUT, "saisie-notes.svg"), "w", encoding="utf-8").write(a.svg())
 
 # 2. Appréciation générale du relevé
-b = Svg(820, 400)
+b = Svg(820, 450)
 b.rect(16, 16, 788, 40, SURF, BORD, 10); b.t(30, 41, "Période 1", 13, TXT, 700)
-b.btn(486, 23, 120, "Marquer prêt  12"); b.btn(614, 23, 60, "Valider", False); b.btn(682, 23, 110, "PDF de la classe", False)
-b.cible(486, 23, 120, 26); b.pastille(482, 21, 3)
-b.rect(16, 66, 788, 318, SURF, BORD, 10)
-for x, h in [(48, "ÉLÈVE"), (230, "LECTURE"), (310, "CALCUL"), (390, "CATÉCHISME"), (510, "APPRÉCIATION GÉNÉRALE"), (700, "ÉTAT")]:
-    b.t(x, 90, h, 10.5, MUT, 600)
-
-
-def ligne(y, nom, act=False, app="✎ à rédiger", cat="✎", etat=("En cours", GOLD, GOLDS)):
-    if act:
-        b.rect(17, y - 16, 786, 26, ACS, None, 0)
-    b.line(16, y - 16, 804, y - 16)
-    b.rect(30, y - 8, 10, 10, SURF, BORD, 2)
-    b.t(48, y + 2, nom, 12, NAVY if act else TXT, 700 if act else 500)
-    b.t(230, y + 2, "14 · 16", 11.5); b.t(310, y + 2, "12 · 15", 11.5)
-    b.t(390, y + 2, cat, 11.5, GOLD if cat == "✎" else TXT)
-    b.t(510, y + 2, app, 11.5, GOLD if app.startswith("✎") else TXT)
-    b.rect(700, y - 10, 62, 18, etat[2], None, 9); b.t(731, y + 3, etat[0], 10, etat[1], 600, "middle")
-    b.t(780, y + 2, "PDF", 11, NAVY, 600)
-
-
-ligne(118, "Louise Martin", True)
-b.cible(44, 102, 110, 22); b.pastille(40, 100, 1)
-b.rect(17, 132, 786, 164, "#f4f6fb", None, 0)
-b.t(44, 160, "Catéchisme", 12, TXT, 700)
-b.rect(190, 142, 560, 44, SURF, BORD, 6); b.t(200, 168, "Louise participe avec joie et attention aux séances.", 12)
-b.t(44, 218, "Appréciation générale", 12, TXT, 700)
-b.rect(190, 200, 560, 82, SURF, NAVY, 6, 1.5)
-b.t(200, 222, "Très bonne période : Louise lit avec aisance et progresse en calcul.", 12)
-b.t(200, 240, "Elle doit encore soigner la présentation de ses cahiers.", 12)
-b.cible(186, 138, 568, 148); b.pastille(762, 136, 2)
-ligne(320, "Paul Durand", app="Bon travail d'ensemble.", cat="Attentif et curieux.", etat=("Prêt", NAVY, ACS))
-ligne(350, "Jeanne Petit", app="Excellente période !", cat="Très investie.", etat=("Prêt", NAVY, ACS))
-b.cible(774, 106, 24, 20); b.pastille(806, 100, 4)
+b.btn(240, 23, 112, "Marquer prêt  12"); b.btn(360, 23, 56, "Valider", False); b.btn(424, 23, 124, "Publier aux familles", False)
+b.btn(556, 23, 118, "Repasser en cours", False); b.btn(682, 23, 110, "PDF de la classe", False)
+b.cible(240, 23, 112, 26); b.pastille(236, 21, 3)
+b.cible(682, 23, 110, 26); b.pastille(678, 21, 4)
+b.rect(16, 66, 788, 232, "#eef1f8", NAVY, 12, 1.5)
+b.t(30, 90, "APPRÉCIATIONS · LOUISE MARTIN", 10.5, NAVY, 700)
+b.rect(327, 74, 166, 26, NAVY, None, 7); b.t(410, 91.5, "← Retour Relevés de notes", 12, GOLD, 700, "middle")
+b.t(44, 136, "Catéchisme", 12, TXT, 700)
+b.rect(190, 114, 560, 40, SURF, BORD, 6); b.t(200, 138, "Louise participe avec joie et attention aux séances.", 12)
+b.t(44, 202, "Appréciation générale", 12, TXT, 700)
+b.rect(190, 164, 560, 82, SURF, NAVY, 6, 1.5)
+b.t(200, 186, "Très bonne période : Louise lit avec aisance et progresse en calcul.", 12)
+b.t(200, 204, "Elle doit encore soigner la présentation de ses cahiers.", 12)
+b.cible(186, 110, 568, 140); b.pastille(762, 108, 2)
+b.rect(282, 258, 256, 30, NAVY, None, 8); b.t(410, 277, "Enregistrer et revenir au relevé", 12.5, GOLD, 700, "middle")
+b.cible(282, 258, 256, 30); b.pastille(544, 256, 5)
+b.rect(16, 310, 788, 124, SURF, BORD, 10)
+b.rect(284, 311, 92, 36, ACS, None, 0)
+b.t(30, 334, "MATIÈRE", 10.5, MUT, 600)
+for prenom, nom, x, act in [("Louise", "Martin", 330, True), ("Paul", "Durand", 470, False), ("Jeanne", "Petit", 610, False)]:
+    b.t(x, 329, prenom, 11.5, NAVY if act else TXT, 700 if act else 600, "middle"); b.t(x, 341, nom, 9.5, MUT, 400, "middle")
+b.cible(284, 314, 92, 34); b.pastille(380, 312, 1)
+b.rect(17, 350, 786, 18, GOLDS, None, 0); b.t(30, 363, "Français", 11.5, TXT, 700)
+b.t(30, 381, "Lecture", 11.5); b.t(30, 399, "Calcul", 11.5); b.t(30, 417, "Catéchisme", 11.5); b.t(100, 417, "appréciation", 9.5, MUT)
+for j, vals in enumerate([("14 · 16", "12", "✎"), ("11 · abs", "13", "✎"), ("17 · 15", "15", "✎")]):
+    x = 330 + j * 140
+    for i, v in enumerate(vals):
+        b.t(x, 381 + i * 18, v, 11.5, GOLD if v == "✎" else TXT, 400, "middle")
 open(os.path.join(OUT, "appreciation-releve.svg"), "w", encoding="utf-8").write(b.svg())
 
 # 3. Bulletin du trimestre
-c = Svg(820, 460)
+c = Svg(820, 510)
 c.rect(16, 16, 788, 40, SURF, BORD, 10)
 c.t(30, 41, "Bulletins · Premier Trimestre", 13, TXT, 700)
-c.t(250, 41, "Moyennes simples sur 20, calculées sur toutes les notes du trimestre", 11, MUT)
 c.rect(16, 66, 788, 380, SURF, BORD, 10)
 c.rect(30, 78, 10, 10, SURF, BORD, 2); c.t(48, 88, "Louise Martin", 13, TXT, 700)
 c.rect(160, 76, 62, 18, GOLDS, None, 9); c.t(191, 89, "En cours", 10, GOLD, 600, "middle")
@@ -171,6 +170,8 @@ c.t(240, 356, "Un trimestre très réussi : Louise est sérieuse et appliquée."
 c.t(240, 374, "Elle doit gagner en confiance à l'oral.", 12)
 c.cible(226, 330, 558, 84); c.pastille(790, 330, 4)
 c.t(44, 432, "Les appréciations des relevés ne sont pas reprises : le bulletin a la sienne.", 11, MUT, 400, ital=True)
+c.rect(350, 462, 120, 30, NAVY, None, 8); c.t(410, 482, "Enregistrer", 12.5, GOLD, 700, "middle")
+c.cible(350, 462, 120, 30); c.pastille(344, 460, 5)
 open(os.path.join(OUT, "appreciations-bulletin.svg"), "w", encoding="utf-8").write(c.svg())
 
 if len(sys.argv) > 2:

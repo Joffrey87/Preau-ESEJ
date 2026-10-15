@@ -20,6 +20,7 @@ import {
   type Statut,
 } from "@/lib/bulletins";
 import { telechargerBulletins } from "@/lib/bulletinPdf";
+import { useSauvegardeAuto } from "@/lib/sauvegardeAuto";
 import type { Droits } from "./Bulletins";
 import VueBulletin from "./VueBulletin";
 import { PastilleStatut, dateFr, syntheseDe, extensible } from "./outils";
@@ -339,7 +340,7 @@ function Action({ children, onClick, fort = false }: { children: React.ReactNode
   );
 }
 
-/** Zone de texte enregistrée en quittant le champ. */
+/** Zone de texte enregistrée d'elle-même (frappe, sortie du champ, saisie interrompue : voir sauvegardeAuto). */
 export function ChampTexte({
   valeur,
   onEnregistrer,
@@ -358,7 +359,7 @@ export function ChampTexte({
   /** Longueur maximale (appréciation de matière : LIMITE_APPRECIATION). */
   max?: number;
 }) {
-  const [texte, setTexte] = useState(valeur);
+  const { valeur: texte, changer, envoyer } = useSauvegardeAuto(valeur, (v) => onEnregistrer(v.trim()));
   return (
     <div>
       <textarea
@@ -367,8 +368,8 @@ export function ChampTexte({
         placeholder={placeholder}
         maxLength={max}
         rows={Math.max(lignes, Math.min(6, Math.ceil(texte.length / 70)))}
-        onChange={(e) => setTexte(e.target.value)}
-        onBlur={() => texte.trim() !== valeur.trim() && onEnregistrer(texte.trim())}
+        onChange={(e) => changer(e.target.value)}
+        onBlur={() => void envoyer()}
         {...extensible}
         className="w-full resize-y rounded-md border border-transparent bg-transparent px-1.5 py-1 text-[13px] leading-snug outline-none hover:border-border focus:border-accent focus:bg-background disabled:hover:border-transparent"
       />

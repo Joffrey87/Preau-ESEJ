@@ -1,6 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useSauvegardeAuto } from "@/lib/sauvegardeAuto";
+import { Fragment, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { todayISO } from "@/lib/format";
 import {
@@ -13,6 +14,7 @@ import {
   type Evaluation,
   type Note,
   type ResultatEleve,
+  evaluationConcerne,
 } from "@/lib/bulletins";
 import type { Droits } from "./Bulletins";
 import { AppreciationsEleveParEleve, ChampAppreciation, enregistrerAppreciation, raisonVerrou } from "./Appreciations";
@@ -32,6 +34,7 @@ export default function SaisieNotes({
   onMaj,
   matiereImposee,
   verrouEleve,
+  niveauSeul,
 }: {
   ctx: ContexteClasse;
   resultats: ResultatEleve[];
@@ -42,6 +45,8 @@ export default function SaisieNotes({
   matiereImposee?: string;
   /** Relevé publié : les notes de l'élève ne se modifient plus (la base le refuse aussi). */
   verrouEleve?: (eleveId: string) => boolean;
+  /** Niveau affiché dans le relevé (CE1…) : seuls ses élèves et ses évaluations ; null = tous les niveaux. */
+  niveauSeul?: string | null;
 }) {
   const sb = useMemo(() => createClient(), []);
   const matieres = useMemo(() => {
@@ -59,11 +64,18 @@ export default function SaisieNotes({
 
   if (!matiere) return <p className="text-sm text-muted">Aucune matière dans cette classe.</p>;
   const peutNoter = droits.peutNoter(matiere);
-  const evals = ctx.evaluations.filter((e) => e.matiere_id === matiere.id).sort((a, b) => a.date.localeCompare(b.date) || a.titre.localeCompare(b.titre));
+  const evals = ctx.evaluations
+    .filter((e) => e.matiere_id === matiere.id && (!niveauSeul || evaluationConcerne(e, niveauSeul)))
+    .sort((a, b) => a.date.localeCompare(b.date) || a.titre.localeCompare(b.titre));
   const lignes = resultats
-    .filter((r) => matiereConcerne(matiere, r.niveau))
+    .filter((r) => matiereConcerne(matiere, r.niveau) && (!niveauSeul || r.niveau === niveauSeul))
     .sort((a, b) => (a.niveau ?? "").localeCompare(b.niveau ?? "") || nomEleve(a.eleve).localeCompare(nomEleve(b.eleve), "fr"));
   const notes = new Map(ctx.notes.map((n) => [`${n.evaluation_id}:${n.eleve_id}`, n]));
+  // Niveaux proposés pour une évaluation (classe à plusieurs niveaux) : ceux de la matière, sinon ceux de la classe.
+  const niveauxPossibles = (matiere.niveaux.length ? matiere.niveaux : ctx.classe.niveaux).filter((n) => ctx.classe.niveaux.includes(n));
+  const multiNiveaux = niveauxPossibles.length > 1;
+  // Tous les niveaux cochés = toute la classe (enregistré vide).
+  const niveauxEnregistres = (choix: string[]) => (choix.length >= niveauxPossibles.length ? [] : niveauxPossibles.filter((n) => choix.includes(n)));
 
   async function enregistrerNote(ev: Evaluation, eleveId: string, saisie: string) {
     const t = saisie.trim().toLowerCase().replace(",", ".");
@@ -89,6 +101,7 @@ export default function SaisieNotes({
 
   async function creerEvaluation() {
     if (!nouvelle?.titre?.trim()) return setMessage("Donnez un titre à l'évaluation.");
+    if (multiNiveaux && !nouvelle.niveaux?.length) return setMessage("Cochez le ou les niveaux concernés par l'évaluation.");
     const ligne = {
       classe_id: ctx.classe.id,
       matiere_id: matiere.id,
@@ -97,6 +110,7 @@ export default function SaisieNotes({
       date: nouvelle.date || todayISO(),
       coef: Number(nouvelle.coef) || 1,
       bareme: Number(nouvelle.bareme) || 20,
+      niveaux: multiNiveaux ? niveauxEnregistres(nouvelle.niveaux ?? []) : [],
     };
     const { data, error } = await sb.from("evaluations").insert(ligne).select().single();
     if (error) return setMessage(`Échec : ${error.message}`);
@@ -174,7 +188,7 @@ export default function SaisieNotes({
         {peutNoter && !nouvelle && (
           <button
             type="button"
-            onClick={() => setNouvelle({ titre: `Évaluation ${evals.length + 1}`, date: todayISO() <= ctx.periode.fin ? todayISO() : ctx.periode.fin, coef: 1, bareme: 20 })}
+            onClick={() => setNouvelle({ titre: `Évaluation ${evals.length + 1}`, date: todayISO() <= ctx.periode.fin ? todayISO() : ctx.periode.fin, coef: 1, bareme: 20, niveaux: niveauSeul && niveauxPossibles.includes(niveauSeul) ? [niveauSeul] : [] })}
             className="ml-auto rounded-lg bg-accent px-3 py-1.5 text-[13px] font-medium text-accent-fg hover:opacity-90"
           >
             + Évaluation
@@ -214,6 +228,12 @@ export default function SaisieNotes({
           <Champ label="Noté sur">
             <input inputMode="decimal" value={String(nouvelle.bareme ?? "")} onChange={(e) => setNouvelle({ ...nouvelle, bareme: e.target.value.replace(",", ".") as unknown as number })} className={`${classeChamp} w-16`} />
           </Champ>
+          {multiNiveaux && (
+            <div className="flex flex-col gap-0.5">
+              <span className="text-[11px] text-muted">Niveau(x) concerné(s)</span>
+              <ChoixNiveaux possibles={niveauxPossibles} choix={nouvelle.niveaux ?? []} onChange={(n) => setNouvelle({ ...nouvelle, niveaux: n })} />
+            </div>
+          )}
           <button type="button" onClick={creerEvaluation} className="rounded-lg bg-accent px-3 py-1.5 font-medium text-accent-fg hover:opacity-90">
             Créer
           </button>
@@ -235,24 +255,46 @@ export default function SaisieNotes({
               <th className="sticky left-0 z-10 min-w-48 bg-surface px-3 py-2 text-left font-medium uppercase tracking-wide">Élève</th>
               {evals.map((ev) => (
                 <th key={ev.id} className="min-w-28 border-l border-border/60 px-2 py-1.5 text-center align-top font-normal">
-                  <EnteteEvaluation ev={ev} modifiable={peutNoter} onModifier={(p) => modifierEvaluation(ev, p)} onSupprimer={() => supprimerEvaluation(ev)} />
+                  <EnteteEvaluation
+                    ev={ev}
+                    modifiable={peutNoter}
+                    niveauxPossibles={multiNiveaux ? niveauxPossibles : []}
+                    versEnregistre={niveauxEnregistres}
+                    onModifier={(p) => modifierEvaluation(ev, p)}
+                    onSupprimer={() => supprimerEvaluation(ev)}
+                  />
                 </th>
               ))}
               <th className="min-w-24 border-l border-border bg-surface-2/60 px-2 py-2 text-center font-medium uppercase tracking-wide">Moyenne</th>
-              <th className="min-w-72 border-l border-border px-2 py-2 text-left font-medium uppercase tracking-wide lg:min-w-[36rem]">Appréciation</th>
+              <th className="w-[min(36rem,55vw)] min-w-56 border-l border-border px-2 py-2 text-left font-medium uppercase tracking-wide">Appréciation</th>
             </tr>
           </thead>
           <tbody>
             {lignes.map((r, li) => {
               const m = r.groupes.flatMap((g) => g.matieres).find((x) => x.matiere.id === matiere.id);
+              // Classe à plusieurs niveaux : un bandeau ouvre chaque niveau (CE1, CE2…), élèves regroupés dessous.
+              const nouveauNiveau = !niveauSeul && ctx.classe.niveaux.length > 1 && (li === 0 || lignes[li - 1].niveau !== r.niveau);
               return (
-                <tr key={r.eleve.id} className="border-t border-border/60">
+                <Fragment key={r.eleve.id}>
+                {nouveauNiveau && (
+                  <tr className="border-t-2 border-gold/50 bg-gold-soft/50">
+                    <td colSpan={evals.length + 3} className="px-3 py-1 text-[12px] font-semibold text-gold">
+                      <span className="sticky left-3">
+                        {r.niveau ?? "Niveau non renseigné"} · {lignes.filter((x) => x.niveau === r.niveau).length} élève(s)
+                      </span>
+                    </td>
+                  </tr>
+                )}
+                <tr className="border-t border-border/60">
                   <td className="sticky left-0 z-10 bg-surface px-3 py-1">
                     {nomEleve(r.eleve)}
                     {r.niveau && <span className="ml-1.5 rounded bg-surface-2 px-1 text-[10px] text-muted">{r.niveau}</span>}
                     {verrouEleve?.(r.eleve.id) && <span className="ml-1.5 text-[10px] text-muted" title="Relevé publié : notes verrouillées">🔒</span>}
                   </td>
                   {evals.map((ev, ci) => {
+                    // Évaluation d'un autre niveau : case grisée, sans saisie.
+                    if (!evaluationConcerne(ev, r.niveau))
+                      return <td key={ev.id} className="border-l border-border/60 bg-surface-2/60 px-1 py-0.5 text-center text-[10.5px] text-muted" title={`Évaluation des ${ev.niveaux?.join(", ")}`} />;
                     const n = notes.get(`${ev.id}:${r.eleve.id}`);
                     const valeur = n ? (n.etat ? ETAT_COURT[n.etat] : String(n.note ?? "").replace(".", ",")) : "";
                     return (
@@ -283,6 +325,7 @@ export default function SaisieNotes({
                     />
                   </td>
                 </tr>
+                </Fragment>
               );
             })}
             {!lignes.length && (
@@ -298,7 +341,7 @@ export default function SaisieNotes({
       )}
       <p className="text-[11.5px] text-muted">
         Saisie : un nombre (virgule acceptée), ou <strong>abs</strong> (absent), <strong>disp</strong> (dispensé), <strong>nr</strong> (non rendu) — ces trois-là ne comptent pas
-        dans la moyenne. Entrée ou ↓ : élève suivant. Les évaluations sont ramenées sur 20 et pondérées par leur coefficient.
+        dans la moyenne. Les évaluations sont ramenées sur 20 et pondérées par leur coefficient.
       </p>
     </div>
   );
@@ -328,17 +371,18 @@ function CaseNote({
   onKeyDown: (e: React.KeyboardEvent<HTMLInputElement>) => void;
   onEnregistrer: (v: string) => void;
 }) {
-  const [texte, setTexte] = useState(valeur);
+  // Enregistrée au fil de la frappe (0,8 s), en quittant la case, et si la saisie est interrompue (voir sauvegardeAuto).
+  const { valeur: texte, changer, envoyer } = useSauvegardeAuto(valeur, onEnregistrer);
   return (
     <input
       data-case={data}
       value={texte}
       disabled={disabled}
       inputMode="decimal"
-      onChange={(e) => setTexte(e.target.value)}
+      onChange={(e) => changer(e.target.value)}
       onFocus={(e) => e.target.select()}
       onKeyDown={onKeyDown}
-      onBlur={() => texte.trim() !== valeur && onEnregistrer(texte)}
+      onBlur={() => void envoyer()}
       className={`w-16 rounded-md border border-transparent bg-transparent px-1 py-0.5 text-center tabular-nums outline-none hover:border-border focus:border-accent focus:bg-background ${
         /^[a-z]/i.test(texte) ? "text-muted italic" : ""
       }`}
@@ -346,19 +390,45 @@ function CaseNote({
   );
 }
 
+/** Niveaux concernés par une évaluation : cases à cocher (plusieurs possibles ; toutes = toute la classe). */
+function ChoixNiveaux({ possibles, choix, onChange }: { possibles: string[]; choix: string[]; onChange: (n: string[]) => void }) {
+  return (
+    <div className="flex flex-wrap items-center gap-1">
+      {possibles.map((n) => {
+        const coche = choix.includes(n);
+        return (
+          <label
+            key={n}
+            className={`flex cursor-pointer items-center gap-1 rounded-md border px-2 py-1 text-[12.5px] ${coche ? "border-accent bg-accent-soft font-medium text-accent" : "border-border bg-background text-muted"}`}
+          >
+            <input type="checkbox" checked={coche} onChange={() => onChange(coche ? choix.filter((x) => x !== n) : [...choix, n])} className="accent-[var(--accent)]" />
+            {n}
+          </label>
+        );
+      })}
+    </div>
+  );
+}
+
 function EnteteEvaluation({
   ev,
   modifiable,
+  niveauxPossibles,
+  versEnregistre,
   onModifier,
   onSupprimer,
 }: {
   ev: Evaluation;
   modifiable: boolean;
+  /** Classe à plusieurs niveaux : niveaux proposés (vide : pas de choix). */
+  niveauxPossibles: string[];
+  versEnregistre: (choix: string[]) => string[];
   onModifier: (p: Partial<Evaluation>) => void;
   onSupprimer: () => void;
 }) {
   const [edition, setEdition] = useState(false);
-  const [brouillon, setBrouillon] = useState({ titre: ev.titre, date: ev.date, coef: String(ev.coef), bareme: String(ev.bareme) });
+  const niveauxActuels = ev.niveaux?.length ? ev.niveaux : niveauxPossibles;
+  const [brouillon, setBrouillon] = useState({ titre: ev.titre, date: ev.date, coef: String(ev.coef), bareme: String(ev.bareme), niveaux: niveauxActuels });
   if (!edition) {
     return (
       <button type="button" disabled={!modifiable} onClick={() => setEdition(true)} className="w-full rounded-md px-1 py-0.5 text-center enabled:hover:bg-surface-2" title={modifiable ? "Modifier l'évaluation" : undefined}>
@@ -367,6 +437,7 @@ function EnteteEvaluation({
           {new Date(ev.date).toLocaleDateString("fr-FR", { day: "numeric", month: "short" })} · /{String(ev.bareme).replace(".", ",")}
           {Number(ev.coef) !== 1 && ` · coef ${String(ev.coef).replace(".", ",")}`}
         </div>
+        {!!ev.niveaux?.length && <div className="mt-0.5 inline-block rounded bg-accent-soft px-1 text-[10px] font-semibold text-accent">{ev.niveaux.join(" · ")}</div>}
       </button>
     );
   }
@@ -378,11 +449,19 @@ function EnteteEvaluation({
         <input value={brouillon.coef} onChange={(e) => setBrouillon({ ...brouillon, coef: e.target.value })} className={`${classeChamp} w-1/2`} aria-label="Coefficient" title="Coefficient" />
         <input value={brouillon.bareme} onChange={(e) => setBrouillon({ ...brouillon, bareme: e.target.value })} className={`${classeChamp} w-1/2`} aria-label="Noté sur" title="Noté sur" />
       </div>
+      {niveauxPossibles.length > 0 && <ChoixNiveaux possibles={niveauxPossibles} choix={brouillon.niveaux} onChange={(n) => setBrouillon({ ...brouillon, niveaux: n })} />}
       <div className="flex justify-between gap-1">
         <button
           type="button"
           onClick={() => {
-            onModifier({ titre: brouillon.titre.trim() || ev.titre, date: brouillon.date, coef: Number(brouillon.coef.replace(",", ".")) || 1, bareme: Number(brouillon.bareme.replace(",", ".")) || 20 });
+            if (niveauxPossibles.length && !brouillon.niveaux.length) return window.alert("Cochez au moins un niveau.");
+            onModifier({
+              titre: brouillon.titre.trim() || ev.titre,
+              date: brouillon.date,
+              coef: Number(brouillon.coef.replace(",", ".")) || 1,
+              bareme: Number(brouillon.bareme.replace(",", ".")) || 20,
+              ...(niveauxPossibles.length ? { niveaux: versEnregistre(brouillon.niveaux) } : {}),
+            });
             setEdition(false);
           }}
           className="rounded-md bg-accent px-2 py-0.5 text-[12px] text-accent-fg"

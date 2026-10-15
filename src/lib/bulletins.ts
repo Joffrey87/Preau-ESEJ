@@ -71,7 +71,11 @@ export type Matiere = {
   ordre: number;
   actif: boolean;
 };
-export type Evaluation = { id: string; classe_id: string; matiere_id: string; periode_id: string; titre: string; date: string; coef: number; bareme: number };
+/** niveaux : niveaux concernés dans une classe à plusieurs niveaux (vide = toute la classe). */
+export type Evaluation = { id: string; classe_id: string; matiere_id: string; periode_id: string; titre: string; date: string; coef: number; bareme: number; niveaux?: string[] };
+
+/** L'évaluation concerne-t-elle un élève de ce niveau ? */
+export const evaluationConcerne = (ev: Pick<Evaluation, "niveaux">, niveau: string | null) => !ev.niveaux?.length || (!!niveau && ev.niveaux.includes(niveau));
 export type Note = { evaluation_id: string; eleve_id: string; note: number | null; etat: "absent" | "dispense" | "non_rendu" | null };
 export type Chiffre = { moy: number | null; moyClasse: number | null; rang: number | null };
 export type Bulletin = {

@@ -1,7 +1,8 @@
 "use client";
 
 import { extensible } from "./outils";
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
+import { useSauvegardeAuto } from "@/lib/sauvegardeAuto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { nomEleve, note20, type ContexteClasse, type Evaluation, type Ligne, type Matiere, type Note, type ResultatEleve, type Statut } from "@/lib/bulletins";
 import type { Droits } from "./Bulletins";
@@ -53,52 +54,11 @@ export function ChampAppreciation({
   /** Pourquoi la zone est verrouillée (affiché sous la zone). */
   raison?: string | null;
 }) {
-  const [texte, setTexte] = useState(valeur);
-  const [etat, setEtat] = useState<"" | "attente" | "envoi" | "ok" | "erreur">("");
-  const [erreur, setErreur] = useState<string | null>(null);
-  const enregistre = useRef(valeur.trim());
-  const enCours = useRef(texte);
-  const minuteur = useRef<number | null>(null);
-  const envoyer = useRef(onEnregistrer);
-  useEffect(() => {
-    envoyer.current = onEnregistrer;
-  }, [onEnregistrer]);
+  // Enregistrement automatique commun (frappe, sortie du champ, démontage, onglet masqué, bouton « Enregistrer »).
+  const { valeur: texte, changer: changerTexte, envoyer, etat, erreur } = useSauvegardeAuto(valeur, onEnregistrer);
+  const changer = (t: string) => changerTexte(t.slice(0, LIMITE_APPRECIATION));
+  const sauver = () => envoyer();
 
-  const sauver = async (t: string) => {
-    if (minuteur.current) window.clearTimeout(minuteur.current);
-    minuteur.current = null;
-    if (t.trim() === enregistre.current) return setEtat((e) => (e === "attente" ? "" : e));
-    setEtat("envoi");
-    const err = await envoyer.current(t);
-    if (err) {
-      setErreur(err);
-      setEtat("erreur");
-      return;
-    }
-    enregistre.current = t.trim();
-    setErreur(null);
-    setEtat("ok");
-  };
-
-  // En quittant l'élève ou la matière (démontage), ce qui n'est pas encore enregistré part aussitôt.
-  useEffect(
-    () => () => {
-      if (minuteur.current) window.clearTimeout(minuteur.current);
-      if (enCours.current.trim() !== enregistre.current) void envoyer.current(enCours.current);
-    },
-    [],
-  );
-
-  const changer = (t: string) => {
-    const v = t.slice(0, LIMITE_APPRECIATION);
-    setTexte(v);
-    enCours.current = v;
-    setEtat("attente");
-    if (minuteur.current) window.clearTimeout(minuteur.current);
-    minuteur.current = window.setTimeout(() => void sauver(v), 800);
-  };
-
-  const libelle = { "": "", attente: "Modifié…", envoi: "Enregistrement…", ok: "Enregistré", erreur: "Échec" }[etat];
   return (
     <div>
       <textarea
@@ -109,13 +69,14 @@ export function ChampAppreciation({
         rows={Math.max(lignes, Math.min(6, Math.ceil(texte.length / 60)))}
         placeholder={disabled ? "" : "Appréciation…"}
         onChange={(e) => changer(e.target.value)}
-        onBlur={() => void sauver(texte)}
+        onBlur={() => void sauver()}
         {...extensible}
         className="w-full resize-y rounded-md border border-border/70 bg-background px-2 py-1 text-[13px] leading-snug outline-none focus:border-accent disabled:border-transparent disabled:bg-transparent"
       />
       <div className="flex items-center justify-between gap-2 text-[10.5px]">
-        <span className={etat === "erreur" ? "text-negative" : etat === "ok" ? "text-positive" : "text-muted"} title={erreur ?? undefined}>
-          {disabled ? (raison ?? "") : etat === "erreur" && erreur ? `Échec : ${erreur}` : libelle}
+        {/* Pas d'état « Enregistré » à chaque champ (mention unique en bas de page) : la raison d'un verrou, ou l'erreur. */}
+        <span className={etat === "erreur" ? "text-negative" : "text-muted"} title={erreur ?? undefined}>
+          {disabled ? (raison ?? "") : etat === "erreur" ? `Échec de l'enregistrement : ${erreur ?? ""}` : ""}
         </span>
         {!disabled && (
           <span className={`tabular-nums ${texte.length >= LIMITE_APPRECIATION ? "text-gold" : "text-muted"}`}>
@@ -131,6 +92,7 @@ export function ChampAppreciation({
 export function raisonVerrou(droits: Droits, m: Matiere, r: ResultatEleve): string | null {
   if (droits.peutCommenter(m, r.bulletin)) return null;
   if (!r.bulletin) return "Bulletin pas encore créé.";
+  if (!droits.peutApprecier(m) && droits.peutNoter(m)) return "Appréciation réservée au Directeur spirituel.";
   if (!droits.peutNoter(m)) return "Matière non attribuée.";
   return "Bulletin validé ou publié : verrouillé.";
 }

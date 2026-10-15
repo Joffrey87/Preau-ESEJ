@@ -4,7 +4,7 @@ import ModificationsFamilles from "@/components/ModificationsFamilles";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { todayISO } from "@/lib/format";
-import { calculerClasse, libellePeriode, nomEnseignant, type ContexteClasse, type Enseignant, type Matiere, type Bulletin } from "@/lib/bulletins";
+import { calculerClasse, libellePeriode, nomEnseignant, type ContexteClasse, type Enseignant, type Matiere, type Bulletin, estAppreciationSeule } from "@/lib/bulletins";
 import { chargerClasse, chargerReferentiel, periodeCourante, type Referentiel } from "@/lib/bulletinsDonnees";
 import ListeBulletins from "./ListeBulletins";
 import FicheBulletin from "./FicheBulletin";
@@ -36,6 +36,8 @@ export type Droits = {
   peutEditer: (b: Bulletin | null) => boolean;
   /** Commentaire et moyenne d'une matière dans un bulletin. */
   peutCommenter: (m: Matiere, b: Bulletin | null) => boolean;
+  /** Appréciation d'une matière (relevé, bulletin) : le Catéchisme est réservé au Directeur spirituel. */
+  peutApprecier: (m: Matiere) => boolean;
 };
 
 /** Nom de matière comparable (sans accents ni casse). */
@@ -164,15 +166,18 @@ export default function Bulletins({
     const estTitulaire = !!enseignantId && classe?.titulaire_id === enseignantId;
     const ouvert = (b: Bulletin | null) => !!b && ["nouveau", "en_cours", "pret"].includes(b.statut);
     const peutNoter = (m: Matiere) => directrice || estTitulaire || (!!enseignantId && m.enseignants.includes(enseignantId));
+    // Catéchisme : appréciation du seul Directeur spirituel (la base applique la même règle : peut_apprecier).
+    const peutApprecier = (m: Matiere) => (estAppreciationSeule(m.nom) ? !!matiereSeule : peutNoter(m));
     return {
       directrice,
       titulaire: estTitulaire,
       enseignantId,
       peutNoter,
       peutEditer: (b) => !!b && (directrice || (estTitulaire && ouvert(b))),
-      peutCommenter: (m, b) => !!b && peutNoter(m) && (directrice || ouvert(b)),
+      peutCommenter: (m, b) => !!b && peutApprecier(m) && (directrice || ouvert(b)),
+      peutApprecier,
     };
-  }, [directrice, enseignantId, classe]);
+  }, [directrice, enseignantId, classe, matiereSeule]);
 
   if (!ref) return <div className="mx-auto max-w-7xl px-5 py-8 text-sm text-muted md:px-8">Chargement…</div>;
 
@@ -228,7 +233,8 @@ export default function Bulletins({
         <>
           {/* Barre de choix : classe, période, onglet (inutile pour les Inscriptions et la Gestion des classes). */}
           {!sansChoixClasse && (
-          <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface p-2">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-xl border border-border bg-surface p-1.5">
             <div className="flex flex-wrap gap-1 rounded-lg bg-surface-2 p-1">
               {classesAnnee.map((c) => (
                 <button
@@ -241,7 +247,10 @@ export default function Bulletins({
                   className={`rounded-md px-3 py-1 text-[13px] font-medium ${c.id === classeId ? "bg-surface text-accent shadow-sm" : "text-muted hover:text-foreground"}`}
                 >
                   {c.nom}
-                  <span className="ml-1.5 text-[11px] font-normal text-muted">{c.niveaux.join("·")}</span>
+                  {/* Niveaux à côté du nom, seulement s'ils n'y figurent pas déjà (« CE1 / CE2 / CM1 » : pas de doublon). */}
+                  {c.niveaux.some((n) => !c.nom.toUpperCase().includes(n.toUpperCase())) && (
+                    <span className="ml-1.5 text-[11px] font-normal text-muted">{c.niveaux.join("·")}</span>
+                  )}
                 </button>
               ))}
             </div>
@@ -267,23 +276,22 @@ export default function Bulletins({
               ))}
             </select>
             {titulaire && <span className="text-[12px] text-muted">Titulaire : {nomEnseignant(titulaire)}</span>}
+          </div>
             {/* Onglets de Notes & Bulletins seulement ; les autres pages s'ouvrent par le menu latéral. */}
             {evaluation && (
-              <div className="flex w-full flex-wrap items-center justify-start gap-2">
-                <div className="flex flex-wrap gap-1 rounded-lg border border-border p-0.5">
-                  {onglets
-                    .filter((o) => GROUPE_EVAL.includes(o.v))
-                    .map((o) => (
-                      <button
-                        key={o.v}
-                        type="button"
-                        onClick={() => choisirOnglet(o.v)}
-                        className={`rounded-md px-2.5 py-1.5 text-[13px] font-medium ${onglet === o.v ? "bg-accent text-accent-fg" : "text-foreground hover:bg-surface-2"}`}
-                      >
-                        {o.label}
-                      </button>
-                    ))}
-                </div>
+              <div className="ml-auto flex flex-wrap gap-1 rounded-xl border border-border bg-surface p-1.5">
+                {onglets
+                  .filter((o) => GROUPE_EVAL.includes(o.v))
+                  .map((o) => (
+                    <button
+                      key={o.v}
+                      type="button"
+                      onClick={() => choisirOnglet(o.v)}
+                      className={`rounded-md px-2.5 py-1.5 text-[13px] font-medium ${onglet === o.v ? "bg-accent text-accent-fg" : "text-foreground hover:bg-surface-2"}`}
+                    >
+                      {o.label}
+                    </button>
+                  ))}
               </div>
             )}
           </div>
@@ -331,6 +339,7 @@ export default function Bulletins({
               directrice={directrice}
               titulaire={droits.titulaire}
               enseignantId={enseignantId}
+              peutApprecier={droits.peutApprecier}
               nomTitulaire={titulaire ? nomEnseignant(titulaire) : null}
               enseignants={enseignants}
               onRecharger={recharger}

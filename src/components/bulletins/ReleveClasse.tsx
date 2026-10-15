@@ -22,7 +22,8 @@ import { telechargerBulletins } from "@/lib/bulletinPdf";
 import { syntheseReleve, type ContexteDocs, type DocReleve } from "@/lib/relevesTrimestre";
 import type { Droits } from "./Bulletins";
 import SaisieNotes from "./SaisieNotes";
-import { BoutonLot, PastilleStatut, extensible } from "./outils";
+import { BoutonEnregistrer, BoutonLot, PastilleStatut, ZoneAppreciation } from "./outils";
+import { enregistrerTout } from "@/lib/sauvegardeAuto";
 
 const OUVERTS: Statut[] = ["nouveau", "en_cours", "pret"];
 const ETAT_COURT: Record<string, string> = { absent: "abs", dispense: "disp", non_rendu: "nr" };
@@ -141,7 +142,10 @@ export default function ReleveClasse({
   const selection = docs_.filter((d) => choix.has(d.id));
   const cible = selection.length ? selection : docs_;
   const n = (s: Statut) => cible.filter((d) => d.statut === s).length;
-  const eleves = [...vue.eleves].sort((a, b) => nomEleve(a).localeCompare(nomEleve(b), "fr"));
+  // Classe à plusieurs niveaux : élèves regroupés par niveau (CE1, puis CE2…), puis par nom.
+  const multiNiveaux = vue.classe.niveaux.length > 1;
+  const niveauEleve = (e: EleveBulletin) => niveauDe(e, vue.classe.annee_scolaire) ?? "";
+  const eleves = [...vue.eleves].sort((a, b) => (multiNiveaux ? niveauEleve(a).localeCompare(niveauEleve(b)) : 0) || nomEleve(a).localeCompare(nomEleve(b), "fr"));
   const eleveDe = (id: string) => vue.eleves.find((x) => x.id === id);
   const changer = (statut: Statut) => agir(sb.rpc("releves_changer_statut", { p_doc: "releve", p_ids: cible.map((d) => d.id), p_statut: statut }));
   const publier = () => {
@@ -159,17 +163,39 @@ export default function ReleveClasse({
     await telechargerBulletins(ss, `Relevés de notes ${vue.classe.nom} - Période ${periode.ordre}`);
   };
   const matiere = vue.matieres.find((m) => m.id === matiereOuverte);
+  // Ligne d'un élève : en la quittant, les appréciations en attente partent, puis le relevé est relu (résumé, état).
+  const basculerEleve = (id: string | null) => {
+    if (eleveOuvert) void enregistrerTout().then(onRecharger);
+    setEleveOuvert(id);
+  };
+  const ecrire = async (p: PromiseLike<{ error: { message: string } | null }>) => (await p).error?.message ?? null;
+  const haut = useRef<HTMLDivElement>(null);
+  const revenirEnHaut = () => haut.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   const appreciationDe = (d: DocReleve | undefined, m: Matiere) => (d ? vue.appreciations.find((x) => x.bulletin_id === d.id && x.matiere_id === m.id) : undefined);
-  const peutApprecier = (d: DocReleve | undefined, m: Matiere) => !!d && droits.peutNoter(m) && (directrice || OUVERTS.includes(d.statut));
+  const peutApprecier = (d: DocReleve | undefined, m: Matiere) => !!d && droits.peutApprecier(m) && (directrice || OUVERTS.includes(d.statut));
   const champ = "w-full rounded-md border border-border bg-background px-2 py-1 text-[12.5px] outline-none focus:border-accent read-only:border-transparent read-only:bg-transparent";
-  const nbColonnes = 1 + colonnes.reduce((s, c) => s + c.ms.length, 0) + 3;
+  // Colonnes d'élèves regroupées par niveau (classe à plusieurs niveaux) ; un trait doré ouvre chaque niveau.
+  const groupesNiveau = eleves.reduce<{ niveau: string; eleves: EleveBulletin[] }[]>((acc, e) => {
+    const nv = multiNiveaux ? niveauEleve(e) : "";
+    const g = acc.find((x) => x.niveau === nv);
+    if (g) g.eleves.push(e);
+    else acc.push({ niveau: nv, eleves: [e] });
+    return acc;
+  }, []);
+  // Trait doré entre niveaux : seulement quand tous les niveaux sont affichés.
+  const debutNiveau = (e: EleveBulletin) => multiNiveaux && tousNiveaux && groupesNiveau.some((g) => g.eleves[0]?.id === e.id);
+  // Affichage par bloc de niveau (le premier par défaut) ou « Tous les niveaux ».
+  const [niveauChoisi, setNiveauChoisi] = useState<string | null>(null);
+  const tousNiveaux = !multiNiveaux || niveauChoisi === "*";
+  const niveauAffiche = groupesNiveau.some((g) => g.niveau === niveauChoisi) ? niveauChoisi : (groupesNiveau[0]?.niveau ?? "");
+  const visibles = tousNiveaux ? eleves : eleves.filter((e) => niveauEleve(e) === niveauAffiche);
 
   return (
-    <div className="space-y-3">
+    <div ref={haut} className="scroll-mt-4 space-y-3">
       {/* Barre d'actions sur une ligne. */}
-      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface p-2 text-[13px]">
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface px-2 py-1 text-[13px]">
         <span className="font-semibold">Période {periode.ordre}</span>
-        <span className="text-[12px] text-muted">Notes de la période, sans moyenne · cliquez une matière ou une case pour saisir les notes, un élève pour son appréciation</span>
+        <span className="hidden text-[12px] text-muted xl:inline">Notes de la période, sans moyenne · cliquez une matière ou une case pour saisir les notes, un élève pour son appréciation</span>
         <div className="ml-auto flex flex-wrap gap-2">
           {(directrice || titulaire) && (
             <BoutonLot n={n("nouveau") + n("en_cours")} onClick={() => changer("pret")} disabled={occupe}>
@@ -202,193 +228,298 @@ export default function ReleveClasse({
           {/* Bouton de retour au centre ; le libellé à gauche, la colonne de droite l'équilibre. */}
           <div className="mb-2 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
             <span className="text-[12px] font-semibold uppercase tracking-wide text-accent">Saisie des notes</span>
-            <button type="button" onClick={() => setMatiereOuverte(null)} className="rounded-lg bg-amber-600 px-4 py-1.5 text-[13px] font-semibold text-white shadow-sm hover:bg-amber-700">
+            <button type="button" onClick={() => setMatiereOuverte(null)} className="rounded-lg border border-gold/50 bg-gold-soft/40 px-4 py-1.5 text-[13px] font-semibold text-gold hover:bg-gold-soft">
               ← Retour Relevés de notes
             </button>
             <span />
           </div>
-          <SaisieNotes ctx={ctx} resultats={resultats} droits={droits} enseignants={enseignants} onMaj={onMaj} matiereImposee={matiere.id} verrouEleve={verrou} />
+          <SaisieNotes ctx={ctx} resultats={resultats} droits={droits} enseignants={enseignants} onMaj={onMaj} matiereImposee={matiere.id} verrouEleve={verrou} niveauSeul={tousNiveaux ? null : niveauAffiche} />
+          <BoutonEnregistrer
+            libelle="Enregistrer et revenir au relevé"
+            mention={false}
+            onFini={() => {
+              setMatiereOuverte(null);
+              revenirEnHaut();
+            }}
+          />
         </div>
       )}
 
-      {!eleves.length && <p className="text-sm text-muted">Aucun élève dans cette classe.</p>}
-      <div ref={defilementRef} className="overflow-x-auto rounded-xl border border-border bg-surface">
-        <table className="text-[12.5px]">
-          <thead>
-            <tr className="text-[10.5px] uppercase tracking-wide text-muted">
-              <th rowSpan={2} className="sticky left-0 z-10 min-w-44 border-b border-border bg-surface px-3 py-2 text-left font-medium">
-                Élève
-              </th>
-              {colonnes.map(({ g, ms }) => (
-                <th key={g.id} colSpan={ms.length} className="border-b border-l border-border bg-gold-soft/50 px-2 py-1 font-semibold text-foreground">
-                  {g.nom}
-                </th>
-              ))}
-              <th rowSpan={2} className="border-b border-l border-border px-2 py-1 text-left font-medium">
-                Appréciation générale
-              </th>
-              <th rowSpan={2} className="border-b border-border px-2 py-1 font-medium">
-                État
-              </th>
-              <th rowSpan={2} className="border-b border-border px-2 py-1" />
-            </tr>
-            <tr className="text-[10.5px] text-muted">
-              {colonnes.map(({ g, ms }) => (
-                <Fragment key={g.id}>
-                  {ms.map((m, i) => {
-                    const nb = evalsDe(m).length;
-                    if (estAppreciationSeule(m.nom))
-                      return (
-                        <th key={m.id} className={`max-w-24 border-b border-border px-1.5 py-1 font-normal ${i === 0 ? "border-l" : ""}`} title={`${m.nom} : une appréciation, sans note (cliquez une case)`}>
-                          <span className="line-clamp-2">{m.nom}</span>
-                          <span className="text-[9.5px] opacity-80">appréciation</span>
-                        </th>
-                      );
+      {/* Appréciations de l'élève ouvert (Catéchisme, appréciation générale), juste au-dessus du tableau. */}
+      {eleveOuvert &&
+        (() => {
+          const e = eleveDe(eleveOuvert);
+          const d = docDe(eleveOuvert);
+          if (!e || !d) return null;
+          const niveau = niveauDe(e, vue.classe.annee_scolaire);
+          return (
+            <div className="rounded-xl border-2 border-accent/40 bg-accent-soft/20 p-3">
+              <div className="mb-2 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+                <span className="text-[12px] font-semibold uppercase tracking-wide text-accent">
+                  Appréciations · {nomEleve(e)}
+                  {niveau && multiNiveaux ? ` (${niveau})` : ""}
+                </span>
+                <button type="button" onClick={() => basculerEleve(null)} className="rounded-lg border border-gold/50 bg-gold-soft/40 px-4 py-1.5 text-[13px] font-semibold text-gold hover:bg-gold-soft">
+                  ← Retour Relevés de notes
+                </button>
+                <span />
+              </div>
+              <div className="space-y-1.5">
+                {vue.matieres
+                  .filter((m) => estAppreciationSeule(m.nom) && matiereConcerne(m, niveau))
+                  .map((m) => {
+                    const a = appreciationDe(d, m);
+                    const modifiable = peutApprecier(d, m);
                     return (
-                      <th key={m.id} className={`max-w-24 border-b border-border p-0 font-normal ${i === 0 ? "border-l" : ""}`}>
-                        <button
-                          type="button"
-                          onClick={() => setMatiereOuverte(matiereOuverte === m.id ? null : m.id)}
-                          className={`h-full w-full px-1.5 py-1 hover:bg-accent-soft/60 ${matiereOuverte === m.id ? "bg-accent text-accent-fg" : ""}`}
-                          title={`Saisir les notes · ${m.nom}${m.niveaux.length ? ` (${m.niveaux.join(", ")})` : ""}`}
-                        >
-                          <span className="line-clamp-2">{m.nom}</span>
-                          <span className="text-[9.5px] opacity-80">{nb ? `${nb} éval.` : "+ éval."}</span>
-                        </button>
-                      </th>
+                      <div key={m.id} className="flex max-w-3xl items-start gap-2">
+                        <span className="w-[9rem] shrink-0 pt-1 text-[12px] font-semibold">{m.nom}</span>
+                        <ZoneAppreciation
+                          key={`${d.id}:${m.id}`}
+                          valeur={a?.texte ?? ""}
+                          readOnly={!modifiable}
+                          rows={2}
+                          placeholder={modifiable ? `Appréciation · ${m.nom}` : ""}
+                          onEnregistrer={(v) => ecrire(sb.from("releves_notes_appreciations").upsert({ releve_id: d.id, matiere_id: m.id, texte: v.trim() || null }))}
+                          className={champ}
+                        />
+                      </div>
                     );
                   })}
-                </Fragment>
-              ))}
+                <div className="flex max-w-3xl items-start gap-2">
+                  <span className="w-[9rem] shrink-0 pt-1 text-[12px] font-semibold">Appréciation générale</span>
+                  <ZoneAppreciation
+                    key={d.id}
+                    autoFocus
+                    valeur={d.appreciation ?? ""}
+                    readOnly={!peutEditer(d)}
+                    rows={3}
+                    onEnregistrer={(v) => ecrire(sb.from("releves_notes").update({ appreciation: v.trim() || null }).eq("id", d.id))}
+                    className={champ}
+                  />
+                </div>
+              </div>
+              <BoutonEnregistrer
+                libelle="Enregistrer et revenir au relevé"
+                mention={false}
+                onFini={() => {
+                  basculerEleve(null);
+                  revenirEnHaut();
+                }}
+              />
+            </div>
+          );
+        })()}
+
+      {!eleves.length && <p className="text-sm text-muted">Aucun élève dans cette classe.</p>}
+      {multiNiveaux && eleves.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[12px] text-muted">Afficher :</span>
+          {groupesNiveau.map((g) => (
+            <button
+              key={g.niveau}
+              type="button"
+              onClick={() => setNiveauChoisi(g.niveau)}
+              className={`rounded-lg border px-3 py-1 text-[12.5px] font-semibold ${!tousNiveaux && niveauAffiche === g.niveau ? "border-gold/50 bg-gold-soft text-gold" : "border-border bg-surface text-muted hover:bg-surface-2"}`}
+            >
+              {g.niveau || "?"} <span className="font-normal opacity-80">· {g.eleves.length}</span>
+            </button>
+          ))}
+          <button
+            type="button"
+            onClick={() => setNiveauChoisi("*")}
+            className={`rounded-lg border px-3 py-1 text-[12.5px] font-semibold ${tousNiveaux ? "border-gold/50 bg-gold-soft text-gold" : "border-border bg-surface text-muted hover:bg-surface-2"}`}
+          >
+            Tous les niveaux
+          </button>
+        </div>
+      )}
+      {/* Tableau transposé : une ligne par matière (par ensemble : Français, Mathématiques…), une colonne par élève
+          (par niveau). Un clic sur une matière ou une case ouvre la saisie ; un clic sur un élève, ses appréciations. */}
+      <div ref={defilementRef} className="w-fit max-w-full overflow-x-auto rounded-xl border border-border bg-surface">
+        <table className="text-[12.5px]">
+          <thead>
+            {multiNiveaux && tousNiveaux && (
+              <tr className="text-[11px]">
+                <th className="sticky left-0 z-10 border-b border-border bg-surface" />
+                {groupesNiveau.filter((g) => tousNiveaux || g.niveau === niveauAffiche).map((g) => (
+                  <th key={g.niveau} colSpan={g.eleves.length} className="border-b border-l-2 border-gold/50 bg-gold-soft/50 px-2 py-1 font-bold text-gold">
+                    {g.niveau || "Niveau non renseigné"} · {g.eleves.length} élève(s)
+                  </th>
+                ))}
+              </tr>
+            )}
+            <tr className="text-[11px] text-muted">
+              <th className="sticky left-0 z-10 min-w-40 border-b border-border bg-surface px-3 py-2 text-left font-medium uppercase tracking-wide">Matière</th>
+              {visibles.map((e) => {
+                const d = docDe(e.id);
+                const actif = eleveOuvert === e.id;
+                return (
+                  <th
+                    key={e.id}
+                    className={`min-w-20 max-w-28 border-b border-border px-1.5 py-1 align-bottom font-normal ${debutNiveau(e) ? "border-l-2 border-l-gold/50" : "border-l border-l-border/60"} ${actif ? "bg-accent-soft" : ""}`}
+                  >
+                    <div className="flex flex-col items-center gap-0.5">
+                      {d && (
+                        <input
+                          type="checkbox"
+                          checked={choix.has(d.id)}
+                          onChange={(ev) =>
+                            setChoix((c) => {
+                              const x = new Set(c);
+                              if (ev.target.checked) x.add(d.id);
+                              else x.delete(d.id);
+                              return x;
+                            })
+                          }
+                          aria-label={`Choisir ${nomEleve(e)}`}
+                        />
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => basculerEleve(actif ? null : e.id)}
+                        className="text-center font-medium leading-tight text-foreground hover:text-accent hover:underline"
+                        title={`Appréciations · ${nomEleve(e)}`}
+                      >
+                        {e.prenom ?? ""}
+                        <span className="block text-[10.5px] font-normal text-muted">{e.nom}</span>
+                      </button>
+                      {verrou(e.id) && (
+                        <span className="text-[10px]" title="Relevé publié : notes verrouillées">
+                          🔒
+                        </span>
+                      )}
+                    </div>
+                  </th>
+                );
+              })}
             </tr>
           </thead>
           <tbody>
-            {eleves.map((e) => {
-              const d = docDe(e.id);
-              const niveau = niveauDe(e, vue.classe.annee_scolaire);
-              const actif = eleveOuvert === e.id;
-              return (
-                <Fragment key={e.id}>
-                  <tr className={`border-t border-border/60 ${actif ? "bg-accent-soft/50" : "hover:bg-surface-2/60"}`}>
-                    <td className={`sticky left-0 z-10 px-2 py-0.5 ${actif ? "bg-accent-soft" : "bg-surface"}`}>
-                      <div className="flex items-center gap-1.5 whitespace-nowrap">
-                        {d && (
-                          <input
-                            type="checkbox"
-                            checked={choix.has(d.id)}
-                            onChange={(ev) =>
-                              setChoix((c) => {
-                                const x = new Set(c);
-                                if (ev.target.checked) x.add(d.id);
-                                else x.delete(d.id);
-                                return x;
-                              })
-                            }
-                            aria-label={`Choisir ${nomEleve(e)}`}
-                          />
+            {colonnes.map(({ g, ms }) => (
+              <Fragment key={g.id}>
+                <tr className="border-t border-border bg-gold-soft/40">
+                  <td className="sticky left-0 z-10 bg-gold-soft px-3 py-1 text-[12px] font-semibold">{g.nom}</td>
+                  {/* Une case par élève (et non une seule case sur toute la ligne) : les traits de niveau restent continus. */}
+                  {visibles.map((e) => (
+                    <td key={e.id} className={debutNiveau(e) ? "border-l-2 border-l-gold/50" : ""} />
+                  ))}
+                </tr>
+                {ms.map((m) => {
+                  const seule = estAppreciationSeule(m.nom);
+                  const nb = evalsDe(m).length;
+                  return (
+                    <tr key={m.id} className={`border-t border-border/60 ${matiereOuverte === m.id ? "bg-accent-soft/30" : "hover:bg-surface-2/40"}`}>
+                      <td className="sticky left-0 z-10 bg-surface p-0">
+                        {seule ? (
+                          <div className="px-3 py-1" title={`${m.nom} : une appréciation, sans note (cliquez une case)`}>
+                            {m.nom}
+                            <span className="ml-1.5 text-[10px] text-muted">appréciation</span>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setMatiereOuverte(matiereOuverte === m.id ? null : m.id)}
+                            className={`flex w-full items-baseline gap-1.5 px-3 py-1 text-left hover:bg-accent-soft/60 ${matiereOuverte === m.id ? "bg-accent text-accent-fg" : ""}`}
+                            title={`Saisir les notes · ${m.nom}${m.niveaux.length ? ` (${m.niveaux.join(", ")})` : ""}`}
+                          >
+                            {m.nom}
+                            <span className="text-[10px] opacity-70">{nb ? `${nb} éval.` : "+ éval."}</span>
+                          </button>
                         )}
-                        <button type="button" onClick={() => setEleveOuvert(actif ? null : e.id)} className="text-left font-medium hover:text-accent hover:underline" title="Appréciation générale">
-                          {nomEleve(e)}
-                        </button>
-                        {niveau && vue.classe.niveaux.length > 1 && <span className="rounded bg-surface-2 px-1 text-[10px] text-muted">{niveau}</span>}
-                        {verrou(e.id) && <span className="text-[10px]" title="Relevé publié : notes verrouillées">🔒</span>}
-                      </div>
-                    </td>
-                    {colonnes.map(({ g, ms }) => (
-                      <Fragment key={g.id}>
-                        {ms.map((m, i) => {
-                          const concerne = matiereConcerne(m, niveau);
-                          if (estAppreciationSeule(m.nom)) {
-                            const a = concerne ? appreciationDe(d, m)?.texte?.trim() : null;
-                            return (
-                              <td
-                                key={m.id}
-                                onClick={() => concerne && setEleveOuvert(actif ? null : e.id)}
-                                className={`max-w-40 px-1.5 py-0.5 ${i === 0 ? "border-l border-border" : ""} ${concerne ? "cursor-pointer hover:bg-accent-soft/50" : "bg-surface-2/50"}`}
-                              >
-                                {a ? <span className="line-clamp-1 text-[12px]">{a}</span> : concerne && d ? <span className="text-[11px] text-gold">✎</span> : null}
-                              </td>
-                            );
-                          }
-                          const t = concerne ? notesCourtes(e, m) : [];
+                      </td>
+                      {visibles.map((e) => {
+                        const d = docDe(e.id);
+                        const niveau = niveauDe(e, vue.classe.annee_scolaire);
+                        const concerne = matiereConcerne(m, niveau);
+                        const bord = debutNiveau(e) ? "border-l-2 border-l-gold/50" : "border-l border-l-border/40";
+                        if (seule) {
+                          const a = concerne ? appreciationDe(d, m)?.texte?.trim() : null;
                           return (
                             <td
-                              key={m.id}
-                              onClick={() => concerne && setMatiereOuverte(m.id)}
-                              className={`px-1.5 py-0.5 text-center tabular-nums ${i === 0 ? "border-l border-border" : ""} ${
-                                concerne ? `cursor-pointer hover:bg-accent-soft/50 ${matiereOuverte === m.id ? "bg-accent-soft/40" : ""}` : "bg-surface-2/50"
-                              }`}
+                              key={e.id}
+                              onClick={() => concerne && basculerEleve(e.id)}
+                              title={concerne ? `Rédiger l'appréciation · ${m.nom} · ${nomEleve(e)}` : undefined}
+                              className={`max-w-28 px-1.5 py-1 text-center ${bord} ${concerne ? "cursor-pointer hover:bg-accent-soft/50" : "bg-surface-2/50"}`}
                             >
-                              <span className="whitespace-nowrap text-[12px]">{t.join(" · ")}</span>
+                              {a ? <span className="line-clamp-1 text-[11.5px]">{a}</span> : concerne && d ? <span className="text-[11px] text-gold">✎</span> : null}
                             </td>
                           );
-                        })}
-                      </Fragment>
-                    ))}
-                    <td className="max-w-64 cursor-pointer border-l border-border px-2 py-0.5" onClick={() => setEleveOuvert(actif ? null : e.id)}>
-                      {d?.appreciation?.trim() ? <span className="line-clamp-1 text-[12px]">{d.appreciation}</span> : d ? <span className="text-[11px] text-gold">✎ à rédiger</span> : null}
-                    </td>
-                    <td className="px-2 py-0.5 text-center">{d && <PastilleStatut statut={d.statut} />}</td>
-                    <td className="px-2 py-0.5 text-right">
-                      <button type="button" onClick={() => telechargerBulletins([synthese(e)])} className="text-[12px] text-accent hover:underline">
-                        PDF
-                      </button>
-                    </td>
-                  </tr>
-                  {actif && d && (
-                    <tr className="bg-accent-soft/20">
-                      <td colSpan={nbColonnes} className="space-y-1.5 px-3 py-2">
-                        {vue.matieres
-                          .filter((m) => estAppreciationSeule(m.nom) && matiereConcerne(m, niveau))
-                          .map((m) => {
-                            const a = appreciationDe(d, m);
-                            const modifiable = peutApprecier(d, m);
-                            return (
-                              <div key={m.id} className="sticky left-3 flex max-w-3xl items-start gap-2 lg:max-w-6xl">
-                                <span className="w-[9rem] shrink-0 pt-1 text-[12px] font-semibold">{m.nom}</span>
-                                <textarea
-                                  key={`${d.id}:${m.id}:${a?.texte ?? ""}`}
-                                  defaultValue={a?.texte ?? ""}
-                                  readOnly={!modifiable}
-                                  rows={2}
-                                  placeholder={modifiable ? `Appréciation · ${m.nom}` : ""}
-                                  onBlur={(ev) => {
-                                    const v = ev.target.value.trim();
-                                    if (!modifiable || v === (a?.texte ?? "").trim()) return;
-                                    agir(sb.from("releves_notes_appreciations").upsert({ releve_id: d.id, matiere_id: m.id, texte: v || null }));
-                                  }}
-                                  className={champ}
-                                  {...extensible}
-                                />
-                              </div>
-                            );
-                          })}
-                        <div className="sticky left-3 flex max-w-3xl items-start gap-2 lg:max-w-6xl">
-                          <span className="w-[9rem] shrink-0 pt-1 text-[12px] font-semibold">Appréciation générale</span>
-                          <textarea
-                            key={`${d.id}:${d.appreciation ?? ""}`}
-                            autoFocus
-                            defaultValue={d.appreciation ?? ""}
-                            readOnly={!peutEditer(d)}
-                            rows={3}
-                            onBlur={(ev) => {
-                              const v = ev.target.value.trim();
-                              if (!peutEditer(d) || v === (d.appreciation ?? "").trim()) return;
-                              agir(sb.from("releves_notes").update({ appreciation: v || null }).eq("id", d.id));
-                            }}
-                            className={champ}
-                            {...extensible}
-                          />
-                        </div>
-                      </td>
+                        }
+                        const t = concerne ? notesCourtes(e, m) : [];
+                        return (
+                          <td
+                            key={e.id}
+                            onClick={() => concerne && setMatiereOuverte(m.id)}
+                            title={concerne ? `Ajouter une évaluation ou une note · ${m.nom} · ${nomEleve(e)}` : undefined}
+                            className={`group px-1.5 py-1 text-center tabular-nums ${bord} ${concerne ? "cursor-pointer hover:bg-accent-soft/50" : "bg-surface-2/50"}`}
+                          >
+                            <span className="whitespace-nowrap text-[12px]">{t.join(" · ")}</span>
+                            {/* Au survol : « + » pour ajouter une évaluation ou une note. */}
+                            {concerne && (
+                              <span
+                                className={`inline-grid h-4 w-4 place-items-center rounded-full border border-gold/50 bg-gold-soft align-middle text-[11px] font-bold leading-none text-gold opacity-0 transition-opacity group-hover:opacity-100 ${t.length ? "ml-1" : ""}`}
+                                aria-hidden
+                              >
+                                +
+                              </span>
+                            )}
+                          </td>
+                        );
+                      })}
                     </tr>
-                  )}
-                </Fragment>
-              );
-            })}
+                  );
+                })}
+              </Fragment>
+            ))}
+            {/* Pied : appréciation générale, état et PDF de chaque élève. */}
+            <tr className="border-t-2 border-border">
+              <td className="sticky left-0 z-10 bg-surface px-3 py-1 text-[12px] font-semibold">Appréciation générale</td>
+              {visibles.map((e) => {
+                const d = docDe(e.id);
+                return (
+                  <td
+                    key={e.id}
+                    onClick={() => basculerEleve(e.id)}
+                    title={`Appréciations · ${nomEleve(e)}`}
+                    className={`max-w-28 cursor-pointer px-1.5 py-1 text-center hover:bg-accent-soft/50 ${debutNiveau(e) ? "border-l-2 border-l-gold/50" : "border-l border-l-border/40"}`}
+                  >
+                    {d?.appreciation?.trim() ? <span className="line-clamp-2 text-[11.5px]">{d.appreciation}</span> : d ? <span className="text-[11px] text-gold">✎ à rédiger</span> : null}
+                  </td>
+                );
+              })}
+            </tr>
+            <tr className="border-t border-border/60">
+              <td className="sticky left-0 z-10 bg-surface px-3 py-1 text-[12px] font-semibold">État</td>
+              {visibles.map((e) => {
+                const d = docDe(e.id);
+                return (
+                  <td key={e.id} className={`px-1.5 py-1 text-center ${debutNiveau(e) ? "border-l-2 border-l-gold/50" : "border-l border-l-border/40"}`}>
+                    {d && <PastilleStatut statut={d.statut} />}
+                  </td>
+                );
+              })}
+            </tr>
+            <tr className="border-t border-border/60">
+              <td className="sticky left-0 z-10 bg-surface px-3 py-1 text-[12px] font-semibold">Relevé</td>
+              {visibles.map((e) => (
+                <td key={e.id} className={`px-1.5 py-1 text-center ${debutNiveau(e) ? "border-l-2 border-l-gold/50" : "border-l border-l-border/40"}`}>
+                  <button type="button" onClick={() => telechargerBulletins([synthese(e)])} className="text-[12px] text-accent hover:underline">
+                    PDF
+                  </button>
+                </td>
+              ))}
+            </tr>
           </tbody>
         </table>
       </div>
+      <BoutonEnregistrer
+        onFini={() => {
+          setEleveOuvert(null);
+          setMatiereOuverte(null);
+          void onRecharger();
+          revenirEnHaut();
+        }}
+      />
       <p className="text-[11.5px] text-muted">« abs » absent, « disp » dispensé, « nr » non rendu ; une note sur un autre barème que 20 est suivie de « /barème ». Cases grisées : matière hors du niveau de l&apos;élève.</p>
     </div>
   );

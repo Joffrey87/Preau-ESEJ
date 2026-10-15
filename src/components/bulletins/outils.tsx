@@ -1,5 +1,7 @@
 "use client";
 
+import { useState } from "react";
+import { enregistrerTout, useSauvegardeAuto } from "@/lib/sauvegardeAuto";
 import { construireSynthese, estSynthese, statutDe, type ContexteClasse, type Enseignant, type ResultatEleve, type Statut, type Synthese } from "@/lib/bulletins";
 
 /** Synthèse d'un bulletin : celle figée s'il est publié, sinon celle du moment (aperçu, PDF, publication). */
@@ -26,9 +28,24 @@ export const ajusterHauteur = (el: HTMLTextAreaElement) => {
  * Zone d'appréciation extensible : sa hauteur suit le texte, qui reste visible en entier pendant la saisie comme
  * après (à l'affichage et à chaque frappe). À répandre sur un <textarea> (n'occupe ni onChange ni onBlur).
  */
+// Fenêtre redimensionnée : le texte se recoupe autrement, la hauteur de chaque zone extensible est recalculée.
+let ecouteRedimension = false;
+function suivreRedimension() {
+  if (ecouteRedimension || typeof window === "undefined") return;
+  ecouteRedimension = true;
+  let image = 0;
+  window.addEventListener("resize", () => {
+    cancelAnimationFrame(image);
+    image = requestAnimationFrame(() => document.querySelectorAll<HTMLTextAreaElement>("textarea[data-extensible]").forEach(ajusterHauteur));
+  });
+}
+
 export const extensible = {
+  "data-extensible": "",
   ref: (el: HTMLTextAreaElement | null) => {
-    if (el) ajusterHauteur(el);
+    if (!el) return;
+    suivreRedimension();
+    ajusterHauteur(el);
   },
   onInput: (e: React.FormEvent<HTMLTextAreaElement>) => ajusterHauteur(e.currentTarget),
 };
@@ -64,5 +81,77 @@ export function BoutonLot({
       {children}
       {n !== undefined && <span className={`rounded-full px-1.5 text-[11px] ${fort ? "bg-white/20" : "bg-surface-2"}`}>{n}</span>}
     </button>
+  );
+}
+
+/**
+ * Zone d'appréciation enregistrée automatiquement (frappe, sortie, démontage, onglet masqué, bouton « Enregistrer ») et
+ * extensible (tout le texte visible). `onEnregistrer` renvoie un message d'erreur, ou null.
+ */
+export function ZoneAppreciation({
+  valeur,
+  onEnregistrer,
+  readOnly = false,
+  className,
+  placeholder,
+  rows = 2,
+  autoFocus = false,
+}: {
+  valeur: string;
+  onEnregistrer: (texte: string) => Promise<string | null>;
+  readOnly?: boolean;
+  className?: string;
+  placeholder?: string;
+  rows?: number;
+  autoFocus?: boolean;
+}) {
+  const { valeur: texte, changer, envoyer, etat, erreur } = useSauvegardeAuto(valeur, onEnregistrer);
+  return (
+    <div className="w-full">
+      <textarea
+        value={texte}
+        readOnly={readOnly}
+        rows={rows}
+        autoFocus={autoFocus}
+        placeholder={placeholder}
+        onChange={(e) => !readOnly && changer(e.target.value)}
+        onBlur={() => void envoyer()}
+        className={className}
+        {...extensible}
+      />
+      {/* Pas d'état « Enregistré » à chaque champ (une mention unique en bas de page) : seules les erreurs s'affichent. */}
+      {!readOnly && etat === "erreur" && <div className="text-[10.5px] text-negative">Échec de l&apos;enregistrement : {erreur ?? ""}</div>}
+    </div>
+  );
+}
+
+/**
+ * Bouton « Enregistrer » : envoie aussitôt toutes les saisies en attente (notes, appréciations), confirme, puis
+ * `onFini` (par exemple : revenir au relevé de notes).
+ */
+export function BoutonEnregistrer({ libelle = "Enregistrer", onFini, mention = true }: { libelle?: string; onFini?: () => void; mention?: boolean }) {
+  const [etat, setEtat] = useState<"" | "envoi" | "ok">("");
+  const cliquer = async () => {
+    setEtat("envoi");
+    // La case ou la zone en cours de saisie part d'abord (sortie du champ), puis tout ce qui attend.
+    (document.activeElement as HTMLElement | null)?.blur?.();
+    await enregistrerTout();
+    setEtat("ok");
+    window.setTimeout(() => {
+      setEtat("");
+      onFini?.();
+    }, 700);
+  };
+  return (
+    <div className="flex items-center justify-center gap-3 py-2">
+      <button
+        type="button"
+        onClick={cliquer}
+        disabled={etat === "envoi"}
+        className="rounded-lg border border-gold/50 bg-gold-soft/40 px-5 py-2 text-[13.5px] font-semibold text-gold hover:bg-gold-soft disabled:opacity-60"
+      >
+        {etat === "envoi" ? "Enregistrement…" : etat === "ok" ? "✓ Enregistré" : libelle}
+      </button>
+    </div>
   );
 }

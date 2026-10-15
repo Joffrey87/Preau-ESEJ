@@ -74,6 +74,7 @@ import {
 import { nomDonateur, cleDonateur } from "@/lib/statutDon";
 import { LIBELLE_DON, chiffrerLibellesDon, dechiffrerLibellesDon, texteDonateur } from "@/lib/libelleDon";
 import type { Don } from "@/components/GestionDons";
+import { domaineDepuisCategorie, estCategorieVentes, type SousCategorie } from "@/lib/ventes";
 
 export type { ImportPasse };
 
@@ -131,6 +132,8 @@ type Ecriture = {
   alerte: string | null;
   /** Exercice choisi pour une sous-écriture (id). Absent : celui de la date de l'opération. */
   exercice?: string;
+  /** Sous-catégorie de vente (id) d'une recette « Ventes diverses » : ventilation créée à l'import. */
+  sousVente?: string;
 };
 
 type Fille = Ecriture & {
@@ -245,6 +248,16 @@ export default function ImportReleve({
   const [cibleDon, setCibleDon] = useState<{ i: number; cle: string | null } | null>(null);
   const [fDon, setFDon] = useState<FormDonateur>(formDonateurDepuisNom(""));
   const [erreurDon, setErreurDon] = useState<string | null>(null);
+  // Sous-catégories des Ventes diverses (École / Événement), proposées sous la catégorie d'une recette de vente.
+  const [sousVentes, setSousVentes] = useState<SousCategorie[]>([]);
+  useEffect(() => {
+    createClient()
+      .from("ventes_sous_categories")
+      .select("id, nom, domaine, archive")
+      .eq("archive", false)
+      .order("nom")
+      .then(({ data }) => setSousVentes((data ?? []) as SousCategorie[]));
+  }, []);
 
   // Les sous-écritures ne sont pas des lignes du relevé : la détection des
   // doublons ne porte que sur les lignes bancaires.
@@ -257,6 +270,8 @@ export default function ImportReleve({
   const catIdParNom = (nom: string, type: "recette" | "depense") =>
     categories.find((c) => nomCanonique(c.nom) === nom && c.type === type)?.id ?? "";
   const inscParId = useMemo(() => new Map(inscriptions.map((i) => [i.id, i])), [inscriptions]);
+  /** Recette classée en « Ventes diverses » : la sous-catégorie de vente peut être choisie. */
+  const estVente = (type: string, categorieId: string | null | undefined) => type === "recette" && estCategorieVentes(catNom(categorieId));
   const relations = useMemo(() => relationsConnues(dons), [dons]);
   const identites = useMemo(
     () => (coffre.estOuvert ? identitesDonateurs(dons.filter((d) => !d.supprime_le)) : []),
@@ -1045,6 +1060,8 @@ export default function ImportReleve({
       }
     };
 
+    // Recettes « Ventes diverses » dont la sous-catégorie est choisie : ventilées à l'import (onglet Ventes diverses).
+    const ventilationsVentes: { operation_id: string; sous_categorie_id: string; montant: number }[] = [];
     let totalRec = 0, totalDep = 0;
     for (const l of retenues) {
       const id = crypto.randomUUID();
@@ -1073,6 +1090,8 @@ export default function ImportReleve({
         import_id: importId,
       });
       if (!ventilee) {
+        if (l.sousVente && estVente(l.type, l.categorie_id))
+          ventilationsVentes.push({ operation_id: id, sous_categorie_id: l.sousVente, montant: l.montant });
         rattacher(id, famMere, donMere, l.montant, l.date, exerciceId, mode);
         continue;
       }
@@ -1101,6 +1120,8 @@ export default function ImportReleve({
           a_verifier: questions(f, fam, don),
           import_id: importId,
         });
+        if (f.sousVente && estVente(l.type, f.categorie_id) && montant > 0)
+          ventilationsVentes.push({ operation_id: fid, sous_categorie_id: f.sousVente, montant });
         rattacher(fid, fam, don, montant, l.date, exerciceFille, mode);
       }
     }
@@ -1138,6 +1159,12 @@ export default function ImportReleve({
       const { error } = await supabase.from("affectations_scolarite").insert(affectationsNouvelles);
       if (error) avertissements.push("rattachements aux familles non enregistrés : " + error.message);
       else etapes.push(`${affectationsNouvelles.length} rattachement${affectationsNouvelles.length > 1 ? "s" : ""} à l'onglet Frais de scolarité`);
+    }
+    if (ventilationsVentes.length > 0) {
+      const { error } = await supabase.from("ventes_ventilations").insert(ventilationsVentes);
+      const n = ventilationsVentes.length;
+      if (error) avertissements.push("sous-catégories des ventes non enregistrées : " + error.message);
+      else etapes.push(`${n} recette${n > 1 ? "s" : ""} ventilée${n > 1 ? "s" : ""} dans l'onglet Ventes diverses`);
     }
     if (nouveauxDons.length > 0) {
       const payload = [];
@@ -1182,6 +1209,26 @@ export default function ImportReleve({
 
   const selectCls =
     "rounded-lg border border-border bg-background px-2 py-1 text-xs outline-none focus:border-accent";
+
+  /** Choix de la sous-catégorie de vente, sous la catégorie (sous-catégories du domaine de la catégorie choisie). */
+  const choixSousVente = (type: string, e: Ecriture, changer: (sousVente: string) => void) => {
+    if (!estVente(type, e.categorie_id)) return null;
+    const domaine = domaineDepuisCategorie(catNom(e.categorie_id));
+    const choix = sousVentes.filter((sc) => !domaine || sc.domaine === domaine);
+    return (
+      <select
+        value={e.sousVente ?? ""}
+        onChange={(ev) => changer(ev.target.value)}
+        title="Sous-catégorie de la vente : la recette est ventilée dessus dans l'onglet Ventes diverses"
+        className={`mt-1 block w-48 ${selectCls} ${e.sousVente ? "" : "text-muted"}`}
+      >
+        <option value="">— objet de vente —</option>
+        {choix.map((sc) => (
+          <option key={sc.id} value={sc.id}>{sc.nom}</option>
+        ))}
+      </select>
+    );
+  };
 
   const pastille = (texte: string, ton: "ok" | "doute" | "neutre", title?: string) => (
     <span
@@ -1663,18 +1710,21 @@ export default function ImportReleve({
                           {ventilee ? (
                             <span className="text-xs text-muted">ventilée en {l.filles.length}</span>
                           ) : (
-                            <select
-                              value={l.categorie_id}
-                              onChange={(e) =>
-                                maj(i, { categorie_id: e.target.value, candidats: undefined, famille: undefined, alerte: null })
-                              }
-                              className={`w-48 ${selectCls}`}
-                            >
-                              <option value="">— à classer —</option>
-                              {catsDuSens.map((c) => (
-                                <option key={c.id} value={c.id}>{c.nom}</option>
-                              ))}
-                            </select>
+                            <>
+                              <select
+                                value={l.categorie_id}
+                                onChange={(e) =>
+                                  maj(i, { categorie_id: e.target.value, candidats: undefined, famille: undefined, alerte: null, sousVente: undefined })
+                                }
+                                className={`w-48 ${selectCls}`}
+                              >
+                                <option value="">— à classer —</option>
+                                {catsDuSens.map((c) => (
+                                  <option key={c.id} value={c.id}>{c.nom}</option>
+                                ))}
+                              </select>
+                              {choixSousVente(l.type, l, (v) => maj(i, { sousVente: v }))}
+                            </>
                           )}
                         </td>
                         <td className="px-3 py-2">
@@ -1739,7 +1789,7 @@ export default function ImportReleve({
                                 <select
                                   value={f.categorie_id}
                                   onChange={(e) =>
-                                    majFille(i, f.cle, { categorie_id: e.target.value, candidats: undefined, famille: undefined, alerte: null })
+                                    majFille(i, f.cle, { categorie_id: e.target.value, candidats: undefined, famille: undefined, alerte: null, sousVente: undefined })
                                   }
                                   className={`w-48 ${selectCls} ${f.categorie_id ? "" : "border-gold"}`}
                                 >
@@ -1748,6 +1798,7 @@ export default function ImportReleve({
                                     <option key={c.id} value={c.id}>{c.nom}</option>
                                   ))}
                                 </select>
+                                {choixSousVente(l.type, f, (v) => majFille(i, f.cle, { sousVente: v }))}
                               </td>
                               <td className="px-3 py-1.5">
                                 {rattachement(i, l, f, f.cle, Number(f.montant) || 0, textesFille(l, f))}

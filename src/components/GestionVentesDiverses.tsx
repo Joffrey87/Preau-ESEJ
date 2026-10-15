@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { Fragment, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { formatDate, formatEuros, todayISO } from "@/lib/format";
 import { telechargerVentesPdf } from "@/lib/ventesPdf";
+import { Modal } from "./GestionComptes";
 import {
   DOMAINES,
   MODES,
@@ -67,7 +68,7 @@ export default function GestionVentesDiverses({
   const [erreur, setErreur] = useState("");
   const [busy, setBusy] = useState(false);
 
-  // Nouvelle sous-catégorie
+  // Nouvel objet de vente (sous-catégorie)
   const [nomSous, setNomSous] = useState("");
   // Nouvelle vente
   const [sousId, setSousId] = useState("");
@@ -96,9 +97,34 @@ export default function GestionVentesDiverses({
       const lignes = duesFiltrees.filter((d) => d.sous_categorie_id === s.id);
       const attendu = lignes.reduce((a, d) => a + Number(d.montant_attendu), 0);
       const paye = lignes.reduce((a, d) => a + payeDe(d.id), 0);
-      return { sous: s, attendu, paye, nb: lignes.length };
+      // Sous-totaux par payeur (famille ou personne du Carnet), pour l'arborescence des Totaux.
+      const parPayeur = new Map<string, { libelle: string; nb: number; attendu: number; paye: number }>();
+      for (const d of lignes) {
+        const libelle = libellePayeur(d, familles, contacts);
+        const cle = d.famille_id ? `f:${d.famille_id}` : d.contact_id ? `c:${d.contact_id}` : `l:${libelle}`;
+        const g = parPayeur.get(cle) ?? { libelle, nb: 0, attendu: 0, paye: 0 };
+        g.nb += 1;
+        g.attendu += Number(d.montant_attendu);
+        g.paye += payeDe(d.id);
+        parPayeur.set(cle, g);
+      }
+      const payeursTries = [...parPayeur.entries()].map(([cle, g]) => ({ cle, ...g })).sort((a, b) => a.libelle.localeCompare(b.libelle, "fr"));
+      return { sous: s, attendu, paye, nb: lignes.length, lignes, payeurs: payeursTries };
     });
   })();
+  // Arborescence des Totaux : sous-totaux dépliés par défaut ; objets repliés à la demande.
+  const [replies, setReplies] = useState<Set<string>>(new Set());
+  const basculerRepli = (id: string) =>
+    setReplies((r) => {
+      const n = new Set(r);
+      if (n.has(id)) n.delete(id);
+      else n.add(id);
+      return n;
+    });
+  const toutReplie = totaux.length > 0 && totaux.every((t) => replies.has(t.sous.id));
+  // Fiche résumé d'un objet de vente (clic sur son nom).
+  const [fiche, setFiche] = useState<string | null>(null);
+  const ficheTotal = totaux.find((t) => t.sous.id === fiche) ?? null;
 
   async function creerSousCat(e: React.FormEvent) {
     e.preventDefault();
@@ -116,7 +142,7 @@ export default function GestionVentesDiverses({
     e.preventDefault();
     setErreur("");
     if (!exerciceId) return setErreur("Choisissez un exercice.");
-    if (!sousId) return setErreur("Choisissez une sous-catégorie.");
+    if (!sousId) return setErreur("Choisissez un objet de vente.");
     const m = Number(String(montant).replace(",", "."));
     if (!isFinite(m) || m <= 0) return setErreur("Montant invalide.");
     let famille_id: string | null = null;
@@ -253,9 +279,10 @@ export default function GestionVentesDiverses({
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-2">
-        <label className="text-sm text-muted">Exercice</label>
         <select
-          className={input + " w-auto"}
+          aria-label="Exercice"
+          title="Exercice"
+          className="rounded-md border border-border bg-background px-2 py-1 text-xs outline-none focus:border-accent"
           value={exerciceId}
           onChange={(e) => {
             const u = new URL(window.location.href);
@@ -265,7 +292,7 @@ export default function GestionVentesDiverses({
         >
           {exercices.map((e) => (
             <option key={e.id} value={e.id}>
-              {e.libelle}
+              {e.libelle.replace(/^Exercice\s+/i, "")}
             </option>
           ))}
         </select>
@@ -305,15 +332,24 @@ export default function GestionVentesDiverses({
 
       {vue === "ventes" && (
         <>
-          {/* Totaux */}
+          {/* Totaux : arborescence objet de vente → sous-totaux par famille / personne */}
           <section className="overflow-hidden rounded-xl border border-border bg-surface">
-            <div className="border-b border-border px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted">
-              Totaux · {DOMAINES.find((d) => d.v === domaine)?.label}
+            <div className="flex items-center gap-3 border-b border-border px-4 py-2">
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted">Totaux · {DOMAINES.find((d) => d.v === domaine)?.label}</span>
+              {totaux.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setReplies(toutReplie ? new Set() : new Set(totaux.map((t) => t.sous.id)))}
+                  className="ml-auto text-xs font-medium text-accent hover:underline"
+                >
+                  {toutReplie ? "Tout déplier" : "Tout replier"}
+                </button>
+              )}
             </div>
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border text-left text-xs text-muted">
-                  <th className="px-4 py-2 font-medium">Sous-catégorie</th>
+                  <th className="px-4 py-2 font-medium">Objet de vente · famille ou personne</th>
                   <th className="px-4 py-2 font-medium text-right">Ventes</th>
                   <th className="px-4 py-2 font-medium text-right">Attendu</th>
                   <th className="px-4 py-2 font-medium text-right">Payé</th>
@@ -324,39 +360,206 @@ export default function GestionVentesDiverses({
                 {totaux.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="px-4 py-6 text-center text-muted">
-                      Aucune sous-catégorie. Créez-en une ci-dessous.
+                      Aucun objet de vente. Créez-en un ci-dessous.
                     </td>
                   </tr>
                 ) : (
-                  totaux.map((t) => (
-                    <tr key={t.sous.id} className="border-b border-border/60">
-                      <td className="px-4 py-2">{t.sous.nom}</td>
-                      <td className="px-4 py-2 text-right tabular-nums">{t.nb}</td>
-                      <td className="px-4 py-2 text-right tabular-nums">{formatEuros(t.attendu)}</td>
-                      <td className="px-4 py-2 text-right tabular-nums text-positive">{formatEuros(t.paye)}</td>
-                      <td className="px-4 py-2 text-right tabular-nums">{formatEuros(t.attendu - t.paye)}</td>
-                    </tr>
-                  ))
+                  totaux.map((t) => {
+                    const ouvert = !replies.has(t.sous.id);
+                    return (
+                      <Fragment key={t.sous.id}>
+                        <tr className="border-b border-border/60 bg-surface-2/40">
+                          <td className="px-2 py-2">
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() => basculerRepli(t.sous.id)}
+                                disabled={t.payeurs.length === 0}
+                                aria-expanded={ouvert}
+                                title={ouvert ? "Replier les sous-totaux" : "Déplier les sous-totaux"}
+                                className="flex h-6 w-6 shrink-0 items-center justify-center rounded text-muted hover:bg-surface-2 disabled:opacity-30"
+                              >
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} className={`h-4 w-4 transition-transform ${ouvert && t.payeurs.length > 0 ? "rotate-90" : ""}`} aria-hidden="true">
+                                  <path d="m9 6 6 6-6 6" />
+                                </svg>
+                              </button>
+                              <button type="button" onClick={() => setFiche(t.sous.id)} className="text-left font-medium hover:text-accent hover:underline" title="Fiche résumé">
+                                {t.sous.nom}
+                              </button>
+                            </div>
+                          </td>
+                          <td className="px-4 py-2 text-right tabular-nums font-medium">{t.nb}</td>
+                          <td className="px-4 py-2 text-right tabular-nums font-medium">{formatEuros(t.attendu)}</td>
+                          <td className="px-4 py-2 text-right tabular-nums font-medium text-positive">{formatEuros(t.paye)}</td>
+                          <td className="px-4 py-2 text-right tabular-nums font-medium">{formatEuros(t.attendu - t.paye)}</td>
+                        </tr>
+                        {ouvert &&
+                          t.payeurs.map((g) => (
+                            <tr key={g.cle} className="border-b border-border/40 text-[13px]">
+                              <td className="py-1.5 pl-12 pr-4 text-muted">
+                                {g.libelle}
+                                {g.paye >= g.attendu - 0.005 && (
+                                  <span className="ml-2 text-emerald-600" title="Soldé">
+                                    ✓
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-4 py-1.5 text-right tabular-nums text-muted">{g.nb}</td>
+                              <td className="px-4 py-1.5 text-right tabular-nums">{formatEuros(g.attendu)}</td>
+                              <td className="px-4 py-1.5 text-right tabular-nums text-positive">{formatEuros(g.paye)}</td>
+                              <td className="px-4 py-1.5 text-right tabular-nums">{formatEuros(g.attendu - g.paye)}</td>
+                            </tr>
+                          ))}
+                      </Fragment>
+                    );
+                  })
                 )}
               </tbody>
             </table>
           </section>
 
-          {peutModifier && (
-            <div className="grid gap-4 md:grid-cols-2">
-              <form onSubmit={creerSousCat} className="rounded-xl border border-border bg-surface p-4 space-y-3">
-                <h2 className="text-sm font-semibold">Nouvelle sous-catégorie</h2>
-                <p className="text-xs text-muted">Réutilisable d&apos;un exercice à l&apos;autre · domaine {DOMAINES.find((d) => d.v === domaine)?.label}</p>
-                <input className={input} placeholder="Ex. Vente photo" value={nomSous} onChange={(e) => setNomSous(e.target.value)} />
-                <button type="submit" disabled={busy} className={btn}>
-                  Créer
-                </button>
-              </form>
+          {ficheTotal && (
+            <Modal title={ficheTotal.sous.nom} onClose={() => setFiche(null)} fermerAuClicExterieur>
+              {(() => {
+                const t = ficheTotal;
+                const statuts = STATUTS.map((st) => ({
+                  ...st,
+                  n: t.lignes.filter((d) => statutVente(Number(d.montant_attendu), payeDe(d.id)) === st.v).length,
+                })).filter((st) => st.n > 0);
+                const parMode = MODES.map((m) => {
+                  const ls = t.lignes.filter((d) => d.mode_attendu === m.v);
+                  return { ...m, n: ls.length, attendu: ls.reduce((a, d) => a + Number(d.montant_attendu), 0) };
+                }).filter((m) => m.n > 0);
+                const ventile = ventilations.filter((v) => v.sous_categorie_id === t.sous.id).reduce((a, v) => a + v.montant, 0);
+                const taux = t.attendu > 0 ? Math.round((t.paye / t.attendu) * 100) : 0;
+                return (
+                  <div className="space-y-3 text-sm">
+                    <p className="text-xs text-muted">
+                      {DOMAINES.find((d) => d.v === t.sous.domaine)?.label} · {exerciceLib}
+                    </p>
+                    <div className="grid grid-cols-4 gap-2">
+                      {[
+                        { l: "Ventes", v: String(t.nb) },
+                        { l: "Attendu", v: formatEuros(t.attendu) },
+                        { l: "Payé", v: formatEuros(t.paye) },
+                        { l: "Reste", v: formatEuros(t.attendu - t.paye) },
+                      ].map((k) => (
+                        <div key={k.l} className="rounded-lg bg-surface-2 px-2 py-1.5">
+                          <div className="text-[10.5px] uppercase tracking-wide text-muted">{k.l}</div>
+                          <div className="font-semibold tabular-nums">{k.v}</div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="h-1.5 overflow-hidden rounded-full bg-surface-2" title={`${taux} % encaissé`}>
+                      <div className="h-full bg-positive" style={{ width: `${Math.min(100, taux)}%` }} />
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {statuts.map((st) => (
+                        <span key={st.v} className={`rounded-full px-2 py-0.5 text-xs font-medium ${st.cls}`}>
+                          {st.n} {st.label.toLowerCase()}
+                        </span>
+                      ))}
+                      {parMode.map((m) => (
+                        <span key={m.v} className="rounded-full border border-border px-2 py-0.5 text-xs text-muted">
+                          {m.label.replace(/ attendu.*$/, "")} : {m.n} · {formatEuros(m.attendu)}
+                        </span>
+                      ))}
+                    </div>
+                    {estTresorier && ventile > 0 && (
+                      <p className="text-xs text-muted">Ventilé depuis la banque (Comptabilité) : {formatEuros(ventile)}</p>
+                    )}
+                    {t.payeurs.length > 0 && (
+                      <ul className="max-h-56 divide-y divide-border/60 overflow-y-auto rounded-lg border border-border">
+                        {t.payeurs.map((g) => (
+                          <li key={g.cle} className="flex items-center gap-2 px-3 py-1.5 text-[13px]">
+                            <span className="min-w-0 flex-1 truncate">{g.libelle}</span>
+                            <span className="tabular-nums text-muted">
+                              {formatEuros(g.paye)} / {formatEuros(g.attendu)}
+                            </span>
+                            {g.paye >= g.attendu - 0.005 ? <span className="text-emerald-600">✓</span> : <span className="w-3" />}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                );
+              })()}
+            </Modal>
+          )}
 
+          {/* Tableau dus / payés */}
+          <section className="overflow-hidden rounded-xl border border-border bg-surface">
+            <div className="border-b border-border px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted">Ventes attendues</div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-border text-left text-xs text-muted">
+                    <th className="px-4 py-2 font-medium">Payeur</th>
+                    <th className="px-4 py-2 font-medium">Objet de vente</th>
+                    <th className="px-4 py-2 font-medium">Mode</th>
+                    <th className="px-4 py-2 font-medium text-right">Attendu</th>
+                    <th className="px-4 py-2 font-medium text-right">Payé</th>
+                    <th className="px-4 py-2 font-medium">Statut</th>
+                    {peutModifier && <th className="px-4 py-2 font-medium" />}
+                  </tr>
+                </thead>
+                <tbody>
+                  {duesFiltrees.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="px-4 py-8 text-center text-muted">
+                        Aucune vente pour ce domaine.
+                      </td>
+                    </tr>
+                  ) : (
+                    duesFiltrees.map((d) => {
+                      const paye = payeDe(d.id);
+                      const st = statutVente(Number(d.montant_attendu), paye);
+                      const stInfo = STATUTS.find((s) => s.v === st)!;
+                      const cat = sousCategories.find((s) => s.id === d.sous_categorie_id)?.nom ?? "—";
+                      return (
+                        <tr key={d.id} className="border-b border-border/60">
+                          <td className="px-4 py-2 font-medium">
+                            {libellePayeur(d, familles, contacts)}
+                            {st === "paye" || st === "trop_percu" ? (
+                              <span className="ml-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-700" title="Payé">
+                                ✓
+                              </span>
+                            ) : null}
+                          </td>
+                          <td className="px-4 py-2">{cat}</td>
+                          <td className="px-4 py-2 text-muted">{MODES.find((m) => m.v === d.mode_attendu)?.label}</td>
+                          <td className="px-4 py-2 text-right tabular-nums">{formatEuros(Number(d.montant_attendu))}</td>
+                          <td className="px-4 py-2 text-right tabular-nums">{formatEuros(paye)}</td>
+                          <td className="px-4 py-2">
+                            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${stInfo.cls}`}>{stInfo.label}</span>
+                          </td>
+                          {peutModifier && (
+                            <td className="px-4 py-2 text-right whitespace-nowrap">
+                              {d.mode_attendu === "liquide" && st === "a_payer" && (
+                                <button type="button" disabled={busy} className={btnGhost + " mr-1"} onClick={() => payerLiquide(d)}>
+                                  Marquer payé (caisse)
+                                </button>
+                              )}
+                              <button type="button" disabled={busy} className="text-xs text-muted hover:text-negative" onClick={() => supprimerDue(d.id)}>
+                                Suppr.
+                              </button>
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </section>
+
+          {peutModifier && (
+            <div className="grid items-start gap-4 md:grid-cols-[minmax(0,1fr)_18rem]">
               <form onSubmit={creerVente} className="rounded-xl border border-border bg-surface p-4 space-y-3">
                 <h2 className="text-sm font-semibold">Nouvelle vente attendue</h2>
                 <select className={input} value={sousId} onChange={(e) => setSousId(e.target.value)} required>
-                  <option value="">Sous-catégorie…</option>
+                  <option value="">Objet de vente…</option>
                   {sousDuDomaine.map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.nom}
@@ -416,75 +619,19 @@ export default function GestionVentesDiverses({
                   Enregistrer
                 </button>
               </form>
+              <form onSubmit={creerSousCat} className="rounded-xl border border-border bg-surface p-3 space-y-2">
+                <h2 className="text-sm font-semibold">Nouvel objet de vente</h2>
+                <div className="flex gap-2">
+                  <input className={input + " py-1.5"} placeholder="Ex. Vente photo" value={nomSous} onChange={(e) => setNomSous(e.target.value)} />
+                  <button type="submit" disabled={busy} className={btn + " shrink-0"}>
+                    Créer
+                  </button>
+                </div>
+                <p className="text-[11px] text-muted">Réutilisable d&apos;un exercice à l&apos;autre · {DOMAINES.find((d) => d.v === domaine)?.label}</p>
+              </form>
             </div>
           )}
 
-          {/* Tableau dus / payés */}
-          <section className="overflow-hidden rounded-xl border border-border bg-surface">
-            <div className="border-b border-border px-4 py-2 text-xs font-semibold uppercase tracking-wider text-muted">Ventes attendues</div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-border text-left text-xs text-muted">
-                    <th className="px-4 py-2 font-medium">Payeur</th>
-                    <th className="px-4 py-2 font-medium">Sous-catégorie</th>
-                    <th className="px-4 py-2 font-medium">Mode</th>
-                    <th className="px-4 py-2 font-medium text-right">Attendu</th>
-                    <th className="px-4 py-2 font-medium text-right">Payé</th>
-                    <th className="px-4 py-2 font-medium">Statut</th>
-                    {peutModifier && <th className="px-4 py-2 font-medium" />}
-                  </tr>
-                </thead>
-                <tbody>
-                  {duesFiltrees.length === 0 ? (
-                    <tr>
-                      <td colSpan={7} className="px-4 py-8 text-center text-muted">
-                        Aucune vente pour ce domaine.
-                      </td>
-                    </tr>
-                  ) : (
-                    duesFiltrees.map((d) => {
-                      const paye = payeDe(d.id);
-                      const st = statutVente(Number(d.montant_attendu), paye);
-                      const stInfo = STATUTS.find((s) => s.v === st)!;
-                      const cat = sousCategories.find((s) => s.id === d.sous_categorie_id)?.nom ?? "—";
-                      return (
-                        <tr key={d.id} className="border-b border-border/60">
-                          <td className="px-4 py-2 font-medium">
-                            {libellePayeur(d, familles, contacts)}
-                            {st === "paye" || st === "trop_percu" ? (
-                              <span className="ml-2 inline-flex h-5 w-5 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-700" title="Payé">
-                                ✓
-                              </span>
-                            ) : null}
-                          </td>
-                          <td className="px-4 py-2">{cat}</td>
-                          <td className="px-4 py-2 text-muted">{MODES.find((m) => m.v === d.mode_attendu)?.label}</td>
-                          <td className="px-4 py-2 text-right tabular-nums">{formatEuros(Number(d.montant_attendu))}</td>
-                          <td className="px-4 py-2 text-right tabular-nums">{formatEuros(paye)}</td>
-                          <td className="px-4 py-2">
-                            <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${stInfo.cls}`}>{stInfo.label}</span>
-                          </td>
-                          {peutModifier && (
-                            <td className="px-4 py-2 text-right whitespace-nowrap">
-                              {d.mode_attendu === "liquide" && st === "a_payer" && (
-                                <button type="button" disabled={busy} className={btnGhost + " mr-1"} onClick={() => payerLiquide(d)}>
-                                  Marquer payé (caisse)
-                                </button>
-                              )}
-                              <button type="button" disabled={busy} className="text-xs text-muted hover:text-negative" onClick={() => supprimerDue(d.id)}>
-                                Suppr.
-                              </button>
-                            </td>
-                          )}
-                        </tr>
-                      );
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </section>
         </>
       )}
 

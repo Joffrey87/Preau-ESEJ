@@ -14,6 +14,7 @@ import Icon from "./Icon";
 import BasculeTheme from "./BasculeTheme";
 import { PanneauBascule, type LiensEspace } from "./BasculeEspace";
 import { oublierSessions, type Espace } from "@/lib/basculeEspace";
+import { OuvrirBasculeReelle, finirBasculeReelle, ouvrirChoixBasculeReelle } from "./BasculeReelle";
 
 /** Espace de bascule du profil connecté (Directrice, Président ; sinon Recherche de fonds). */
 const espaceDuRole = (slug?: string, email?: string): Espace =>
@@ -29,6 +30,7 @@ export default function Sidebar({
   bascule,
   niveaux,
   webmestre = false,
+  basculeReelle,
 }: {
   userEmail?: string;
   /** Trésorier : le bloc « Préau » ouvre le choix du profil (vue seulement). */
@@ -42,6 +44,8 @@ export default function Sidebar({
   niveaux?: Record<string, Niveau>;
   /** Le profil connecté est Webmestre : le logo mène aussi à la page Webmestre. */
   webmestre?: boolean;
+  /** Bascule réelle du Webmestre en cours : sur son compte, ou sur un autre (le logo ouvre alors le choix des comptes). */
+  basculeReelle?: "webmestre" | "autre";
 }) {
   const pathname = usePathname();
   const recherche = useSearchParams();
@@ -72,6 +76,7 @@ export default function Sidebar({
     const supabase = createClient();
     // Le Webmestre quitte sa vue basculée (sans effet pour les autres comptes).
     if ((await supabase.rpc("est_webmestre")).data === true) await supabase.rpc("webmestre_vue_definir", { p_profil: null });
+    await finirBasculeReelle();
     await supabase.auth.signOut();
     oublierSessions();
     document.cookie = "recherche_prenom=; path=/; max-age=0; SameSite=Lax";
@@ -82,13 +87,13 @@ export default function Sidebar({
   return (
     <aside className="flex flex-col border-b border-border bg-surface max-md:sticky max-md:top-0 max-md:z-40 max-md:max-h-dvh max-md:overflow-y-auto md:h-screen md:w-56 md:shrink-0 md:border-b-0 md:border-r md:sticky md:top-0">
       <div ref={enteteRef} className="relative">
-        {peutChanger || bascule ? (
+        {peutChanger || bascule || basculeReelle === "autre" ? (
           <button
             type="button"
-            onClick={() => (surTelephone() ? setMenuOuvert((o) => !o) : setChoixOuvert((o) => !o))}
+            onClick={() => (surTelephone() ? setMenuOuvert((o) => !o) : basculeReelle === "autre" ? ouvrirChoixBasculeReelle() : setChoixOuvert((o) => !o))}
             aria-expanded={choixOuvert || menuOuvert}
             aria-haspopup="true"
-            title={bascule ? "Changer d'espace" : "Voir l'application en tant que…"}
+            title={basculeReelle === "autre" ? "Changer de compte (Webmestre)" : bascule ? "Changer d'espace" : "Voir l'application en tant que…"}
             className="flex w-full items-center gap-2.5 border-b border-border px-4 py-3 text-left transition-colors hover:bg-surface-2"
           >
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -147,6 +152,7 @@ export default function Sidebar({
                 Page Webmestre
               </Link>
             )}
+            {webmestre && <OuvrirBasculeReelle active={basculeReelle === "webmestre"} onAction={() => setChoixOuvert(false)} />}
             <div className="grid grid-cols-2 gap-1.5">
               {PROFILS_VUE.map((r) => {
                 const actif = r.slug === slugActif;

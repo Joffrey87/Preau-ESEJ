@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { oublierSessions } from "@/lib/basculeEspace";
 import { telechargerAttestation, type Attestation } from "@/lib/attestationPdf";
 import type { Association } from "@/lib/espaceFamille";
+import { finirBasculeReelle } from "./BasculeReelle";
 
 /** Déconnexion depuis l'espace famille. */
 export function Deconnexion() {
@@ -14,6 +15,7 @@ export function Deconnexion() {
     <button
       type="button"
       onClick={async () => {
+        await finirBasculeReelle();
         await createClient().auth.signOut();
         oublierSessions();
         router.push("/login");

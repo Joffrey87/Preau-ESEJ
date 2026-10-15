@@ -6,6 +6,8 @@ import { estEvenement, roleByEmail } from "@/lib/roles";
 import type { LiensEspace } from "@/components/BasculeEspace";
 import AideFlottante from "@/components/AideFlottante";
 import SidebarFamille from "@/components/SidebarFamille";
+import { contexteBasculeReelle } from "@/lib/basculeReelle";
+import { BandeauBasculeReelle } from "@/components/BasculeReelle";
 
 /** Espace d'une famille : son tableau de bord, ses paiements, sa fiche. Rien d'autre. */
 export default async function EspaceLayout({ children }: { children: React.ReactNode }) {
@@ -53,12 +55,15 @@ export default async function EspaceLayout({ children }: { children: React.React
       };
     }
   }
+  // Bascule réelle du Webmestre (jeton de 4 h) : bandeau permanent et choix des comptes depuis le logo.
+  const reelle = await contexteBasculeReelle(user, "");
   const aRevalider = !apercu && campagne != null && famille?.revalide_annee !== campagne;
 
   return (
     <div className="flex min-h-full flex-col bg-background md:flex-row">
-      <SidebarFamille famille={famille?.nom ?? ""} apercu={!!apercu} bascule={basculeLiee ?? (!apercu && famille ? { prenom: famille.membre_recherche ?? null, directrice: !!famille.directrice_liee, president: famille.profil_lie === "president", evenement } : undefined)} />
+      <SidebarFamille famille={famille?.nom ?? ""} apercu={!!apercu} basculeReelle={!!reelle && !reelle.surWebmestre} bascule={basculeLiee ?? (!apercu && famille ? { prenom: famille.membre_recherche ?? null, directrice: !!famille.directrice_liee, president: famille.profil_lie === "president", evenement } : undefined)} />
       <div className="min-w-0 flex-1">
+        {reelle && <BandeauBasculeReelle {...reelle} />}
         {apercu && (
           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-gold/40 bg-gold/15 px-5 py-2 text-[13px] md:px-8">
             <span className="font-semibold text-gold">⚠</span>

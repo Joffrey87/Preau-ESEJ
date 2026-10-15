@@ -8,6 +8,7 @@ import { oublierSessions } from "@/lib/basculeEspace";
 import Icon from "./Icon";
 import BasculeTheme from "./BasculeTheme";
 import { PanneauBascule, type LiensEspace } from "./BasculeEspace";
+import { finirBasculeReelle, ouvrirChoixBasculeReelle } from "./BasculeReelle";
 
 type Lien = { href: string; label: string; icon: string; exact: boolean };
 /** Menu par sections : Tableau de bord seul en haut, puis École, Finance, Informations. */
@@ -34,12 +35,15 @@ export default function SidebarFamille({
   famille,
   apercu = false,
   bascule,
+  basculeReelle = false,
 }: {
   famille: string;
   /** Aperçu du Trésorier : pas de déconnexion ni de changement d'espace. */
   apercu?: boolean;
   /** Espaces reliés : prénom du membre Recherche de fonds de la famille, s'il y en a un ; famille de la Directrice. */
   bascule?: Omit<LiensEspace, "famille">;
+  /** Webmestre en bascule réelle sur ce compte famille : le logo ouvre le choix des comptes. */
+  basculeReelle?: boolean;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -48,6 +52,7 @@ export default function SidebarFamille({
   const enteteRef = useRef<HTMLDivElement>(null);
   const surTelephone = () => typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches;
   const avecChoix = !apercu && !!bascule && (!!bascule.prenom || bascule.directrice || !!bascule.president || !!bascule.evenement);
+  const logoActif = avecChoix || basculeReelle;
   const liens: LiensEspace = { ...bascule, famille, prenom: bascule?.prenom ?? null, directrice: !!bascule?.directrice, president: !!bascule?.president, evenement: bascule?.evenement ?? null };
 
   useEffect(() => {
@@ -64,6 +69,7 @@ export default function SidebarFamille({
   }, [choixOuvert]);
 
   async function deconnecter() {
+    await finirBasculeReelle();
     await createClient().auth.signOut();
     oublierSessions();
     router.push("/login");
@@ -85,7 +91,7 @@ export default function SidebarFamille({
         strokeWidth={2}
         strokeLinecap="round"
         strokeLinejoin="round"
-        className={`ml-auto h-4 w-4 shrink-0 text-muted transition-transform ${avecChoix ? "" : "md:hidden"} ${choixOuvert || menuOuvert ? "rotate-180" : ""}`}
+        className={`ml-auto h-4 w-4 shrink-0 text-muted transition-transform ${logoActif ? "" : "md:hidden"} ${choixOuvert || menuOuvert ? "rotate-180" : ""}`}
         aria-hidden="true"
       >
         <path d="m6 9 6 6 6-6" />
@@ -99,11 +105,11 @@ export default function SidebarFamille({
       <div ref={enteteRef} className="relative">
         <button
           type="button"
-          onClick={() => (surTelephone() ? setMenuOuvert((o) => !o) : avecChoix && setChoixOuvert((o) => !o))}
+          onClick={() => (surTelephone() ? setMenuOuvert((o) => !o) : basculeReelle ? ouvrirChoixBasculeReelle() : avecChoix && setChoixOuvert((o) => !o))}
           aria-expanded={choixOuvert || menuOuvert}
           aria-haspopup="true"
-          title={avecChoix ? "Changer d'espace" : undefined}
-          className={`${classeLogo} ${avecChoix ? "" : "md:cursor-default md:hover:bg-transparent"}`}
+          title={basculeReelle ? "Changer de compte (Webmestre)" : avecChoix ? "Changer d'espace" : undefined}
+          className={`${classeLogo} ${logoActif ? "" : "md:cursor-default md:hover:bg-transparent"}`}
         >
           {contenuLogo}
         </button>

@@ -13,6 +13,8 @@ import JaugeDons, { type DonsExercice } from "@/components/JaugeDons";
 import { todayISO } from "@/lib/format";
 import type { LiensEspace } from "@/components/BasculeEspace";
 import { MEMBRES } from "@/lib/rechercheFonds";
+import { contexteBasculeReelle } from "@/lib/basculeReelle";
+import { BandeauBasculeReelle } from "@/components/BasculeReelle";
 
 export default async function AppLayout({
   children,
@@ -117,6 +119,8 @@ export default async function AppLayout({
     const liee = (((await supabase.rpc("ma_famille_liee")).data ?? []) as { id: string; nom: string }[])[0];
     if (liee && liee.nom === bascule.famille) bascule = { ...bascule, familleLiee: true };
   }
+  // Bascule réelle du Webmestre (jeton de 4 h) : bandeau permanent et choix des comptes depuis le logo.
+  const reelle = await contexteBasculeReelle(user, prenomVisite);
   const jauge = rechercheFonds ? ((await supabase.rpc("dons_exercice_courant")).data as DonsExercice) : null;
 
   return (
@@ -130,8 +134,10 @@ export default async function AppLayout({
           bascule={bascule}
           niveaux={acces?.niveaux}
           webmestre={!!acces?.webmestre}
+          basculeReelle={reelle ? (reelle.surWebmestre ? "webmestre" : "autre") : undefined}
         />
         <main className="flex-1 min-w-0">
+          {reelle && <BandeauBasculeReelle {...reelle} />}
           {enVue && (
             <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-gold/40 bg-gold/15 px-5 py-2 text-[13px] md:px-8">
               <Icon name="info" className="h-4 w-4 shrink-0 text-gold" />

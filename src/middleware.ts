@@ -71,6 +71,8 @@ export async function middleware(request: NextRequest) {
   if (user && (cheminLiee || (enFamilleLiee && versEspace))) return response;
   // Bascule par le logo (la route vérifie elle-même le lien entre les comptes).
   if (user && request.nextUrl.pathname === "/bascule") return response;
+  // Bascule réelle du Webmestre (la route vérifie elle-même le jeton et le compte).
+  if (user && request.nextUrl.pathname === "/bascule-webmestre") return response;
   // Hors de l'Espace famille, le mode « famille reliée » se referme de lui-même.
   if (enFamilleLiee) response.cookies.delete("famille_liee");
   if (user && estEvenement && !versEvenement) {

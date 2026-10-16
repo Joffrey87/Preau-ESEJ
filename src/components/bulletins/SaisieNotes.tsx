@@ -7,7 +7,7 @@ import { todayISO } from "@/lib/format";
 import {
   matiereConcerne,
   nomEleve,
-  nomEnseignant,
+  nomProfesseur,
   note20,
   type ContexteClasse,
   type Enseignant,
@@ -256,7 +256,7 @@ export default function SaisieNotes({
             .filter((id) => id !== ctx.classe.titulaire_id)
             .map((id) => enseignants.get(id))
             .filter((e): e is Enseignant => !!e)
-            .map(nomEnseignant)
+            .map(nomProfesseur)
             .join(", ") || "—"}{" "}
           · coef {String(matiere.coef).replace(".", ",")}
         </span>

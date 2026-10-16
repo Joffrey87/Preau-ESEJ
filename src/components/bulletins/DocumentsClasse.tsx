@@ -159,7 +159,7 @@ export default function DocumentsClasse({
         type="button"
         disabled={!cible}
         onClick={() => cible && allerA(cible.id)}
-        className={`flex min-h-[2.9rem] w-auto min-w-0 flex-1 items-center gap-1.5 rounded-lg border px-2 py-1 text-left md:min-h-0 md:flex-none md:shrink-0 transition-colors disabled:opacity-30 md:w-56 md:max-w-[45%] md:gap-2 md:px-3 md:py-1.5 ${suivant ? "order-2 flex-row-reverse text-right md:order-3" : "order-1"} ${
+        className={`flex min-h-[2.55rem] w-auto min-w-0 flex-1 items-center gap-1.5 rounded-lg border px-2 py-1 text-left md:min-h-0 md:flex-none md:shrink-0 transition-colors disabled:opacity-30 md:w-56 md:max-w-[45%] md:gap-2 md:px-3 md:py-1.5 ${suivant ? "order-2 flex-row-reverse text-right md:order-3" : "order-1"} ${
           changeNiveau ? "border-gold/50 bg-gold-soft/30 hover:bg-gold-soft/60" : "border-border bg-surface hover:bg-accent-soft/50"
         }`}
       >
@@ -172,7 +172,7 @@ export default function DocumentsClasse({
           ) : (
             <span className="block text-[13px] text-muted">{suivant ? "Dernier élève" : "Premier élève"}</span>
           )}
-          {changeNiveau && <span className="mt-0.5 inline-block rounded bg-gold-soft px-1.5 text-[10.5px] font-bold text-gold">Vers {niveauEleve(cible!) || "?"}</span>}
+          {changeNiveau && <span className="mt-0.5 inline-block rounded bg-gold-soft px-1.5 text-[10.5px] font-bold leading-[1.25] text-gold">Vers {niveauEleve(cible!) || "?"}</span>}
         </span>
       </button>
     );

@@ -6,7 +6,7 @@ import {
   MENTIONS,
   estSynthese,
   nomEleve,
-  nomEnseignant,
+  nomProfesseur,
   note20,
   rangTexte,
   type Bulletin,
@@ -234,7 +234,7 @@ export default function FicheBulletin({
                                 .filter((id) => id !== ctx.classe.titulaire_id)
                                 .map((id) => enseignants.get(id))
                                 .filter((e): e is Enseignant => !!e)
-                                .map(nomEnseignant)
+                                .map(nomProfesseur)
                                 .join(", ")}
                             </div>
                           </td>

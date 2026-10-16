@@ -132,6 +132,8 @@ const dateCourte = (iso: string) => {
   return `${Number(j)}.${m}.${a}`;
 };
 export const libellePeriode = (p: Pick<Periode, "libelle" | "debut" | "fin">) => p.libelle?.trim() || `Du ${dateCourte(p.debut)} au ${dateCourte(p.fin)}`;
+/** Nom d'un professeur à l'écran : prénom et nom, sans civilité (les documents gardent « Mme », « Mlle »). */
+export const nomProfesseur = (e: Pick<Enseignant, "prenom" | "nom">) => [e.prenom, e.nom].filter(Boolean).join(" ");
 export const nomEnseignant = (e: Pick<Enseignant, "civilite" | "prenom" | "nom">) => [e.civilite, e.prenom, e.nom].filter(Boolean).join(" ");
 export const nomEleve = (e: Pick<EleveBulletin, "prenom" | "nom">) => `${e.prenom ?? ""} ${e.nom}`.trim();
 

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { CLASSES } from "@/lib/eleves";
-import { libellePeriode, niveauDe, nomEleve, nomEnseignant, type Classe, type EleveBulletin, type Enseignant, type Groupe, type Matiere, type Periode } from "@/lib/bulletins";
+import { libellePeriode, niveauDe, nomEleve, nomProfesseur, type Classe, type EleveBulletin, type Enseignant, type Groupe, type Matiere, type Periode } from "@/lib/bulletins";
 import type { Referentiel } from "@/lib/bulletinsDonnees";
 import { Modal, Field, inputCls } from "@/components/GestionComptes";
 
@@ -454,7 +454,7 @@ function CarteClasse({
             <option value="">—</option>
             {enseignants.filter((e) => e.actif).map((e) => (
               <option key={e.id} value={e.id}>
-                {nomEnseignant(e)}
+                {nomProfesseur(e)}
               </option>
             ))}
           </select>

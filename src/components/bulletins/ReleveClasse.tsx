@@ -1,5 +1,6 @@
 "use client";
 
+import { todayISO } from "@/lib/format";
 import { createPortal } from "react-dom";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
@@ -7,6 +8,7 @@ import {
   arrondi,
   estAppreciationSeule,
   estSynthese,
+  evaluationConcerne,
   matiereConcerne,
   niveauDe,
   nomEleve,
@@ -32,7 +34,7 @@ const nombre = (n: number) => String(arrondi(n)).replace(".", ",");
 
 /**
  * Relevés de notes d'une période, en tableau de classe compact (comme le Conseil de classe) : une ligne par élève, les
- * notes de la période dans chaque matière (aucune moyenne), l'appréciation générale et l'état du relevé. Un clic sur
+ * moyenne de la période dans chaque matière, l'appréciation générale et l'état du relevé. Un clic sur
  * une matière ou une case ouvre la saisie de cette matière (évaluations, notes, + Évaluation) ; un clic sur l'élève
  * ouvre son appréciation générale. Relevé publié : notes de l'élève verrouillées (aussi en base).
  * Catéchisme : une appréciation seule, sans note ; sa case ouvre la ligne de l'élève, où elle se rédige.
@@ -70,15 +72,19 @@ export default function ReleveClasse({
   const [occupe, setOccupe] = useState(false);
   const [matiereOuverte, setMatiereOuverte] = useState<string | null>(null);
   const [eleveOuvert, setEleveOuvert] = useState<string | null>(null);
-  // « + Évaluation » : choix de la matière, puis saisie ouverte avec le formulaire de création.
-  const [choixEvaluation, setChoixEvaluation] = useState(false);
+  // « + Évaluation » : saisie de la première matière dont on est responsable, formulaire de création ouvert.
   const [matiereEvalAuto, setMatiereEvalAuto] = useState<string | null>(null);
+  // Saisie ouverte par « + Évaluation » : changer de matière dans la liste rouvre le formulaire de création.
+  const [depuisEvaluation, setDepuisEvaluation] = useState(false);
+  // Case cliquée dans le tableau : la saisie s'ouvre sur la note de cet élève (première évaluation), prête à être modifiée.
+  const [eleveCible, setEleveCible] = useState<string | null>(null);
   const [demandeVue, setDemandeVue] = useState(demandeEvaluation);
+  const [demandeEnAttente, setDemandeEnAttente] = useState(false);
   useEffect(() => {
     if (demandeEvaluation !== demandeVue) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- demande venue du menu latéral
       setDemandeVue(demandeEvaluation);
-      setChoixEvaluation(true);
+      setDemandeEnAttente(true);
     }
   }, [demandeEvaluation, demandeVue]);
   const defilementRef = useRef<HTMLDivElement>(null);
@@ -132,7 +138,8 @@ export default function ReleveClasse({
     }
     return evals.flatMap((ev) => {
       const n = notesDe.get(`${ev.id}:${e.id}`);
-      if (!n) return [];
+      // Pas de note : considéré absent (ne compte pas dans la moyenne), sauf évaluation d'un autre niveau.
+      if (!n) return evaluationConcerne(ev, niveauDe(e, vue.classe.annee_scolaire)) ? ["abs"] : [];
       if (n.etat) return [ETAT_COURT[n.etat] ?? n.etat];
       if (n.note == null) return [];
       return [Number(ev.bareme) === 20 ? nombre(Number(n.note)) : `${nombre(Number(n.note))}/${nombre(Number(ev.bareme))}`];
@@ -268,7 +275,7 @@ export default function ReleveClasse({
   const barreNiveaux =
     multiNiveaux && eleves.length > 0 ? (
       <div className="flex flex-wrap items-center justify-center gap-1.5">
-        <span className="text-[12.5px] text-muted">Afficher :</span>
+        <span className="hidden text-[12.5px] text-muted md:inline">Afficher :</span>
         {groupesNiveau.map((g) => (
           <button
             key={g.niveau}
@@ -292,31 +299,28 @@ export default function ReleveClasse({
   // Matières où l'on peut créer une évaluation (celles dont on est responsable, hors appréciation seule).
   const matieresEvaluation = toutVerrouille
     ? []
-    : vue.matieres.filter((m) => m.actif && !estAppreciationSeule(m.nom) && droits.peutSaisirNotes(m) && (droits.enseignantId ? m.enseignants.includes(droits.enseignantId) || directrice : droits.peutNoter(m)));
+    : vue.matieres.filter((m) => m.actif && !estAppreciationSeule(m.nom) && droits.peutSaisirNotes(m) && (droits.enseignantId ? m.enseignants.includes(droits.enseignantId) || directrice : droits.peutNoter(m))).sort((a, b) => (vue.groupes.find((g) => g.id === a.groupe_id)?.ordre ?? 0) - (vue.groupes.find((g) => g.id === b.groupe_id)?.ordre ?? 0) || a.ordre - b.ordre);
   const creerEvaluationDans = (m: Matiere) => {
-    setChoixEvaluation(false);
+    setEleveCible(null);
+    setDepuisEvaluation(true);
+    setDemandeEnAttente(false);
     setMatiereEvalAuto(m.id);
     setMatiereOuverte(m.id);
   };
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- demande du menu latéral
+    if (demandeEnAttente && matieresEvaluation.length > 0) creerEvaluationDans(matieresEvaluation[0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [demandeEnAttente]);
   const boutonEvaluation = matieresEvaluation.length > 0 && !matiere && (
-    <div className="flex flex-col items-center gap-1.5">
+    <div className="contents">
       <button
         type="button"
-        onClick={() => (matieresEvaluation.length === 1 ? creerEvaluationDans(matieresEvaluation[0]) : setChoixEvaluation((o) => !o))}
+        onClick={() => creerEvaluationDans(matieresEvaluation[0])}
         className="rounded-lg bg-accent px-3 py-1.5 text-[13px] font-medium text-accent-fg hover:opacity-90"
       >
         + Évaluation
       </button>
-      {choixEvaluation && matieresEvaluation.length > 1 && (
-        <div className="flex max-w-3xl flex-wrap items-center justify-center gap-1 rounded-xl border border-accent/40 bg-accent-soft/30 p-2">
-          <span className="text-[12.5px] text-muted">Dans quelle matière ?</span>
-          {matieresEvaluation.map((m) => (
-            <button key={m.id} type="button" onClick={() => creerEvaluationDans(m)} className="rounded-full border border-border bg-background px-2.5 py-0.5 text-[12.5px] hover:bg-accent-soft">
-              {m.nom}
-            </button>
-          ))}
-        </div>
-      )}
     </div>
   );
 
@@ -324,7 +328,7 @@ export default function ReleveClasse({
     <div className="ml-auto flex flex-wrap gap-2">
             {(directrice || titulaire) && (
           <CommutateurPret
-            publie={docs_.length > 0 && docs_.every((d) => d.statut === "publie")}
+            publie={periode.fin < todayISO() || (docs_.length > 0 && docs_.every((d) => d.statut === "publie"))}
             pret={docs_.length > 0 && docs_.every((d) => ["pret", "valide", "publie"].includes(d.statut))}
             onChange={(v) => (v && !directrice && !confirmerPret() ? undefined : changer(v ? "pret" : "en_cours"))}
             disabled={occupe || !docs_.length}
@@ -361,13 +365,13 @@ export default function ReleveClasse({
         <div className="rounded-xl border-2 border-accent/40 bg-accent-soft/20 p-3">
           {/* Bouton de retour au centre ; le libellé à gauche, la colonne de droite l'équilibre. */}
           <div className="mb-2 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-            <span className="text-[12.5px] font-semibold uppercase tracking-wide text-accent">Saisie des notes</span>
-            <button type="button" onClick={() => setMatiereOuverte(null)} className="px-4 py-1.5 text-[13px] font-semibold text-gold hover:underline">
+            <span className="whitespace-nowrap text-[12.5px] font-semibold uppercase tracking-wide text-accent">Saisie des notes</span>
+            <button type="button" onClick={() => { setMatiereOuverte(null); setDepuisEvaluation(false); }} className="px-4 py-1.5 text-[13px] font-semibold text-gold hover:underline">
               ← Retour Relevés de notes
             </button>
             <span />
           </div>
-          <SaisieNotes ctx={ctx} resultats={resultats} droits={droitsSaisie} enseignants={enseignants} onMaj={onMaj} matiereImposee={matiere.id} verrouEleve={verrouNotes} niveauSeul={tousNiveaux ? null : niveauAffiche} barreNiveaux={barreNiveaux} creerAuto={matiereEvalAuto === matiere.id} onCreerAutoFait={() => setMatiereEvalAuto(null)} />
+          <SaisieNotes key={matiere.id} eleveCible={eleveCible} ctx={ctx} resultats={resultats} droits={droitsSaisie} enseignants={enseignants} onMaj={onMaj} matiereImposee={matiere.id} verrouEleve={verrouNotes} niveauSeul={tousNiveaux ? null : niveauAffiche} barreNiveaux={barreNiveaux} onChoisirNiveaux={(n) => setNiveauChoisi(n.length === 1 ? n[0] : "*")} matieresChoix={matieresEvaluation.map((m) => ({ id: m.id, nom: m.nom }))} onChoisirMatiere={(id) => { setMatiereOuverte(id); if (depuisEvaluation) setMatiereEvalAuto(id); }} creerAuto={matiereEvalAuto === matiere.id} onCreerAutoFait={() => setMatiereEvalAuto(null)} />
         </div>
       )}
 
@@ -438,7 +442,7 @@ export default function ReleveClasse({
 
       {!eleves.length && <p className="text-sm text-muted">Aucun élève dans cette classe.</p>}
       {!matiere && (barreNiveaux || boutonEvaluation) && (
-        <div className="flex flex-col items-center gap-2">
+        <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-2">
           {barreNiveaux}
           {boutonEvaluation}
         </div>
@@ -551,16 +555,22 @@ export default function ReleveClasse({
                           );
                         }
                         const t = concerne ? notesCourtes(e, m) : [];
+                        // Moyenne de la matière dans la période (détail des notes : au survol, et à l'ouverture de la case).
+                        const moy = concerne ? resultats.find((r) => r.eleve.id === e.id)?.groupes.flatMap((g) => g.matieres).find((x) => x.matiere.id === m.id)?.chiffre.moy ?? null : null;
                         const droit = concerne && droits.peutSaisirNotes(m);
                         return (
                           <td
                             key={e.id}
-                            onClick={() => droit && setMatiereOuverte(m.id)}
-                            title={droit ? `Ajouter une évaluation ou une note · ${m.nom} · ${nomEleve(e)}` : undefined}
+                            onClick={() => {
+                              if (!droit) return;
+                              setEleveCible(e.id);
+                              setMatiereOuverte(m.id);
+                            }}
+                            title={droit ? `${t.length ? `${t.join(" · ")} — ` : ""}Détail des notes, moyenne et appréciation · ${m.nom} · ${nomEleve(e)}` : undefined}
                             className={`group px-0.5 py-2 text-center tabular-nums md:px-1.5 ${bord} ${droit ? "cursor-pointer hover:bg-accent-soft/50" : concerne ? "" : "bg-surface-2/50"}`}
                           >
-                            <span className="whitespace-nowrap text-[12.5px]">{t.join(" · ")}</span>
-                            {concerne && !t.length && (appreciationDe(d, m)?.texte?.trim() || commentaireMatiere(e.id, m)) && (
+                            <span className="whitespace-nowrap text-[12.5px]">{moy != null ? nombre(moy) : t.join(" · ")}</span>
+                            {concerne && moy == null && !t.length && (appreciationDe(d, m)?.texte?.trim() || commentaireMatiere(e.id, m)) && (
                               <span title="Appréciation renseignée" aria-label="Appréciation renseignée" className="ml-1 text-[13px] text-white">
                                 ...
                               </span>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useSauvegardeAuto } from "@/lib/sauvegardeAuto";
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { todayISO } from "@/lib/format";
 import {
@@ -38,7 +38,18 @@ export default function SaisieNotes({
   barreNiveaux,
   creerAuto = false,
   onCreerAutoFait,
+  onChoisirNiveaux,
+  eleveCible,
+  matieresChoix,
+  onChoisirMatiere,
 }: {
+  /** Case du relevé cliquée : la note de cet élève est ouverte à la saisie. */
+  eleveCible?: string | null;
+  /** Relevé : liste de matières pour changer de matière sans revenir au tableau. */
+  matieresChoix?: { id: string; nom: string }[];
+  onChoisirMatiere?: (id: string) => void;
+  /** Niveaux cochés dans « + Évaluation » : le relevé aligne dessus son choix de bloc de niveau. */
+  onChoisirNiveaux?: (niveaux: string[]) => void;
   /** Ouvre aussitôt le formulaire « + Évaluation » (lien du relevé ou du menu). */
   creerAuto?: boolean;
   onCreerAutoFait?: () => void;
@@ -78,10 +89,42 @@ export default function SaisieNotes({
     const possibles = (matiere.niveaux.length ? matiere.niveaux : ctx.classe.niveaux).filter((n) => ctx.classe.niveaux.includes(n));
     const deja = ctx.evaluations.filter((e) => e.matiere_id === matiere.id && (!niveauSeul || evaluationConcerne(e, niveauSeul))).length;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- ouverture demandée par le relevé
-    setNouvelle({ titre: `Évaluation ${deja + 1}`, date: todayISO() <= ctx.periode.fin ? todayISO() : ctx.periode.fin, coef: 1, bareme: 20, niveaux: niveauSeul && possibles.includes(niveauSeul) ? [niveauSeul] : [] });
+    setNouvelle({ titre: `Évaluation ${deja + 1}`, date: todayISO() <= ctx.periode.fin ? todayISO() : ctx.periode.fin, coef: 1, bareme: 20, niveaux: niveauSeul && possibles.includes(niveauSeul) ? [niveauSeul] : possibles });
     onCreerAutoFait?.();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [creerAuto]);
+
+  // Case du relevé cliquée : défilement jusqu'à l'élève et curseur dans sa première note.
+  useEffect(() => {
+    if (!eleveCible) return;
+    const t = window.setTimeout(() => {
+      const ligne = [...document.querySelectorAll<HTMLElement>(`[data-eleve="${eleveCible}"]`)].find((el) => el.offsetParent !== null);
+      const champ = ligne?.querySelector<HTMLInputElement>("input[data-case]:not(:disabled)");
+      ligne?.scrollIntoView({ block: "center", behavior: "smooth" });
+      champ?.focus({ preventScroll: true });
+    }, 50);
+    return () => window.clearTimeout(t);
+  }, [eleveCible]);
+  // Blocs de niveau du relevé et cases « Niveau(x) concerné(s) » de « + Évaluation » : liés dans les deux sens.
+  const viaCases = useRef(false);
+  useEffect(() => {
+    if (viaCases.current) {
+      viaCases.current = false;
+      return;
+    }
+    if (!nouvelle || !matiere) return;
+    const possibles = (matiere.niveaux.length ? matiere.niveaux : ctx.classe.niveaux).filter((n) => ctx.classe.niveaux.includes(n));
+    if (possibles.length < 2) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- le bloc de niveau choisi coche les niveaux
+    setNouvelle((cur) => (cur ? { ...cur, niveaux: niveauSeul && possibles.includes(niveauSeul) ? [niveauSeul] : possibles } : cur));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [niveauSeul]);
+  const changerNiveauxCoches = (n: string[]) => {
+    setNouvelle((cur) => (cur ? { ...cur, niveaux: n } : cur));
+    const cible = n.length === 1 ? n[0] : null;
+    if (cible !== (niveauSeul ?? null)) viaCases.current = true;
+    onChoisirNiveaux?.(n);
+  };
 
   if (!matiere) return <p className="text-sm text-muted">Aucune matière dans cette classe.</p>;
   const peutNoter = droits.peutSaisirNotes(matiere);
@@ -100,6 +143,7 @@ export default function SaisieNotes({
 
   // Élèves qui suivent l'évaluation en cours de création : ceux des niveaux cochés.
   const elevesNouvelle = lignes.filter((r) => !multiNiveaux || (nouvelle?.niveaux ?? []).includes(r.niveau ?? ""));
+  const niveauxListe = new Set(elevesNouvelle.map((r) => r.niveau));
 
   async function enregistrerNote(ev: Evaluation, eleveId: string, saisie: string) {
     const t = saisie.trim().toLowerCase().replace(",", ".");
@@ -220,7 +264,7 @@ export default function SaisieNotes({
         {peutNoter && !nouvelle ? (
           <button
             type="button"
-            onClick={() => setNouvelle({ titre: `Évaluation ${evals.length + 1}`, date: todayISO() <= ctx.periode.fin ? todayISO() : ctx.periode.fin, coef: 1, bareme: 20, niveaux: niveauSeul && niveauxPossibles.includes(niveauSeul) ? [niveauSeul] : [] })}
+            onClick={() => setNouvelle({ titre: `Évaluation ${evals.length + 1}`, date: todayISO() <= ctx.periode.fin ? todayISO() : ctx.periode.fin, coef: 1, bareme: 20, niveaux: niveauSeul && niveauxPossibles.includes(niveauSeul) ? [niveauSeul] : niveauxPossibles })}
             className="rounded-lg bg-accent px-3 py-1.5 text-[13px] font-medium text-accent-fg hover:opacity-90"
           >
             + Évaluation
@@ -236,6 +280,23 @@ export default function SaisieNotes({
           <Champ label="Titre" large>
             <input autoFocus value={nouvelle.titre ?? ""} onChange={(e) => setNouvelle({ ...nouvelle, titre: e.target.value })} className={classeChamp} />
           </Champ>
+          {matieresChoix && matieresChoix.length > 1 && onChoisirMatiere && (
+            <Champ label="Matière">
+            <select
+              value={matiere.id}
+              onChange={(e) => onChoisirMatiere(e.target.value)}
+              className="cursor-pointer rounded-lg bg-accent px-3 py-1.5 text-[13px] font-medium text-accent-fg outline-none hover:opacity-90 focus:ring-2 focus:ring-accent/40"
+              aria-label="Matière"
+              title="Changer de matière"
+            >
+              {matieresChoix.map((m) => (
+                <option key={m.id} value={m.id} className="bg-background text-foreground">
+                  {m.nom}
+                </option>
+              ))}
+            </select>
+            </Champ>
+          )}
           <Champ label="Date">
             <input type="date" value={nouvelle.date ?? ""} min={ctx.periode.debut} max={ctx.periode.fin} onChange={(e) => setNouvelle({ ...nouvelle, date: e.target.value })} className={classeChamp} />
           </Champ>
@@ -248,29 +309,29 @@ export default function SaisieNotes({
           {multiNiveaux && (
             <div className="flex flex-col gap-0.5">
               <span className="text-[11px] text-muted">Niveau(x) concerné(s)</span>
-              <ChoixNiveaux possibles={niveauxPossibles} choix={nouvelle.niveaux ?? []} onChange={(n) => setNouvelle({ ...nouvelle, niveaux: n })} />
+              <ChoixNiveaux possibles={niveauxPossibles} choix={nouvelle.niveaux ?? []} onChange={changerNiveauxCoches} />
             </div>
           )}
-          <button type="button" onClick={creerEvaluation} className="rounded-lg bg-accent px-3 py-1.5 font-medium text-accent-fg hover:opacity-90">
-            Créer
-          </button>
-          <button type="button" onClick={() => { setNouvelle(null); setNotesNouvelle({}); }} className="rounded-lg px-3 py-1.5 hover:bg-surface-2">
-            Annuler
-          </button>
         </div>
       )}
 
       {/* Téléphone, notes existantes : par élève, une ligne de nom, les notes, puis la moyenne et l'appréciation. */}
       {!nouvelle && vue === "grille" && (
         <div className="space-y-2 md:hidden">
-          {lignes.map((r) => {
+          {lignes.map((r, k) => {
             const m = r.groupes.flatMap((g) => g.matieres).find((x) => x.matiere.id === matiere.id);
             const siens = evals.filter((ev) => evaluationConcerne(ev, r.niveau));
             return (
-              <div key={r.eleve.id} className="overflow-hidden rounded-xl border border-border bg-surface">
+              <Fragment key={r.eleve.id}>
+              {multiNiveaux && !niveauSeul && (k === 0 || lignes[k - 1].niveau !== r.niveau) && (
+                <div className="mt-1 rounded-md border-l-4 border-gold bg-gold-soft/50 px-2 py-px text-[11px] font-semibold leading-tight text-gold">
+                  {r.niveau ?? "Niveau non renseigné"} · {lignes.filter((x) => x.niveau === r.niveau).length} élève(s)
+                </div>
+              )}
+              <div data-eleve={r.eleve.id} className="overflow-hidden rounded-xl border border-border bg-surface">
                 <div className="bg-gold-soft/50 px-3 py-1 text-[13px] font-semibold">
                   {nomEleve(r.eleve)}
-                  {multiNiveaux && r.niveau && <span className="ml-1.5 text-[11px] font-normal text-muted">{r.niveau}</span>}
+                  {multiNiveaux && !niveauSeul && r.niveau && <span className="ml-1.5 text-[11px] font-normal text-muted">{r.niveau}</span>}
                   {verrouEleve?.(r.eleve.id) && <span className="ml-1.5 text-[10px]">🔒</span>}
                 </div>
                 {siens.length > 0 && (
@@ -294,20 +355,21 @@ export default function SaisieNotes({
                     })}
                   </div>
                 )}
-                <div className="flex items-start gap-2 border-t border-border/60 px-3 py-1.5">
-                  <span className="shrink-0 pt-1 font-semibold tabular-nums">{note20(m?.chiffre.moy ?? null)}</span>
+                <div className="flex items-stretch gap-2 border-t border-border/60 px-3 py-1.5">
+                  <span className="flex w-16 shrink-0 items-center justify-center self-stretch rounded-md border border-border bg-surface-2/60 font-semibold tabular-nums">{m?.chiffre.moy == null ? "-/20" : note20(m.chiffre.moy)}</span>
                   <div className="min-w-0 flex-1">
                     <ChampAppreciation
                       key={`${r.bulletin?.id ?? r.eleve.id}:${matiere.id}`}
                       valeur={m?.ligne?.commentaire ?? ""}
                       disabled={!!raisonVerrou(droits, matiere, r)}
                       raison={raisonVerrou(droits, matiere, r)}
-                      lignes={1}
+                      lignes={2}
                       onEnregistrer={(t) => (r.bulletin ? enregistrerAppreciation(sb, onMaj, r.bulletin.id, matiere.id, t) : Promise.resolve("Bulletin pas encore créé."))}
                     />
                   </div>
                 </div>
               </div>
+              </Fragment>
             );
           })}
           {!lignes.length && <p className="px-3 py-6 text-center text-muted">Aucun élève concerné par cette matière.</p>}
@@ -317,20 +379,26 @@ export default function SaisieNotes({
       {/* Téléphone, nouvelle évaluation : par élève, une ligne de nom, puis la note et l'appréciation. */}
       {nouvelle && (
         <div className="space-y-2 md:hidden">
-          {elevesNouvelle.map((r) => (
-            <div key={r.eleve.id} className="overflow-hidden rounded-xl border border-border bg-surface">
+          {elevesNouvelle.map((r, k) => (
+            <Fragment key={r.eleve.id}>
+            {niveauxListe.size > 1 && (k === 0 || elevesNouvelle[k - 1].niveau !== r.niveau) && (
+              <div className="mt-1 rounded-md border-l-4 border-gold bg-gold-soft/50 px-2 py-px text-[11px] font-semibold leading-tight text-gold">
+                {r.niveau ?? "Niveau non renseigné"} · {elevesNouvelle.filter((x) => x.niveau === r.niveau).length} élève(s)
+              </div>
+            )}
+            <div className="overflow-hidden rounded-xl border border-border bg-surface">
               <div className="bg-gold-soft/50 px-3 py-1 text-[13px] font-semibold">
                 {nomEleve(r.eleve)}
-                {multiNiveaux && r.niveau && <span className="ml-1.5 text-[11px] font-normal text-muted">{r.niveau}</span>}
+                {multiNiveaux && !niveauSeul && r.niveau && <span className="ml-1.5 text-[11px] font-normal text-muted">{r.niveau}</span>}
               </div>
-              <div className="flex items-start gap-2 border-t border-border/60 px-3 py-1.5">
+              <div className="flex items-stretch gap-2 border-t border-border/60 px-3 py-1.5">
                 <input
                   value={notesNouvelle[r.eleve.id] ?? ""}
                   disabled={!!verrouEleve?.(r.eleve.id)}
                   inputMode="decimal"
                   placeholder={`/${String(nouvelle.bareme ?? 20).replace(".", ",")}`}
                   onChange={(e) => setNotesNouvelle({ ...notesNouvelle, [r.eleve.id]: e.target.value })}
-                  className="w-16 shrink-0 rounded-md border border-border bg-background px-1 py-0.5 text-center tabular-nums outline-none focus:border-accent"
+                  className="w-16 shrink-0 self-stretch rounded-md border border-border bg-background px-1 py-0.5 text-center tabular-nums outline-none focus:border-accent"
                 />
                 <div className="min-w-0 flex-1">
                   <ChampAppreciation
@@ -338,12 +406,13 @@ export default function SaisieNotes({
                     valeur={r.groupes.flatMap((g) => g.matieres).find((x) => x.matiere.id === matiere.id)?.ligne?.commentaire ?? ""}
                     disabled={!!raisonVerrou(droits, matiere, r)}
                     raison={raisonVerrou(droits, matiere, r)}
-                    lignes={1}
+                    lignes={2}
                     onEnregistrer={(t) => (r.bulletin ? enregistrerAppreciation(sb, onMaj, r.bulletin.id, matiere.id, t) : Promise.resolve("Bulletin pas encore créé."))}
                   />
                 </div>
               </div>
             </div>
+            </Fragment>
           ))}
           {!elevesNouvelle.length && <p className="px-3 py-4 text-center text-muted">Cochez un niveau pour saisir les notes des élèves concernés.</p>}
         </div>
@@ -361,11 +430,19 @@ export default function SaisieNotes({
               </tr>
             </thead>
             <tbody>
-              {elevesNouvelle.map((r) => (
-                <tr key={r.eleve.id} className="border-t border-border/60">
+              {elevesNouvelle.map((r, k) => (
+                <Fragment key={r.eleve.id}>
+                {niveauxListe.size > 1 && (k === 0 || elevesNouvelle[k - 1].niveau !== r.niveau) && (
+                  <tr className="border-t-2 border-gold/50 bg-gold-soft/50">
+                    <td colSpan={3} className="px-3 py-0.5 text-[11px] font-semibold leading-tight text-gold">
+                      {r.niveau ?? "Niveau non renseigné"} · {elevesNouvelle.filter((x) => x.niveau === r.niveau).length} élève(s)
+                    </td>
+                  </tr>
+                )}
+                <tr className="border-t border-border/60">
                   <td className="px-3 py-1">
                     {nomEleve(r.eleve)}
-                    {multiNiveaux && <span className="ml-1.5 text-[10.5px] text-muted">{r.niveau}</span>}
+                    {multiNiveaux && !niveauSeul && <span className="ml-1.5 text-[10.5px] text-muted">{r.niveau}</span>}
                   </td>
                   <td className="border-l border-border/60 px-1 py-0.5 text-center">
                     <input
@@ -382,11 +459,12 @@ export default function SaisieNotes({
                       valeur={r.groupes.flatMap((g) => g.matieres).find((x) => x.matiere.id === matiere.id)?.ligne?.commentaire ?? ""}
                       disabled={!!raisonVerrou(droits, matiere, r)}
                       raison={raisonVerrou(droits, matiere, r)}
-                      lignes={1}
+                      lignes={2}
                       onEnregistrer={(t) => (r.bulletin ? enregistrerAppreciation(sb, onMaj, r.bulletin.id, matiere.id, t) : Promise.resolve("Bulletin pas encore créé."))}
                     />
                   </td>
                 </tr>
+                </Fragment>
               ))}
               {!elevesNouvelle.length && (
                 <tr>
@@ -397,6 +475,20 @@ export default function SaisieNotes({
               )}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {/* Créer / Annuler : flottants, centrés en bas, visibles pendant le défilement. */}
+      {nouvelle && (
+        <div className="pointer-events-none sticky bottom-4 z-30 flex justify-center">
+          <div className="pointer-events-auto flex gap-2 rounded-xl border border-border bg-surface p-1.5 shadow-lg">
+            <button type="button" onClick={creerEvaluation} className="rounded-lg bg-accent px-5 py-2 text-[13px] font-medium text-accent-fg hover:opacity-90">
+              Créer
+            </button>
+            <button type="button" onClick={() => { setNouvelle(null); setNotesNouvelle({}); }} className="rounded-lg px-5 py-2 text-[13px] hover:bg-surface-2">
+              Annuler
+            </button>
+          </div>
         </div>
       )}
 
@@ -436,14 +528,14 @@ export default function SaisieNotes({
                 <Fragment key={r.eleve.id}>
                 {nouveauNiveau && (
                   <tr className="border-t-2 border-gold/50 bg-gold-soft/50">
-                    <td colSpan={evals.length + 3} className="px-3 py-1 text-[12px] font-semibold text-gold">
+                    <td colSpan={evals.length + 3} className="px-3 py-0.5 text-[11px] font-semibold leading-tight text-gold">
                       <span className="sticky left-3">
                         {r.niveau ?? "Niveau non renseigné"} · {lignes.filter((x) => x.niveau === r.niveau).length} élève(s)
                       </span>
                     </td>
                   </tr>
                 )}
-                <tr className="border-t border-border/60">
+                <tr data-eleve={r.eleve.id} className="border-t border-border/60">
                   <td className="sticky left-0 z-10 bg-surface px-3 py-1">
                     {nomEleve(r.eleve)}
                     {verrouEleve?.(r.eleve.id) && <span className="ml-1.5 text-[10px] text-muted" title="Relevé publié : notes verrouillées">🔒</span>}
@@ -477,7 +569,7 @@ export default function SaisieNotes({
                       valeur={m?.ligne?.commentaire ?? ""}
                       disabled={!!raisonVerrou(droits, matiere, r)}
                       raison={raisonVerrou(droits, matiere, r)}
-                      lignes={1}
+                      lignes={2}
                       onEnregistrer={(t) => (r.bulletin ? enregistrerAppreciation(sb, onMaj, r.bulletin.id, matiere.id, t) : Promise.resolve("Bulletin pas encore créé."))}
                     />
                   </td>
@@ -496,10 +588,6 @@ export default function SaisieNotes({
         </table>
       </div>
       )}
-      <p className="text-[11.5px] text-muted">
-        Saisie : un nombre (virgule acceptée), ou <strong>abs</strong> (absent), <strong>disp</strong> (dispensé), <strong>nr</strong> (non rendu) — ces trois-là ne comptent pas
-        dans la moyenne. Les évaluations sont ramenées sur 20 et pondérées par leur coefficient.
-      </p>
     </div>
   );
 }
@@ -536,6 +624,7 @@ function CaseNote({
       value={texte}
       disabled={disabled}
       inputMode="decimal"
+      placeholder="abs"
       onChange={(e) => changer(e.target.value)}
       onFocus={(e) => e.target.select()}
       onKeyDown={onKeyDown}

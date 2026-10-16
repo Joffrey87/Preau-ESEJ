@@ -135,7 +135,7 @@ export default function FicheBulletin({
             className="rounded-md border border-border px-2 py-1 disabled:opacity-40 hover:bg-surface-2"
             title="Élève précédent (Alt + ←)"
           >
-            ← {precedent ? nomEleve(precedent.eleve) : ""}
+            ← {precedent ? `${precedent.eleve.prenom ?? ""} ${(precedent.eleve.nom ?? "").trim().charAt(0).toUpperCase()}.` : ""}
           </button>
           <button
             type="button"
@@ -144,7 +144,7 @@ export default function FicheBulletin({
             className="rounded-md border border-border px-2 py-1 disabled:opacity-40 hover:bg-surface-2"
             title="Élève suivant (Alt + →)"
           >
-            {suivant ? nomEleve(suivant.eleve) : ""} →
+            {suivant ? `${suivant.eleve.prenom ?? ""} ${(suivant.eleve.nom ?? "").trim().charAt(0).toUpperCase()}.` : ""} →
           </button>
         </div>
       </div>
@@ -374,8 +374,6 @@ export function ChampTexte({
         {...extensible}
         className="w-full resize-y rounded-md border border-transparent bg-transparent px-1.5 py-1 text-[13px] leading-snug outline-none hover:border-border focus:border-accent focus:bg-background disabled:hover:border-transparent"
       />
-      {max && !disabled && texte.length > max * 0.8 && <div className="text-right text-[10.5px] text-muted">{texte.length}/{max}</div>}
-      {compteur && <div className="text-right text-[10.5px] text-muted">{texte.length} caractères</div>}
     </div>
   );
 }

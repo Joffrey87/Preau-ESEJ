@@ -49,67 +49,82 @@ class Svg:
 
 
 # 1. Créer une évaluation et saisir les notes
-a = Svg(820, 610)
+VERT = "#2e7d4f"; VERTS = "#e3f2e8"
+a = Svg(820, 720)
+# Barre du haut : onglets, période, commutateur.
 a.rect(16, 16, 788, 40, SURF, BORD, 10)
 a.rect(26, 22, 120, 28, NAVY, None, 6); a.t(86, 40, "Relevés de notes", 11.5, "#fff", 600, "middle")
 a.t(196, 40, "Bulletins", 11.5, TXT, 600, "middle")
-a.rect(250, 22, 230, 28, SURF, BORD, 6); a.t(262, 40, "Période 1 · 3.09 → 2.10   ▾", 11.5, TXT, 500)
-a.rect(16, 66, 788, 120, SURF, BORD, 10)
-a.t(30, 84, "MATIÈRE", 10.5, MUT, 600)
-for nom, prenom, x in [("Martin", "Louise", 330), ("Durand", "Paul", 470), ("Petit", "Jeanne", 610)]:
-    a.t(x, 80, prenom, 11.5, TXT, 600, "middle"); a.t(x, 91, nom, 9.5, MUT, 400, "middle")
-def bande(y, nom):
-    a.rect(17, y, 786, 18, GOLDS, None, 0); a.t(30, y + 13, nom, 11.5, TXT, 700)
-def ligne_m(y, nom, nb, vals, act=False):
-    if act:
-        a.rect(17, y, 184, 18, NAVY, None, 0)
-    a.t(30, y + 13, nom, 11.5, "#fff" if act else TXT, 600 if act else 400)
-    a.t(160, y + 13, nb, 9.5, "#fff" if act else MUT, 400)
-    for j, v in enumerate(vals):
-        a.t(330 + j * 140, y + 13, v, 11.5, TXT, 400, "middle")
-bande(96, "Français")
-ligne_m(114, "Lecture", "2 éval.", ["14 · 16", "11 · abs", "17 · 15"], True)
-a.cible(17, 114, 184, 18); a.pastille(206, 112, 1)
-ligne_m(132, "Grammaire", "", ["12", "13", "15"])
-bande(150, "Mathématiques")
-ligne_m(168, "Calcul", "", ["15", "9,5", "16"])
-a.rect(16, 198, 788, 396, "#eef1f8", NAVY, 12, 1.5)
-a.t(30, 222, "SAISIE DES NOTES", 10.5, NAVY, 700)
-a.rect(327, 206, 166, 26, NAVY, None, 7); a.t(410, 223.5, "← Retour Relevés de notes", 12, GOLD, 700, "middle")
-a.cible(327, 206, 166, 26); a.pastille(499, 206, 5)
-a.t(30, 252, "Lecture", 14, TXT, 700); a.t(92, 252, "Mlle Exemple · coef 1", 11, MUT)
-a.btn(560, 236, 110, "+ Évaluation"); a.cible(560, 236, 110, 26); a.pastille(556, 234, 2)
-a.rect(680, 236, 110, 26, S2, None, 7); a.t(735, 253, "Grille | Élève", 11, MUT, 500, "middle")
-a.rect(30, 274, 760, 64, "#e4e9f5", NAVY, 10, 1)
-for lab, x, w, val in [("Titre", 44, 210, "Dictée 3"), ("Date", 266, 120, "14/10/2026"), ("Coefficient", 398, 90, "1"), ("Noté sur", 500, 90, "20")]:
-    a.t(x, 292, lab, 10.5, MUT, 500); a.champ(x, 298, w, val)
-a.btn(604, 298, 70, "Créer"); a.btn(682, 298, 80, "Annuler", False)
-a.cible(42, 282, 550, 46); a.pastille(24, 268, 3)
-a.rect(30, 352, 760, 180, SURF, BORD, 10)
-a.t(44, 374, "ÉLÈVE", 10.5, MUT, 600)
-for j, (h, sub) in enumerate([("Lecture 1", "2 oct. · /20"), ("Lecture 2", "9 oct. · /20"), ("Dictée 3", "14 oct. · /20")]):
-    x = 250 + j * 120
-    a.t(x, 370, h, 11.5, TXT, 600, "middle"); a.t(x, 383, sub, 9.5, MUT, 400, "middle")
-a.t(640, 376, "MOYENNE", 10.5, MUT, 600, "middle")
-rows = [("Louise Martin", ["14", "16", "15"], "15,00"), ("Paul Durand", ["11", "abs", "12,5"], "11,75"), ("Jeanne Petit", ["17", "15", ""], "16,00"), ("Hugo Lefèvre", ["9", "13", "disp"], "11,00")]
-for i, (n, ns, m) in enumerate(rows):
-    y = 408 + i * 30
-    a.line(30, y - 16, 790, y - 16)
-    a.t(44, y + 4, n, 12, TXT, 500)
-    for j, v in enumerate(ns):
-        x = 250 + j * 120
-        if j == 2:
-            a.rect(x - 30, y - 11, 60, 24, SURF, NAVY if i == 2 else BORD, 5, 1.5 if i == 2 else 1)
-        a.t(x, y + 4, v, 12, MUT if v in ("abs", "disp") else TXT, 400, "middle", ital=v in ("abs", "disp"))
-    a.t(640, y + 4, m, 12, TXT, 700, "middle")
-a.cible(456, 394, 68, 124); a.pastille(540, 404, 4)
-a.rect(282, 548, 256, 32, NAVY, None, 8); a.t(410, 569, "Enregistrer et revenir au relevé", 12.5, GOLD, 700, "middle")
-a.cible(282, 548, 256, 32); a.pastille(546, 546, 6)
+a.rect(250, 22, 230, 28, SURF, BORD, 6); a.t(262, 40, "Période 2 · 5.10 → 6.11   ▾", 11.5, TXT, 500)
+a.rect(600, 22, 90, 28, GOLDS, None, 6); a.t(645, 40, "En cours", 11.5, GOLD, 600, "middle")
+a.rect(692, 22, 100, 28, SURF, BORD, 6); a.t(742, 40, "Prêt", 11.5, MUT, 600, "middle")
+# Blocs de niveau et « + Évaluation », sur une même ligne.
+a.rect(130, 66, 74, 24, GOLDS, "#d9c08a", 7); a.t(167, 82, "CE1 · 4", 11.5, GOLD, 700, "middle")
+a.rect(212, 66, 74, 24, SURF, BORD, 7); a.t(249, 82, "CE2 · 3", 11.5, MUT, 600, "middle")
+a.rect(294, 66, 74, 24, SURF, BORD, 7); a.t(331, 82, "CM1 · 3", 11.5, MUT, 600, "middle")
+a.rect(376, 66, 132, 24, SURF, BORD, 7); a.t(442, 82, "Tous les niveaux", 11.5, MUT, 600, "middle")
+a.btn(520, 65, 110, "+ Évaluation", True, 26)
+a.cible(520, 65, 110, 26); a.pastille(636, 62, 1)
+# Tableau du relevé : la moyenne dans chaque case.
+a.rect(16, 100, 788, 96, SURF, BORD, 10)
+a.t(30, 118, "MATIÈRE", 10.5, MUT, 600)
+for nom, prenom, x in [("M.", "Louise", 330), ("D.", "Paul", 470), ("P.", "Jeanne", 610)]:
+    a.t(x, 114, prenom, 11.5, TXT, 400, "middle"); a.t(x, 126, nom, 9.5, MUT, 400, "middle")
+a.rect(17, 130, 786, 18, GOLDS, None, 0); a.t(30, 143, "Français", 11.5, TXT, 700)
+a.rect(17, 148, 184, 18, NAVY, None, 0); a.t(30, 161, "Lecture", 11.5, "#fff", 600)
+for j, v in enumerate(["15,00", "11,75", "16,00"]):
+    a.t(330 + j * 140, 161, v, 11.5, TXT, 400, "middle")
+a.t(30, 179, "Grammaire", 11.5)
+for j, v in enumerate(["12,00", "13,00", "15,00"]):
+    a.t(330 + j * 140, 179, v, 11.5, TXT, 400, "middle")
+a.cible(17, 148, 388, 18); a.pastille(412, 146, 2)
+# Saisie de la matière : formulaire.
+a.rect(16, 208, 788, 498, "#eef1f8", NAVY, 12, 1.5)
+a.t(30, 232, "SAISIE DES NOTES", 10.5, NAVY, 700)
+a.rect(327, 216, 166, 26, NAVY, None, 7); a.t(410, 233.5, "← Retour Relevés de notes", 12, GOLD, 700, "middle")
+a.rect(30, 252, 760, 70, "#e4e9f5", NAVY, 10, 1)
+a.t(44, 270, "Titre", 10.5, MUT, 500); a.champ(44, 276, 170, "Dictée 3")
+a.t(226, 270, "Matière", 10.5, MUT, 500)
+a.rect(226, 276, 130, 26, NAVY, None, 7); a.t(238, 293, "Lecture   ▾", 12, "#fff", 600)
+a.t(368, 270, "Date", 10.5, MUT, 500); a.champ(368, 276, 100, "14/10/2026")
+a.t(480, 270, "Coef.", 10.5, MUT, 500); a.champ(480, 276, 48, "1")
+a.t(540, 270, "Noté sur", 10.5, MUT, 500); a.champ(540, 276, 56, "20")
+a.t(610, 270, "Niveau(x) concerné(s)", 10.5, MUT, 500)
+for k, (nv, x) in enumerate([("CE1", 610), ("CE2", 666), ("CM1", 722)]):
+    coche = k < 2
+    a.rect(x, 276, 50, 26, "#dbe1f0" if coche else SURF, NAVY if coche else BORD, 6, 1)
+    a.t(x + 25, 293, ("✓ " if coche else "") + nv, 11.5, NAVY if coche else MUT, 600, "middle")
+a.cible(210, 258, 154, 52); a.pastille(212, 254, 3)
+a.cible(606, 258, 184, 52)
+# Liste des élèves des niveaux cochés, avec séparateurs ambre.
+a.rect(30, 334, 760, 284, SURF, BORD, 10)
+a.t(44, 352, "ÉLÈVE", 10.5, MUT, 600); a.t(330, 352, "NOTE /20", 10.5, MUT, 600, "middle"); a.t(430, 352, "APPRÉCIATION", 10.5, MUT, 600)
+def sep(y, txt):
+    a.rect(31, y, 758, 17, GOLDS, None, 0); a.rect(31, y, 4, 17, GOLD, None, 0); a.t(44, y + 12.5, txt, 10.5, GOLD, 700)
+def eleve(y, nom, note, app):
+    a.t(44, y + 22, nom, 12, TXT, 500)
+    a.rect(300, y + 8, 60, 28, SURF, NAVY if note else BORD, 5, 1.5 if note else 1)
+    a.t(330, y + 26, note, 12, TXT, 400, "middle")
+    a.rect(430, y + 4, 340, 38, SURF, BORD, 5)
+    a.t(440, y + 28, app, 11.5, MUT if not app else TXT)
+sep(360, "CE1 · 2 élève(s)")
+eleve(380, "Louise Martin", "15", "Très bonne lecture, expressive.")
+eleve(426, "Paul Durand", "", "")
+sep(474, "CE2 · 1 élève(s)")
+eleve(494, "Jeanne Petit", "17", "")
+a.t(330, 580, "", 11)
+a.cible(40, 358, 744, 24); a.pastille(24, 356, 4)
+a.cible(296, 384, 68, 34); a.pastille(368, 382, 5)
+a.t(44, 604, "Sans note, l'élève est considéré absent (« abs »).", 10.5, MUT, 400, ital=True)
+# Boutons flottants en bas.
+a.rect(318, 640, 184, 46, SURF, BORD, 12)
+a.btn(328, 648, 80, "Créer", True, 30); a.btn(414, 648, 80, "Annuler", False, 30)
+a.cible(324, 644, 172, 38); a.pastille(508, 640, 6)
 open(os.path.join(OUT, "saisie-notes.svg"), "w", encoding="utf-8").write(a.svg())
 
 # 2. Appréciation générale du relevé
 b = Svg(820, 450)
-b.rect(16, 16, 788, 40, SURF, BORD, 10); b.t(30, 41, "Période 1", 13, TXT, 700)
+b.rect(16, 16, 788, 40, SURF, BORD, 10); b.t(30, 41, "Période 2", 13, TXT, 700)
 b.rect(30, 22, 100, 28, GOLDS, None, 6); b.t(80, 40, "En cours", 12, GOLD, 600, "middle")
 b.rect(132, 22, 60, 28, "#e8f5e9", None, 6); b.t(162, 40, "Prêt", 12, "#27693a", 600, "middle")
 b.rect(28, 20, 166, 32, "none", NAVY, 8, 1.5)
@@ -127,35 +142,37 @@ b.rect(190, 164, 560, 82, SURF, NAVY, 6, 1.5)
 b.t(200, 186, "Très bonne période : Louise lit avec aisance et progresse en calcul.", 12)
 b.t(200, 204, "Elle doit encore soigner la présentation de ses cahiers.", 12)
 b.cible(186, 110, 568, 140); b.pastille(762, 108, 2)
-b.rect(282, 258, 256, 30, NAVY, None, 8); b.t(410, 277, "Enregistrer et revenir au relevé", 12.5, GOLD, 700, "middle")
-b.cible(282, 258, 256, 30); b.pastille(544, 256, 4)
 b.rect(16, 310, 788, 124, SURF, BORD, 10)
 b.rect(284, 311, 92, 36, ACS, None, 0)
 b.t(30, 334, "MATIÈRE", 10.5, MUT, 600)
-for prenom, nom, x, act in [("Louise", "Martin", 330, True), ("Paul", "Durand", 470, False), ("Jeanne", "Petit", 610, False)]:
-    b.t(x, 329, prenom, 11.5, NAVY if act else TXT, 700 if act else 600, "middle"); b.t(x, 341, nom, 9.5, MUT, 400, "middle")
+for prenom, nom, x, act in [("Louise", "M.", 330, True), ("Paul", "D.", 470, False), ("Jeanne", "P.", 610, False)]:
+    b.t(x, 329, prenom, 11.5, NAVY if act else TXT, 700 if act else 400, "middle"); b.t(x, 341, nom, 9.5, MUT, 400, "middle")
 b.cible(284, 314, 92, 34); b.pastille(380, 312, 1)
 b.rect(17, 350, 786, 18, GOLDS, None, 0); b.t(30, 363, "Français", 11.5, TXT, 700)
 b.t(30, 381, "Lecture", 11.5); b.t(30, 399, "Calcul", 11.5); b.t(30, 417, "Catéchisme", 11.5); b.t(100, 417, "appréciation", 9.5, MUT)
-for j, vals in enumerate([("14 · 16", "12", "✎"), ("11 · abs", "13", "✎"), ("17 · 15", "15", "✎")]):
+for j, vals in enumerate([("15,00", "12,00", "✎"), ("11,75", "13,00", "✎"), ("16,00", "15,00", "✎")]):
     x = 330 + j * 140
     for i, v in enumerate(vals):
         b.t(x, 381 + i * 18, v, 11.5, GOLD if v == "✎" else TXT, 400, "middle")
 open(os.path.join(OUT, "appreciation-releve.svg"), "w", encoding="utf-8").write(b.svg())
 
 # 3. Bulletin du trimestre
-c = Svg(820, 510)
+c = Svg(820, 560)
 c.rect(16, 16, 788, 40, SURF, BORD, 10)
 c.t(30, 41, "Bulletins · Premier Trimestre", 13, TXT, 700)
-c.rect(16, 66, 788, 380, SURF, BORD, 10)
-c.rect(30, 78, 10, 10, SURF, BORD, 2); c.t(48, 88, "Louise Martin", 13, TXT, 700)
-c.rect(160, 76, 62, 18, GOLDS, None, 9); c.t(191, 89, "En cours", 10, GOLD, 600, "middle")
-c.t(240, 88, "Moyenne générale", 11.5, MUT); c.t(344, 88, "15,20", 12.5, NAVY, 700)
-c.t(780, 88, "PDF", 11, NAVY, 600)
+c.rect(16, 66, 788, 430, SURF, BORD, 10)
+# Navigation d'élève en haut (prénom + initiale), l'élève en cours dessous, centré.
+c.rect(30, 76, 370, 34, SURF, BORD, 8); c.t(46, 98, "‹", 16, NAVY, 700); c.t(66, 98, "Hugo L.", 12, TXT, 600)
+c.rect(420, 76, 370, 34, SURF, BORD, 8); c.t(744, 98, "›", 16, NAVY, 700, "end"); c.t(724, 98, "Paul D.", 12, TXT, 600, "end")
+c.rect(590, 79, 54, 28, GOLDS, None, 5); c.t(617, 97, "Vers CE2", 9.5, GOLD, 700, "middle")
+c.cible(26, 72, 768, 42); c.pastille(802, 70, 1)
+c.t(410, 134, "Louise Martin", 13.5, TXT, 700, "middle")
+c.t(410, 152, "Moyenne générale  15,20", 11, MUT, 400, "middle")
+o = 52
 rows = [("g", "Français", "14,80", None), ("m", "Lecture", "15,00", "Lit avec aisance et plaisir."), ("m", "Grammaire", "14,60", "Bonnes bases, à consolider."),
         ("g", "Matières complémentaires", "16,00", None), ("m", "Anglais", "16,00", "Very good work! Louise participe volontiers."),
         ("g", "Catéchisme", "", None), ("m", "Catéchisme", "", "Louise participe avec joie et attention aux séances.")]
-y = 120
+y = 120 + o + 20
 for k, nom, moy, app in rows:
     if k == "g":
         c.rect(30, y - 15, 760, 22, GOLDS, None, 3); c.t(40, y + 1, nom, 12, TXT, 700); c.t(250, y + 1, moy, 12, TXT, 700, "middle")
@@ -164,18 +181,17 @@ for k, nom, moy, app in rows:
         if app:
             c.rect(290, y - 13, 490, 24, SURF, BORD, 5); c.t(300, y + 3, app, 11.5)
     y += 30
-c.cible(224, 104, 52, 82); c.pastille(282, 102, 1)
-c.cible(286, 137, 498, 118); c.pastille(790, 134, 2)
-c.cible(286, 287, 498, 28); c.pastille(790, 284, 3)
-c.line(30, 322, 790, 322)
-c.t(44, 352, "Appréciation du trimestre", 12, TXT, 700)
-c.rect(230, 334, 550, 76, SURF, NAVY, 6, 1.5)
-c.t(240, 356, "Un trimestre très réussi : Louise est sérieuse et appliquée.", 12)
-c.t(240, 374, "Elle doit gagner en confiance à l'oral.", 12)
-c.cible(226, 330, 558, 84); c.pastille(790, 330, 4)
-c.t(44, 432, "Les appréciations des relevés ne sont pas reprises : le bulletin a la sienne.", 11, MUT, 400, ital=True)
-c.rect(350, 462, 120, 30, NAVY, None, 8); c.t(410, 482, "Enregistrer", 12.5, GOLD, 700, "middle")
-c.cible(350, 462, 120, 30); c.pastille(344, 460, 5)
+c.cible(224, 104 + o + 20, 52, 82); c.pastille(282, 102 + o + 20, 2)
+c.cible(286, 137 + o + 20, 498, 118); c.pastille(790, 134 + o + 20, 3)
+c.cible(286, 287 + o + 20, 498, 28); c.pastille(790, 284 + o + 20, 4)
+c.line(30, 322 + o + 20, 790, 322 + o + 20)
+c.t(44, 352 + o + 20, "Appréciation du trimestre", 12, TXT, 700)
+c.rect(230, 334 + o + 20, 550, 76, SURF, NAVY, 6, 1.5)
+c.t(240, 356 + o + 20, "Un trimestre très réussi : Louise est sérieuse et appliquée.", 12)
+c.t(240, 374 + o + 20, "Elle doit gagner en confiance à l'oral.", 12)
+c.cible(226, 330 + o + 20, 558, 84); c.pastille(790, 330 + o + 20, 5)
+c.rect(350, 506, 120, 30, NAVY, None, 8); c.t(410, 526, "Enregistrer", 12.5, GOLD, 700, "middle")
+c.cible(350, 506, 120, 30); c.pastille(344, 504, 6)
 open(os.path.join(OUT, "appreciations-bulletin.svg"), "w", encoding="utf-8").write(c.svg())
 
 if len(sys.argv) > 2:

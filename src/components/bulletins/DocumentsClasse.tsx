@@ -1,5 +1,6 @@
 "use client";
 
+import { todayISO } from "@/lib/format";
 import { createPortal } from "react-dom";
 import { Fragment, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
@@ -128,7 +129,7 @@ export default function DocumentsClasse({
     <div className="ml-auto flex flex-wrap gap-2">
             {(directrice || titulaire) && (
           <CommutateurPret
-            publie={docs.length > 0 && docs.every((d) => d.statut === "publie")}
+            publie={(mode === "releve" && periode.fin < todayISO()) || (docs.length > 0 && docs.every((d) => d.statut === "publie"))}
             pret={docs.length > 0 && docs.every((d) => ["pret", "valide", "publie"].includes(d.statut))}
             onChange={(v) => (v && !directrice && !confirmerPret() ? undefined : changer(v ? "pret" : "en_cours"))}
             disabled={occupe || !docs.length}
@@ -158,7 +159,7 @@ export default function DocumentsClasse({
         type="button"
         disabled={!cible}
         onClick={() => cible && allerA(cible.id)}
-        className={`flex w-56 max-w-[45%] items-center gap-2 rounded-lg border px-3 py-1.5 text-left transition-colors disabled:opacity-30 ${suivant ? "flex-row-reverse text-right" : ""} ${
+        className={`flex min-h-[2.9rem] w-auto min-w-0 flex-1 items-center gap-1.5 rounded-lg border px-2 py-1 text-left md:min-h-0 md:flex-none md:shrink-0 transition-colors disabled:opacity-30 md:w-56 md:max-w-[45%] md:gap-2 md:px-3 md:py-1.5 ${suivant ? "order-2 flex-row-reverse text-right md:order-3" : "order-1"} ${
           changeNiveau ? "border-gold/50 bg-gold-soft/30 hover:bg-gold-soft/60" : "border-border bg-surface hover:bg-accent-soft/50"
         }`}
       >
@@ -166,16 +167,12 @@ export default function DocumentsClasse({
         <span className="min-w-0">
           {cible ? (
             <span className="block text-[12.5px] font-semibold leading-tight">
-              {cible.prenom ?? ""}
-              <span className="block">
-                {cible.nom}
-                {multiNiveaux && niveauEleve(cible) ? <span className="ml-1.5 text-[11px] font-normal text-muted">{niveauEleve(cible)}</span> : null}
-              </span>
+              {cible.prenom ?? ""} {(cible.nom ?? "").trim().charAt(0).toUpperCase()}.
             </span>
           ) : (
             <span className="block text-[13px] text-muted">{suivant ? "Dernier élève" : "Premier élève"}</span>
           )}
-          {changeNiveau && <span className="mt-0.5 inline-block rounded bg-gold-soft px-1.5 text-[10.5px] font-bold text-gold">Passage en {niveauEleve(cible!) || "?"}</span>}
+          {changeNiveau && <span className="mt-0.5 inline-block rounded bg-gold-soft px-1.5 text-[10.5px] font-bold text-gold">Vers {niveauEleve(cible!) || "?"}</span>}
         </span>
       </button>
     );
@@ -251,15 +248,20 @@ export default function DocumentsClasse({
               {/* En-tête de l'élève : reste affiché au défilement (un élève à la fois), avec la navigation ‹ › . */}
               <div className={`mb-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 ${!tous ? "sticky top-[62px] z-10 -mx-2.5 -mt-2.5 md:top-0 rounded-t-xl border-b border-border bg-surface px-2.5 py-2 shadow-sm" : ""}`}>
                 {!tous && eleves.length > 1 && boutonNav(precedent, false)}
-                <div className="min-w-0 flex-1 basis-40 text-center">
+                <div className="order-3 min-w-0 flex-1 basis-full text-center md:order-2 md:basis-40">
                   <div className="flex flex-wrap items-center justify-center gap-2">
-                    <span className="font-medium">{nomEleve(e)}</span>
-                    {multiNiveaux && niveauEleve(e) && <span className="rounded bg-gold-soft px-1.5 py-0.5 text-[11px] font-bold text-gold">{niveauEleve(e)}</span>}
+                    <span className="font-medium">
+                      <span className="md:hidden">
+                        {e.prenom ?? ""} {(e.nom ?? "").trim().charAt(0).toUpperCase()}.
+                      </span>
+                      <span className="hidden md:inline">{nomEleve(e)}</span>
+                    </span>
+                    {multiNiveaux && niveauEleve(e) && <span className="hidden rounded bg-gold-soft px-1.5 py-0.5 text-[11px] font-bold text-gold md:inline">{niveauEleve(e)}</span>}
                   </div>
                   <div className="text-[12.5px] text-muted">
                     {mode === "trimestre" && s?.general.moy != null && (
                       <>
-                        Moyenne générale <strong className="text-accent">{note20(s.general.moy)}</strong>
+                        <span className="text-[11px]">Moyenne générale</span> <strong className="text-accent">{note20(s.general.moy)}</strong>
                       </>
                     )}
                   </div>

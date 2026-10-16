@@ -278,9 +278,9 @@ export default function Bulletins({
     <div className="mx-auto max-w-7xl px-5 py-6 md:px-8">
       <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
         {/* Pages de l'École : le titre de l'onglet du menu, puis l'année en cours en gras. */}
-        <h1 className="text-lg font-semibold tracking-tight">{evaluation ? "Notes & Bulletins" : onglets.find((o) => o.v === onglet)?.label}</h1>
+        <h1 className="text-base font-semibold tracking-tight md:text-lg">{evaluation ? "Notes & Bulletins" : onglets.find((o) => o.v === onglet)?.label}</h1>
         {classe && !sansChoixClasse && <p className="text-sm font-bold">{classe.niveaux.join(" / ")}</p>}
-        {annee && <p className="text-sm font-bold">Année {annee}</p>}
+        {annee && <p className="hidden text-sm font-bold md:block">Année {annee}</p>}
       </div>
 
       {/* Alerte « À valider » : coordonnées ou dates de naissance modifiées par les familles. */}

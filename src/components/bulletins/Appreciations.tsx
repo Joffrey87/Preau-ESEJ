@@ -1,7 +1,7 @@
 "use client";
 
-import { extensible } from "./outils";
-import { useState } from "react";
+import { ajusterHauteur, extensible } from "./outils";
+import { useEffect, useRef, useState } from "react";
 import { useSauvegardeAuto } from "@/lib/sauvegardeAuto";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { nomEleve, note20, type ContexteClasse, type Evaluation, type Ligne, type Matiere, type Note, type ResultatEleve, type Statut } from "@/lib/bulletins";
@@ -60,6 +60,41 @@ export function ChampAppreciation({
   const sauver = () => envoyer();
   // Coche verte tant que la dernière saisie est enregistrée (elle disparaît à la frappe suivante, et en quittant la matière).
   const coche = etat === "ok";
+  // Vide ou sur une seule ligne : le texte est centré (horizontalement, et verticalement dans la hauteur de deux lignes) ;
+  // à deux lignes ou plus, il occupe toute la zone.
+  const zone = useRef<HTMLTextAreaElement | null>(null);
+  const [centre, setCentre] = useState<number | null>(null);
+  // Pendant la saisie, la zone ne bouge pas : deux lignes de base, puis elle s'agrandit au-delà. Le centrage vaut hors saisie.
+  const [actif, setActif] = useState(false);
+  useEffect(() => {
+    const el = zone.current;
+    if (actif) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- saisie en cours : pas de centrage
+      setCentre(null);
+      return;
+    }
+    if (!el || lignes < 2) return;
+    const style = getComputedStyle(el);
+    const lh = parseFloat(style.lineHeight) || 18;
+    const marge = parseFloat(style.paddingTop) + parseFloat(style.paddingBottom);
+    const rowsAvant = el.rows;
+    const paddingAvant = [el.style.paddingTop, el.style.paddingBottom];
+    el.style.paddingTop = "";
+    el.style.paddingBottom = "";
+    el.rows = 1;
+    el.style.height = "auto";
+    const lignesTexte = Math.round((el.scrollHeight - marge) / lh);
+    el.rows = rowsAvant;
+    el.style.paddingTop = paddingAvant[0];
+    el.style.paddingBottom = paddingAvant[1];
+    ajusterHauteur(el);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- mesure du texte affiché
+    setCentre(lignesTexte <= 1 ? ((lignes - 1) * lh) / 2 + marge / 2 : null);
+  }, [texte, lignes, actif]);
+  // Centré : une seule ligne de texte et des marges égales (même hauteur totale que les lignes de base) ; hauteur recalculée.
+  useEffect(() => {
+    if (zone.current) ajusterHauteur(zone.current);
+  }, [centre]);
 
   return (
     <div>
@@ -69,12 +104,21 @@ export function ChampAppreciation({
         disabled={disabled}
         autoFocus={autoFocus}
         maxLength={LIMITE_APPRECIATION}
-        rows={Math.max(lignes, Math.min(6, Math.ceil(texte.length / 60)))}
+        rows={centre != null ? 1 : lignes}
         placeholder={disabled ? "" : "Appréciation…"}
         onChange={(e) => changer(e.target.value)}
-        onBlur={() => void sauver()}
+        onFocus={() => setActif(true)}
+        onBlur={() => {
+          setActif(false);
+          void sauver();
+        }}
         {...extensible}
-        className="w-full resize-y rounded-md border border-border/70 bg-background px-2 py-1 text-[13px] leading-snug outline-none focus:border-accent disabled:border-transparent disabled:bg-transparent"
+        ref={(el) => {
+          zone.current = el;
+          extensible.ref(el);
+        }}
+        style={centre != null ? { paddingTop: centre, paddingBottom: centre } : undefined}
+        className={`w-full resize-y rounded-md border border-border/70 bg-background px-2 py-1 text-[13px] leading-snug outline-none focus:border-accent disabled:border-transparent disabled:bg-transparent ${centre != null ? "text-center placeholder:text-center" : ""}`}
       />
       {coche && !disabled && (
         <span title="Enregistré" aria-label="Enregistré" className="pointer-events-none absolute right-2.5 top-1.5 text-[13px] font-bold leading-none text-positive">
@@ -87,11 +131,6 @@ export function ChampAppreciation({
         <span className={etat === "erreur" ? "text-negative" : "text-muted"} title={erreur ?? undefined}>
           {disabled ? (raison ?? "") : etat === "erreur" ? `Échec de l'enregistrement : ${erreur ?? ""}` : ""}
         </span>
-        {!disabled && (
-          <span className={`tabular-nums ${texte.length >= LIMITE_APPRECIATION ? "text-gold" : "text-muted"}`}>
-            {texte.length}/{LIMITE_APPRECIATION}
-          </span>
-        )}
       </div>
     </div>
   );

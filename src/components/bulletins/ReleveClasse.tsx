@@ -23,10 +23,10 @@ import { telechargerBulletins } from "@/lib/bulletinPdf";
 import { syntheseReleve, type ContexteDocs, type DocReleve } from "@/lib/relevesTrimestre";
 import type { Droits } from "./Bulletins";
 import SaisieNotes from "./SaisieNotes";
-import { BoutonLot, CommutateurPret, PastilleStatut, ZoneAppreciation } from "./outils";
+import { BoutonLot, CommutateurPret, confirmerPret, PastilleStatut, ZoneAppreciation } from "./outils";
 import { enregistrerTout } from "@/lib/sauvegardeAuto";
 
-const OUVERTS: Statut[] = ["nouveau", "en_cours", "pret"];
+const OUVERTS: Statut[] = ["nouveau", "en_cours"];
 const ETAT_COURT: Record<string, string> = { absent: "abs", dispense: "disp", non_rendu: "nr" };
 const nombre = (n: number) => String(arrondi(n)).replace(".", ",");
 
@@ -48,6 +48,7 @@ export default function ReleveClasse({
   nomTitulaire,
   onRecharger,
   emplacement,
+  demandeEvaluation = 0,
 }: {
   ctx: ContexteClasse;
   resultats: ResultatEleve[];
@@ -60,6 +61,8 @@ export default function ReleveClasse({
   onRecharger: () => Promise<void>;
   /** Barre de la page où se placent les boutons d'état (une seule tuile en haut). */
   emplacement?: HTMLElement | null;
+  /** Incrémenté par le lien « + Évaluation » du menu latéral. */
+  demandeEvaluation?: number;
 }) {
   const sb = useMemo(() => createClient(), []);
   const { directrice, titulaire } = droits;
@@ -67,6 +70,17 @@ export default function ReleveClasse({
   const [occupe, setOccupe] = useState(false);
   const [matiereOuverte, setMatiereOuverte] = useState<string | null>(null);
   const [eleveOuvert, setEleveOuvert] = useState<string | null>(null);
+  // « + Évaluation » : choix de la matière, puis saisie ouverte avec le formulaire de création.
+  const [choixEvaluation, setChoixEvaluation] = useState(false);
+  const [matiereEvalAuto, setMatiereEvalAuto] = useState<string | null>(null);
+  const [demandeVue, setDemandeVue] = useState(demandeEvaluation);
+  useEffect(() => {
+    if (demandeEvaluation !== demandeVue) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- demande venue du menu latéral
+      setDemandeVue(demandeEvaluation);
+      setChoixEvaluation(true);
+    }
+  }, [demandeEvaluation, demandeVue]);
   const defilementRef = useRef<HTMLDivElement>(null);
 
   // Molette : défilement horizontal du tableau (plus large que l'écran) ; aux bords, la page reprend la main.
@@ -128,6 +142,10 @@ export default function ReleveClasse({
   const docDe = (eleveId: string) => vue.releves.find((d) => d.eleve_id === eleveId);
   const verrou = (eleveId: string) => docDe(eleveId)?.statut === "publie";
   const peutEditer = (d: DocReleve | undefined) => !!d && (directrice || (titulaire && OUVERTS.includes(d.statut)));
+  // Relevés « Prêt » (ou validés) : plus de modification ni d'ajout pour les professeurs ; la Directrice garde la main.
+  const toutVerrouille = !directrice && vue.releves.length > 0 && vue.releves.every((d) => !OUVERTS.includes(d.statut));
+  const verrouNotes = (eleveId: string) => verrou(eleveId) || (!directrice && !!docDe(eleveId) && !OUVERTS.includes(docDe(eleveId)!.statut));
+  const droitsSaisie: Droits = toutVerrouille ? { ...droits, peutNoter: () => false, peutSaisirNotes: () => false, peutCommenter: () => false, peutEditer: () => false } : droits;
   const outils = { titulaire: nomTitulaire, enseignants };
   const synthese = (e: EleveBulletin): Synthese => {
     const d = docDe(e.id);
@@ -233,6 +251,15 @@ export default function ReleveClasse({
   const debutNiveau = (e: EleveBulletin) => multiNiveaux && tousNiveaux && groupesNiveau.some((g) => g.eleves[0]?.id === e.id);
   // Affichage de tous les niveaux par défaut, ou d'un seul bloc de niveau.
   const [niveauChoisi, setNiveauChoisi] = useState<string | null>("*");
+  // Téléphone : un seul niveau à l'ouverture (moins de colonnes, donc moins de défilement) ; « Tous les niveaux » reste possible.
+  const plusieursGroupes = groupesNiveau.length > 1;
+  useEffect(() => {
+    if (plusieursGroupes && window.matchMedia("(max-width: 767px)").matches) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- choix initial selon la taille de l'écran
+      setNiveauChoisi((cur) => (cur === "*" ? groupesNiveau[0].niveau : cur));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [plusieursGroupes]);
   const tousNiveaux = !multiNiveaux || niveauChoisi === "*";
   const niveauAffiche = groupesNiveau.some((g) => g.niveau === niveauChoisi) ? niveauChoisi : (groupesNiveau[0]?.niveau ?? "");
   const visibles = tousNiveaux ? eleves : eleves.filter((e) => niveauEleve(e) === niveauAffiche);
@@ -262,13 +289,44 @@ export default function ReleveClasse({
       </div>
     ) : null;
 
+  // Matières où l'on peut créer une évaluation (celles dont on est responsable, hors appréciation seule).
+  const matieresEvaluation = toutVerrouille
+    ? []
+    : vue.matieres.filter((m) => m.actif && !estAppreciationSeule(m.nom) && droits.peutSaisirNotes(m) && (droits.enseignantId ? m.enseignants.includes(droits.enseignantId) || directrice : droits.peutNoter(m)));
+  const creerEvaluationDans = (m: Matiere) => {
+    setChoixEvaluation(false);
+    setMatiereEvalAuto(m.id);
+    setMatiereOuverte(m.id);
+  };
+  const boutonEvaluation = matieresEvaluation.length > 0 && !matiere && (
+    <div className="flex flex-col items-center gap-1.5">
+      <button
+        type="button"
+        onClick={() => (matieresEvaluation.length === 1 ? creerEvaluationDans(matieresEvaluation[0]) : setChoixEvaluation((o) => !o))}
+        className="rounded-lg bg-accent px-3 py-1.5 text-[13px] font-medium text-accent-fg hover:opacity-90"
+      >
+        + Évaluation
+      </button>
+      {choixEvaluation && matieresEvaluation.length > 1 && (
+        <div className="flex max-w-3xl flex-wrap items-center justify-center gap-1 rounded-xl border border-accent/40 bg-accent-soft/30 p-2">
+          <span className="text-[12.5px] text-muted">Dans quelle matière ?</span>
+          {matieresEvaluation.map((m) => (
+            <button key={m.id} type="button" onClick={() => creerEvaluationDans(m)} className="rounded-full border border-border bg-background px-2.5 py-0.5 text-[12.5px] hover:bg-accent-soft">
+              {m.nom}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
   const boutons = (
     <div className="ml-auto flex flex-wrap gap-2">
             {(directrice || titulaire) && (
           <CommutateurPret
             publie={docs_.length > 0 && docs_.every((d) => d.statut === "publie")}
             pret={docs_.length > 0 && docs_.every((d) => ["pret", "valide", "publie"].includes(d.statut))}
-            onChange={(v) => changer(v ? "pret" : "en_cours")}
+            onChange={(v) => (v && !directrice && !confirmerPret() ? undefined : changer(v ? "pret" : "en_cours"))}
             disabled={occupe || !docs_.length}
             titre="Relevés : En cours / Prêt"
           />
@@ -309,7 +367,7 @@ export default function ReleveClasse({
             </button>
             <span />
           </div>
-          <SaisieNotes ctx={ctx} resultats={resultats} droits={droits} enseignants={enseignants} onMaj={onMaj} matiereImposee={matiere.id} verrouEleve={verrou} niveauSeul={tousNiveaux ? null : niveauAffiche} barreNiveaux={barreNiveaux} />
+          <SaisieNotes ctx={ctx} resultats={resultats} droits={droitsSaisie} enseignants={enseignants} onMaj={onMaj} matiereImposee={matiere.id} verrouEleve={verrouNotes} niveauSeul={tousNiveaux ? null : niveauAffiche} barreNiveaux={barreNiveaux} creerAuto={matiereEvalAuto === matiere.id} onCreerAutoFait={() => setMatiereEvalAuto(null)} />
         </div>
       )}
 
@@ -379,7 +437,12 @@ export default function ReleveClasse({
         })()}
 
       {!eleves.length && <p className="text-sm text-muted">Aucun élève dans cette classe.</p>}
-      {!matiere && barreNiveaux}
+      {!matiere && (barreNiveaux || boutonEvaluation) && (
+        <div className="flex flex-col items-center gap-2">
+          {barreNiveaux}
+          {boutonEvaluation}
+        </div>
+      )}
       {/* Tableau transposé : une ligne par matière (par ensemble : Français, Mathématiques…), une colonne par élève
           (par niveau). Un clic sur une matière ou une case ouvre la saisie ; un clic sur un élève, ses appréciations. */}
       <div ref={defilementRef} className={`mx-auto max-h-[calc(100vh-8rem)] w-fit max-w-full overflow-auto rounded-xl border border-border bg-surface ${matiere ? "hidden" : ""}`}>
@@ -396,23 +459,26 @@ export default function ReleveClasse({
               </tr>
             )}
             <tr className="text-[11px] text-muted">
-              <th className="sticky left-0 z-10 min-w-40 border-b border-border bg-surface px-3 py-2 text-left font-medium uppercase tracking-wide">Matière</th>
+              <th className="sticky left-0 z-10 w-[4.25rem] max-w-[4.25rem] border-b border-border bg-surface px-1 py-2 text-left text-[10px] font-medium tracking-wide md:w-auto md:max-w-none md:min-w-40 md:px-3 md:text-[11px] md:uppercase">Matière</th>
               {visibles.map((e) => {
                 const actif = eleveOuvert === e.id;
                 return (
                   <th
                     key={e.id}
-                    className={`min-w-20 max-w-28 border-b border-border px-1.5 py-1.5 align-middle font-normal ${debutNiveau(e) ? "border-l-2 border-l-gold/50" : "border-l border-l-border/60"} ${actif ? "bg-accent-soft" : ""}`}
+                    className={`min-w-[3.6rem] max-w-20 border-b border-border px-0.5 py-1.5 align-middle font-normal md:min-w-20 md:max-w-28 md:px-1.5 ${debutNiveau(e) ? "border-l-2 border-l-gold/50" : "border-l border-l-border/60"} ${actif ? "bg-accent-soft" : ""}`}
                   >
                     <div className="flex flex-col items-center gap-0.5">
                       <button
                         type="button"
                         onClick={() => basculerEleve(actif ? null : e.id)}
-                        className="text-center text-[12.5px] font-normal leading-tight text-foreground hover:text-accent hover:underline"
+                        className="text-center text-[11px] font-normal leading-tight text-foreground hover:text-accent hover:underline md:text-[12.5px]"
                         title={`Appréciations · ${nomEleve(e)}`}
                       >
                         {e.prenom ?? ""}
-                        <span className="block text-[12.5px] font-normal">{e.nom}</span>
+                        <span className="block text-[11px] font-normal md:text-[12.5px]">
+                          <span className="md:hidden">{e.nom ? `${e.nom.trim().charAt(0).toUpperCase()}.` : ""}</span>
+                          <span className="hidden md:inline">{e.nom}</span>
+                        </span>
                       </button>
                       {verrou(e.id) && (
                         <span className="text-[10px]" title="Relevé publié : notes verrouillées">
@@ -429,7 +495,7 @@ export default function ReleveClasse({
             {colonnes.map(({ g, ms }) => (
               <Fragment key={g.id}>
                 <tr className="border-t border-border bg-gold-soft/40">
-                  <td className="sticky left-0 z-10 bg-gold-soft px-3 py-1.5 text-[12.5px] font-semibold">{g.nom}</td>
+                  <td className="sticky left-0 z-10 bg-gold-soft px-1 py-1.5 text-[11px] font-semibold md:px-3 md:text-[12.5px]">{g.nom}</td>
                   {/* Une case par élève (et non une seule case sur toute la ligne) : les traits de niveau restent continus. */}
                   {visibles.map((e) => (
                     <td key={e.id} className={debutNiveau(e) ? "border-l-2 border-l-gold/50" : ""} />
@@ -444,19 +510,19 @@ export default function ReleveClasse({
                     <tr key={m.id} className={`border-t border-border/60 ${responsable ? "" : "text-muted opacity-60"} ${matiereOuverte === m.id ? "bg-accent-soft/30" : "hover:bg-surface-2/40"}`}>
                       <td className="sticky left-0 z-10 bg-surface p-0">
                         {seule || !droits.peutSaisirNotes(m) ? (
-                          <div className="px-3 py-2" title={seule ? `${m.nom} : une appréciation, sans note` : m.nom}>
+                          <div className="break-words px-1 py-1.5 text-[11px] leading-tight md:px-3 md:py-2 md:text-[12.5px]" title={seule ? `${m.nom} : une appréciation, sans note` : m.nom}>
                             {m.nom}
-                            {seule && <span className="ml-1.5 text-[10px] text-muted">appréciation</span>}
+                            {seule && <span className="ml-1.5 hidden text-[10px] text-muted md:inline">appréciation</span>}
                           </div>
                         ) : (
                           <button
                             type="button"
                             onClick={() => setMatiereOuverte(matiereOuverte === m.id ? null : m.id)}
-                            className={`flex w-full items-baseline gap-1.5 px-3 py-2 text-left hover:bg-accent-soft/60 ${matiereOuverte === m.id ? "bg-accent text-accent-fg" : ""}`}
+                            className={`flex w-full items-baseline gap-1.5 break-words px-1 py-1.5 text-left text-[11px] leading-tight hover:bg-accent-soft/60 md:px-3 md:py-2 md:text-[12.5px] ${matiereOuverte === m.id ? "bg-accent text-accent-fg" : ""}`}
                             title={`Saisir les notes · ${m.nom}${m.niveaux.length ? ` (${m.niveaux.join(", ")})` : ""}`}
                           >
                             {m.nom}
-                            {nb > 0 && <span className="text-[10px] opacity-70">{nb} éval.</span>}
+                            {nb > 0 && <span className="hidden text-[10px] opacity-70 md:inline">{nb} éval.</span>}
                           </button>
                         )}
                       </td>
@@ -473,7 +539,7 @@ export default function ReleveClasse({
                               key={e.id}
                               onClick={() => droit && basculerEleve(e.id)}
                               title={droit ? `Rédiger l'appréciation · ${m.nom} · ${nomEleve(e)}` : undefined}
-                              className={`max-w-28 px-1.5 py-2 text-center ${a ? "bg-positive/10" : ""} ${bord} ${droit ? "cursor-pointer hover:bg-accent-soft/50" : concerne ? "" : "bg-surface-2/50"}`}
+                              className={`max-w-20 px-0.5 py-2 text-center md:max-w-28 md:px-1.5 ${a ? "bg-positive/10" : ""} ${bord} ${droit ? "cursor-pointer hover:bg-accent-soft/50" : concerne ? "" : "bg-surface-2/50"}`}
                             >
                               {a ? (
                                 <span className="line-clamp-1 text-[11.5px]" title="Appréciation saisie">
@@ -491,7 +557,7 @@ export default function ReleveClasse({
                             key={e.id}
                             onClick={() => droit && setMatiereOuverte(m.id)}
                             title={droit ? `Ajouter une évaluation ou une note · ${m.nom} · ${nomEleve(e)}` : undefined}
-                            className={`group px-1.5 py-2 text-center tabular-nums ${bord} ${droit ? "cursor-pointer hover:bg-accent-soft/50" : concerne ? "" : "bg-surface-2/50"}`}
+                            className={`group px-0.5 py-2 text-center tabular-nums md:px-1.5 ${bord} ${droit ? "cursor-pointer hover:bg-accent-soft/50" : concerne ? "" : "bg-surface-2/50"}`}
                           >
                             <span className="whitespace-nowrap text-[12.5px]">{t.join(" · ")}</span>
                             {concerne && !t.length && (appreciationDe(d, m)?.texte?.trim() || commentaireMatiere(e.id, m)) && (

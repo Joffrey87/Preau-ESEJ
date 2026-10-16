@@ -1,7 +1,7 @@
 "use client";
 
 import ModificationsFamilles from "@/components/ModificationsFamilles";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { todayISO } from "@/lib/format";
 import { calculerClasse, nomEnseignant, trimestreEnLettres, type ContexteClasse, type Enseignant, type Matiere, type Bulletin, estAppreciationSeule } from "@/lib/bulletins";
@@ -76,7 +76,7 @@ export default function Bulletins({
   enseignantId: string | null;
   /** Directeur spirituel : seule cette matière (Catéchisme) est montrée, et seules les classes qui l'enseignent. */
   matiereSeule?: string;
-  initial: { classe?: string; periode?: string; onglet?: string; bulletin?: string };
+  initial: { classe?: string; periode?: string; onglet?: string; bulletin?: string; evaluation?: string };
 }) {
   const sb = useMemo(() => createClient(), []);
   const [ref, setRef] = useState<Referentiel | null>(null);
@@ -111,8 +111,18 @@ export default function Bulletins({
     // Lien « Notes & Bulletins » (sans onglet) : retour aux onglets d'évaluation.
     else setOnglet((cur) => (GROUPE_EVAL.includes(cur) ? cur : "releves"));
   }, [initial.onglet]);
-  const [ajoutPour, setAjoutPour] = useState<string | null>(null);
   const [bulletinId, setBulletinId] = useState<string | null>(initial.bulletin ?? null);
+  // Lien « + Évaluation » du menu latéral : ouvre le choix de la matière dans les Relevés de notes.
+  const [demandeEvaluation, setDemandeEvaluation] = useState(0);
+  useEffect(() => {
+    if (initial.evaluation === "1") {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- la demande suit l'adresse
+      setOnglet("releves");
+      setBulletinId(null);
+      setDemandeEvaluation((n) => n + 1);
+    }
+  }, [initial.evaluation]);
+  const [ajoutPour, setAjoutPour] = useState<string | null>(null);
   // Bulletin ouvert depuis le Conseil de classe : bouton de retour au Conseil.
   const [depuisConseil, setDepuisConseil] = useState(false);
   const [ctx, setCtx] = useState<ContexteClasse | null>(null);
@@ -172,14 +182,45 @@ export default function Bulletins({
   }, [recharger]);
 
   // L'adresse suit l'écran (lien partageable, retour au même endroit après rechargement).
+  // Chaque changement d'écran (onglet, classe, période, bulletin) ajoute une entrée d'historique : « Retour » revient au clic précédent.
+  const cleEcran = useRef<string | null>(null);
+  const etatEcran = useRef({ classeId, periodeId });
   useEffect(() => {
     const q = new URLSearchParams();
     if (classeId) q.set("classe", classeId);
     if (periodeId) q.set("periode", periodeId);
     if (onglet !== "releves") q.set("onglet", onglet);
     if (bulletinId && onglet === "bulletins") q.set("bulletin", bulletinId);
-    window.history.replaceState(null, "", `/bulletins?${q}`);
+    const cle = q.toString();
+    if (cle === cleEcran.current) return;
+    // Première arrivée, ou choix automatique de la classe / période par défaut : l'entrée courante est remplacée.
+    const initial = cleEcran.current === null || !etatEcran.current.classeId || !etatEcran.current.periodeId;
+    cleEcran.current = cle;
+    etatEcran.current = { classeId, periodeId };
+    const etat = { ...(window.history.state ?? {}), ecranBulletins: { classeId, periodeId, onglet, bulletinId } };
+    if (initial) window.history.replaceState(etat, "", `/bulletins?${cle}`);
+    else window.history.pushState(etat, "", `/bulletins?${cle}`);
   }, [classeId, periodeId, onglet, bulletinId]);
+  // Bouton « Retour » du navigateur : l'écran précédent est restauré.
+  useEffect(() => {
+    const surRetour = () => {
+      const s = (window.history.state as { ecranBulletins?: { classeId: string | null; periodeId: string | null; onglet: Onglet; bulletinId: string | null } } | null)?.ecranBulletins;
+      if (!s) return;
+      const q = new URLSearchParams();
+      if (s.classeId) q.set("classe", s.classeId);
+      if (s.periodeId) q.set("periode", s.periodeId);
+      if (s.onglet !== "releves") q.set("onglet", s.onglet);
+      if (s.bulletinId && s.onglet === "bulletins") q.set("bulletin", s.bulletinId);
+      cleEcran.current = q.toString();
+      etatEcran.current = { classeId: s.classeId, periodeId: s.periodeId };
+      setClasseId(s.classeId);
+      setPeriodeId(s.periodeId);
+      setOnglet(s.onglet);
+      setBulletinId(s.bulletinId);
+    };
+    window.addEventListener("popstate", surRetour);
+    return () => window.removeEventListener("popstate", surRetour);
+  }, []);
 
   const resultats = useMemo(() => (ctx && ctx.classe.id === classeId && ctx.periode.id === periodeId ? calculerClasse(ctx) : []), [ctx, classeId, periodeId]);
   const enseignants = useMemo(() => new Map((ref?.enseignants ?? []).map((e) => [e.id, e] as [string, Enseignant])), [ref]);
@@ -187,7 +228,7 @@ export default function Bulletins({
 
   const droits: Droits = useMemo(() => {
     const estTitulaire = !!enseignantId && classe?.titulaire_id === enseignantId;
-    const ouvert = (b: Bulletin | null) => !!b && ["nouveau", "en_cours", "pret"].includes(b.statut);
+    const ouvert = (b: Bulletin | null) => !!b && ["nouveau", "en_cours"].includes(b.statut);
     const peutNoter = (m: Matiere) => directrice || estTitulaire || (!!enseignantId && m.enseignants.includes(enseignantId));
     // Catéchisme : appréciation du seul Directeur spirituel (la base applique la même règle : peut_apprecier).
     const peutSaisirNotes = (m: Matiere) => directrice || (!!enseignantId && m.enseignants.includes(enseignantId));
@@ -365,6 +406,7 @@ export default function Bulletins({
           ) : onglet === "releves" && docs && periode && docs.classe.id === classeId && ctx && ctx.classe.id === classeId && ctx.periode.id === periodeId ? (
             <ReleveClasse
               key={`${classeId}:${periodeId}`}
+              demandeEvaluation={demandeEvaluation}
               ctx={ctx}
               resultats={resultats}
               droits={droits}

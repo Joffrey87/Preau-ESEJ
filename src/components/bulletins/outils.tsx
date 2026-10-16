@@ -54,6 +54,13 @@ export const dateFr = (iso: string | null | undefined) => (iso ? new Date(iso).t
 
 /** Bouton d'action groupée, avec son compteur. */
 /** Commutateur « En cours / Prêt » d'une classe : bascule tous les documents (relevés ou bulletins) à la fois. */
+/** Passage à « Prêt » par un professeur : demande de confirmation (la Directrice est prévenue, la saisie se ferme). */
+export function confirmerPret(): boolean {
+  return window.confirm(
+    ["Le passage à « Prêt » enverra une notification à la Directrice.", "Vous ne pourrez plus modifier ni ajouter de notes ni d'appréciations.", "", "Confirmer ?"].join("\n"),
+  );
+}
+
 export function CommutateurPret({ pret, publie = false, onChange, disabled = false, titre }: { pret: boolean; publie?: boolean; onChange: (pret: boolean) => void; disabled?: boolean; titre?: string }) {
   // Tout est publié aux familles : l'état est figé.
   if (publie)

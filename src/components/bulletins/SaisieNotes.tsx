@@ -1,7 +1,7 @@
 "use client";
 
 import { useSauvegardeAuto } from "@/lib/sauvegardeAuto";
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { todayISO } from "@/lib/format";
 import {
@@ -36,7 +36,12 @@ export default function SaisieNotes({
   verrouEleve,
   niveauSeul,
   barreNiveaux,
+  creerAuto = false,
+  onCreerAutoFait,
 }: {
+  /** Ouvre aussitôt le formulaire « + Évaluation » (lien du relevé ou du menu). */
+  creerAuto?: boolean;
+  onCreerAutoFait?: () => void;
   /** Filtre « Afficher : CE1 · 4 … » du relevé, repris au-dessus de « + Évaluation ». */
   barreNiveaux?: React.ReactNode;
   ctx: ContexteClasse;
@@ -67,6 +72,16 @@ export default function SaisieNotes({
   // Grille (notes + appréciations) ou saisie des appréciations élève par élève.
   // Grille seule : le choix « Élève par élève » n'est plus proposé.
   const [vue] = useState<"grille" | "eleve">("grille");
+
+  useEffect(() => {
+    if (!creerAuto || !matiere) return;
+    const possibles = (matiere.niveaux.length ? matiere.niveaux : ctx.classe.niveaux).filter((n) => ctx.classe.niveaux.includes(n));
+    const deja = ctx.evaluations.filter((e) => e.matiere_id === matiere.id && (!niveauSeul || evaluationConcerne(e, niveauSeul))).length;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- ouverture demandée par le relevé
+    setNouvelle({ titre: `Évaluation ${deja + 1}`, date: todayISO() <= ctx.periode.fin ? todayISO() : ctx.periode.fin, coef: 1, bareme: 20, niveaux: niveauSeul && possibles.includes(niveauSeul) ? [niveauSeul] : [] });
+    onCreerAutoFait?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [creerAuto]);
 
   if (!matiere) return <p className="text-sm text-muted">Aucune matière dans cette classe.</p>;
   const peutNoter = droits.peutSaisirNotes(matiere);
@@ -245,9 +260,98 @@ export default function SaisieNotes({
         </div>
       )}
 
+      {/* Téléphone, notes existantes : par élève, une ligne de nom, les notes, puis la moyenne et l'appréciation. */}
+      {!nouvelle && vue === "grille" && (
+        <div className="space-y-2 md:hidden">
+          {lignes.map((r) => {
+            const m = r.groupes.flatMap((g) => g.matieres).find((x) => x.matiere.id === matiere.id);
+            const siens = evals.filter((ev) => evaluationConcerne(ev, r.niveau));
+            return (
+              <div key={r.eleve.id} className="overflow-hidden rounded-xl border border-border bg-surface">
+                <div className="bg-gold-soft/50 px-3 py-1 text-[13px] font-semibold">
+                  {nomEleve(r.eleve)}
+                  {multiNiveaux && r.niveau && <span className="ml-1.5 text-[11px] font-normal text-muted">{r.niveau}</span>}
+                  {verrouEleve?.(r.eleve.id) && <span className="ml-1.5 text-[10px]">🔒</span>}
+                </div>
+                {siens.length > 0 && (
+                  <div className="flex flex-wrap gap-x-3 gap-y-1 border-t border-border/60 px-3 py-1.5">
+                    {siens.map((ev) => {
+                      const n = notes.get(`${ev.id}:${r.eleve.id}`);
+                      const valeur = n ? (n.etat ? ETAT_COURT[n.etat] : String(n.note ?? "").replace(".", ",")) : "";
+                      return (
+                        <label key={ev.id} className="flex flex-col items-center text-[10.5px] text-muted">
+                          <span className="max-w-20 truncate">{ev.titre}</span>
+                          <CaseNote
+                            key={`${ev.id}:${r.eleve.id}:${valeur}`}
+                            valeur={valeur}
+                            disabled={!peutNoter || !!verrouEleve?.(r.eleve.id)}
+                            data=""
+                            onKeyDown={() => {}}
+                            onEnregistrer={(v) => enregistrerNote(ev, r.eleve.id, v)}
+                          />
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+                <div className="flex items-start gap-2 border-t border-border/60 px-3 py-1.5">
+                  <span className="shrink-0 pt-1 font-semibold tabular-nums">{note20(m?.chiffre.moy ?? null)}</span>
+                  <div className="min-w-0 flex-1">
+                    <ChampAppreciation
+                      key={`${r.bulletin?.id ?? r.eleve.id}:${matiere.id}`}
+                      valeur={m?.ligne?.commentaire ?? ""}
+                      disabled={!!raisonVerrou(droits, matiere, r)}
+                      raison={raisonVerrou(droits, matiere, r)}
+                      lignes={1}
+                      onEnregistrer={(t) => (r.bulletin ? enregistrerAppreciation(sb, onMaj, r.bulletin.id, matiere.id, t) : Promise.resolve("Bulletin pas encore créé."))}
+                    />
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          {!lignes.length && <p className="px-3 py-6 text-center text-muted">Aucun élève concerné par cette matière.</p>}
+        </div>
+      )}
+
+      {/* Téléphone, nouvelle évaluation : par élève, une ligne de nom, puis la note et l'appréciation. */}
+      {nouvelle && (
+        <div className="space-y-2 md:hidden">
+          {elevesNouvelle.map((r) => (
+            <div key={r.eleve.id} className="overflow-hidden rounded-xl border border-border bg-surface">
+              <div className="bg-gold-soft/50 px-3 py-1 text-[13px] font-semibold">
+                {nomEleve(r.eleve)}
+                {multiNiveaux && r.niveau && <span className="ml-1.5 text-[11px] font-normal text-muted">{r.niveau}</span>}
+              </div>
+              <div className="flex items-start gap-2 border-t border-border/60 px-3 py-1.5">
+                <input
+                  value={notesNouvelle[r.eleve.id] ?? ""}
+                  disabled={!!verrouEleve?.(r.eleve.id)}
+                  inputMode="decimal"
+                  placeholder={`/${String(nouvelle.bareme ?? 20).replace(".", ",")}`}
+                  onChange={(e) => setNotesNouvelle({ ...notesNouvelle, [r.eleve.id]: e.target.value })}
+                  className="w-16 shrink-0 rounded-md border border-border bg-background px-1 py-0.5 text-center tabular-nums outline-none focus:border-accent"
+                />
+                <div className="min-w-0 flex-1">
+                  <ChampAppreciation
+                    key={`${r.bulletin?.id ?? r.eleve.id}:${matiere.id}`}
+                    valeur={r.groupes.flatMap((g) => g.matieres).find((x) => x.matiere.id === matiere.id)?.ligne?.commentaire ?? ""}
+                    disabled={!!raisonVerrou(droits, matiere, r)}
+                    raison={raisonVerrou(droits, matiere, r)}
+                    lignes={1}
+                    onEnregistrer={(t) => (r.bulletin ? enregistrerAppreciation(sb, onMaj, r.bulletin.id, matiere.id, t) : Promise.resolve("Bulletin pas encore créé."))}
+                  />
+                </div>
+              </div>
+            </div>
+          ))}
+          {!elevesNouvelle.length && <p className="px-3 py-4 text-center text-muted">Cochez un niveau pour saisir les notes des élèves concernés.</p>}
+        </div>
+      )}
+
       {/* Saisie immédiate : note et appréciation des élèves des niveaux cochés (la note part avec « Créer »). */}
       {nouvelle && (
-        <div className="overflow-x-auto rounded-xl border border-border bg-surface">
+        <div className="hidden overflow-x-auto rounded-xl border border-border bg-surface md:block">
           <table className="text-[13px]">
             <thead>
               <tr className="border-b border-border text-[11px] text-muted">
@@ -302,7 +406,7 @@ export default function SaisieNotes({
       {nouvelle ? null : vue === "eleve" ? (
         <AppreciationsEleveParEleve sb={sb} ctx={ctx} matiere={matiere} lignes={lignes} evals={evals} notes={notes} droits={droits} onMaj={onMaj} />
       ) : (
-      <div className="overflow-x-auto rounded-xl border border-border bg-surface">
+      <div className="hidden overflow-x-auto rounded-xl border border-border bg-surface md:block">
         <table className="text-[13px]">
           <thead>
             <tr className="border-b border-border text-[11px] text-muted">

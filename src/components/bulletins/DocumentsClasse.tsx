@@ -14,10 +14,10 @@ import {
   type DocReleve,
   type DocTrimestre,
 } from "@/lib/relevesTrimestre";
-import { BoutonEnregistrer, BoutonLot, CommutateurPret, ZoneAppreciation } from "./outils";
+import { BoutonEnregistrer, BoutonLot, CommutateurPret, confirmerPret, ZoneAppreciation } from "./outils";
 import { enregistrerTout } from "@/lib/sauvegardeAuto";
 
-const OUVERTS: Statut[] = ["nouveau", "en_cours", "pret"];
+const OUVERTS: Statut[] = ["nouveau", "en_cours"];
 
 /**
  * Relevés de notes (une période : notes seules, appréciation générale) ou bulletins trimestriels (moyennes simples,
@@ -130,7 +130,7 @@ export default function DocumentsClasse({
           <CommutateurPret
             publie={docs.length > 0 && docs.every((d) => d.statut === "publie")}
             pret={docs.length > 0 && docs.every((d) => ["pret", "valide", "publie"].includes(d.statut))}
-            onChange={(v) => changer(v ? "pret" : "en_cours")}
+            onChange={(v) => (v && !directrice && !confirmerPret() ? undefined : changer(v ? "pret" : "en_cours"))}
             disabled={occupe || !docs.length}
             titre={mode === "releve" ? "Relevés : En cours / Prêt" : "Bulletins : En cours / Prêt"}
           />
@@ -167,8 +167,10 @@ export default function DocumentsClasse({
           {cible ? (
             <span className="block text-[12.5px] font-semibold leading-tight">
               {cible.prenom ?? ""}
-              <span className="block">{cible.nom}</span>
-              {multiNiveaux && niveauEleve(cible) ? <span className="block text-[11px] font-normal text-muted">{niveauEleve(cible)}</span> : null}
+              <span className="block">
+                {cible.nom}
+                {multiNiveaux && niveauEleve(cible) ? <span className="ml-1.5 text-[11px] font-normal text-muted">{niveauEleve(cible)}</span> : null}
+              </span>
             </span>
           ) : (
             <span className="block text-[13px] text-muted">{suivant ? "Dernier élève" : "Premier élève"}</span>

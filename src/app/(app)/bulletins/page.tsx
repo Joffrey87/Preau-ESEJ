@@ -8,7 +8,7 @@ import Bulletins from "@/components/bulletins/Bulletins";
 export default async function BulletinsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ classe?: string; periode?: string; onglet?: string; bulletin?: string }>;
+  searchParams: Promise<{ classe?: string; periode?: string; onglet?: string; bulletin?: string; evaluation?: string }>;
 }) {
   const supabase = await createClient();
   const {

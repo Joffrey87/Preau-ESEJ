@@ -327,6 +327,7 @@ const NAV_PROFESSEUR: typeof NAV = [
     title: "École",
     items: [
       { href: "/bulletins", label: "Notes & Bulletins", icon: "bulletin", ready: true },
+      { href: "/bulletins?onglet=releves&evaluation=1", label: "+ Évaluation", icon: "check", ready: true, sous: true },
       { href: "/bulletins?onglet=conseil", label: "Conseil de classe", icon: "users", ready: true, sous: true },
       { href: "/bulletins?onglet=bulletins", label: "Archives (périodes)", icon: "ledger", ready: true, sous: true },
       { href: "/bulletins?onglet=absences", label: "Appel & absences", icon: "calendar", ready: true },

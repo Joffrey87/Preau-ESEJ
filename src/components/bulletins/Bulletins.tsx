@@ -43,26 +43,6 @@ export type Droits = {
   peutApprecier: (m: Matiere) => boolean;
 };
 
-/** Nom de matière comparable (sans accents ni casse). */
-const nomMatiere = (n: string) => n.normalize("NFD").replace(/\p{Diacritic}/gu, "").trim().toLowerCase();
-
-/** Ne garde d'un contexte que la matière donnée (avec ses évaluations, lignes, appréciations et groupes). */
-function seulementMatiere<T extends { groupes: { id: string }[]; matieres: Matiere[]; evaluations: { matiere_id: string }[]; lignes: { matiere_id: string }[] }>(x: T, nom: string): T {
-  const matieres = x.matieres.filter((m) => nomMatiere(m.nom) === nomMatiere(nom));
-  const ids = new Set(matieres.map((m) => m.id));
-  const groupes = new Set(matieres.map((m) => m.groupe_id));
-  const r = {
-    ...x,
-    groupes: x.groupes.filter((g) => groupes.has(g.id)),
-    matieres,
-    evaluations: x.evaluations.filter((e) => ids.has(e.matiere_id)),
-    lignes: x.lignes.filter((l) => ids.has(l.matiere_id)),
-  };
-  if ("appreciations" in x && Array.isArray(x.appreciations))
-    return { ...r, appreciations: (x.appreciations as { matiere_id: string }[]).filter((a) => ids.has(a.matiere_id)) };
-  return r;
-}
-
 /** « 2026-10-05 » → « 5.10 » (liste des périodes compacte). */
 const jourMois = (iso: string) => `${Number(iso.slice(8, 10))}.${iso.slice(5, 7)}`;
 
@@ -74,7 +54,7 @@ export default function Bulletins({
 }: {
   directrice: boolean;
   enseignantId: string | null;
-  /** Directeur spirituel : seule cette matière (Catéchisme) est montrée, et seules les classes qui l'enseignent. */
+  /** Directeur spirituel : voit toutes les classes en lecture ; seule l'appréciation de cette matière (Catéchisme) lui est ouverte. */
   matiereSeule?: string;
   initial: { classe?: string; periode?: string; onglet?: string; bulletin?: string; evaluation?: string };
 }) {
@@ -130,15 +110,11 @@ export default function Bulletins({
   const [erreur, setErreur] = useState<string | null>(null);
 
   const chargerRef = useCallback(async () => {
+    // Directeur spirituel : toutes les classes, en lecture (il n'écrit que l'appréciation du Catéchisme, voir les droits).
     const r = await chargerReferentiel(sb);
-    if (matiereSeule) {
-      const { data } = await sb.from("matieres").select("classe_id, nom").eq("actif", true);
-      const avec = new Set(((data ?? []) as { classe_id: string; nom: string }[]).filter((m) => nomMatiere(m.nom) === nomMatiere(matiereSeule)).map((m) => m.classe_id));
-      r.classes = r.classes.filter((c) => avec.has(c.id));
-    }
     setRef(r);
     return r;
-  }, [sb, matiereSeule]);
+  }, [sb]);
 
   // Référentiel, puis choix par défaut : la classe dont on est titulaire, la période en cours.
   useEffect(() => {
@@ -164,17 +140,17 @@ export default function Bulletins({
     setErreur(null);
     try {
       const c = await chargerClasse(sb, classe, periode);
-      setCtx(matiereSeule ? seulementMatiere(c, matiereSeule) : c);
+      setCtx(c);
       if (ref) {
         const d = await chargerDocs(sb, classe, periode, ref.periodes);
-        setDocs(matiereSeule ? seulementMatiere(d, matiereSeule) : d);
+        setDocs(d);
       }
     } catch (e) {
       setErreur(e instanceof Error ? e.message : "Chargement impossible.");
     } finally {
       setChargement(false);
     }
-  }, [sb, classe, periode, ref, matiereSeule]);
+  }, [sb, classe, periode, ref]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement des données de la classe choisie

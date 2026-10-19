@@ -78,6 +78,7 @@ import { domaineDepuisCategorie, estCategorieVentes, type SousCategorie } from "
 
 export type { ImportPasse };
 
+type ReleveAttente = { id: string; nom_fichier: string; contenu_base64: string; date_debut: string | null; date_fin: string | null; depose_le: string; depose_par: string };
 type Cat = { id: string; nom: string; type: "recette" | "depense" };
 type Compte = { id: string; nom: string; solde_initial: number };
 type Exercice = { id: string; libelle: string; date_debut: string; date_fin: string; actif: boolean };
@@ -777,9 +778,51 @@ export default function ImportReleve({
     }
   }
 
+  // --- Relevé en attente (déposé par le Bot Préau) ----------------------------
+  const [attente, setAttente] = useState<ReleveAttente | null>(null);
+  const [attenteChargee, setAttenteChargee] = useState<string | null>(null);
+
+  function chargerAttente(r: ReleveAttente) {
+    const bin = atob(r.contenu_base64);
+    const octets = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) octets[i] = bin.charCodeAt(i);
+    setAttenteChargee(r.id);
+    traiter(octets.buffer, r.nom_fichier);
+  }
+
+  useEffect(() => {
+    let annule = false;
+    createClient()
+      .rpc("releve_attente_lire")
+      .then(({ data }) => {
+        const r = ((data ?? []) as ReleveAttente[])[0];
+        if (annule || !r) return;
+        setAttente(r);
+        // Lien envoyé par le Bot (?attente=<id>) : le relevé s'ouvre directement.
+        if (new URLSearchParams(window.location.search).get("attente") === r.id) chargerAttente(r);
+      });
+    return () => {
+      annule = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- lecture unique à l'ouverture de la page
+  }, []);
+
+  async function annulerAttente() {
+    if (!attente || !window.confirm("Annuler ce relevé en attente ? Il ne sera pas importé (le fichier reste archivé).")) return;
+    const { error } = await createClient().rpc("releve_attente_traiter", { p_id: attente.id, p_statut: "annule" });
+    if (error) return setErreur("Annulation impossible : " + error.message);
+    setAttente(null);
+    if (attenteChargee === attente.id) {
+      setAttenteChargee(null);
+      setLignes([]);
+      setNomFichier(null);
+    }
+  }
+
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    setAttenteChargee(null); // fichier choisi à la main : le relevé en attente n'est pas concerné
     traiter(await file.arrayBuffer(), file.name);
     e.target.value = "";
   }
@@ -1194,6 +1237,14 @@ export default function ImportReleve({
     }
     if (liens.length > 0) etapes.push(`${liens.length} don${liens.length > 1 ? "s" : ""} existant${liens.length > 1 ? "s" : ""} relié${liens.length > 1 ? "s" : ""}`);
 
+    if (attenteChargee) {
+      const { error } = await supabase.rpc("releve_attente_traiter", { p_id: attenteChargee, p_statut: "valide", p_import: importId });
+      if (error) avertissements.push("relevé en attente non marqué validé : " + error.message);
+      else {
+        setAttente(null);
+        setAttenteChargee(null);
+      }
+    }
     setImporting(false);
     setFait(etapes.join(" · "));
     if (avertissements.length > 0) {
@@ -1455,6 +1506,24 @@ export default function ImportReleve({
             <input type="file" accept=".xlsx,.xls" onChange={onFile} className="hidden" />
           </label>
         </div>
+        {attente && (
+          <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border border-gold/40 bg-gold/10 px-3 py-2 text-[13px]">
+            <span>
+              Relevé déposé par {attente.depose_par} le {formatDate(attente.depose_le.slice(0, 10))}
+              {attente.date_debut && attente.date_fin ? ` (période du ${formatDate(attente.date_debut)} au ${formatDate(attente.date_fin)})` : ""} — en attente de votre validation.
+            </span>
+            <span className="ml-auto flex gap-2">
+              {attenteChargee !== attente.id && (
+                <button type="button" onClick={() => chargerAttente(attente)} className="rounded-md bg-accent px-3 py-1 text-[13px] font-medium text-accent-fg">
+                  Ouvrir ce relevé
+                </button>
+              )}
+              <button type="button" onClick={annulerAttente} className="rounded-md border border-border px-3 py-1 text-[13px] hover:bg-surface-2">
+                Annuler ce relevé
+              </button>
+            </span>
+          </div>
+        )}
         {nomFichier && <p className="mt-3 text-xs text-muted">Fichier : {nomFichier}</p>}
         {fait !== null && (
           <p className="mt-3 rounded-lg bg-positive/10 px-3 py-2 text-sm text-positive">

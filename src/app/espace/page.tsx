@@ -24,7 +24,7 @@ export default async function TableauDeBordFamille() {
   // Depuis le menu d'un profil d'Administration, les liens restent dans ce menu ; pas de bulletins (années passées
   // dans École Futée).
   const lien = (href: string | undefined) =>
-    !liee || !href ? href : href === "/espace/paiements" ? "/ma-famille/paiements" : href === "/espace/famille" ? "/ma-famille/fiche" : undefined;
+    !liee || !href ? href : href === "/espace/paiements" ? "/ma-famille/paiements" : href === "/espace/achats" ? "/ma-famille/achats" : href === "/espace/famille" ? "/ma-famille/fiche" : undefined;
   const { espace, erreur } = await chargerEspace(supabase, apercu);
   if (!espace) return <p className="text-sm text-negative">{erreur ?? "Espace indisponible."}</p>;
 

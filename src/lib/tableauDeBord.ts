@@ -41,6 +41,7 @@ const DESCRIPTIONS: Record<string, string> = {
   "/acces-familles": "Comptes de l'Espace famille.",
   "/ma-famille/accueil": "Ce qui est à noter pour votre famille.",
   "/ma-famille/paiements": "Frais de scolarité réglés, factures et attestations de votre famille.",
+  "/ma-famille/achats": "Achats divers de votre famille (École et Événement).",
   "/ma-famille/fiche": "Coordonnées et enfants de votre famille.",
 };
 

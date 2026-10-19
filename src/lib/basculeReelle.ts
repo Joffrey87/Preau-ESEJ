@@ -102,7 +102,7 @@ export async function listerCibles(admin: SupabaseClient): Promise<Cible[]> {
 
   const [{ data: profs }, { data: evts }, { data: fams }] = await Promise.all([
     admin.from("enseignants").select("prenom, nom, user_id, actif").not("user_id", "is", null).order("nom"),
-    admin.from("evenement_membres").select("libelle, user_id").not("user_id", "is", null).order("libelle"),
+    admin.from("evenement_membres").select("libelle, user_id").not("user_id", "is", null).order("ordre", { ascending: true, nullsFirst: false }).order("libelle"),
     admin.from("familles").select("nom, identifiant").not("identifiant", "is", null).order("nom"),
   ]);
   const idsParUser = new Map([...comptes].map(([e, id]) => [id, e]));

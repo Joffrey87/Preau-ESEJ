@@ -52,7 +52,7 @@ export const CATEGORIES: { slug: CategorieSlug; label: string; tone: Tone }[] = 
   { slug: "administration", label: "Administration", tone: "green" },
   { slug: "enseignant", label: "Professeur", tone: "teal" },
   { slug: "bureau", label: "Bureau ARIL", tone: "green" },
-  { slug: "vendeur", label: "Vendeur / prestataire", tone: "amber" },
+  { slug: "vendeur", label: "Fournisseur", tone: "amber" },
   { slug: "partenaire", label: "Partenaire", tone: "coral" },
   { slug: "evenement", label: "Contact événements", tone: "teal" },
   { slug: "autre", label: "Autre contact", tone: "gray" },

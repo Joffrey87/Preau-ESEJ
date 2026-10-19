@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/client";
 import { formatDate, formatEuros } from "@/lib/format";
 import {
   BUCKET_FACTURES,
-  STATUTS_FACTURE,
+  MODES_PAIEMENT_FACTURE,
   bouton,
   champ,
   libelleStatut,
@@ -16,6 +16,7 @@ import {
   type ContactEvenement,
   type EvenementCaisse,
   type FactureFournisseur,
+  type ModePaiementFacture,
 } from "@/lib/evenement";
 import { useEnregistrer } from "./useEnregistrer";
 
@@ -39,6 +40,21 @@ type Formulaire = {
   evenement_id: string;
   statut: string;
   notes: string;
+  domaine: "ecole" | "evenement";
+  mode_paiement: string;
+  /** Fournisseur suggéré d'après le nom lu sur la facture : à confirmer. */
+  a_verifier: boolean;
+  fournisseur_lu: string;
+  iban: string;
+  bic: string;
+};
+export type MouvementCaisseFacture = {
+  id: string;
+  caisse_id: string;
+  date: string;
+  libelle: string;
+  montant: number;
+  caisses: { cle: string; nom: string } | null;
 };
 type Candidate = { id: string; date_operation: string; libelle: string; montant: number };
 type Lue = {
@@ -51,6 +67,7 @@ type Lue = {
   libelle: string | null;
 };
 export type CategorieDepense = { id: string; nom: string };
+const libMode = (m: string | null | undefined) => MODES_PAIEMENT_FACTURE.find((x) => x.v === m)?.l ?? "";
 
 /**
  * Factures fournisseurs (profil Événementiel ; réutilisable côté Trésorier). `fournisseurFixe` : fiche d'un fournisseur.
@@ -81,6 +98,8 @@ export default function FacturesFournisseurs({
   fournisseurFixe,
   evenementFixe,
   categories = [],
+  domainesGerables = ["evenement"],
+  mouvementsCaisse = [],
 }: {
   peutModifier: boolean;
   estTresorier: boolean;
@@ -90,6 +109,8 @@ export default function FacturesFournisseurs({
   fournisseurFixe?: string;
   evenementFixe?: string;
   categories?: CategorieDepense[];
+  domainesGerables?: ("ecole" | "evenement")[];
+  mouvementsCaisse?: MouvementCaisseFacture[];
 }) {
   const supabase = createClient();
   const { erreur, setErreur, occupe, executer } = useEnregistrer();
@@ -108,6 +129,12 @@ export default function FacturesFournisseurs({
     evenement_id: evenementFixe ?? evenementLePlusProche(evenements),
     statut: "pas_importee",
     notes: "",
+    domaine: domainesGerables.includes("evenement") ? "evenement" : domainesGerables[0] ?? "evenement",
+    mode_paiement: "",
+    a_verifier: false,
+    fournisseur_lu: "",
+    iban: "",
+    bic: "",
   });
   const [f, setF] = useState<Formulaire>(vide);
   const [fichier, setFichier] = useState<File | null>(null);
@@ -145,7 +172,14 @@ export default function FacturesFournisseurs({
       const pn = normaliser([x.prenom, x.nom].filter(Boolean).join(" "));
       return (ent && (rs === ent || normaliser(x.nom) === ent)) || (pers && (pn === pers || pn === persInv));
     });
-    return c?.id ?? null;
+    if (c) return c.id;
+    // Nom approchant (« SARL Dupont Traiteur » ↔ « Dupont Traiteur ») : le plus long nom contenu de part et d'autre.
+    if (!ent) return null;
+    const proches = fournisseurs
+      .map((x) => ({ id: x.id, n: normaliser(x.raison_sociale || x.nom) }))
+      .filter((x) => x.n.length >= 4 && (` ${ent} `.includes(` ${x.n} `) || ` ${x.n} `.includes(` ${ent} `)))
+      .sort((a, b) => b.n.length - a.n.length);
+    return proches[0]?.id ?? null;
   }
 
   async function choisirFichier(brut: File | null) {
@@ -174,6 +208,8 @@ export default function FacturesFournisseurs({
       setF((p) => ({
         ...p,
         fournisseur_id: trouve ?? (aLu ? NOUVEAU : p.fournisseur_id),
+        a_verifier: !fournisseurFixe && !!trouve,
+        fournisseur_lu: [j.fournisseur_entreprise, [j.fournisseur_prenom, j.fournisseur_nom].filter(Boolean).join(" ")].filter(Boolean).join(" · "),
         nv_entreprise: j.fournisseur_entreprise ?? "",
         nv_nom: j.fournisseur_nom ?? "",
         nv_prenom: j.fournisseur_prenom ?? "",
@@ -217,6 +253,11 @@ export default function FacturesFournisseurs({
     e.preventDefault();
     const fournisseurId = await idFournisseur();
     if (!fournisseurId) return;
+    // IBAN saisi pour ce fournisseur (écriture seule hors Trésorier).
+    if (f.iban.trim()) {
+      const { error } = await supabase.rpc("fournisseur_iban_definir", { p_contact: fournisseurId, p_iban: f.iban, p_bic: f.bic });
+      if (error) return setErreur(`IBAN non enregistré : ${error.message}`);
+    }
     let chemin = edition?.fichier ?? null;
     if (fichier) {
       const ext = fichier.name.split(".").pop()?.toLowerCase() ?? "pdf";
@@ -235,7 +276,11 @@ export default function FacturesFournisseurs({
       evenement_id: f.evenement_id || null,
       fichier: chemin,
       notes: f.notes.trim() || null,
-      ...(edition?.statut === "payee" ? {} : { statut: f.statut }),
+      domaine: f.domaine,
+      mode_paiement: (f.mode_paiement || null) as ModePaiementFacture | null,
+      fournisseur_a_verifier: f.a_verifier,
+      fournisseur_lu: f.fournisseur_lu || null,
+      ...(edition ? {} : { statut: "pas_importee" }),
     };
     const ok = await executer(() =>
       edition
@@ -256,6 +301,33 @@ export default function FacturesFournisseurs({
     if (error) return setErreur(error.message);
     setCandidates({ facture, ops: (data ?? []) as Candidate[] });
   }
+
+  /** Payée à la main (moyen requis) ou par une sortie de caisse ; ou retour « À payer ». */
+  const [paiement, setPaiement] = useState<{ facture: string; mode: string; date: string; mouvement: string } | null>(null);
+  async function marquerPayee() {
+    if (!paiement) return;
+    if (!paiement.mode) return setErreur("Choisissez le moyen de paiement.");
+    const maj = paiement.mode === "especes" && paiement.mouvement
+      ? { caisse_mouvement_id: paiement.mouvement }
+      : { statut: "payee", mode_paiement: paiement.mode, paye_le: paiement.date || null };
+    const ok = await executer(() => supabase.from("factures_fournisseurs").update(maj).eq("id", paiement.facture));
+    if (ok) setPaiement(null);
+  }
+  async function marquerAPayer(facture: string) {
+    await executer(() =>
+      supabase.from("factures_fournisseurs").update({ statut: "recue_a_payer", caisse_mouvement_id: null, paye_le: null }).eq("id", facture),
+    );
+  }
+  const mouvementsLibres = mouvementsCaisse.filter((m) => !factures.some((x) => x.caisse_mouvement_id === m.id));
+
+  // IBAN du fournisseur choisi : masqué ; complet pour le Trésorier, à la demande.
+  const [ibanComplet, setIbanComplet] = useState<{ id: string; iban: string | null } | null>(null);
+  const [ibanEdition, setIbanEdition] = useState(false);
+  async function voirIban(id: string) {
+    const { data } = await supabase.rpc("fournisseur_iban", { p_contact: id });
+    setIbanComplet({ id, iban: (data as string | null) ?? null });
+  }
+  const fournisseurChoisi = fournisseurs.find((c) => c.id === f.fournisseur_id) ?? null;
 
   async function lier(facture: string, operation: string | null) {
     const ok = await executer(() => supabase.from("factures_fournisseurs").update({ operation_id: operation }).eq("id", facture));
@@ -321,7 +393,8 @@ export default function FacturesFournisseurs({
           {formulaireVisible && (
             <form onSubmit={enregistrer} className="grid gap-3 sm:grid-cols-3">
               {!fournisseurFixe && (
-                <select required aria-label="Fournisseur" value={f.fournisseur_id} onChange={(e) => setF({ ...f, fournisseur_id: e.target.value })} className={champ}>
+                <div className="space-y-1">
+                <select required aria-label="Fournisseur" value={f.fournisseur_id} onChange={(e) => { setF({ ...f, fournisseur_id: e.target.value, a_verifier: false }); setIbanEdition(false); }} className={`${champ} ${f.a_verifier ? "border-amber-400" : ""}`}>
                   <option value="">Fournisseur…</option>
                   <option value={NOUVEAU}>+ Nouveau fournisseur</option>
                   {fournisseurs.map((c) => (
@@ -330,6 +403,55 @@ export default function FacturesFournisseurs({
                     </option>
                   ))}
                 </select>
+                {f.a_verifier && (
+                  <div className="flex flex-wrap items-center gap-2 text-xs">
+                    <span className="rounded-full bg-amber-50 px-2 py-0.5 font-medium text-amber-800 dark:bg-amber-900/20 dark:text-amber-300" title={f.fournisseur_lu ? `Lu sur la facture : ${f.fournisseur_lu}` : undefined}>
+                      à vérifier
+                    </span>
+                    <button type="button" className="text-accent hover:underline" onClick={() => setF({ ...f, a_verifier: false })}>
+                      Confirmer
+                    </button>
+                  </div>
+                )}
+                {fournisseurChoisi && (
+                  <div className="text-xs text-muted">
+                    {fournisseurChoisi.rib_renseigne && !ibanEdition ? (
+                      <span className="inline-flex flex-wrap items-center gap-2">
+                        IBAN :{" "}
+                        {estTresorier && ibanComplet?.id === fournisseurChoisi.id && ibanComplet.iban ? (
+                          <>
+                            <span className="select-all font-mono text-foreground">{ibanComplet.iban}</span>
+                            <button type="button" className="text-accent hover:underline" onClick={() => navigator.clipboard?.writeText(ibanComplet.iban ?? "")}>
+                              Copier
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <span className="font-mono">{fournisseurChoisi.iban_masque}</span>
+                            {estTresorier && (
+                              <button type="button" className="text-accent hover:underline" onClick={() => voirIban(fournisseurChoisi.id)}>
+                                Afficher
+                              </button>
+                            )}
+                          </>
+                        )}
+                        {fournisseurChoisi.bic && <span>· BIC {fournisseurChoisi.bic}</span>}
+                        <button type="button" className="text-accent hover:underline" onClick={() => setIbanEdition(true)}>
+                          Remplacer
+                        </button>
+                      </span>
+                    ) : (
+                      <span>{ibanEdition ? "Nouvel IBAN :" : "Aucun IBAN enregistré : vous pouvez le saisir ci-dessous."}</span>
+                    )}
+                  </div>
+                )}
+                </div>
+              )}
+              {(f.fournisseur_id === NOUVEAU || (fournisseurChoisi && (!fournisseurChoisi.rib_renseigne || ibanEdition))) && (
+                <div className="grid gap-2 sm:col-span-2 sm:grid-cols-[2fr,1fr]">
+                  <input aria-label="IBAN du fournisseur" placeholder="IBAN du fournisseur (facultatif)" value={f.iban} onChange={(e) => setF({ ...f, iban: e.target.value })} className={`${champ} font-mono`} />
+                  <input aria-label="BIC" placeholder="BIC" value={f.bic} onChange={(e) => setF({ ...f, bic: e.target.value })} className={`${champ} font-mono`} />
+                </div>
               )}
               {f.fournisseur_id === NOUVEAU && (
                 <div className="grid gap-2 sm:col-span-2 sm:grid-cols-3">
@@ -364,16 +486,22 @@ export default function FacturesFournisseurs({
                   </option>
                 ))}
               </select>
-              {edition?.statut === "payee" ? (
-                <p className="self-center text-sm text-positive">Payée (opération bancaire liée)</p>
-              ) : (
-                <select aria-label="Statut" value={fichier && f.statut === "pas_importee" ? "recue_a_payer" : f.statut} onChange={(e) => setF({ ...f, statut: e.target.value })} className={champ}>
-                  {STATUTS_FACTURE.filter((s) => s.v !== "payee").map((s) => (
-                    <option key={s.v} value={s.v}>
-                      {s.l}
-                    </option>
-                  ))}
+              <select aria-label="Moyen de paiement" value={f.mode_paiement} onChange={(e) => setF({ ...f, mode_paiement: e.target.value })} className={champ}>
+                <option value="">Moyen de paiement…</option>
+                {MODES_PAIEMENT_FACTURE.map((m) => (
+                  <option key={m.v} value={m.v}>
+                    {m.l}
+                  </option>
+                ))}
+              </select>
+              {domainesGerables.length > 1 ? (
+                <select aria-label="Domaine" value={f.domaine} onChange={(e) => setF({ ...f, domaine: e.target.value as "ecole" | "evenement" })} className={champ}>
+                  <option value="evenement">Événement</option>
+                  <option value="ecole">École</option>
                 </select>
+              ) : null}
+              {(f.mode_paiement === "cheque" || f.mode_paiement === "especes") && !fichier && !edition?.fichier && (
+                <p className="self-center text-xs text-muted">Chèque ou espèces : le fichier de la facture n&apos;est pas obligatoire.</p>
               )}
               <input aria-label="Notes" placeholder="Notes" value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} className={champ} />
               {edition && (
@@ -420,7 +548,15 @@ export default function FacturesFournisseurs({
               return (
                 <tr key={x.id} className="border-t border-border align-top">
                   <td className="px-4 py-2">{formatDate(x.date)}</td>
-                  {!fournisseurFixe && <td className="px-4 py-2 font-medium">{nomF(x.fournisseur_id)}</td>}
+                  {!fournisseurFixe && (
+                    <td className="px-4 py-2 font-medium">
+                      {nomF(x.fournisseur_id)}
+                      {x.fournisseur_a_verifier && (
+                        <span className="ml-1 rounded-full bg-amber-50 px-1.5 py-0.5 text-[11px] font-normal text-amber-800 dark:bg-amber-900/20 dark:text-amber-300">à vérifier</span>
+                      )}
+                      {x.domaine === "ecole" && <span className="ml-1 rounded bg-surface-2 px-1 text-[11px] font-normal text-muted">École</span>}
+                    </td>
+                  )}
                   <td className="px-4 py-2">{x.numero ?? "—"}</td>
                   <td className="px-4 py-2">
                     <span className="block">{x.libelle ?? "—"}</span>
@@ -441,6 +577,15 @@ export default function FacturesFournisseurs({
                   <td className="px-4 py-2 text-right">{formatEuros(Number(x.montant))}</td>
                   <td className="px-4 py-2">
                     <span className={`rounded-full px-2 py-0.5 text-xs ${st?.cls ?? ""}`}>{st?.l ?? x.statut}</span>
+                    {x.statut === "payee" ? (
+                      <span className="mt-0.5 block text-[11px] text-muted">
+                        {x.paye_le ? `le ${formatDate(x.paye_le)}` : ""}
+                        {x.mode_paiement ? ` · ${libMode(x.mode_paiement)}` : x.operation_id ? " · banque" : ""}
+                        {x.paye_par ? ` · ${x.paye_par}` : ""}
+                      </span>
+                    ) : (
+                      x.mode_paiement && <span className="mt-0.5 block text-[11px] text-muted">{libMode(x.mode_paiement)}</span>
+                    )}
                   </td>
                   <td className="space-x-3 whitespace-nowrap px-4 py-2 text-right">
                     {x.fichier && (
@@ -466,7 +611,12 @@ export default function FacturesFournisseurs({
                             evenement_id: x.evenement_id ?? "",
                             statut: x.statut,
                             notes: x.notes ?? "",
+                            domaine: x.domaine ?? "evenement",
+                            mode_paiement: x.mode_paiement ?? "",
+                            a_verifier: !!x.fournisseur_a_verifier,
+                            fournisseur_lu: x.fournisseur_lu ?? "",
                           });
+                          setIbanEdition(false);
                           window.scrollTo({ top: 0, behavior: "smooth" });
                         }}
                         className="text-accent hover:underline"
@@ -474,7 +624,56 @@ export default function FacturesFournisseurs({
                         Modifier
                       </button>
                     )}
+                    {peutModifier && domainesGerables.includes(x.domaine ?? "evenement") && !x.operation_id &&
+                      (x.statut === "payee" ? (
+                        <button type="button" onClick={() => marquerAPayer(x.id)} className="text-muted hover:underline">
+                          Marquer à payer
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setPaiement({ facture: x.id, mode: x.mode_paiement ?? "", date: new Date().toISOString().slice(0, 10), mouvement: "" })}
+                          className="text-accent hover:underline"
+                        >
+                          Marquer payée
+                        </button>
+                      ))}
+                    {paiement?.facture === x.id && (
+                      <div className="mt-2 space-y-1.5 text-left text-xs">
+                        <select aria-label="Moyen de paiement" value={paiement.mode} onChange={(e) => setPaiement({ ...paiement, mode: e.target.value, mouvement: "" })} className={champ}>
+                          <option value="">Moyen de paiement…</option>
+                          {MODES_PAIEMENT_FACTURE.map((m) => (
+                            <option key={m.v} value={m.v}>
+                              {m.l}
+                            </option>
+                          ))}
+                        </select>
+                        {paiement.mode === "especes" && (
+                          <select aria-label="Mouvement de caisse" value={paiement.mouvement} onChange={(e) => setPaiement({ ...paiement, mouvement: e.target.value })} className={champ}>
+                            <option value="">Sans mouvement de caisse</option>
+                            {mouvementsLibres.map((m) => (
+                              <option key={m.id} value={m.id}>
+                                {m.caisses?.nom ?? "Caisse"} · {formatDate(m.date)} · {m.libelle} · {formatEuros(Math.abs(m.montant))}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                        {!(paiement.mode === "especes" && paiement.mouvement) && (
+                          <input type="date" aria-label="Date de paiement" value={paiement.date} onChange={(e) => setPaiement({ ...paiement, date: e.target.value })} className={champ} />
+                        )}
+                        <div className="flex gap-3">
+                          <button type="button" disabled={occupe} onClick={marquerPayee} className={bouton}>
+                            Valider
+                          </button>
+                          <button type="button" onClick={() => setPaiement(null)} className="text-muted hover:underline">
+                            Annuler
+                          </button>
+                        </div>
+                      </div>
+                    )}
                     {estTresorier &&
+                      !x.caisse_mouvement_id &&
+                      !(x.statut === "payee" && !x.operation_id) &&
                       (x.operation_id ? (
                         <button type="button" onClick={() => lier(x.id, null)} className="text-muted hover:underline">
                           Délier l&apos;opération

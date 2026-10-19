@@ -74,7 +74,7 @@ import {
 import { nomDonateur, cleDonateur } from "@/lib/statutDon";
 import { LIBELLE_DON, chiffrerLibellesDon, dechiffrerLibellesDon, texteDonateur } from "@/lib/libelleDon";
 import type { Don } from "@/components/GestionDons";
-import { estCategorieVentes, objetVenteDansLibelle, reconnaitrePayeur, type ContactPayeur, type FamillePayeur, type SousCategorie } from "@/lib/ventes";
+import { estCategorieVentes, normaliserLibelle, objetVenteDansLibelle, reconnaitrePayeur, type ContactPayeur, type FamillePayeur, type SousCategorie } from "@/lib/ventes";
 
 export type { ImportPasse };
 
@@ -141,7 +141,11 @@ type Ecriture = {
   /** Nouveau contact « Acheteur » proposé (nom, prénom modifiables). */
   payeurNom?: string;
   payeurPrenom?: string;
+  /** Facture fournisseur à solder par ce débit (id), « - » aucune. Absent : suggestion. */
+  facture?: string;
 };
+
+type FactureOuverte = { id: string; montant: number; date: string; numero: string | null; fournisseur_id: string };
 
 type Fille = Ecriture & {
   cle: string;
@@ -260,6 +264,8 @@ export default function ImportReleve({
   // Familles et contacts du Carnet : payeur des ventes reconnu dans le libellé bancaire.
   const [famillesPayeurs, setFamillesPayeurs] = useState<FamillePayeur[]>([]);
   const [contactsPayeurs, setContactsPayeurs] = useState<ContactPayeur[]>([]);
+  // Factures fournisseurs non payées : rapprochement des débits du relevé (Trésorier).
+  const [facturesOuvertes, setFacturesOuvertes] = useState<FactureOuverte[]>([]);
   // Copie lue par la lecture du relevé (qui peut démarrer avant le rendu suivant : relevé en attente ouvert d'office).
   const sousVentesRef = useRef<SousCategorie[]>([]);
 
@@ -809,6 +815,8 @@ export default function ImportReleve({
       .then(({ data }) => { if (!annule) setFamillesPayeurs((data ?? []) as FamillePayeur[]); });
     sb.from("contacts").select("id, nom, prenom, raison_sociale, est_personne_morale, famille_id").is("supprime_le", null).order("nom")
       .then(({ data }) => { if (!annule) setContactsPayeurs((data ?? []) as ContactPayeur[]); });
+    sb.from("factures_fournisseurs").select("id, montant, date, numero, fournisseur_id").neq("statut", "payee").is("operation_id", null)
+      .then(({ data }) => { if (!annule) setFacturesOuvertes(((data ?? []) as FactureOuverte[]).map((x) => ({ ...x, montant: Number(x.montant) }))); });
     // Objets de Ventes diverses d'abord : la lecture du relevé en attente en a besoin pour ses suggestions.
     Promise.resolve(sb.from("ventes_sous_categories").select("id, nom, domaine, archive, alias").eq("archive", false).order("nom"))
       .then(({ data: objets }) => {
@@ -1128,6 +1136,7 @@ export default function ImportReleve({
 
     // Recettes « Ventes diverses » dont la sous-catégorie est choisie : ventilées à l'import (onglet Ventes diverses).
     const ventilationsVentes: { operation_id: string; sous_categorie_id: string; montant: number; texte: string; mode: string | null; payeur: string; nom: string; prenom: string }[] = [];
+    const facturesSoldees: { facture: string; operation: string; mode: string | null }[] = [];
     let totalRec = 0, totalDep = 0;
     for (const l of retenues) {
       const id = crypto.randomUUID();
@@ -1156,6 +1165,8 @@ export default function ImportReleve({
         import_id: importId,
       });
       if (!ventilee) {
+        const fac = factureDe(l);
+        if (fac !== "-" && l.type === "depense") facturesSoldees.push({ facture: fac, operation: id, mode });
         if (l.sousVente && estVente(l.type, l.categorie_id))
           ventilationsVentes.push({ operation_id: id, sous_categorie_id: l.sousVente, montant: l.montant, texte: `${l.libelle} ${l.libelle_origine}`, mode, ...payeurDe(l, l.libelle_origine) });
         rattacher(id, famMere, donMere, l.montant, l.date, exerciceId, mode);
@@ -1263,6 +1274,16 @@ export default function ImportReleve({
         else etapes.push(`${n} recette${n > 1 ? "s" : ""} ventilée${n > 1 ? "s" : ""} sans payeur (à rattacher dans Ventes diverses)`);
       }
     }
+    if (facturesSoldees.length > 0) {
+      let n = 0;
+      for (const fs of facturesSoldees) {
+        const modeFacture = ["virement", "cheque", "prelevement", "carte"].includes(fs.mode ?? "") ? fs.mode : "virement";
+        const { error } = await supabase.from("factures_fournisseurs").update({ operation_id: fs.operation, mode_paiement: modeFacture }).eq("id", fs.facture);
+        if (error) avertissements.push(`facture fournisseur non liée : ${error.message}`);
+        else n++;
+      }
+      if (n > 0) etapes.push(`${n} facture${n > 1 ? "s" : ""} fournisseur${n > 1 ? "s" : ""} liée${n > 1 ? "s" : ""} et marquée${n > 1 ? "s" : ""} payée${n > 1 ? "s" : ""}`);
+    }
     if (nouveauxDons.length > 0) {
       const payload = [];
       for (const d of nouveauxDons) {
@@ -1314,6 +1335,55 @@ export default function ImportReleve({
 
   const selectCls =
     "rounded-lg border border-border bg-background px-2 py-1 text-xs outline-none focus:border-accent";
+
+  /** Factures fournisseurs candidates pour un débit : même montant, ±45 jours ; nom du fournisseur dans le libellé. */
+  const nomFournisseur = (id: string) => {
+    const c = contactsPayeurs.find((x) => x.id === id);
+    return c ? c.raison_sociale || [c.prenom, c.nom].filter(Boolean).join(" ") : "Fournisseur";
+  };
+  function facturesCandidates(l: Ligne) {
+    if (l.type !== "depense" || l.filles.length > 0) return [];
+    const texte = normaliserLibelle(`${l.libelle} ${l.libelle_origine}`);
+    const jour = (d: string) => Date.parse(d) / 86400000;
+    return facturesOuvertes
+      .filter((fa) => Math.abs(fa.montant - l.montant) < 0.005 && Math.abs(jour(fa.date) - jour(l.date)) <= 45)
+      .map((fa) => {
+        const nom = normaliserLibelle(nomFournisseur(fa.fournisseur_id));
+        const mots = nom.split(" ").filter((m) => m.length >= 4);
+        const nomTrouve = nom.length >= 3 && (` ${texte} `.includes(` ${nom} `) || mots.some((m) => ` ${texte} `.includes(` ${m} `)));
+        return { fa, nomTrouve, ecart: Math.abs(jour(fa.date) - jour(l.date)) };
+      })
+      .sort((a, b) => Number(b.nomTrouve) - Number(a.nomTrouve) || a.ecart - b.ecart);
+  }
+  function factureDe(l: Ligne): string {
+    if (l.facture) return l.facture;
+    const c = facturesCandidates(l);
+    const best = c[0];
+    if (!best) return "-";
+    // Présélection : nom du fournisseur lu, ou seule facture de ce montant à 15 jours près.
+    const pris = lignes.some((x) => x !== l && x.inclus && x.facture === best.fa.id);
+    return !pris && (best.nomTrouve || (c.length === 1 && best.ecart <= 15)) ? best.fa.id : "-";
+  }
+  const choixFacture = (l: Ligne, changer: (p: Partial<Ligne>) => void) => {
+    const c = facturesCandidates(l);
+    if (c.length === 0) return null;
+    const v = factureDe(l);
+    return (
+      <select
+        value={v}
+        onChange={(ev) => changer({ facture: ev.target.value })}
+        title="Facture fournisseur soldée par ce débit : liée et marquée payée à la validation"
+        className={`mt-1 block w-48 ${selectCls} ${v === "-" ? "text-muted" : ""}`}
+      >
+        <option value="-">— aucune facture —</option>
+        {c.map(({ fa, nomTrouve }) => (
+          <option key={fa.id} value={fa.id}>
+            {nomTrouve ? "" : "? "}Facture {nomFournisseur(fa.fournisseur_id)} · {formatDate(fa.date)}{fa.numero ? ` · n° ${fa.numero}` : ""}
+          </option>
+        ))}
+      </select>
+    );
+  };
 
   /** Payeur suggéré ou choisi pour une écriture de vente. */
   const reconnaissance = (e: Ecriture, origine: string) =>
@@ -1911,6 +1981,7 @@ export default function ImportReleve({
                               </select>
                               {choixSousVente(l.type, l, (v) => maj(i, { sousVente: v }))}
                               {choixPayeur(l.type, l, l.libelle_origine, (p) => maj(i, p))}
+                              {choixFacture(l, (p) => maj(i, p))}
                             </>
                           )}
                         </td>

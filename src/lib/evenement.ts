@@ -32,12 +32,15 @@ export type ContactEvenement = {
   cp_ville: string | null;
   notes: string | null;
   rib_renseigne: boolean;
+  /** IBAN masqué (« FR76 •••• 1234 ») : l'IBAN complet n'est lisible que par le Trésorier (fournisseur_iban). */
+  iban_masque?: string | null;
+  bic?: string | null;
 };
 
 export type StatutFacture = "pas_importee" | "recue_a_payer" | "payee";
 export const STATUTS_FACTURE: { v: StatutFacture; l: string; cls: string }[] = [
-  { v: "pas_importee", l: "Pas importée", cls: "bg-surface-2 text-muted" },
-  { v: "recue_a_payer", l: "Reçue, à payer", cls: "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300" },
+  { v: "pas_importee", l: "À payer", cls: "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300" },
+  { v: "recue_a_payer", l: "À payer", cls: "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300" },
   { v: "payee", l: "Payée", cls: "bg-positive/10 text-positive" },
 ];
 export const libelleStatut = (s: string) => STATUTS_FACTURE.find((x) => x.v === s);
@@ -56,7 +59,23 @@ export type FactureFournisseur = {
   libelle: string | null;
   categorie_id: string | null;
   doute: boolean;
+  domaine?: "ecole" | "evenement";
+  mode_paiement?: ModePaiementFacture | null;
+  paye_le?: string | null;
+  paye_par?: string | null;
+  caisse_mouvement_id?: string | null;
+  fournisseur_a_verifier?: boolean;
+  fournisseur_lu?: string | null;
 };
+
+export type ModePaiementFacture = "virement" | "cheque" | "especes" | "carte" | "prelevement";
+export const MODES_PAIEMENT_FACTURE: { v: ModePaiementFacture; l: string }[] = [
+  { v: "virement", l: "Virement" },
+  { v: "cheque", l: "Chèque" },
+  { v: "especes", l: "Espèces" },
+  { v: "carte", l: "Carte bancaire (SumUp)" },
+  { v: "prelevement", l: "Prélèvement" },
+];
 
 export const BUCKET_FACTURES = "factures-fournisseurs";
 

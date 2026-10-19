@@ -889,6 +889,7 @@ export default function ListeOperations({
               operationsAffichees.flatMap((op) => [
                 <tr
                   key={op.id}
+                  id={`op-${op.id}`}
                   onClick={() =>
                     modeEdition
                       ? ouvrir(op)

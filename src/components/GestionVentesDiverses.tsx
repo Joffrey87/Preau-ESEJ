@@ -9,6 +9,7 @@ import { telechargerVentesPdf } from "@/lib/ventesPdf";
 import { Modal } from "./GestionComptes";
 import ImportVentes from "./ImportVentes";
 import { LiensQrCodes } from "./QrCodesPaiement";
+import PanneauVentesPayeur from "./PanneauVentesPayeur";
 import {
   DOMAINES,
   MODES,
@@ -51,7 +52,7 @@ export default function GestionVentesDiverses({
   ventilations,
   vueInitiale,
 }: {
-  exercices: { id: string; libelle: string }[];
+  exercices: { id: string; libelle: string; date_debut?: string; date_fin?: string }[];
   exerciceId: string;
   domaines: DomaineVente[];
   estTresorier: boolean;
@@ -128,6 +129,8 @@ export default function GestionVentesDiverses({
   // Fiche résumé d'un objet de vente (clic sur son nom).
   const [fiche, setFiche] = useState<string | null>(null);
   const ficheTotal = totaux.find((t) => t.sous.id === fiche) ?? null;
+  // Panneau latéral des ventes d'une famille / personne (clic sur sa ligne).
+  const [panneau, setPanneau] = useState<{ cle: string; libelle: string } | null>(null);
 
   async function creerSousCat(e: React.FormEvent) {
     e.preventDefault();
@@ -405,7 +408,18 @@ export default function GestionVentesDiverses({
                           t.payeurs.map((g) => (
                             <tr key={g.cle} className="border-b border-border/40 text-[13px]">
                               <td className="py-1.5 pl-12 pr-4 text-muted">
-                                {g.libelle}
+                                {g.cle.startsWith("l:") ? (
+                                  g.libelle
+                                ) : (
+                                  <button
+                                    type="button"
+                                    onClick={() => setPanneau({ cle: g.cle, libelle: g.libelle })}
+                                    className="text-left hover:text-accent hover:underline"
+                                    title="Voir le détail de ses ventes"
+                                  >
+                                    {g.libelle}
+                                  </button>
+                                )}
                                 {g.paye >= g.attendu - 0.005 && (
                                   <span className="ml-2 text-emerald-600" title="Soldé">
                                     ✓
@@ -480,7 +494,13 @@ export default function GestionVentesDiverses({
                       <ul className="max-h-56 divide-y divide-border/60 overflow-y-auto rounded-lg border border-border">
                         {t.payeurs.map((g) => (
                           <li key={g.cle} className="flex items-center gap-2 px-3 py-1.5 text-[13px]">
-                            <span className="min-w-0 flex-1 truncate">{g.libelle}</span>
+                            {g.cle.startsWith("l:") ? (
+                              <span className="min-w-0 flex-1 truncate">{g.libelle}</span>
+                            ) : (
+                              <button type="button" onClick={() => setPanneau({ cle: g.cle, libelle: g.libelle })} className="min-w-0 flex-1 truncate text-left hover:text-accent hover:underline">
+                                {g.libelle}
+                              </button>
+                            )}
                             <span className="tabular-nums text-muted">
                               {formatEuros(g.paye)} / {formatEuros(g.attendu)}
                             </span>
@@ -693,6 +713,18 @@ export default function GestionVentesDiverses({
             })
           )}
         </section>
+      )}
+      {panneau && (
+        <PanneauVentesPayeur
+          key={panneau.cle}
+          cle={panneau.cle}
+          libelle={panneau.libelle}
+          exercices={exercices}
+          exerciceId={exerciceId}
+          estTresorier={estTresorier}
+          peutModifier={peutModifier}
+          onClose={() => setPanneau(null)}
+        />
       )}
     </div>
   );

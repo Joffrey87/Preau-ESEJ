@@ -7,6 +7,7 @@ import MonProfil from "@/components/MonProfil";
 import ChoixTheme from "@/components/ChoixTheme";
 import SecuriteDonnees from "@/components/SecuriteDonnees";
 import QrCodesPaiement from "@/components/QrCodesPaiement";
+import CoordonneesPaiementForm from "@/components/CoordonneesPaiementForm";
 import { createClient } from "@/lib/supabase/server";
 import { emailVue } from "@/lib/vueRoleServeur";
 import { roleByEmail } from "@/lib/roles";
@@ -40,6 +41,7 @@ export default async function ParametresPage() {
         <GestionOrganisation organisation={(organisationRes.data ?? null) as Organisation | null} />
         {/* QR codes IBAN (SumUp, Crédit Mutuel), affichés dans Ventes diverses : Trésorier seulement. */}
         {role?.slug === "tresorier" && <QrCodesPaiement />}
+        {role?.slug === "tresorier" && <CoordonneesPaiementForm />}
         <GestionExercices exercices={exercicesRes.data ?? []} />
         <GestionComptes comptes={comptesRes.data ?? []} />
         <GestionCategories categories={categoriesRes.data ?? []} />

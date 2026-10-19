@@ -20,6 +20,8 @@ export type DonneesWebmestre = {
   webmestre: { profil: string; depuis: string };
   /** Domaines Ventes diverses / Caisses par profil (Trésorier = toujours les deux, hors table). */
   domainesVentes: { profil: string; domaines: DomainesVentes[] }[];
+  /** Bénévoles Événement : « Responsable des Ventes diverses côté École » (accès personnel en plus du profil). */
+  responsablesVentesEcole: { user_id: string; libelle: string; prenom: string | null; nom: string | null; responsable: boolean }[];
 };
 
 /** Profils Administration (le Webmestre ne peut être que l'un d'eux). */
@@ -64,7 +66,7 @@ export default function GestionWebmestre({ donnees }: { donnees: DonneesWebmestr
   const router = useRouter();
   const [enCours, demarrer] = useTransition();
   const [erreur, setErreur] = useState("");
-  const { pages, droits, personnes, liens, exceptions, historique, webmestre, titulaires, annuaire, domainesVentes } = donnees;
+  const { pages, droits, personnes, liens, exceptions, historique, webmestre, titulaires, annuaire, domainesVentes, responsablesVentesEcole } = donnees;
   const [roleOuvert, setRoleOuvert] = useState<string | null>(null);
   const [info, setInfo] = useState("");
   const personneDe = (source: keyof Annuaire, m: MembreReel) =>
@@ -433,6 +435,50 @@ export default function GestionWebmestre({ donnees }: { donnees: DonneesWebmestr
             })}
           </tbody>
         </table>
+      </div>
+
+      <Titre>Responsables des Ventes diverses côté École</Titre>
+      <p className="mb-2 text-xs text-muted">
+        Un bénévole Événement coché voit aussi le côté École des Ventes diverses (et de la Caisse École), comme la Directrice.
+        Les autres bénévoles gardent le seul côté Événement.
+      </p>
+      <div className="overflow-x-auto rounded-xl border border-border bg-surface">
+        {responsablesVentesEcole.length === 0 ? (
+          <p className="px-3 py-2 text-[13px] text-muted">Aucun bénévole Événement avec un compte.</p>
+        ) : (
+          <ul className="divide-y divide-border/60 text-[13px]">
+            {responsablesVentesEcole.map((m) => {
+              const cleR = `resp-ventes:${m.user_id}`;
+              const d = enAttente(cleR);
+              const coche = (d?.args.p_responsable as boolean | undefined) ?? m.responsable;
+              const nom = [m.prenom, m.nom].filter(Boolean).join(" ") || m.libelle;
+              return (
+                <li key={m.user_id} className={`flex items-center gap-3 px-3 py-1.5 ${d ? JAUNE : ""}`}>
+                  <label className="flex flex-1 cursor-pointer items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={coche}
+                      disabled={enCours}
+                      onChange={(e) =>
+                        preparer(
+                          {
+                            cle: cleR,
+                            fn: "webmestre_definir_responsable_ventes_ecole",
+                            args: { p_user: m.user_id, p_responsable: e.target.checked },
+                            libelle: `${nom} · Responsable des Ventes diverses côté École : ${e.target.checked ? "oui" : "non"}`,
+                          },
+                          e.target.checked === m.responsable,
+                        )
+                      }
+                    />
+                    <span>{nom}</span>
+                  </label>
+                  <span className={coche ? "text-positive" : "text-muted"}>{coche ? "École + Événement" : "Événement"}</span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
       </div>
 
       <Titre>Personnes</Titre>

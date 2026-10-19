@@ -57,7 +57,9 @@ export default async function VentesDiversesPage({ searchParams }: { searchParam
       <PageHeader
         title="Ventes diverses"
         subtitle={
-          estTresorier
+          !estTresorier && domaines.length > 1
+            ? "Ventes École et Événement : ce que chaque famille ou personne doit et a payé."
+            : estTresorier
             ? "Sous-catégories École et Événement, ventes attendues et rattachement des paiements bancaires."
             : domaines[0] === "ecole"
               ? "Ventes du domaine École : ce que chaque famille doit et a payé."
@@ -65,7 +67,7 @@ export default async function VentesDiversesPage({ searchParams }: { searchParam
         }
       />
       <GestionVentesDiverses
-        exercices={exercices.map((e) => ({ id: e.id, libelle: e.libelle }))}
+        exercices={exercices.map((e) => ({ id: e.id, libelle: e.libelle, date_debut: e.date_debut, date_fin: e.date_fin }))}
         exerciceId={exercice?.id ?? ""}
         domaines={domaines}
         estTresorier={estTresorier}

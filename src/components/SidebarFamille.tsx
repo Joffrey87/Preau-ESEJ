@@ -23,7 +23,7 @@ const NAV: { titre: string | null; liens: Lien[] }[] = [
       { href: "/espace/inscription", label: "Réinscription", icon: "check", exact: false },
     ],
   },
-  { titre: "Finance", liens: [{ href: "/espace/paiements", label: "Paiements", icon: "invoice", exact: false }] },
+  { titre: "Finance", liens: [{ href: "/espace/paiements", label: "Paiements", icon: "invoice", exact: false }, { href: "/espace/achats", label: "Achats divers", icon: "invoice", exact: false }] },
   { titre: "Communication", liens: [{ href: "/espace/messages", label: "Messages", icon: "bulle", exact: false }] },
   { titre: "Informations", liens: [{ href: "/espace/famille", label: "Ma famille", icon: "maison", exact: false }] },
 ];

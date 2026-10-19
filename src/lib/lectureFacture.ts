@@ -10,12 +10,21 @@ export type FactureLue = {
   numero: string | null;
   montant_ttc: number | null;
   libelle: string | null;
+  /** Ce que contient le document : une facture, un RIB, ou les deux (RIB imprimé au bas d'une facture). */
+  contient_facture: boolean;
+  contient_rib: boolean;
+  iban: string | null;
+  bic: string | null;
+  titulaire: string | null;
 };
 
-const CONSIGNE = `Tu lis UNE facture (ou note) d'un fournisseur adressée à une association.
+const CONSIGNE = `Tu lis un document d'un fournisseur adressé à une association : une facture (ou note), un RIB (relevé d'identité bancaire), ou une facture portant aussi des coordonnées bancaires.
 Réponds UNIQUEMENT par un objet JSON, sans texte autour :
-{"fournisseur_entreprise":"…"|null,"fournisseur_nom":"…"|null,"fournisseur_prenom":"…"|null,"date":"AAAA-MM-JJ"|null,"numero":"…"|null,"montant_ttc":123.45|null,"libelle":"…"|null}
+{"contient_facture":true|false,"contient_rib":true|false,"fournisseur_entreprise":"…"|null,"fournisseur_nom":"…"|null,"fournisseur_prenom":"…"|null,"date":"AAAA-MM-JJ"|null,"numero":"…"|null,"montant_ttc":123.45|null,"libelle":"…"|null,"iban":"…"|null,"bic":"…"|null,"titulaire":"…"|null}
 Règles :
+- contient_facture : vrai si le document est une facture ou une note à payer ; contient_rib : vrai si un IBAN y figure ;
+- iban : l'IBAN du fournisseur tel qu'imprimé (lettres et chiffres, sans espaces), bic : le code BIC/SWIFT, titulaire : le titulaire du compte ;
+- pour un RIB seul, laisse date, numero, montant_ttc et libelle à null (le fournisseur est le titulaire) ;
 - le fournisseur est l'émetteur de la facture (pas le client destinataire) : nom de l'entreprise, et/ou nom et prénom de la personne ;
 - date d'émission de la facture au format AAAA-MM-JJ ;
 - numero : le numéro de facture tel qu'imprimé ;
@@ -46,6 +55,11 @@ export function analyserReponse(t: string): FactureLue {
     numero: texte(j.numero),
     montant_ttc: nombre(j.montant_ttc),
     libelle: texte(j.libelle),
+    contient_facture: j.contient_facture !== false,
+    contient_rib: j.contient_rib === true || !!texte(j.iban),
+    iban: texte(j.iban)?.replace(/[\s-]/g, "").toUpperCase() ?? null,
+    bic: texte(j.bic)?.replace(/\s/g, "").toUpperCase() ?? null,
+    titulaire: texte(j.titulaire),
   };
 }
 
@@ -63,7 +77,7 @@ export async function lireFactureAvecClaude(cle: string, base64: string, mediaTy
     },
     body: JSON.stringify({
       model: MODELE_LECTURE,
-      max_tokens: 800,
+      max_tokens: 1000,
       messages: [{ role: "user", content: [bloc, { type: "text", text: CONSIGNE }] }],
     }),
   });

@@ -14,8 +14,9 @@ export async function POST(req: Request) {
   const supabase = await createClient();
   const { data: u } = await supabase.auth.getUser();
   if (!u.user) return NextResponse.json({ erreur: "Session expirée : reconnectez-vous." }, { status: 401 });
-  const { data: autorise } = await supabase.rpc("peut_saisir_factures");
-  if (autorise !== true) return NextResponse.json({ erreur: "Lecture réservée aux membres de l'Événementiel et au Trésorier." }, { status: 403 });
+  const [{ data: autorise }, { data: rib }] = await Promise.all([supabase.rpc("peut_saisir_factures"), supabase.rpc("peut_importer_rib")]);
+  if (autorise !== true && rib !== true)
+    return NextResponse.json({ erreur: "Lecture réservée à l'Événementiel, au Trésorier et à la Directrice." }, { status: 403 });
 
   const cle = process.env.ANTHROPIC_API_KEY;
   if (!cle) return NextResponse.json({ erreur: "Lecture automatique non configurée (clé manquante sur le serveur)." }, { status: 503 });

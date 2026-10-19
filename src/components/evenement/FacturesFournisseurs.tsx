@@ -19,6 +19,7 @@ import {
   type ModePaiementFacture,
 } from "@/lib/evenement";
 import { useEnregistrer } from "./useEnregistrer";
+import { BlocRib, RibsAConfirmer, type RibAttente, type RibLu } from "./ImportRib";
 
 const NOUVEAU = "__nouveau__";
 /** Catégorie de dépense proposée par défaut (si elle existe dans la Comptabilité). */
@@ -65,6 +66,11 @@ type Lue = {
   numero: string | null;
   montant_ttc: number | null;
   libelle: string | null;
+  contient_facture?: boolean;
+  contient_rib?: boolean;
+  iban?: string | null;
+  bic?: string | null;
+  titulaire?: string | null;
 };
 export type CategorieDepense = { id: string; nom: string };
 const libMode = (m: string | null | undefined) => MODES_PAIEMENT_FACTURE.find((x) => x.v === m)?.l ?? "";
@@ -100,8 +106,13 @@ export default function FacturesFournisseurs({
   categories = [],
   domainesGerables = ["evenement"],
   mouvementsCaisse = [],
+  peutImporterRib = false,
+  ribsAConfirmer = [],
 }: {
+  ribsAConfirmer?: RibAttente[];
   peutModifier: boolean;
+  /** Import d'un RIB : aussi permis à la Directrice (lecture seule sur les factures). */
+  peutImporterRib?: boolean;
   estTresorier: boolean;
   factures: FactureFournisseur[];
   fournisseurs: ContactEvenement[];
@@ -144,7 +155,9 @@ export default function FacturesFournisseurs({
   const [erreurLecture, setErreurLecture] = useState<string | null>(null);
   const [edition, setEdition] = useState<FactureFournisseur | null>(null);
   const [candidates, setCandidates] = useState<{ facture: string; ops: Candidate[] } | null>(null);
-  const cameraRef = useRef<HTMLInputElement>(null);
+  const [ribLu, setRibLu] = useState<{ lu: RibLu; fournisseur: string; fichier: File | null; n: number } | null>(null);
+  const [docFacture, setDocFacture] = useState(true);
+  const numRib = useRef(0);
   const fichierRef = useRef<HTMLInputElement>(null);
   const nomF = (id: string) => {
     const c = fournisseurs.find((x) => x.id === id);
@@ -152,7 +165,7 @@ export default function FacturesFournisseurs({
   };
   const nomEv = (id: string | null) => evenements.find((e) => e.id === id)?.nom ?? "—";
   const nomCat = (id: string | null) => categories.find((c) => c.id === id)?.nom ?? "—";
-  const formulaireVisible = saisie || !!fichier || !!edition;
+  const formulaireVisible = peutModifier && (saisie || (!!fichier && docFacture) || !!edition);
 
   function reinitialiser() {
     setEdition(null);
@@ -185,13 +198,14 @@ export default function FacturesFournisseurs({
   async function choisirFichier(brut: File | null) {
     setErreurLecture(null);
     if (apercu) URL.revokeObjectURL(apercu);
-    if (cameraRef.current) cameraRef.current.value = "";
     if (fichierRef.current) fichierRef.current.value = "";
     if (!brut) {
       setFichier(null);
       setApercu(null);
       return;
     }
+    setRibLu(null);
+    setDocFacture(true);
     const fic = await compresserPhoto(brut);
     setFichier(fic);
     setApercu(fic.type.startsWith("image/") ? URL.createObjectURL(fic) : null);
@@ -204,6 +218,13 @@ export default function FacturesFournisseurs({
       const j = (await rep.json().catch(() => ({}))) as Lue & { erreur?: string; detail?: string };
       if (!rep.ok) throw new Error([j.erreur ?? `La lecture automatique a échoué (HTTP ${rep.status}).`, j.detail && `Détail : ${j.detail}`].filter(Boolean).join(" "));
       const trouve = fournisseurFixe ?? retrouverFournisseur(j);
+      // RIB détecté (seul ou imprimé sur la facture) : bloc de vérification séparé.
+      if (j.contient_rib && peutImporterRib) setRibLu({ lu: { iban: j.iban ?? null, bic: j.bic ?? null, titulaire: j.titulaire ?? null }, fournisseur: trouve ?? "", fichier: fic, n: ++numRib.current });
+      if (j.contient_facture === false || !peutModifier) {
+        setDocFacture(false);
+        if (!j.contient_rib) setErreurLecture("Ce document ne semble être ni une facture ni un RIB.");
+        return;
+      }
       const aLu = j.fournisseur_entreprise || j.fournisseur_nom;
       setF((p) => ({
         ...p,
@@ -340,28 +361,19 @@ export default function FacturesFournisseurs({
   return (
     <div className="space-y-6">
       {erreur && <p className="rounded-lg bg-negative/10 px-3 py-2 text-sm text-negative">{erreur}</p>}
-      {peutModifier && (
+      {estTresorier && <RibsAConfirmer liste={ribsAConfirmer} />}
+      {(peutModifier || peutImporterRib) && (
         <section className="space-y-3 rounded-2xl border border-border bg-surface p-5 shadow-sm">
-          <h2 className="font-semibold">{edition ? "Modifier la facture" : "Nouvelle facture"}</h2>
+          <h2 className="font-semibold">{edition ? "Modifier la facture" : peutModifier ? "Nouvelle facture ou RIB" : "Importer un RIB"}</h2>
           {!edition && (
-            <div className="grid max-w-md grid-cols-2 gap-2">
-              <label className={`${tuile} border-accent bg-accent text-accent-fg hover:opacity-90`}>
-                <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="sr-only" onChange={(e) => choisirFichier(e.target.files?.[0] ?? null)} />
-                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-7 w-7 shrink-0"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" /><circle cx="12" cy="13" r="3.5" /></svg>
-                <span className="flex flex-col leading-tight">
-                  <span className="text-sm font-semibold">Prendre une photo</span>
-                  <span className="text-xs opacity-80">Appareil photo</span>
-                </span>
-              </label>
-              <label className={`${tuile} border-border bg-surface text-accent hover:bg-surface-2`}>
-                <input ref={fichierRef} type="file" accept="image/*,application/pdf" className="sr-only" onChange={(e) => choisirFichier(e.target.files?.[0] ?? null)} />
-                <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-7 w-7 shrink-0"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="17 8 12 3 7 8" /><line x1="12" y1="3" x2="12" y2="15" /></svg>
-                <span className="flex flex-col leading-tight">
-                  <span className="text-sm font-semibold">Choisir un fichier</span>
-                  <span className="text-xs text-muted">Image ou PDF</span>
-                </span>
-              </label>
-            </div>
+            <label className={`${tuile} max-w-md border-accent bg-accent text-accent-fg hover:opacity-90`}>
+              <input ref={fichierRef} type="file" accept="image/*,application/pdf" className="sr-only" onChange={(e) => choisirFichier(e.target.files?.[0] ?? null)} />
+              <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-7 w-7 shrink-0"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z" /><circle cx="12" cy="13" r="3.5" /></svg>
+              <span className="flex flex-col leading-tight">
+                <span className="text-sm font-semibold">Importer une facture et/ou un RIB</span>
+                <span className="text-xs opacity-80">Photo (appareil photo sur mobile) ou fichier image / PDF</span>
+              </span>
+            </label>
           )}
           {fichier && (
             <div className="flex max-w-md items-center gap-3 rounded-lg border border-border bg-surface-2 p-2 text-sm">
@@ -372,12 +384,12 @@ export default function FacturesFournisseurs({
                 <span className="flex h-14 w-14 items-center justify-center rounded bg-surface text-xs font-semibold text-muted">PDF</span>
               )}
               <span className="min-w-0 flex-1 truncate">{fichier.name}</span>
-              <button type="button" className="rounded border border-border px-2 py-0.5 text-xs hover:bg-surface" onClick={() => choisirFichier(null)}>
+              <button type="button" className="rounded border border-border px-2 py-0.5 text-xs hover:bg-surface" onClick={() => { setRibLu(null); choisirFichier(null); }}>
                 Retirer
               </button>
             </div>
           )}
-          {!formulaireVisible && (
+          {!formulaireVisible && peutModifier && (
             <button type="button" className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-surface-2" onClick={() => setSaisie(true)}>
               Saisie manuelle
             </button>
@@ -385,11 +397,14 @@ export default function FacturesFournisseurs({
           {lecture && (
             <p className="flex items-center gap-2 rounded-lg bg-accent-soft px-3 py-2 text-sm text-accent" role="status">
               <span className="h-4 w-4 animate-spin rounded-full border-2 border-accent border-t-transparent" aria-hidden="true" />
-              Lecture de la facture en cours…
+              Lecture du document en cours…
             </p>
           )}
           {erreurLecture && <p className="rounded-lg bg-surface-2 px-3 py-2 text-sm text-negative" role="alert">{erreurLecture}</p>}
 
+          {ribLu && (
+            <BlocRib key={ribLu.n} fournisseurs={fournisseurs} fournisseurInitial={ribLu.fournisseur} fixe={!!fournisseurFixe} fichier={ribLu.fichier} lu={ribLu.lu} />
+          )}
           {formulaireVisible && (
             <form onSubmit={enregistrer} className="grid gap-3 sm:grid-cols-3">
               {!fournisseurFixe && (

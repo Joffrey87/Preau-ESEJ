@@ -10,13 +10,14 @@ import { STATUTS_FACTURE, nomContact, type ContactEvenement, type EvenementCaiss
 /** Fiche d'un fournisseur : coordonnées, factures et statuts, opérations passées (Trésorier uniquement). */
 export default async function FicheFournisseurPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const { supabase, peutModifier, estTresorier } = await sessionEvenement();
+  const { supabase, peutModifier, estTresorier, peutImporterRib } = await sessionEvenement();
   const { data: contact } = await supabase.from("contacts_evenement").select("*").eq("id", id).maybeSingle();
   if (!contact) notFound();
-  const [{ data: factures }, { data: evenements }, { data: categories }] = await Promise.all([
+  const [{ data: factures }, { data: evenements }, { data: categories }, { data: enAttente }] = await Promise.all([
     supabase.from("factures_fournisseurs").select("*").eq("fournisseur_id", id).order("date", { ascending: false }),
     supabase.from("evenements_caisse").select("id, nom, date").order("date", { ascending: false }),
     supabase.rpc("categories_depense_facture"),
+    supabase.rpc("fournisseurs_rib_en_attente"),
   ]);
   const liste = (factures ?? []) as FactureFournisseur[];
   // Opérations bancaires liées : la base ne les montre qu'au bureau (le profil Événementiel n'en voit aucune).
@@ -39,7 +40,7 @@ export default async function FicheFournisseurPage({ params }: { params: Promise
         ← Carnet d&apos;adresses
       </Link>
       <PageHeader title={nomContact(contact as ContactEvenement)} />
-      <FicheContactEvenement contact={contact as ContactEvenement} peutModifier={peutModifier} />
+      <FicheContactEvenement contact={contact as ContactEvenement} peutModifier={peutModifier} peutImporterRib={peutImporterRib} ribEnAttente={((enAttente ?? []) as string[]).includes(id)} />
       <div className="grid gap-3 sm:grid-cols-3">
         {STATUTS_FACTURE.map((s) => (
           <div key={s.v} className="rounded-xl border border-border bg-surface p-4">
@@ -81,6 +82,7 @@ export default async function FicheFournisseurPage({ params }: { params: Promise
       )}
       <h2 className="font-semibold">Factures</h2>
       <FacturesFournisseurs
+        peutImporterRib={peutImporterRib}
         peutModifier={peutModifier}
         estTresorier={estTresorier}
         factures={liste}

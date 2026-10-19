@@ -74,7 +74,7 @@ import {
 import { nomDonateur, cleDonateur } from "@/lib/statutDon";
 import { LIBELLE_DON, chiffrerLibellesDon, dechiffrerLibellesDon, texteDonateur } from "@/lib/libelleDon";
 import type { Don } from "@/components/GestionDons";
-import { domaineDepuisCategorie, estCategorieVentes, type SousCategorie } from "@/lib/ventes";
+import { domaineDepuisCategorie, estCategorieVentes, objetVenteDansLibelle, type SousCategorie } from "@/lib/ventes";
 
 export type { ImportPasse };
 
@@ -642,6 +642,11 @@ export default function ImportReleve({
           : res.categorie_id ?? suggereCategorieIntelligente(op.libelle, op.type, categories, historique, indexTokens);
         let alerte: string | null = null;
         let candidats: string[] | undefined;
+        // Objet de Ventes diverses cité dans le libellé d'une recette (« Photos de classe ») : prioritaire sur la
+        // scolarité et la mémoire des choix ; la vente est ventilée sur cet objet comme un choix manuel.
+        const objetVente = !regle && op.type === "recette" ? objetVenteDansLibelle(op.libelle, sousVentes) : null;
+        const catVentes = objetVente ? categories.find((c) => c.type === "recette" && estCategorieVentes(c.nom))?.id : undefined;
+        if (objetVente && catVentes) categorie_id = catVentes;
         let filles: Fille[] = [];
         let ouvert = false;
         const remise = op.type === "recette" && /^rem(ise)?\s+(de\s+)?ch(q|eque)/i.test(op.libelle.trim());
@@ -651,6 +656,8 @@ export default function ImportReleve({
 
         if (regle) {
           // règle intégrée : rien d'autre à deviner
+        } else if (objetVente && catVentes) {
+          // vente reconnue : ni scolarité ni famille
         } else if (op.type === "recette" && estAmitieSainteAnne(op.libelle)) {
           // Amitié Sainte Anne paie des frais de scolarité pour des familles : ce
           // n'est pas un don. Répartition reprise du dernier versement réparti.
@@ -761,6 +768,7 @@ export default function ImportReleve({
           regle_message: res.alerte_message,
           inclus: !x.doublon, // doublon possible reste coché
           categorie_id,
+          sousVente: objetVente && catVentes ? objetVente.id : undefined,
           candidats,
           alerte,
           remise,
@@ -1265,7 +1273,7 @@ export default function ImportReleve({
   const choixSousVente = (type: string, e: Ecriture, changer: (sousVente: string) => void) => {
     if (!estVente(type, e.categorie_id)) return null;
     const domaine = domaineDepuisCategorie(catNom(e.categorie_id));
-    const choix = sousVentes.filter((sc) => !domaine || sc.domaine === domaine);
+    const choix = sousVentes.filter((sc) => !domaine || sc.domaine === domaine || sc.id === e.sousVente);
     return (
       <select
         value={e.sousVente ?? ""}

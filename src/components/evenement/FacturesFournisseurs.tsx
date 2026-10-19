@@ -154,7 +154,7 @@ export default function FacturesFournisseurs({
   const [lecture, setLecture] = useState(false);
   const [erreurLecture, setErreurLecture] = useState<string | null>(null);
   const [edition, setEdition] = useState<FactureFournisseur | null>(null);
-  const [candidates, setCandidates] = useState<{ facture: string; ops: Candidate[] } | null>(null);
+  const [candidates, setCandidates] = useState<{ facture: string; ops: Candidate[]; etendu: boolean; auto: boolean } | null>(null);
   const [ribLu, setRibLu] = useState<{ lu: RibLu; fournisseur: string; fichier: File | null; n: number } | null>(null);
   const [docFacture, setDocFacture] = useState(true);
   const numRib = useRef(0);
@@ -317,10 +317,17 @@ export default function FacturesFournisseurs({
     window.open(data.signedUrl, "_blank", "noopener");
   }
 
-  async function chercherOperations(facture: string) {
-    const { data, error } = await supabase.rpc("operations_candidates_facture", { p_facture: facture });
+  /** Débits du même montant à ±45 jours ; si aucun (ou sur demande), toute la comptabilité. */
+  async function chercherOperations(facture: string, tout = false) {
+    const { data, error } = await supabase.rpc("operations_candidates_facture", { p_facture: facture, p_tout: tout });
     if (error) return setErreur(error.message);
-    setCandidates({ facture, ops: (data ?? []) as Candidate[] });
+    const ops = (data ?? []) as Candidate[];
+    if (!tout && ops.length === 0) {
+      const r = await supabase.rpc("operations_candidates_facture", { p_facture: facture, p_tout: true });
+      if (r.error) return setErreur(r.error.message);
+      return setCandidates({ facture, ops: (r.data ?? []) as Candidate[], etendu: true, auto: true });
+    }
+    setCandidates({ facture, ops, etendu: tout, auto: false });
   }
 
   /** Payée à la main (moyen requis) ou par une sortie de caisse ; ou retour « À payer ». */
@@ -700,12 +707,18 @@ export default function FacturesFournisseurs({
                       ))}
                     {candidates?.facture === x.id && (
                       <div className="mt-2 space-y-1 text-left">
-                        {candidates.ops.length === 0 && <p className="text-xs text-muted">Aucun débit de ce montant à ±45 jours.</p>}
+                        {candidates.auto && <p className="text-xs text-amber-700">Aucune opération à ±45 jours : recherche étendue à toute la comptabilité.</p>}
+                        {candidates.ops.length === 0 && <p className="text-xs text-muted">Aucun débit de ce montant{candidates.etendu ? " dans toute la comptabilité" : " à ±45 jours"}.</p>}
                         {candidates.ops.map((o) => (
                           <button key={o.id} type="button" onClick={() => lier(x.id, o.id)} className="block w-full rounded border border-border px-2 py-1 text-left text-xs hover:bg-surface-2">
                             {formatDate(o.date_operation)} · {o.libelle} · −{formatEuros(Number(o.montant))}
                           </button>
                         ))}
+                        {!candidates.etendu && (
+                          <button type="button" onClick={() => chercherOperations(x.id, true)} className="text-xs text-accent hover:underline">
+                            Chercher dans toute la comptabilité
+                          </button>
+                        )}
                       </div>
                     )}
                   </td>

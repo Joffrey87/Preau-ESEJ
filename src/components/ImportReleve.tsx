@@ -1340,19 +1340,24 @@ export default function ImportReleve({
   const selectCls =
     "rounded-lg border border-border bg-background px-2 py-1 text-xs outline-none focus:border-accent";
 
-  /** Factures fournisseurs candidates pour un débit : même montant, ±45 jours ; nom du fournisseur dans le libellé. */
+  /** Factures fournisseurs candidates pour un débit : même montant, ±45 jours (sinon toutes dates si le nom du fournisseur est dans le libellé). */
   const nomFournisseur = (id: string) => {
     const c = contactsPayeurs.find((x) => x.id === id);
     return c ? c.raison_sociale || [c.prenom, c.nom].filter(Boolean).join(" ") : "Fournisseur";
   };
   type OptionFacture = { cle: string; factures: FactureOuverte[]; nomTrouve: boolean; ecart: number };
   /** Options pour un montant : une facture du même montant, ou 2 à 3 factures d'un même fournisseur dont la somme correspond. */
-  function facturesCandidates(type: string, montant: number, date: string, texteBrut: string): OptionFacture[] {
+  function facturesCandidates(type: string, montant: number, date: string, texteBrut: string, fenetre = 45): OptionFacture[] {
     if (type !== "depense" || !(montant > 0)) return [];
+    // Rien à ±45 jours : on étend à toutes les dates, mais seulement si le nom du fournisseur figure dans le libellé.
+    if (fenetre === 45) {
+      const proches45 = facturesCandidates(type, montant, date, texteBrut, Infinity);
+      if (!proches45.some((o) => o.ecart <= 45)) return proches45.filter((o) => o.nomTrouve);
+    }
     const texte = normaliserLibelle(texteBrut);
     const jour = (d: string) => Date.parse(d) / 86400000;
     const proches = facturesOuvertes
-      .filter((fa) => Math.abs(jour(fa.date) - jour(date)) <= 45 && fa.montant <= montant + 0.005)
+      .filter((fa) => Math.abs(jour(fa.date) - jour(date)) <= fenetre && fa.montant <= montant + 0.005)
       .map((fa) => {
         const nom = normaliserLibelle(nomFournisseur(fa.fournisseur_id));
         const mots = nom.split(" ").filter((m) => m.length >= 4);

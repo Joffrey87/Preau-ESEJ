@@ -43,7 +43,7 @@ export default async function Home() {
       detail: `${Number(ac.usd_mois).toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $ ce mois-ci (seuil ${Number(ac.seuil_usd).toLocaleString("fr-FR")} $)`,
       href: "/parametres#conso-claude",
       icone: "chart",
-      ton: "rouge",
+      ton: "ambre",
     });
   const finances = tuiles.some((t) => t.href === "/comptabilite");
   const rechercheFonds = role?.slug === "recherche-fonds";

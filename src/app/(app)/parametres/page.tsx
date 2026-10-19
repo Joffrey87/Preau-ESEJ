@@ -42,8 +42,8 @@ export default async function ParametresPage() {
       />
 
       {webmestre && alerte?.depasse && (
-        <Link href="#conso-claude" role="alert" className="mb-6 block rounded-xl border border-negative/50 bg-negative/10 px-4 py-3 text-sm hover:border-negative">
-          <span className="font-semibold text-negative">Crédit Claude : seuil mensuel dépassé. </span>
+        <Link href="#conso-claude" role="alert" className="mb-6 block rounded-xl border border-gold/60 bg-gold/10 px-4 py-3 text-sm hover:border-gold">
+          <span className="font-semibold text-gold">Crédit Claude : seuil mensuel dépassé. </span>
           {Number(alerte.usd_mois).toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $ ce mois-ci pour un seuil de{" "}
           {Number(alerte.seuil_usd).toLocaleString("fr-FR", { minimumFractionDigits: 2 })} $ — voir le détail.
         </Link>

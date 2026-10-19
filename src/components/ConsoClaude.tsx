@@ -101,8 +101,8 @@ export default function ConsoClaude() {
       {s && (
         <div className="space-y-4">
           {depasse && (
-            <div role="alert" className="rounded-xl border border-negative/50 bg-negative/10 px-4 py-3 text-sm">
-              <span className="font-semibold text-negative">Seuil mensuel dépassé : </span>
+            <div role="alert" className="rounded-xl border border-gold/60 bg-gold/10 px-4 py-3 text-sm">
+              <span className="font-semibold text-gold">Seuil mensuel dépassé : </span>
               {montant(s.mois.usd, "$")} consommés ce mois-ci pour un seuil de {montant(s.seuil_usd, "$")}.
             </div>
           )}
@@ -154,7 +154,7 @@ export default function ConsoClaude() {
                       <tr key={m.mois}>
                         <td className="px-3 py-2">{moisLabel(m.mois)}</td>
                         <td className={td}>{lectures(m)}</td>
-                        <td className={`${td} text-right ${nb(m.usd) > nb(s.seuil_usd) ? "font-semibold text-negative" : ""}`}>{montant(m.usd, "$")}</td>
+                        <td className={`${td} text-right ${nb(m.usd) > nb(s.seuil_usd) ? "font-semibold text-gold" : ""}`}>{montant(m.usd, "$")}</td>
                         <td className={`${td} text-right`}>{montant(m.eur, "€")}</td>
                       </tr>
                     ))}

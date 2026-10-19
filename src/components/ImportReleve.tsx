@@ -1164,9 +1164,10 @@ export default function ImportReleve({
         a_verifier: ventilee ? l.alerte : questions(l, famMere, donMere),
         import_id: importId,
       });
+      // Facture(s) soldée(s) par le débit entier (ligne simple ou ventilée).
+      const facMere = l.type === "depense" ? factureLigne(l) : "-";
+      if (facMere !== "-") for (const fa of facMere.split(",")) facturesSoldees.push({ facture: fa, operation: id, mode });
       if (!ventilee) {
-        const fac = factureDe(l);
-        if (fac !== "-" && l.type === "depense") facturesSoldees.push({ facture: fac, operation: id, mode });
         if (l.sousVente && estVente(l.type, l.categorie_id))
           ventilationsVentes.push({ operation_id: id, sous_categorie_id: l.sousVente, montant: l.montant, texte: `${l.libelle} ${l.libelle_origine}`, mode, ...payeurDe(l, l.libelle_origine) });
         rattacher(id, famMere, donMere, l.montant, l.date, exerciceId, mode);
@@ -1174,6 +1175,9 @@ export default function ImportReleve({
       }
       for (const f of l.filles) {
         const fid = crypto.randomUUID();
+        // Facture(s) soldée(s) par une sous-ligne (si le débit entier n'en solde pas).
+        const facF = l.type === "depense" && facMere === "-" ? factureFille(l, f) : "-";
+        if (facF !== "-") for (const fa of facF.split(",")) facturesSoldees.push({ facture: fa, operation: fid, mode });
         const montant = Number(f.montant);
         const exerciceFille = exerciceIdDe(f, l.date);
         const fam = infoFamille(f, textesFille(l, f), l.date);
@@ -1341,44 +1345,80 @@ export default function ImportReleve({
     const c = contactsPayeurs.find((x) => x.id === id);
     return c ? c.raison_sociale || [c.prenom, c.nom].filter(Boolean).join(" ") : "Fournisseur";
   };
-  function facturesCandidates(l: Ligne) {
-    if (l.type !== "depense" || l.filles.length > 0) return [];
-    const texte = normaliserLibelle(`${l.libelle} ${l.libelle_origine}`);
+  type OptionFacture = { cle: string; factures: FactureOuverte[]; nomTrouve: boolean; ecart: number };
+  /** Options pour un montant : une facture du même montant, ou 2 à 3 factures d'un même fournisseur dont la somme correspond. */
+  function facturesCandidates(type: string, montant: number, date: string, texteBrut: string): OptionFacture[] {
+    if (type !== "depense" || !(montant > 0)) return [];
+    const texte = normaliserLibelle(texteBrut);
     const jour = (d: string) => Date.parse(d) / 86400000;
-    return facturesOuvertes
-      .filter((fa) => Math.abs(fa.montant - l.montant) < 0.005 && Math.abs(jour(fa.date) - jour(l.date)) <= 45)
+    const proches = facturesOuvertes
+      .filter((fa) => Math.abs(jour(fa.date) - jour(date)) <= 45 && fa.montant <= montant + 0.005)
       .map((fa) => {
         const nom = normaliserLibelle(nomFournisseur(fa.fournisseur_id));
         const mots = nom.split(" ").filter((m) => m.length >= 4);
         const nomTrouve = nom.length >= 3 && (` ${texte} `.includes(` ${nom} `) || mots.some((m) => ` ${texte} `.includes(` ${m} `)));
-        return { fa, nomTrouve, ecart: Math.abs(jour(fa.date) - jour(l.date)) };
-      })
-      .sort((a, b) => Number(b.nomTrouve) - Number(a.nomTrouve) || a.ecart - b.ecart);
+        return { fa, nomTrouve, ecart: Math.abs(jour(fa.date) - jour(date)) };
+      });
+    const opts: OptionFacture[] = proches
+      .filter((x) => Math.abs(x.fa.montant - montant) < 0.005)
+      .map((x) => ({ cle: x.fa.id, factures: [x.fa], nomTrouve: x.nomTrouve, ecart: x.ecart }));
+    // Plusieurs factures d'un même fournisseur réglées par un seul débit.
+    const parF = new Map<string, typeof proches>();
+    for (const x of proches) parF.set(x.fa.fournisseur_id, [...(parF.get(x.fa.fournisseur_id) ?? []), x]);
+    for (const groupe of parF.values()) {
+      const g = groupe.slice(0, 10);
+      for (let i = 0; i < g.length; i++)
+        for (let j = i + 1; j < g.length; j++) {
+          const s2 = g[i].fa.montant + g[j].fa.montant;
+          if (Math.abs(s2 - montant) < 0.005)
+            opts.push({ cle: `${g[i].fa.id},${g[j].fa.id}`, factures: [g[i].fa, g[j].fa], nomTrouve: g[i].nomTrouve, ecart: Math.max(g[i].ecart, g[j].ecart) });
+          for (let k = j + 1; k < g.length; k++)
+            if (Math.abs(s2 + g[k].fa.montant - montant) < 0.005)
+              opts.push({ cle: `${g[i].fa.id},${g[j].fa.id},${g[k].fa.id}`, factures: [g[i].fa, g[j].fa, g[k].fa], nomTrouve: g[i].nomTrouve, ecart: Math.max(g[i].ecart, g[j].ecart, g[k].ecart) });
+        }
+    }
+    return opts.sort((a, b) => Number(b.nomTrouve) - Number(a.nomTrouve) || a.factures.length - b.factures.length || a.ecart - b.ecart);
   }
-  function factureDe(l: Ligne): string {
-    if (l.facture) return l.facture;
-    const c = facturesCandidates(l);
-    const best = c[0];
+  /** Factures déjà choisies ailleurs dans le relevé (une facture ne se solde qu'une fois). */
+  function facturesPrises(sauf: Ecriture): Set<string> {
+    const pris = new Set<string>();
+    for (const x of lignes) {
+      if (!x.inclus) continue;
+      for (const e of [x, ...x.filles] as Ecriture[])
+        if (e !== sauf && e.facture && e.facture !== "-") e.facture.split(",").forEach((id) => pris.add(id));
+    }
+    return pris;
+  }
+  function factureDe(e: Ecriture, type: string, montant: number, date: string, texte: string): string {
+    if (e.facture) return e.facture;
+    const c = facturesCandidates(type, montant, date, texte);
+    const pris = facturesPrises(e);
+    const libres = c.filter((o) => o.factures.every((fa) => !pris.has(fa.id)));
+    const best = libres[0];
     if (!best) return "-";
-    // Présélection : nom du fournisseur lu, ou seule facture de ce montant à 15 jours près.
-    const pris = lignes.some((x) => x !== l && x.inclus && x.facture === best.fa.id);
-    return !pris && (best.nomTrouve || (c.length === 1 && best.ecart <= 15)) ? best.fa.id : "-";
+    // Présélection : nom du fournisseur lu, ou seule option de ce montant à 15 jours près.
+    return best.nomTrouve || (c.length === 1 && best.ecart <= 15) ? best.cle : "-";
   }
-  const choixFacture = (l: Ligne, changer: (p: Partial<Ligne>) => void) => {
-    const c = facturesCandidates(l);
+  const factureLigne = (l: Ligne) => factureDe(l, l.type, l.montant, l.date, `${l.libelle} ${l.libelle_origine}`);
+  const factureFille = (l: Ligne, f: Fille) =>
+    factureDe(f, l.type, Number(String(f.montant).replace(",", ".")), l.date, `${f.libelle} ${l.libelle_origine}`);
+  const choixFacture = (type: string, montant: number, date: string, texte: string, valeur: string, changer: (p: { facture: string }) => void) => {
+    const c = facturesCandidates(type, montant, date, texte);
     if (c.length === 0) return null;
-    const v = factureDe(l);
     return (
       <select
-        value={v}
+        value={valeur}
         onChange={(ev) => changer({ facture: ev.target.value })}
-        title="Facture fournisseur soldée par ce débit : liée et marquée payée à la validation"
-        className={`mt-1 block w-48 ${selectCls} ${v === "-" ? "text-muted" : ""}`}
+        title="Facture(s) fournisseur soldée(s) par ce débit : liée(s) et marquée(s) payée(s) à la validation"
+        className={`mt-1 block w-48 ${selectCls} ${valeur === "-" ? "text-muted" : ""}`}
       >
         <option value="-">— aucune facture —</option>
-        {c.map(({ fa, nomTrouve }) => (
-          <option key={fa.id} value={fa.id}>
-            {nomTrouve ? "" : "? "}Facture {nomFournisseur(fa.fournisseur_id)} · {formatDate(fa.date)}{fa.numero ? ` · n° ${fa.numero}` : ""}
+        {c.map((o) => (
+          <option key={o.cle} value={o.cle}>
+            {o.nomTrouve ? "" : "? "}
+            {o.factures.length > 1
+              ? `${o.factures.length} factures ${nomFournisseur(o.factures[0].fournisseur_id)} (${o.factures.map((fa) => formatEuros(fa.montant)).join(" + ")})`
+              : `Facture ${nomFournisseur(o.factures[0].fournisseur_id)} · ${formatDate(o.factures[0].date)}${o.factures[0].numero ? ` · n° ${o.factures[0].numero}` : ""}`}
           </option>
         ))}
       </select>
@@ -1964,7 +2004,10 @@ export default function ImportReleve({
                         </td>
                         <td className="px-3 py-2">
                           {ventilee ? (
-                            <span className="text-xs text-muted">ventilée en {l.filles.length}</span>
+                            <>
+                              <span className="text-xs text-muted">ventilée en {l.filles.length}</span>
+                              {choixFacture(l.type, l.montant, l.date, `${l.libelle} ${l.libelle_origine}`, factureLigne(l), (p) => maj(i, p))}
+                            </>
                           ) : (
                             <>
                               <select
@@ -1981,7 +2024,7 @@ export default function ImportReleve({
                               </select>
                               {choixSousVente(l.type, l, (v) => maj(i, { sousVente: v }))}
                               {choixPayeur(l.type, l, l.libelle_origine, (p) => maj(i, p))}
-                              {choixFacture(l, (p) => maj(i, p))}
+                              {choixFacture(l.type, l.montant, l.date, `${l.libelle} ${l.libelle_origine}`, factureLigne(l), (p) => maj(i, p))}
                             </>
                           )}
                         </td>
@@ -2058,6 +2101,8 @@ export default function ImportReleve({
                                 </select>
                                 {choixSousVente(l.type, f, (v) => majFille(i, f.cle, { sousVente: v }))}
                                 {choixPayeur(l.type, f, l.libelle_origine, (p) => majFille(i, f.cle, p))}
+                                {factureLigne(l) === "-" &&
+                                  choixFacture(l.type, Number(String(f.montant).replace(",", ".")), l.date, `${f.libelle} ${l.libelle_origine}`, factureFille(l, f), (p) => majFille(i, f.cle, p))}
                               </td>
                               <td className="px-3 py-1.5">
                                 {rattachement(i, l, f, f.cle, Number(f.montant) || 0, textesFille(l, f))}

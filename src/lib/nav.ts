@@ -46,7 +46,7 @@ export const NAV: NavSection[] = [
       { href: "/comptabilite", label: "Comptabilité", icon: "ledger", ready: true },
       { href: "/budget", label: "Budget", icon: "chart", ready: true },
       { href: "/scolarite", label: "Frais de scolarité", icon: "graduation", ready: true },
-      { href: "/ventes-diverses", label: "Ventes diverses", icon: "invoice", ready: true, roles: ["tresorier", "directrice"] },
+      { href: "/ventes-diverses", label: "Ventes diverses", icon: "invoice", ready: true, roles: ["tresorier", "directrice", "president"] },
       { href: "/caisses", label: "Caisses", icon: "billets", ready: true, roles: ["tresorier", "directrice"] },
       // Dépôt en banque : photo d'une remise de chèques, saisie des chèques et lien avec la comptabilité.
       { href: "/cheques", label: "Dépôt en banque", icon: "billets", ready: true, roles: ["tresorier", "president"] },

@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { messageErreurLecture } from "@/lib/erreurLecture";
 import { createClient } from "@/lib/supabase/server";
-import { lireFactureAvecClaude } from "@/lib/lectureFacture";
+import { lireFactureAvecClaude, MODELE_LECTURE } from "@/lib/lectureFacture";
+import { journaliserConso, nouveauSuivi } from "@/lib/consoClaude";
 
 // Lecture automatique d'une facture fournisseur. Réservé aux membres Événementiel et au Trésorier
 // (fonction SQL peut_saisir_factures). Ni le fichier ni la clé ne sont journalisés.
@@ -28,10 +29,16 @@ export async function POST(req: Request) {
   if (!TYPES.includes(f.type)) return NextResponse.json({ erreur: "Format non pris en charge (JPEG, PNG, WebP ou PDF)." }, { status: 415 });
   if (f.size > TAILLE_MAX) return NextResponse.json({ erreur: "Fichier trop lourd (10 Mo max)." }, { status: 413 });
 
+  // Suivi du crédit Claude : type lu dans la réponse (facture, RIB ou les deux) ; en échec, d'après l'écran appelant.
+  const suivi = nouveauSuivi(MODELE_LECTURE);
+  const typeEchec = form?.get("contexte") === "rib" ? "rib" : "facture";
   try {
     const b64 = Buffer.from(await f.arrayBuffer()).toString("base64");
-    return NextResponse.json(await lireFactureAvecClaude(cle, b64, f.type));
+    const lu = await lireFactureAvecClaude(cle, b64, f.type, suivi);
+    await journaliserConso(supabase, lu.contient_facture && lu.contient_rib ? "facture_rib" : lu.contient_rib ? "rib" : "facture", suivi, true);
+    return NextResponse.json(lu);
   } catch (e) {
+    await journaliserConso(supabase, typeEchec, suivi, false);
     const connue = messageErreurLecture(e);
     const msg = e instanceof Error ? e.message : "inconnu";
     console.error("lecture-facture : échec", msg);

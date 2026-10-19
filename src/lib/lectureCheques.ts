@@ -1,5 +1,6 @@
 // Lecture automatique des chèques / bordereaux par Claude (vision). Utilisé côté serveur uniquement.
 import { leverErreurApi, verifierFin } from "@/lib/erreurLecture";
+import type { SuiviConso, UsageClaude } from "@/lib/consoClaude";
 
 export const MODELE_LECTURE = "claude-sonnet-5-5";
 
@@ -43,7 +44,7 @@ export function analyserReponse(texte: string): ResultatLecture {
 }
 
 /** Appel à l'API Anthropic. La clé n'est jamais journalisée ni renvoyée. */
-export async function lireAvecClaude(cle: string, base64: string, mediaType: string): Promise<ResultatLecture> {
+export async function lireAvecClaude(cle: string, base64: string, mediaType: string, suivi?: SuiviConso): Promise<ResultatLecture> {
   const source = { type: "base64", media_type: mediaType, data: base64 };
   const bloc = mediaType === "application/pdf" ? { type: "document", source } : { type: "image", source };
   const rep = await fetch("https://api.anthropic.com/v1/messages", {
@@ -65,7 +66,9 @@ export async function lireAvecClaude(cle: string, base64: string, mediaType: str
     }),
   });
   if (!rep.ok) await leverErreurApi(rep);
-  const d = (await rep.json()) as { content?: { type: string; text?: string }[]; stop_reason?: string };
+  const d = (await rep.json()) as { content?: { type: string; text?: string }[]; stop_reason?: string; usage?: UsageClaude };
+  // Jetons facturés (même si la réponse est ensuite inexploitable) : pour le suivi du crédit.
+  if (suivi) suivi.usage = d.usage ?? null;
   verifierFin(d);
   const texte = (d.content ?? []).filter((b) => b.type === "text").map((b) => b.text).join("");
   return analyserReponse(texte);

@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { messageErreurLecture } from "@/lib/erreurLecture";
 import { createClient } from "@/lib/supabase/server";
-import { lireAvecClaude } from "@/lib/lectureCheques";
+import { lireAvecClaude, MODELE_LECTURE } from "@/lib/lectureCheques";
+import { journaliserConso, nouveauSuivi } from "@/lib/consoClaude";
 
 // Lecture automatique d'une photo de chèques / bordereau. Réservé à Trésorier, Président, Directrice
 // (fonction SQL peut_deposer_cheques). Ni l'image ni la clé ne sont journalisées.
@@ -27,10 +28,14 @@ export async function POST(req: Request) {
   if (!TYPES.includes(f.type)) return NextResponse.json({ erreur: "Format non pris en charge (JPEG, PNG, WebP ou PDF)." }, { status: 415 });
   if (f.size > TAILLE_MAX) return NextResponse.json({ erreur: "Fichier trop lourd (10 Mo max)." }, { status: 413 });
 
+  const suivi = nouveauSuivi(MODELE_LECTURE); // suivi du crédit Claude
   try {
     const b64 = Buffer.from(await f.arrayBuffer()).toString("base64");
-    return NextResponse.json(await lireAvecClaude(cle, b64, f.type));
+    const lu = await lireAvecClaude(cle, b64, f.type, suivi);
+    await journaliserConso(supabase, "cheques", suivi, true);
+    return NextResponse.json(lu);
   } catch (e) {
+    await journaliserConso(supabase, "cheques", suivi, false);
     const connue = messageErreurLecture(e);
     const msg = e instanceof Error ? e.message : "inconnu";
     console.error("lecture-cheques : échec", msg);

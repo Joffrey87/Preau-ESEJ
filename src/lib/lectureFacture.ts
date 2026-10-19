@@ -1,5 +1,6 @@
 // Lecture automatique d'UNE facture fournisseur (photo ou PDF) par Claude. Côté serveur uniquement.
 import { leverErreurApi, verifierFin } from "@/lib/erreurLecture";
+import type { SuiviConso, UsageClaude } from "@/lib/consoClaude";
 
 export const MODELE_LECTURE = "claude-sonnet-5-5";
 
@@ -65,7 +66,7 @@ export function analyserReponse(t: string): FactureLue {
 }
 
 /** Appel à l'API Anthropic. La clé n'est jamais journalisée ni renvoyée. */
-export async function lireFactureAvecClaude(cle: string, base64: string, mediaType: string): Promise<FactureLue> {
+export async function lireFactureAvecClaude(cle: string, base64: string, mediaType: string, suivi?: SuiviConso): Promise<FactureLue> {
   const source = { type: "base64", media_type: mediaType, data: base64 };
   const bloc = mediaType === "application/pdf" ? { type: "document", source } : { type: "image", source };
   const rep = await fetch("https://api.anthropic.com/v1/messages", {
@@ -86,7 +87,9 @@ export async function lireFactureAvecClaude(cle: string, base64: string, mediaTy
     }),
   });
   if (!rep.ok) await leverErreurApi(rep);
-  const d = (await rep.json()) as { content?: { type: string; text?: string }[]; stop_reason?: string };
+  const d = (await rep.json()) as { content?: { type: string; text?: string }[]; stop_reason?: string; usage?: UsageClaude };
+  // Jetons facturés (même si la réponse est ensuite inexploitable) : pour le suivi du crédit.
+  if (suivi) suivi.usage = d.usage ?? null;
   verifierFin(d);
   return analyserReponse((d.content ?? []).filter((b) => b.type === "text").map((b) => b.text).join(""));
 }

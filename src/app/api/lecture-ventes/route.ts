@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { messageErreurLecture } from "@/lib/erreurLecture";
 import { createClient } from "@/lib/supabase/server";
 import { lireVentesAvecClaude } from "@/lib/lectureVentes";
+import { MODELE_LECTURE } from "@/lib/lectureCaisse";
+import { journaliserConso, nouveauSuivi } from "@/lib/consoClaude";
 
 // Lecture automatique d'une liste de ventes (photo ou PDF). Réservé aux profils qui ont accès aux Ventes diverses
 // (Trésorier, Directrice, Événementiel). Ni le fichier ni la clé ne sont journalisés.
@@ -27,10 +29,14 @@ export async function POST(req: Request) {
   if (!TYPES.includes(f.type)) return NextResponse.json({ erreur: "Format non pris en charge (JPEG, PNG, WebP ou PDF)." }, { status: 415 });
   if (f.size > TAILLE_MAX) return NextResponse.json({ erreur: "Fichier trop lourd (10 Mo max)." }, { status: 413 });
 
+  const suivi = nouveauSuivi(MODELE_LECTURE); // suivi du crédit Claude
   try {
     const b64 = Buffer.from(await f.arrayBuffer()).toString("base64");
-    return NextResponse.json({ lignes: await lireVentesAvecClaude(cle, b64, f.type) });
+    const lu = await lireVentesAvecClaude(cle, b64, f.type, suivi);
+    await journaliserConso(supabase, "ventes", suivi, true);
+    return NextResponse.json({ lignes: lu });
   } catch (e) {
+    await journaliserConso(supabase, "ventes", suivi, false);
     const connue = messageErreurLecture(e);
     const msg = e instanceof Error ? e.message : "inconnu";
     console.error("lecture-ventes : échec", msg);

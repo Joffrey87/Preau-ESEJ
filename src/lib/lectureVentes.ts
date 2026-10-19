@@ -1,6 +1,7 @@
 // Import de ventes (onglet Ventes diverses) : lecture d'une photo / d'un PDF par Claude, ou d'un tableau Excel / CSV
 // côté client. Chaque ligne : objet de vente, montant, date (facultative), famille ou personne, mode de paiement.
 import { leverErreurApi, verifierFin } from "@/lib/erreurLecture";
+import type { SuiviConso, UsageClaude } from "@/lib/consoClaude";
 
 import { MODELE_LECTURE } from "@/lib/lectureCaisse";
 import type { ModeAttendu } from "@/lib/ventes";
@@ -110,7 +111,7 @@ export function lignesDepuisTableau(rangees: unknown[][]): LigneVenteLue[] {
     .filter((l) => l.objet || l.payeur || l.montant != null);
 }
 
-export async function lireVentesAvecClaude(cle: string, base64: string, mediaType: string): Promise<LigneVenteLue[]> {
+export async function lireVentesAvecClaude(cle: string, base64: string, mediaType: string, suivi?: SuiviConso): Promise<LigneVenteLue[]> {
   const source = { type: "base64", media_type: mediaType, data: base64 };
   const bloc = mediaType === "application/pdf" ? { type: "document", source } : { type: "image", source };
   const rep = await fetch("https://api.anthropic.com/v1/messages", {
@@ -131,7 +132,9 @@ export async function lireVentesAvecClaude(cle: string, base64: string, mediaTyp
     }),
   });
   if (!rep.ok) await leverErreurApi(rep);
-  const d = (await rep.json()) as { content?: { type: string; text?: string }[]; stop_reason?: string };
+  const d = (await rep.json()) as { content?: { type: string; text?: string }[]; stop_reason?: string; usage?: UsageClaude };
+  // Jetons facturés (même si la réponse est ensuite inexploitable) : pour le suivi du crédit.
+  if (suivi) suivi.usage = d.usage ?? null;
   verifierFin(d);
   return analyserReponseVentes((d.content ?? []).filter((b) => b.type === "text").map((b) => b.text).join(""));
 }

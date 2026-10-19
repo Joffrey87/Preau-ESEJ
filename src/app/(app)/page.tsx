@@ -34,6 +34,17 @@ export default async function Home() {
   const prenomVisite = decodeURIComponent((await cookies()).get(COOKIE_PRENOM)?.value ?? "");
   const prenom = (ROLES_PRENOM_A_L_ACCES.includes(role?.slug ?? "") && prenomVisite ? prenomVisite : (role?.prenom ?? meta.prenom ?? "")).trim();
   const { exercice, tuiles, priorites } = await chargerTableauDeBord(supabase, email, todayISO());
+  // Webmestre : alerte quand le crédit Claude du mois dépasse le seuil réglé dans Paramètres (null pour les autres comptes).
+  const { data: alerteClaude } = await supabase.rpc("claude_conso_alerte");
+  const ac = alerteClaude as { usd_mois: number; seuil_usd: number; depasse: boolean } | null;
+  if (ac?.depasse)
+    priorites.unshift({
+      titre: "Crédit Claude : seuil mensuel dépassé",
+      detail: `${Number(ac.usd_mois).toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $ ce mois-ci (seuil ${Number(ac.seuil_usd).toLocaleString("fr-FR")} $)`,
+      href: "/parametres#conso-claude",
+      icone: "chart",
+      ton: "rouge",
+    });
   const finances = tuiles.some((t) => t.href === "/comptabilite");
   const rechercheFonds = role?.slug === "recherche-fonds";
   const jauge = rechercheFonds

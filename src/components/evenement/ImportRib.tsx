@@ -142,6 +142,7 @@ export function ImportRibFournisseur({ contact }: { contact: ContactEvenement })
     try {
       const fd = new FormData();
       fd.append("fichier", fic);
+      fd.append("contexte", "rib");
       const rep = await fetch("/api/lecture-facture", { method: "POST", body: fd });
       const j = (await rep.json().catch(() => ({}))) as RibLu & { erreur?: string; detail?: string; contient_rib?: boolean };
       if (!rep.ok) throw new Error([j.erreur ?? `La lecture automatique a échoué (HTTP ${rep.status}).`, j.detail && `Détail : ${j.detail}`].filter(Boolean).join(" "));

@@ -1,5 +1,6 @@
 // Lecture d'une feuille de caisse (photo prioritaire) ou d'un tableau Excel importé côté client.
 import { leverErreurApi, verifierFin } from "@/lib/erreurLecture";
+import type { SuiviConso, UsageClaude } from "@/lib/consoClaude";
 
 export const MODELE_LECTURE = "claude-sonnet-5-5";
 
@@ -48,7 +49,7 @@ export function analyserReponseCaisse(t: string): LigneCaisseLue[] {
     .filter((l) => l.libelle || l.montant != null);
 }
 
-export async function lireCaisseAvecClaude(cle: string, base64: string, mediaType: string): Promise<LigneCaisseLue[]> {
+export async function lireCaisseAvecClaude(cle: string, base64: string, mediaType: string, suivi?: SuiviConso): Promise<LigneCaisseLue[]> {
   const source = { type: "base64", media_type: mediaType, data: base64 };
   const bloc = mediaType === "application/pdf" ? { type: "document", source } : { type: "image", source };
   const rep = await fetch("https://api.anthropic.com/v1/messages", {
@@ -69,7 +70,9 @@ export async function lireCaisseAvecClaude(cle: string, base64: string, mediaTyp
     }),
   });
   if (!rep.ok) await leverErreurApi(rep);
-  const d = (await rep.json()) as { content?: { type: string; text?: string }[]; stop_reason?: string };
+  const d = (await rep.json()) as { content?: { type: string; text?: string }[]; stop_reason?: string; usage?: UsageClaude };
+  // Jetons facturés (même si la réponse est ensuite inexploitable) : pour le suivi du crédit.
+  if (suivi) suivi.usage = d.usage ?? null;
   verifierFin(d);
   return analyserReponseCaisse((d.content ?? []).filter((b) => b.type === "text").map((b) => b.text).join(""));
 }

@@ -74,6 +74,10 @@ export async function middleware(request: NextRequest) {
   const enFamilleLiee = !!user && !estFamille && request.cookies.get("famille_liee")?.value === "1";
   const cheminLiee = request.nextUrl.pathname.startsWith("/famille-liee/");
   if (user && (cheminLiee || (enFamilleLiee && versEspace))) return response;
+  // Lectures automatiques (factures, RIB, chèques, caisse, ventes) : chaque route vérifie elle-même la session et les droits
+  // (RPC en base). Sans cette exception, un compte Événementiel ou un profil restreint (Directrice) était redirigé (307)
+  // vers sa page d'accueil et le navigateur affichait « La lecture automatique a échoué. ».
+  if (user && chemin.startsWith("/api/lecture-")) return response;
   // Bascule par le logo (la route vérifie elle-même le lien entre les comptes).
   if (user && request.nextUrl.pathname === "/bascule") return response;
   // Bascule réelle du Webmestre (la route vérifie elle-même le jeton et le compte).

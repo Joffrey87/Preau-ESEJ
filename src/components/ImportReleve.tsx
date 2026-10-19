@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import BoutonFiltresMultiples, { CasePastille } from "@/components/BoutonFiltresMultiples";
 import { useFiltresMultiples } from "@/lib/filtresMultiples";
@@ -74,7 +74,7 @@ import {
 import { nomDonateur, cleDonateur } from "@/lib/statutDon";
 import { LIBELLE_DON, chiffrerLibellesDon, dechiffrerLibellesDon, texteDonateur } from "@/lib/libelleDon";
 import type { Don } from "@/components/GestionDons";
-import { domaineDepuisCategorie, estCategorieVentes, objetVenteDansLibelle, type SousCategorie } from "@/lib/ventes";
+import { estCategorieVentes, objetVenteDansLibelle, type SousCategorie } from "@/lib/ventes";
 
 export type { ImportPasse };
 
@@ -251,14 +251,9 @@ export default function ImportReleve({
   const [erreurDon, setErreurDon] = useState<string | null>(null);
   // Sous-catégories des Ventes diverses (École / Événement), proposées sous la catégorie d'une recette de vente.
   const [sousVentes, setSousVentes] = useState<SousCategorie[]>([]);
-  useEffect(() => {
-    createClient()
-      .from("ventes_sous_categories")
-      .select("id, nom, domaine, archive, alias")
-      .eq("archive", false)
-      .order("nom")
-      .then(({ data }) => setSousVentes((data ?? []) as SousCategorie[]));
-  }, []);
+  // Copie lue par la lecture du relevé (qui peut démarrer avant le rendu suivant : relevé en attente ouvert d'office).
+  const sousVentesRef = useRef<SousCategorie[]>([]);
+
 
   // Les sous-écritures ne sont pas des lignes du relevé : la détection des
   // doublons ne porte que sur les lignes bancaires.
@@ -644,7 +639,7 @@ export default function ImportReleve({
         let candidats: string[] | undefined;
         // Objet de Ventes diverses cité dans le libellé d'une recette (« Photos de classe ») : prioritaire sur la
         // scolarité et la mémoire des choix ; la vente est ventilée sur cet objet comme un choix manuel.
-        const objetVente = !regle && op.type === "recette" ? objetVenteDansLibelle(op.libelle, sousVentes) : null;
+        const objetVente = !regle && op.type === "recette" ? objetVenteDansLibelle(op.libelle, sousVentesRef.current) : null;
         const catVentes = objetVente ? categories.find((c) => c.type === "recette" && estCategorieVentes(c.nom))?.id : undefined;
         if (objetVente && catVentes) categorie_id = catVentes;
         let filles: Fille[] = [];
@@ -800,8 +795,15 @@ export default function ImportReleve({
 
   useEffect(() => {
     let annule = false;
-    createClient()
-      .rpc("releve_attente_lire")
+    const sb = createClient();
+    // Objets de Ventes diverses d'abord : la lecture du relevé en attente en a besoin pour ses suggestions.
+    Promise.resolve(sb.from("ventes_sous_categories").select("id, nom, domaine, archive, alias").eq("archive", false).order("nom"))
+      .then(({ data: objets }) => {
+        const l = (objets ?? []) as SousCategorie[];
+        sousVentesRef.current = l;
+        if (!annule) setSousVentes(l);
+        return sb.rpc("releve_attente_lire");
+      })
       .then(({ data }) => {
         const r = ((data ?? []) as ReleveAttente[])[0];
         if (annule || !r) return;
@@ -1272,8 +1274,8 @@ export default function ImportReleve({
   /** Choix de la sous-catégorie de vente, sous la catégorie (sous-catégories du domaine de la catégorie choisie). */
   const choixSousVente = (type: string, e: Ecriture, changer: (sousVente: string) => void) => {
     if (!estVente(type, e.categorie_id)) return null;
-    const domaine = domaineDepuisCategorie(catNom(e.categorie_id));
-    const choix = sousVentes.filter((sc) => !domaine || sc.domaine === domaine || sc.id === e.sousVente);
+    // Tous les objets de Ventes diverses (École et Événement), comme dans l'onglet Ventes diverses.
+    const parDomaine = (d: string) => sousVentes.filter((sc) => sc.domaine === d);
     return (
       <select
         value={e.sousVente ?? ""}
@@ -1282,9 +1284,18 @@ export default function ImportReleve({
         className={`mt-1 block w-48 ${selectCls} ${e.sousVente ? "" : "text-muted"}`}
       >
         <option value="">— objet de vente —</option>
-        {choix.map((sc) => (
-          <option key={sc.id} value={sc.id}>{sc.nom}</option>
-        ))}
+        {[
+          ["ecole", "École"],
+          ["evenement", "Événement"],
+        ].map(([d, label]) =>
+          parDomaine(d).length ? (
+            <optgroup key={d} label={label}>
+              {parDomaine(d).map((sc) => (
+                <option key={sc.id} value={sc.id}>{sc.nom}</option>
+              ))}
+            </optgroup>
+          ) : null,
+        )}
       </select>
     );
   };

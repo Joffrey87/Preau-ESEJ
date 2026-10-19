@@ -198,7 +198,7 @@ const REGLES: { kw: RegExp; cat: string }[] = [
   { kw: /mois (d.?)?avance|mois suppl/i, cat: CAT_MOIS_AVANCE },
   { kw: /frais (de )?dossier|frais d.?inscription/i, cat: CAT_FRAIS_DOSSIER },
   { kw: /scolarit/i, cat: CAT_SCOLARITE },
-  { kw: /sumup|vrst|vente|marche de noel|sapin|porte-couteaux/i, cat: "Ventes diverses au profit de l'école" },
+  { kw: /sumup|vrst|vente|marche de noel|sapin|porte-couteaux/i, cat: "Ventes diverses" },
   { kw: /free|internet|hautdebit/i, cat: "Frais internet : Abonnement FREE" },
   { kw: /urssaf/i, cat: "Frais de personnel : URSSAF" },
   { kw: /b2v/i, cat: "Frais B2V protection sociale" },

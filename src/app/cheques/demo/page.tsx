@@ -8,7 +8,7 @@ import { formatEuros, todayISO } from "@/lib/format";
 const TOTAL_BORDEREAU = 195;
 // Démo hors connexion : copie des catégories de recette de la Comptabilité (en vrai, lues dans la table categories).
 const CATEGORIES = [
-  "Don", "Ventes diverses au profit de l'école", "Frais de scolarité : Mensualités", "Ventes diverses",
+  "Don", "Frais de scolarité : Mensualités", "Ventes diverses",
   "Rentes vie de l'école (passif en achat fournitures)", "Rentes périscolaire", "Don d'Association",
   "Frais de scolarité : Dossier", "Frais de scolarité : Mois d'avance", "Remboursement IJSS",
 ].map((nom) => ({ id: nom, nom }));

@@ -74,7 +74,7 @@ import {
 import { nomDonateur, cleDonateur } from "@/lib/statutDon";
 import { LIBELLE_DON, chiffrerLibellesDon, dechiffrerLibellesDon, texteDonateur } from "@/lib/libelleDon";
 import type { Don } from "@/components/GestionDons";
-import { estCategorieVentes, normaliserLibelle, objetVenteDansLibelle, reconnaitrePayeur, type ContactPayeur, type FamillePayeur, type SousCategorie } from "@/lib/ventes";
+import { DOMAINES, estCategorieVentes, normaliserLibelle, objetVenteDansLibelle, objetVenteDansTitre, reconnaitrePayeur, type ContactPayeur, type DomaineVente, type FamillePayeur, type SousCategorie } from "@/lib/ventes";
 
 export type { ImportPasse };
 
@@ -102,6 +102,8 @@ export type OpExistante = {
 type AffectationExistante = { operation_id: string; inscription_id: string; montant: number; nature: NatureAffectation };
 
 const CAT_DON = "Don";
+const CAT_VENTES = "Ventes diverses";
+const NOUVEL_OBJET = "__nouvel_objet__";
 
 /** Catégorie correspondant à une nature d'affectation. */
 const CATEGORIE_DE_NATURE: Record<NatureAffectation, string> = {
@@ -766,9 +768,21 @@ export default function ImportReleve({
           }
         }
 
+        // Objet de « Ventes diverses » reconnu dans le titre : la recette y est classée et liée d'office.
+        let sousVente: string | undefined = objetVente && catVentes ? objetVente.id : undefined;
+        if (!sousVente && op.type === "recette" && !filles.length && !remise && (!categorie_id || estCategorieVentes(catNom(categorie_id)))) {
+          const objet = objetVenteDansTitre(`${op.libelle} ${libelle}`, sousVentesRef.current);
+          const catVentes = catIdParNom(CAT_VENTES, op.type);
+          if (objet && catVentes) {
+            categorie_id = catVentes;
+            sousVente = objet.id;
+          }
+        }
+
         return {
           ...op,
           libelle,
+          sousVente,
           libelle_origine: op.libelle, // conservé : brut bancaire
           key: `${op.date}-${op.montant}-${x.i}`,
           doublon: x.doublon,
@@ -778,7 +792,6 @@ export default function ImportReleve({
           regle_message: res.alerte_message,
           inclus: !x.doublon, // doublon possible reste coché
           categorie_id,
-          sousVente: objetVente && catVentes ? objetVente.id : undefined,
           candidats,
           alerte,
           remise,
@@ -1487,31 +1500,49 @@ export default function ImportReleve({
   /** Choix de la sous-catégorie de vente, sous la catégorie (sous-catégories du domaine de la catégorie choisie). */
   const choixSousVente = (type: string, e: Ecriture, changer: (sousVente: string) => void) => {
     if (!estVente(type, e.categorie_id)) return null;
-    // Tous les objets de Ventes diverses (École et Événement), comme dans l'onglet Ventes diverses.
-    const parDomaine = (d: string) => sousVentes.filter((sc) => sc.domaine === d);
     return (
       <select
         value={e.sousVente ?? ""}
-        onChange={(ev) => changer(ev.target.value)}
-        title="Sous-catégorie de la vente : la recette est ventilée dessus dans l'onglet Ventes diverses"
+        onChange={(ev) => {
+          if (ev.target.value === NOUVEL_OBJET) void creerObjetVente(changer);
+          else changer(ev.target.value);
+        }}
+        title="Objet de la vente : l'encaissement apparaît dans les Totaux de l'onglet Ventes diverses"
         className={`mt-1 block w-48 ${selectCls} ${e.sousVente ? "" : "text-muted"}`}
       >
         <option value="">— objet de vente —</option>
-        {[
-          ["ecole", "École"],
-          ["evenement", "Événement"],
-        ].map(([d, label]) =>
-          parDomaine(d).length ? (
-            <optgroup key={d} label={label}>
-              {parDomaine(d).map((sc) => (
+        {DOMAINES.map((d) => {
+          const objets = sousVentes.filter((sc) => sc.domaine === d.v);
+          return objets.length === 0 ? null : (
+            <optgroup key={d.v} label={d.label}>
+              {objets.map((sc) => (
                 <option key={sc.id} value={sc.id}>{sc.nom}</option>
               ))}
             </optgroup>
-          ) : null,
-        )}
+          );
+        })}
+        <option value={NOUVEL_OBJET}>+ Saisir nouvel objet</option>
       </select>
     );
   };
+
+  /** Crée un objet de vente (École) depuis l'import et le sélectionne sur la ligne. */
+  async function creerObjetVente(choisir: (id: string) => void, domaine: DomaineVente = "ecole") {
+    const nom = window.prompt("Nom du nouvel objet de vente :")?.trim();
+    if (!nom) return;
+    const existant = sousVentes.find((sc) => sc.domaine === domaine && sc.nom.toLowerCase() === nom.toLowerCase());
+    if (existant) return choisir(existant.id);
+    const { data, error } = await createClient()
+      .from("ventes_sous_categories")
+      .insert({ nom, domaine })
+      .select("id, nom, domaine, archive")
+      .single();
+    if (error || !data) return setErreur("Objet de vente non créé : " + (error?.message ?? "erreur inconnue"));
+    const cree = data as SousCategorie;
+    sousVentesRef.current = [...sousVentesRef.current, cree].sort((a, b) => a.nom.localeCompare(b.nom, "fr"));
+    setSousVentes(sousVentesRef.current);
+    choisir(cree.id);
+  }
 
   const pastille = (texte: string, ton: "ok" | "doute" | "neutre", title?: string) => (
     <span

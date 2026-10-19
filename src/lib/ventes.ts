@@ -76,11 +76,22 @@ export function estCategorieVentes(nom: string | null | undefined): boolean {
   return n.includes("ventes diverses");
 }
 
-export function domaineDepuisCategorie(nom: string | null | undefined): DomaineVente | null {
-  if (!nom) return null;
-  if (/au profit de l['']école/i.test(nom)) return "ecole";
-  if (/ventes diverses/i.test(nom)) return "evenement";
-  return null;
+const sansAccents = (t: string) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
+/**
+ * Objet de vente reconnu dans le titre d'une opération bancaire : tous les mots (4 lettres et plus) du nom
+ * de l'objet figurent dans le titre. En cas de plusieurs objets, le plus précis (nom le plus long) l'emporte.
+ */
+export function objetVenteDansTitre(titre: string, objets: SousCategorie[]): SousCategorie | null {
+  const t = ` ${sansAccents(titre).replace(/[^a-z0-9]+/g, " ")} `;
+  let meilleur: { o: SousCategorie; score: number } | null = null;
+  for (const o of objets) {
+    const mots = sansAccents(o.nom).replace(/[^a-z0-9]+/g, " ").split(" ").filter((m) => m.length >= 4);
+    if (!mots.length || !mots.every((m) => t.includes(m))) continue;
+    const score = mots.reduce((s, m) => s + m.length, 0);
+    if (!meilleur || score > meilleur.score) meilleur = { o, score };
+  }
+  return meilleur?.o ?? null;
 }
 
 const MOTS_VIDES = new Set(["de", "du", "des", "la", "le", "les", "d", "l", "et", "a", "au", "aux", "pour"]);

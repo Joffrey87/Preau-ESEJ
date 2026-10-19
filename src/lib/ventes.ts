@@ -8,6 +8,8 @@ export type SousCategorie = {
   id: string;
   nom: string;
   domaine: DomaineVente;
+  /** Mots-clés reconnus dans le libellé d'une recette à l'import (après le nom complet). */
+  alias?: string[] | null;
   archive: boolean;
 };
 
@@ -95,19 +97,29 @@ function motsVente(s: string): string[] {
     .map((m) => (m.length > 3 && /[sx]$/.test(m) ? m.slice(0, -1) : m));
 }
 
+const contient = (mots: string[], cibles: string[]) => {
+  if (!cibles.length) return false;
+  let k = 0;
+  for (const m of mots) if (k < cibles.length && m === cibles[k]) k++;
+  return k === cibles.length;
+};
+
 /**
- * Objet de Ventes diverses cité dans le libellé d'une recette : tous ses mots significatifs présents, dans l'ordre
- * (« VIR … PHOTOS CLASSE ARMAND » → « Photos de classe »). Plusieurs objets : le nom le plus long l'emporte.
+ * Objet de Ventes diverses cité dans le libellé d'une recette : tous les mots significatifs de son nom présents, dans
+ * l'ordre (« VIR … PHOTOS CLASSE ARMAND » → « Photos de classe »). À défaut, l'un de ses mots-clés (alias,
+ * « photo »). Le nom complet l'emporte sur un alias ; entre plusieurs, le plus long.
  */
-export function objetVenteDansLibelle<T extends { nom: string }>(libelle: string, objets: T[]): T | null {
+export function objetVenteDansLibelle<T extends { nom: string; alias?: string[] | null }>(libelle: string, objets: T[]): T | null {
   const mots = motsVente(libelle);
   let meilleur: T | null = null;
-  for (const o of objets) {
-    const cibles = motsVente(o.nom);
-    if (!cibles.length) continue;
-    let k = 0;
-    for (const m of mots) if (k < cibles.length && m === cibles[k]) k++;
-    if (k === cibles.length && (!meilleur || o.nom.length > meilleur.nom.length)) meilleur = o;
-  }
+  for (const o of objets) if (contient(mots, motsVente(o.nom)) && (!meilleur || o.nom.length > meilleur.nom.length)) meilleur = o;
+  if (meilleur) return meilleur;
+  let long = 0;
+  for (const o of objets)
+    for (const a of o.alias ?? [])
+      if (contient(mots, motsVente(a)) && a.length > long) {
+        meilleur = o;
+        long = a.length;
+      }
   return meilleur;
 }

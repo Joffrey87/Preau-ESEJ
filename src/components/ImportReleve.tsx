@@ -254,7 +254,7 @@ export default function ImportReleve({
   useEffect(() => {
     createClient()
       .from("ventes_sous_categories")
-      .select("id, nom, domaine, archive")
+      .select("id, nom, domaine, archive, alias")
       .eq("archive", false)
       .order("nom")
       .then(({ data }) => setSousVentes((data ?? []) as SousCategorie[]));

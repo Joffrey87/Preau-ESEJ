@@ -201,8 +201,8 @@ export default function FacturesFournisseurs({
       const fd = new FormData();
       fd.append("fichier", fic);
       const rep = await fetch("/api/lecture-facture", { method: "POST", body: fd });
-      const j = (await rep.json().catch(() => ({}))) as Lue & { erreur?: string };
-      if (!rep.ok) throw new Error(j.erreur ?? "La lecture automatique a échoué.");
+      const j = (await rep.json().catch(() => ({}))) as Lue & { erreur?: string; detail?: string };
+      if (!rep.ok) throw new Error([j.erreur ?? `La lecture automatique a échoué (HTTP ${rep.status}).`, j.detail && `Détail : ${j.detail}`].filter(Boolean).join(" "));
       const trouve = fournisseurFixe ?? retrouverFournisseur(j);
       const aLu = j.fournisseur_entreprise || j.fournisseur_nom;
       setF((p) => ({

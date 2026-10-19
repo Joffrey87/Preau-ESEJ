@@ -136,3 +136,88 @@ export function familleDansLibelle<T extends { id: string; nom: string }>(libell
   const meilleurs = trouves.filter((x) => x.n.length === max);
   return new Set(meilleurs.map((x) => x.n)).size === 1 && meilleurs.length === 1 ? meilleurs[0].f : null;
 }
+
+// ─── Reconnaissance du payeur d'une vente dans le libellé bancaire ───────────
+export type FamillePayeur = {
+  id: string; nom: string;
+  parent1_prenom: string | null; parent1_nom: string | null;
+  parent2_prenom: string | null; parent2_nom: string | null;
+};
+export type ContactPayeur = {
+  id: string; nom: string; prenom: string | null; raison_sociale: string | null;
+  est_personne_morale: boolean; famille_id: string | null;
+};
+/** Choix proposé : « f:<id> » famille, « c:<id> » contact. */
+export type SuggestionPayeur = { cle: string; libelle: string; score: number };
+export type ReconnaissancePayeur = {
+  /** Meilleure suggestion (présélectionnée), null si personne. */
+  meilleur: SuggestionPayeur | null;
+  /** Toutes les suggestions, la meilleure en tête (plusieurs = ambiguïté à lever). */
+  choix: SuggestionPayeur[];
+  /** Nom lu dans le libellé, pour proposer un nouveau contact si personne n'est reconnu. */
+  propose: { nom: string; prenom: string };
+};
+
+const BRUIT_LIBELLE = new Set([
+  "mme", "mlle", "m", "mr", "mrs", "monsieur", "madame", "ou", "et", "vir", "virement", "inst", "instantane",
+  "sepa", "recu", "de", "du", "la", "le", "des", "ref", "refer", "reference", "prm", "emis", "cb", "chq", "cheque",
+  "rem", "remise", "photo", "photos", "classe", "pour", "par", "famille", "fam",
+]);
+
+export function normaliserLibelle(t: string): string {
+  return t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+const motsNom = (t: string | null | undefined) =>
+  normaliserLibelle((t ?? "").replace(/\([^)]*\)/g, " ")).split(" ").filter((m) => m.length >= 2);
+/** Le nom (suite de mots, particules comprises) figure-t-il dans le texte, mots entiers ? */
+const contientNom = (texte: string, nom: string | null | undefined) => {
+  const n = motsNom(nom).join(" ");
+  return n.length >= 3 && (" " + texte + " ").includes(" " + n + " ");
+};
+const contientMot = (texte: string, mot: string | null | undefined) => {
+  const m = normaliserLibelle(mot ?? "");
+  return m.length >= 2 && (" " + texte + " ").includes(" " + m + " ");
+};
+const titre = (m: string) => m.charAt(0).toUpperCase() + m.slice(1);
+
+/**
+ * Familles d'abord (nom de famille, noms des parents ; prénoms des parents pour départager),
+ * puis contacts du Carnet (hors parents déjà rattachés à une famille).
+ */
+export function reconnaitrePayeur(libelle: string, familles: FamillePayeur[], contacts: ContactPayeur[]): ReconnaissancePayeur {
+  const texte = normaliserLibelle(libelle);
+  const choix: SuggestionPayeur[] = [];
+  for (const f of familles) {
+    const noms = [f.nom, f.parent1_nom, f.parent2_nom].filter(Boolean) as string[];
+    const nomTrouve = noms.filter((n) => contientNom(texte, n));
+    if (nomTrouve.length === 0) continue;
+    let score = Math.max(...nomTrouve.map((n) => motsNom(n).join(" ").length));
+    for (const p of [f.parent1_prenom, f.parent2_prenom]) for (const m of motsNom(p)) if (contientMot(texte, m)) score += 20;
+    choix.push({ cle: `f:${f.id}`, libelle: f.nom, score: score + 1000 });
+  }
+  if (choix.length === 0) {
+    for (const c of contacts) {
+      if (c.famille_id) continue;
+      const nom = c.est_personne_morale ? c.raison_sociale ?? c.nom : c.nom;
+      if (!contientNom(texte, nom)) continue;
+      let score = motsNom(nom).join(" ").length;
+      if (!c.est_personne_morale) for (const m of motsNom(c.prenom)) if (contientMot(texte, m)) score += 20;
+      const lib = c.est_personne_morale ? nom : [c.prenom, c.nom].filter(Boolean).join(" ");
+      choix.push({ cle: `c:${c.id}`, libelle: lib, score });
+    }
+  }
+  choix.sort((a, b) => b.score - a.score);
+  // Nom proposé : premiers mots utiles du libellé (hors bruit bancaire et références chiffrées).
+  const utiles: string[] = [];
+  for (const m of texte.split(" ")) {
+    if (/\d/.test(m)) { if (utiles.length) break; continue; }
+    if (BRUIT_LIBELLE.has(m) || m.length < 2) continue;
+    utiles.push(m);
+    if (utiles.length === 2) break;
+  }
+  return {
+    meilleur: choix[0] ?? null,
+    choix,
+    propose: { nom: utiles[0] ? utiles[0].toUpperCase() : "", prenom: utiles[1] ? titre(utiles[1]) : "" },
+  };
+}

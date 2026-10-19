@@ -35,14 +35,22 @@ export type CategorieSlug =
   | "vendeur"
   | "partenaire"
   | "evenement"
+  | "ancienne_famille"
+  | "acheteur"
+  | "benevole_evenement"
+  | "administration"
   | "autre";
 
 export type Tone = "blue" | "green" | "amber" | "violet" | "coral" | "teal" | "gray";
 
 export const CATEGORIES: { slug: CategorieSlug; label: string; tone: Tone }[] = [
+  { slug: "parent", label: "Famille", tone: "blue" },
+  { slug: "ancienne_famille", label: "Ancienne famille", tone: "gray" },
   { slug: "donateur", label: "Donateur", tone: "violet" },
-  { slug: "parent", label: "Parent / famille", tone: "blue" },
-  { slug: "enseignant", label: "Enseignant", tone: "teal" },
+  { slug: "acheteur", label: "Acheteur", tone: "amber" },
+  { slug: "benevole_evenement", label: "Bénévole (Évènementiel)", tone: "teal" },
+  { slug: "administration", label: "Administration", tone: "green" },
+  { slug: "enseignant", label: "Professeur", tone: "teal" },
   { slug: "bureau", label: "Bureau ARIL", tone: "green" },
   { slug: "vendeur", label: "Vendeur / prestataire", tone: "amber" },
   { slug: "partenaire", label: "Partenaire", tone: "coral" },
@@ -75,8 +83,8 @@ export const ACCES_PAR_ROLE: Record<string, Acces> = {
   president: ALL,
   tresorier: ALL,
   administrateur: ALL,
-  "resp-mecenat": ["donateur", "parent", "partenaire", "bureau", "autre"],
-  secretaire: ["parent", "enseignant", "bureau", "vendeur", "partenaire", "evenement", "autre"],
+  "resp-mecenat": ["donateur", "parent", "ancienne_famille", "partenaire", "bureau", "autre"],
+  secretaire: ["parent", "ancienne_famille", "acheteur", "benevole_evenement", "administration", "enseignant", "bureau", "vendeur", "partenaire", "evenement", "autre"],
   directrice: ["parent", "enseignant", "bureau", "autre"],
   "directeur-spirituel": ["parent", "bureau", "enseignant", "autre"],
 };

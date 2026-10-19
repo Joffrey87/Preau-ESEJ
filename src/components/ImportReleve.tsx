@@ -74,7 +74,7 @@ import {
 import { nomDonateur, cleDonateur } from "@/lib/statutDon";
 import { LIBELLE_DON, chiffrerLibellesDon, dechiffrerLibellesDon, texteDonateur } from "@/lib/libelleDon";
 import type { Don } from "@/components/GestionDons";
-import { estCategorieVentes, familleDansLibelle, objetVenteDansLibelle, type SousCategorie } from "@/lib/ventes";
+import { estCategorieVentes, objetVenteDansLibelle, reconnaitrePayeur, type ContactPayeur, type FamillePayeur, type SousCategorie } from "@/lib/ventes";
 
 export type { ImportPasse };
 
@@ -135,6 +135,12 @@ type Ecriture = {
   exercice?: string;
   /** Sous-catégorie de vente (id) d'une recette « Ventes diverses » : ventilation créée à l'import. */
   sousVente?: string;
+  /** Payeur de la vente : « f:<id> » famille, « c:<id> » contact, « n » nouveau contact, « - » aucun.
+   *  Absent : suggestion lue dans le libellé. */
+  payeur?: string;
+  /** Nouveau contact « Acheteur » proposé (nom, prénom modifiables). */
+  payeurNom?: string;
+  payeurPrenom?: string;
 };
 
 type Fille = Ecriture & {
@@ -251,6 +257,9 @@ export default function ImportReleve({
   const [erreurDon, setErreurDon] = useState<string | null>(null);
   // Sous-catégories des Ventes diverses (École / Événement), proposées sous la catégorie d'une recette de vente.
   const [sousVentes, setSousVentes] = useState<SousCategorie[]>([]);
+  // Familles et contacts du Carnet : payeur des ventes reconnu dans le libellé bancaire.
+  const [famillesPayeurs, setFamillesPayeurs] = useState<FamillePayeur[]>([]);
+  const [contactsPayeurs, setContactsPayeurs] = useState<ContactPayeur[]>([]);
   // Copie lue par la lecture du relevé (qui peut démarrer avant le rendu suivant : relevé en attente ouvert d'office).
   const sousVentesRef = useRef<SousCategorie[]>([]);
 
@@ -796,6 +805,10 @@ export default function ImportReleve({
   useEffect(() => {
     let annule = false;
     const sb = createClient();
+    sb.from("familles").select("id, nom, parent1_prenom, parent1_nom, parent2_prenom, parent2_nom").order("nom")
+      .then(({ data }) => { if (!annule) setFamillesPayeurs((data ?? []) as FamillePayeur[]); });
+    sb.from("contacts").select("id, nom, prenom, raison_sociale, est_personne_morale, famille_id").is("supprime_le", null).order("nom")
+      .then(({ data }) => { if (!annule) setContactsPayeurs((data ?? []) as ContactPayeur[]); });
     // Objets de Ventes diverses d'abord : la lecture du relevé en attente en a besoin pour ses suggestions.
     Promise.resolve(sb.from("ventes_sous_categories").select("id, nom, domaine, archive, alias").eq("archive", false).order("nom"))
       .then(({ data: objets }) => {
@@ -1114,7 +1127,7 @@ export default function ImportReleve({
     };
 
     // Recettes « Ventes diverses » dont la sous-catégorie est choisie : ventilées à l'import (onglet Ventes diverses).
-    const ventilationsVentes: { operation_id: string; sous_categorie_id: string; montant: number; texte: string; mode: string | null }[] = [];
+    const ventilationsVentes: { operation_id: string; sous_categorie_id: string; montant: number; texte: string; mode: string | null; payeur: string; nom: string; prenom: string }[] = [];
     let totalRec = 0, totalDep = 0;
     for (const l of retenues) {
       const id = crypto.randomUUID();
@@ -1144,7 +1157,7 @@ export default function ImportReleve({
       });
       if (!ventilee) {
         if (l.sousVente && estVente(l.type, l.categorie_id))
-          ventilationsVentes.push({ operation_id: id, sous_categorie_id: l.sousVente, montant: l.montant, texte: `${l.libelle} ${l.libelle_origine}`, mode });
+          ventilationsVentes.push({ operation_id: id, sous_categorie_id: l.sousVente, montant: l.montant, texte: `${l.libelle} ${l.libelle_origine}`, mode, ...payeurDe(l, l.libelle_origine) });
         rattacher(id, famMere, donMere, l.montant, l.date, exerciceId, mode);
         continue;
       }
@@ -1174,7 +1187,7 @@ export default function ImportReleve({
           import_id: importId,
         });
         if (f.sousVente && estVente(l.type, f.categorie_id) && montant > 0)
-          ventilationsVentes.push({ operation_id: fid, sous_categorie_id: f.sousVente, montant, texte: `${f.libelle} ${l.libelle_origine}`, mode });
+          ventilationsVentes.push({ operation_id: fid, sous_categorie_id: f.sousVente, montant, texte: `${f.libelle} ${l.libelle_origine}`, mode, ...payeurDe(f, l.libelle_origine) });
         rattacher(fid, fam, don, montant, l.date, exerciceFille, mode);
       }
     }
@@ -1214,31 +1227,40 @@ export default function ImportReleve({
       else etapes.push(`${affectationsNouvelles.length} rattachement${affectationsNouvelles.length > 1 ? "s" : ""} à l'onglet Frais de scolarité`);
     }
     if (ventilationsVentes.length > 0) {
-      // Famille reconnue dans le libellé : vente « Payé » créée (due + paiement + ventilation) comme depuis la
-      // Comptabilité, pour apparaître dans l'onglet Ventes diverses. Sinon : ventilation seule, à rattacher ensuite.
-      const { data: fams } = await supabase.from("familles").select("id, nom");
-      const familles = (fams ?? []) as { id: string; nom: string }[];
+      // Payeur choisi (famille ou contact, nouveau contact « Acheteur » créé ici) : vente « Payé » créée
+      // (due + paiement + ventilation) comme depuis la Comptabilité. Sans payeur : ventilation seule.
       const seules: { operation_id: string; sous_categorie_id: string; montant: number }[] = [];
-      let nVentes = 0;
+      let nVentes = 0, nContacts = 0;
       for (const v of ventilationsVentes) {
-        const fam = familleDansLibelle(v.texte, familles);
-        if (fam) {
+        let famille: string | null = null, contact: string | null = null;
+        if (v.payeur.startsWith("f:")) famille = v.payeur.slice(2);
+        else if (v.payeur.startsWith("c:")) contact = v.payeur.slice(2);
+        else if (v.payeur === "n" && v.nom.trim()) {
+          const { data: c, error } = await supabase.from("contacts")
+            .insert({ est_personne_morale: false, nom: v.nom.trim(), prenom: v.prenom.trim() || null, categories: ["acheteur"] })
+            .select("id").single();
+          if (error) avertissements.push(`contact « ${v.nom} » non créé : ${error.message}`);
+          else { contact = (c as { id: string }).id; nContacts++; }
+        }
+        if (famille || contact) {
+          const lib = famille ? famillesPayeurs.find((f) => f.id === famille)?.nom ?? null : null;
           const { error } = await supabase.rpc("ventes_creer_depuis_operation", {
-            p_operation: v.operation_id, p_sous_categorie: v.sous_categorie_id, p_famille: fam.id,
-            p_contact: null, p_libelle_payeur: fam.nom, p_montant: v.montant,
+            p_operation: v.operation_id, p_sous_categorie: v.sous_categorie_id, p_famille: famille,
+            p_contact: contact, p_libelle_payeur: lib, p_montant: v.montant,
             p_mode: v.mode === "cheque" ? "cheque" : "virement",
           });
           if (!error) { nVentes++; continue; }
-          avertissements.push(`vente de la famille ${fam.nom} non créée : ${error.message}`);
+          avertissements.push(`vente non créée : ${error.message}`);
         }
         seules.push({ operation_id: v.operation_id, sous_categorie_id: v.sous_categorie_id, montant: v.montant });
       }
+      if (nContacts > 0) etapes.push(`${nContacts} contact${nContacts > 1 ? "s" : ""} « Acheteur » créé${nContacts > 1 ? "s" : ""} dans le Carnet`);
       if (nVentes > 0) etapes.push(`${nVentes} vente${nVentes > 1 ? "s" : ""} créée${nVentes > 1 ? "s" : ""} dans l'onglet Ventes diverses`);
       if (seules.length > 0) {
         const { error } = await supabase.from("ventes_ventilations").insert(seules);
         const n = seules.length;
         if (error) avertissements.push("sous-catégories des ventes non enregistrées : " + error.message);
-        else etapes.push(`${n} recette${n > 1 ? "s" : ""} ventilée${n > 1 ? "s" : ""} sans famille reconnue (à rattacher dans Ventes diverses)`);
+        else etapes.push(`${n} recette${n > 1 ? "s" : ""} ventilée${n > 1 ? "s" : ""} sans payeur (à rattacher dans Ventes diverses)`);
       }
     }
     if (nouveauxDons.length > 0) {
@@ -1292,6 +1314,60 @@ export default function ImportReleve({
 
   const selectCls =
     "rounded-lg border border-border bg-background px-2 py-1 text-xs outline-none focus:border-accent";
+
+  /** Payeur suggéré ou choisi pour une écriture de vente. */
+  const reconnaissance = (e: Ecriture, origine: string) =>
+    reconnaitrePayeur(`${e.libelle} ${origine}`, famillesPayeurs, contactsPayeurs);
+  function payeurDe(e: Ecriture, origine: string) {
+    const r = reconnaissance(e, origine);
+    const payeur = e.payeur ?? (r.meilleur ? r.meilleur.cle : r.propose.nom ? "n" : "-");
+    return { payeur, nom: e.payeurNom ?? r.propose.nom, prenom: e.payeurPrenom ?? r.propose.prenom };
+  }
+
+  /** Famille / contact de la vente, compact, sous l'objet de vente. */
+  const choixPayeur = (type: string, e: Ecriture, origine: string, changer: (p: Partial<Ecriture>) => void) => {
+    if (!estVente(type, e.categorie_id) || !e.sousVente) return null;
+    const r = reconnaissance(e, origine);
+    const { payeur, nom, prenom } = payeurDe(e, origine);
+    const suggeres = new Set(r.choix.map((c) => c.cle));
+    const contactsLibres = contactsPayeurs.filter((c) => !c.famille_id);
+    return (
+      <div className="mt-1 w-48">
+        <select
+          value={payeur}
+          onChange={(ev) => changer({ payeur: ev.target.value })}
+          title={r.choix.length > 1 ? "Plusieurs correspondances : vérifiez le payeur" : "Famille ou contact qui a payé : la vente apparaîtra dans l'onglet Ventes diverses"}
+          className={`block w-48 ${selectCls} ${payeur === "-" ? "text-muted" : ""} ${r.choix.length > 1 && !e.payeur ? "border-amber-400" : ""}`}
+        >
+          {r.choix.length > 0 && (
+            <optgroup label={r.choix.length > 1 ? "Suggestions (à vérifier)" : "Suggestion"}>
+              {r.choix.map((c) => <option key={c.cle} value={c.cle}>{c.libelle}</option>)}
+            </optgroup>
+          )}
+          <option value="n">+ Nouveau contact (Acheteur)</option>
+          <option value="-">— sans payeur —</option>
+          <optgroup label="Familles">
+            {famillesPayeurs.filter((f) => !suggeres.has(`f:${f.id}`)).map((f) => <option key={f.id} value={`f:${f.id}`}>{f.nom}</option>)}
+          </optgroup>
+          <optgroup label="Contacts">
+            {contactsLibres.filter((c) => !suggeres.has(`c:${c.id}`)).map((c) => (
+              <option key={c.id} value={`c:${c.id}`}>
+                {c.est_personne_morale ? c.raison_sociale ?? c.nom : [c.nom, c.prenom].filter(Boolean).join(" ")}
+              </option>
+            ))}
+          </optgroup>
+        </select>
+        {payeur === "n" && (
+          <div className="mt-1 flex gap-1">
+            <input value={nom} onChange={(ev) => changer({ payeur: "n", payeurNom: ev.target.value })} placeholder="Nom"
+              title="Nouveau contact « Acheteur », créé à la validation" className={`w-24 ${selectCls}`} />
+            <input value={prenom} onChange={(ev) => changer({ payeur: "n", payeurPrenom: ev.target.value })} placeholder="Prénom"
+              className={`min-w-0 flex-1 ${selectCls}`} />
+          </div>
+        )}
+      </div>
+    );
+  };
 
   /** Choix de la sous-catégorie de vente, sous la catégorie (sous-catégories du domaine de la catégorie choisie). */
   const choixSousVente = (type: string, e: Ecriture, changer: (sousVente: string) => void) => {
@@ -1834,6 +1910,7 @@ export default function ImportReleve({
                                 ))}
                               </select>
                               {choixSousVente(l.type, l, (v) => maj(i, { sousVente: v }))}
+                              {choixPayeur(l.type, l, l.libelle_origine, (p) => maj(i, p))}
                             </>
                           )}
                         </td>
@@ -1909,6 +1986,7 @@ export default function ImportReleve({
                                   ))}
                                 </select>
                                 {choixSousVente(l.type, f, (v) => majFille(i, f.cle, { sousVente: v }))}
+                                {choixPayeur(l.type, f, l.libelle_origine, (p) => majFille(i, f.cle, p))}
                               </td>
                               <td className="px-3 py-1.5">
                                 {rattachement(i, l, f, f.cle, Number(f.montant) || 0, textesFille(l, f))}

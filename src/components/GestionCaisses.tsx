@@ -101,8 +101,8 @@ export default function GestionCaisses({
       const form = new FormData();
       form.append("fichier", fichier);
       const rep = await fetch("/api/lecture-caisse", { method: "POST", body: form });
-      const j = (await rep.json()) as { lignes?: LigneCaisseProposee[]; erreur?: string };
-      if (!rep.ok) throw new Error(j.erreur ?? "Lecture impossible");
+      const j = (await rep.json()) as { lignes?: LigneCaisseProposee[]; erreur?: string; detail?: string };
+      if (!rep.ok) throw new Error([j.erreur ?? "Lecture impossible", j.detail && `Détail : ${j.detail}`].filter(Boolean).join(" "));
       setPreview((j.lignes ?? []).map((l) => ({ ...l, garder: !!(l.montant && l.libelle) })));
       setCaisseImport(caisseActive?.id ?? caisses.find((c) => domaines.includes(c.cle))?.id ?? "");
     } catch (e) {

@@ -122,8 +122,8 @@ export default function ImportVentes({
         const form = new FormData();
         form.append("fichier", f.type === "application/pdf" ? f : await compresserPhoto(f));
         const rep = await fetch("/api/lecture-ventes", { method: "POST", body: form });
-        const j = (await rep.json()) as { lignes?: LigneVenteLue[]; erreur?: string };
-        if (!rep.ok) throw new Error(j.erreur ?? "Lecture impossible");
+        const j = (await rep.json()) as { lignes?: LigneVenteLue[]; erreur?: string; detail?: string };
+        if (!rep.ok) throw new Error([j.erreur ?? "Lecture impossible", j.detail && `Détail : ${j.detail}`].filter(Boolean).join(" "));
         preparer(j.lignes ?? []);
       }
     } catch (e) {

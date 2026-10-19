@@ -1,5 +1,6 @@
 // Import de ventes (onglet Ventes diverses) : lecture d'une photo / d'un PDF par Claude, ou d'un tableau Excel / CSV
 // côté client. Chaque ligne : objet de vente, montant, date (facultative), famille ou personne, mode de paiement.
+import { leverErreurApi, verifierFin } from "@/lib/erreurLecture";
 
 import { MODELE_LECTURE } from "@/lib/lectureCaisse";
 import type { ModeAttendu } from "@/lib/ventes";
@@ -122,14 +123,15 @@ export async function lireVentesAvecClaude(cle: string, base64: string, mediaTyp
     },
     body: JSON.stringify({
       model: MODELE_LECTURE,
-      max_tokens: 8000,
+      max_tokens: 12000,
+      // Sonnet 5.5 « réfléchit » par défaut (effort high) et cette réflexion compte dans max_tokens :
+      // effort bas pour une simple lecture (plus rapide, la réponse JSON n'est pas tronquée).
+      output_config: { effort: "low" },
       messages: [{ role: "user", content: [bloc, { type: "text", text: CONSIGNE }] }],
     }),
   });
-  if (!rep.ok) {
-    const detail = ((await rep.json().catch(() => null)) as { error?: { message?: string } } | null)?.error?.message ?? "";
-    throw new Error(`API ${rep.status} ${detail.slice(0, 200)}`);
-  }
-  const d = (await rep.json()) as { content?: { type: string; text?: string }[] };
+  if (!rep.ok) await leverErreurApi(rep);
+  const d = (await rep.json()) as { content?: { type: string; text?: string }[]; stop_reason?: string };
+  verifierFin(d);
   return analyserReponseVentes((d.content ?? []).filter((b) => b.type === "text").map((b) => b.text).join(""));
 }

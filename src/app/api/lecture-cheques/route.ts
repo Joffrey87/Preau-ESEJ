@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { messageErreurLecture } from "@/lib/erreurLecture";
 import { createClient } from "@/lib/supabase/server";
 import { lireAvecClaude } from "@/lib/lectureCheques";
 
@@ -30,8 +31,10 @@ export async function POST(req: Request) {
     const b64 = Buffer.from(await f.arrayBuffer()).toString("base64");
     return NextResponse.json(await lireAvecClaude(cle, b64, f.type));
   } catch (e) {
+    const connue = messageErreurLecture(e);
     const msg = e instanceof Error ? e.message : "inconnu";
     console.error("lecture-cheques : échec", msg);
+    if (connue) return NextResponse.json({ erreur: connue.erreur }, { status: connue.statut });
     // Détail technique (statut et message de l'API, jamais la clé ni l'image) pour le diagnostic.
     return NextResponse.json(
       { erreur: "La lecture automatique a échoué. Saisissez les chèques à la main ou réessayez.", detail: msg.slice(0, 300) },

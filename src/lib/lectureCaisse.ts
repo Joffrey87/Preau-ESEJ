@@ -1,4 +1,5 @@
 // Lecture d'une feuille de caisse (photo prioritaire) ou d'un tableau Excel importé côté client.
+import { leverErreurApi, verifierFin } from "@/lib/erreurLecture";
 
 export const MODELE_LECTURE = "claude-sonnet-5-5";
 
@@ -60,14 +61,15 @@ export async function lireCaisseAvecClaude(cle: string, base64: string, mediaTyp
     },
     body: JSON.stringify({
       model: MODELE_LECTURE,
-      max_tokens: 4000,
+      max_tokens: 8000,
+      // Sonnet 5.5 « réfléchit » par défaut (effort high) et cette réflexion compte dans max_tokens :
+      // effort bas pour une simple lecture (plus rapide, la réponse JSON n'est pas tronquée).
+      output_config: { effort: "low" },
       messages: [{ role: "user", content: [bloc, { type: "text", text: CONSIGNE }] }],
     }),
   });
-  if (!rep.ok) {
-    const detail = ((await rep.json().catch(() => null)) as { error?: { message?: string } } | null)?.error?.message ?? "";
-    throw new Error(`API ${rep.status} ${detail.slice(0, 200)}`);
-  }
-  const d = (await rep.json()) as { content?: { type: string; text?: string }[] };
+  if (!rep.ok) await leverErreurApi(rep);
+  const d = (await rep.json()) as { content?: { type: string; text?: string }[]; stop_reason?: string };
+  verifierFin(d);
   return analyserReponseCaisse((d.content ?? []).filter((b) => b.type === "text").map((b) => b.text).join(""));
 }

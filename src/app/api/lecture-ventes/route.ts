@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { messageErreurLecture } from "@/lib/erreurLecture";
 import { createClient } from "@/lib/supabase/server";
 import { lireVentesAvecClaude } from "@/lib/lectureVentes";
 
@@ -30,8 +31,10 @@ export async function POST(req: Request) {
     const b64 = Buffer.from(await f.arrayBuffer()).toString("base64");
     return NextResponse.json({ lignes: await lireVentesAvecClaude(cle, b64, f.type) });
   } catch (e) {
+    const connue = messageErreurLecture(e);
     const msg = e instanceof Error ? e.message : "inconnu";
     console.error("lecture-ventes : échec", msg);
+    if (connue) return NextResponse.json({ erreur: connue.erreur }, { status: connue.statut });
     return NextResponse.json(
       { erreur: "La lecture automatique a échoué. Saisissez à la main ou réessayez.", detail: msg.slice(0, 300) },
       { status: 502 },

@@ -152,7 +152,7 @@ export default function DepotCheques({
       const rep = await fetch("/api/lecture-cheques", { method: "POST", body: fd });
       const d = await rep.json().catch(() => ({}));
       if (n !== numLecture.current) return;
-      if (!rep.ok) throw new Error(d.erreur ?? "La lecture automatique a échoué.");
+      if (!rep.ok) throw new Error([d.erreur ?? "La lecture automatique a échoué.", d.detail && `Détail : ${d.detail}`].filter(Boolean).join(" "));
       const lus = (d.cheques ?? []) as { montant: number | null; emetteur: string | null; date: string | null }[];
       if (lus.length === 0) throw new Error("Aucun chèque reconnu sur la photo : saisissez-les à la main.");
       setLignes(

@@ -74,7 +74,7 @@ import {
 import { nomDonateur, cleDonateur } from "@/lib/statutDon";
 import { LIBELLE_DON, chiffrerLibellesDon, dechiffrerLibellesDon, texteDonateur } from "@/lib/libelleDon";
 import type { Don } from "@/components/GestionDons";
-import { estCategorieVentes, objetVenteDansLibelle, type SousCategorie } from "@/lib/ventes";
+import { estCategorieVentes, familleDansLibelle, objetVenteDansLibelle, type SousCategorie } from "@/lib/ventes";
 
 export type { ImportPasse };
 
@@ -1114,7 +1114,7 @@ export default function ImportReleve({
     };
 
     // Recettes « Ventes diverses » dont la sous-catégorie est choisie : ventilées à l'import (onglet Ventes diverses).
-    const ventilationsVentes: { operation_id: string; sous_categorie_id: string; montant: number }[] = [];
+    const ventilationsVentes: { operation_id: string; sous_categorie_id: string; montant: number; texte: string; mode: string | null }[] = [];
     let totalRec = 0, totalDep = 0;
     for (const l of retenues) {
       const id = crypto.randomUUID();
@@ -1144,7 +1144,7 @@ export default function ImportReleve({
       });
       if (!ventilee) {
         if (l.sousVente && estVente(l.type, l.categorie_id))
-          ventilationsVentes.push({ operation_id: id, sous_categorie_id: l.sousVente, montant: l.montant });
+          ventilationsVentes.push({ operation_id: id, sous_categorie_id: l.sousVente, montant: l.montant, texte: `${l.libelle} ${l.libelle_origine}`, mode });
         rattacher(id, famMere, donMere, l.montant, l.date, exerciceId, mode);
         continue;
       }
@@ -1174,7 +1174,7 @@ export default function ImportReleve({
           import_id: importId,
         });
         if (f.sousVente && estVente(l.type, f.categorie_id) && montant > 0)
-          ventilationsVentes.push({ operation_id: fid, sous_categorie_id: f.sousVente, montant });
+          ventilationsVentes.push({ operation_id: fid, sous_categorie_id: f.sousVente, montant, texte: `${f.libelle} ${l.libelle_origine}`, mode });
         rattacher(fid, fam, don, montant, l.date, exerciceFille, mode);
       }
     }
@@ -1214,10 +1214,32 @@ export default function ImportReleve({
       else etapes.push(`${affectationsNouvelles.length} rattachement${affectationsNouvelles.length > 1 ? "s" : ""} à l'onglet Frais de scolarité`);
     }
     if (ventilationsVentes.length > 0) {
-      const { error } = await supabase.from("ventes_ventilations").insert(ventilationsVentes);
-      const n = ventilationsVentes.length;
-      if (error) avertissements.push("sous-catégories des ventes non enregistrées : " + error.message);
-      else etapes.push(`${n} recette${n > 1 ? "s" : ""} ventilée${n > 1 ? "s" : ""} dans l'onglet Ventes diverses`);
+      // Famille reconnue dans le libellé : vente « Payé » créée (due + paiement + ventilation) comme depuis la
+      // Comptabilité, pour apparaître dans l'onglet Ventes diverses. Sinon : ventilation seule, à rattacher ensuite.
+      const { data: fams } = await supabase.from("familles").select("id, nom");
+      const familles = (fams ?? []) as { id: string; nom: string }[];
+      const seules: { operation_id: string; sous_categorie_id: string; montant: number }[] = [];
+      let nVentes = 0;
+      for (const v of ventilationsVentes) {
+        const fam = familleDansLibelle(v.texte, familles);
+        if (fam) {
+          const { error } = await supabase.rpc("ventes_creer_depuis_operation", {
+            p_operation: v.operation_id, p_sous_categorie: v.sous_categorie_id, p_famille: fam.id,
+            p_contact: null, p_libelle_payeur: fam.nom, p_montant: v.montant,
+            p_mode: v.mode === "cheque" ? "cheque" : "virement",
+          });
+          if (!error) { nVentes++; continue; }
+          avertissements.push(`vente de la famille ${fam.nom} non créée : ${error.message}`);
+        }
+        seules.push({ operation_id: v.operation_id, sous_categorie_id: v.sous_categorie_id, montant: v.montant });
+      }
+      if (nVentes > 0) etapes.push(`${nVentes} vente${nVentes > 1 ? "s" : ""} créée${nVentes > 1 ? "s" : ""} dans l'onglet Ventes diverses`);
+      if (seules.length > 0) {
+        const { error } = await supabase.from("ventes_ventilations").insert(seules);
+        const n = seules.length;
+        if (error) avertissements.push("sous-catégories des ventes non enregistrées : " + error.message);
+        else etapes.push(`${n} recette${n > 1 ? "s" : ""} ventilée${n > 1 ? "s" : ""} sans famille reconnue (à rattacher dans Ventes diverses)`);
+      }
     }
     if (nouveauxDons.length > 0) {
       const payload = [];

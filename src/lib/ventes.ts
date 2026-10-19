@@ -123,3 +123,16 @@ export function objetVenteDansLibelle<T extends { nom: string; alias?: string[] 
       }
   return meilleur;
 }
+
+/** Famille dont le nom (sans parenthèses) figure dans le libellé ; le nom le plus long l'emporte, null si ambigu. */
+export function familleDansLibelle<T extends { id: string; nom: string }>(libelle: string, familles: T[]): T | null {
+  const norm = (t: string) => " " + t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim() + " ";
+  const texte = norm(libelle);
+  const trouves = familles
+    .map((f) => ({ f, n: norm(f.nom.replace(/\([^)]*\)/g, "")) }))
+    .filter((x) => x.n.trim().length >= 3 && texte.includes(x.n));
+  if (trouves.length === 0) return null;
+  const max = Math.max(...trouves.map((x) => x.n.length));
+  const meilleurs = trouves.filter((x) => x.n.length === max);
+  return new Set(meilleurs.map((x) => x.n)).size === 1 && meilleurs.length === 1 ? meilleurs[0].f : null;
+}

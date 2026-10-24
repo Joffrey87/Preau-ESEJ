@@ -11,7 +11,7 @@ export default function PageHeader({
   title: string;
   subtitle?: string;
   action?: React.ReactNode;
-  /** Date de la dernière écriture bancaire intégrée (voir `date_maj_comptes`). */
+  /** Date de fin du dernier relevé validé, à défaut dernière écriture bancaire (voir `date_maj_comptes`). */
   maj?: string | null;
   /** Marge réduite sous le titre (écrans denses). */
   compact?: boolean;
@@ -28,12 +28,12 @@ export default function PageHeader({
   );
 }
 
-/** « À jour au … » : date de la dernière écriture bancaire intégrée. */
+/** « À jour au … » : date de fin du dernier relevé bancaire validé. */
 export function PastilleMaj({ maj }: { maj: string }) {
   return (
     <span
       className="rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-muted"
-      title="Date de la dernière écriture bancaire intégrée dans Préau : les paiements postérieurs n'apparaissent qu'après l'import du relevé suivant."
+      title="Date de fin du dernier relevé bancaire validé dans Préau : les paiements postérieurs n'apparaissent qu'après l'import du relevé suivant."
     >
       À jour au {formatDate(maj)}
     </span>

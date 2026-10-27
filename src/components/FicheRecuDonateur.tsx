@@ -373,16 +373,21 @@ export default function FicheRecuDonateur({
                                   </button>
                                 )}
                                 {st === "envoye" ? (
-                                  <button type="button" onClick={() => actions.envoi(g)} className="rounded-lg border border-border px-2.5 py-1 hover:bg-surface-2">
-                                    Modifier l&apos;envoi
-                                  </button>
+                                  <>
+                                    <button type="button" onClick={() => actions.envoi(g)} className="rounded-lg border border-border px-2.5 py-1 hover:bg-surface-2">
+                                      Modifier l&apos;envoi
+                                    </button>
+                                    <button type="button" onClick={() => actions.annuler(g)} className="rounded-lg border border-border px-2.5 py-1 text-muted hover:text-negative" title="Supprimer ce reçu déjà envoyé (confirmation renforcée)">
+                                      Supprimer le reçu
+                                    </button>
+                                  </>
                                 ) : (
                                   <>
                                     <button type="button" onClick={() => actions.envoi(g)} className="rounded-lg border border-positive/40 px-2.5 py-1 text-positive hover:bg-positive/10">
                                       Marquer envoyé
                                     </button>
                                     <button type="button" onClick={() => actions.annuler(g)} className="rounded-lg border border-border px-2.5 py-1 text-muted hover:text-negative">
-                                      Annuler le reçu
+                                      Supprimer le reçu
                                     </button>
                                   </>
                                 )}

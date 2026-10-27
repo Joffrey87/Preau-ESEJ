@@ -41,11 +41,14 @@ export const MODELE_DEFAUT: ModeleRecu = {
   signatureTresorier: null,
 };
 
+let derniereErreurSignature = "";
+
 async function telecharger(supabase: SupabaseClient, path: string | null): Promise<ArrayBuffer | null> {
   if (!path) return null;
   const { data, error } = await supabase.storage.from(MODELES_BUCKET).download(path);
   if (error || !data) {
     console.error("Signature introuvable dans le bucket :", path, error?.message);
+    derniereErreurSignature = error?.message ?? "fichier vide";
     return null;
   }
   return data.arrayBuffer();
@@ -61,10 +64,19 @@ export async function chargerModeleRecu(supabase: SupabaseClient): Promise<Model
   const row = (data ?? null) as ModeleRecuRow | null;
   if (!row) return MODELE_DEFAUT;
 
+  // Un échec ponctuel (session en cours de renouvellement, réseau) ne doit pas faire imprimer le reçu sans signature :
+  // on réessaie une fois, puis on signale l'incomplétude pour que le modèle ne soit pas mémorisé.
+  const avecReessai = async (path: string | null) => (await telecharger(supabase, path)) ?? (await telecharger(supabase, path));
   const [signaturePresident, signatureTresorier] = await Promise.all([
-    telecharger(supabase, row.signature_president_path),
-    telecharger(supabase, row.signature_tresorier_path),
+    avecReessai(row.signature_president_path),
+    avecReessai(row.signature_tresorier_path),
   ]);
+  signaturesIncompletes =
+    (!!row.signature_president_path && !signaturePresident) || (!!row.signature_tresorier_path && !signatureTresorier);
+  // Mieux vaut un message clair qu'un reçu silencieusement sans signature.
+  if (signaturesIncompletes) {
+    throw new Error(`Signature du reçu illisible (${derniereErreurSignature}) : reconnectez-vous puis réessayez.`);
+  }
 
   const ou = (v: string | null, defaut: string) => (v && v.trim() ? v.trim() : defaut);
   return {
@@ -82,12 +94,19 @@ export async function chargerModeleRecu(supabase: SupabaseClient): Promise<Model
 // qui l'invalide.
 let memo: Promise<ModeleRecu> | null = null;
 
+let signaturesIncompletes = false;
+
 export function modeleRecuEnCache(supabase: SupabaseClient): Promise<ModeleRecu> {
   if (!memo) {
-    memo = chargerModeleRecu(supabase).catch((e) => {
-      memo = null;
-      throw e;
-    });
+    memo = chargerModeleRecu(supabase)
+      .then((m) => {
+        if (signaturesIncompletes) memo = null; // la prochaine génération retentera le téléchargement
+        return m;
+      })
+      .catch((e) => {
+        memo = null;
+        throw e;
+      });
   }
   return memo;
 }

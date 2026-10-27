@@ -20,6 +20,7 @@ import { formatEuros, formatDate, todayISO } from "@/lib/format";
 import { useDonsDechiffres } from "@/lib/donsChiffre";
 import { cleDonateur, champsImportantsManquants, recuEnvoye, sansRecu } from "@/lib/statutDon";
 import { ETAT_PASSE_SECRETAIRE, MOYENS_ENVOI, etatEnvoye, libelleMoyen, prefereCourrier, recuPostal } from "@/lib/envoiRecu";
+import { supprimerRecu } from "@/lib/annulerRecu";
 import { construireRecuPdf, genererRecuPdf, nomFichierRecu, numeroCourt } from "@/lib/recu";
 import { modeleRecuEnCache } from "@/lib/modeleRecu";
 import { creerZip } from "@/lib/zip";
@@ -502,11 +503,12 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
 
   async function annuler(g: Groupe) {
     if (!g.numero) return;
-    if (!window.confirm(`Annuler le reçu ${g.numero} ? Ses dons redeviendront « à établir » ; le numéro ne sera jamais réattribué.`)) return;
+    const numero = g.numero;
     setBusy(g.cle);
-    const { error } = await createClient().rpc("annuler_recu", { p_recu: g.numero });
+    const res = await supprimerRecu(numero, g.dons.some(recuEnvoye));
     setBusy(null);
-    setMessage(error ? { ok: false, t: error.message } : { ok: true, t: `Reçu ${g.numero} annulé.` });
+    if (!res) return;
+    setMessage(res.error ? { ok: false, t: res.error } : { ok: true, t: `Reçu ${numero} supprimé.` });
     router.refresh();
   }
 

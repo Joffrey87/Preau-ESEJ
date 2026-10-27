@@ -11,6 +11,7 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { formatEuros, formatDate, todayISO } from "@/lib/format";
+import { supprimerRecu } from "@/lib/annulerRecu";
 import { genererRecuPdf } from "@/lib/recu";
 import { ETAT_PASSE_SECRETAIRE, PREFERENCES_ENVOI, etatEnvoye, prefereEnBase } from "@/lib/envoiRecu";
 import { Modal, Field, FormFooter, inputCls } from "./GestionComptes";
@@ -44,6 +45,7 @@ import {
   cleDonateur,
   nomDonateur,
   TONE_CLASSES,
+  recuEnvoye,
   FILTRES,
   type Chip,
   type StatutKey,
@@ -787,6 +789,17 @@ export default function GestionDons({
     const supabase = createClient();
     await supabase.from("dons").update({ supprime_le: null, supprime_par: null }).eq("id", id);
     setToast((t) => (t?.id === id ? null : t));
+    router.refresh();
+  }
+
+  /** Supprime le reçu fiscal qui couvre ce don (tous les dons portant son numéro), après confirmation. */
+  async function supprimerRecuDuDon(d: Don) {
+    if (!d.recu_numero) return;
+    setGenErreur(null);
+    const res = await supprimerRecu(d.recu_numero, recuEnvoye(d));
+    if (!res) return;
+    if (res.error) return setError(res.error);
+    fermerFormulaire();
     router.refresh();
   }
 
@@ -1781,6 +1794,16 @@ export default function GestionDons({
                 />
               </Field>
             </div>
+            {recuFige && donEdite && (
+              <button
+                type="button"
+                onClick={() => void supprimerRecuDuDon(donEdite)}
+                className="-mt-1 self-start rounded-lg border border-border px-3 py-1.5 text-xs text-muted hover:text-negative"
+                title="Efface le numéro du reçu : le don redevient « sans reçu »"
+              >
+                Supprimer le reçu fiscal {donEdite.recu_numero}
+              </button>
+            )}
 
             <Field label="Observations">
               <input type="text" value={f.observations} onChange={(e) => set("observations", e.target.value)} className={inputCls} />

@@ -1,7 +1,6 @@
 import PageHeader from "@/components/PageHeader";
 import PipelineTabs from "@/components/PipelineTabs";
 import { createClient } from "@/lib/supabase/server";
-import type { Prospect } from "@/lib/pipeline";
 import type { Don } from "@/components/GestionDons";
 import { emailVue } from "@/lib/vueRoleServeur";
 import { roleByEmail } from "@/lib/roles";
@@ -12,13 +11,9 @@ import { ROLES_SUIVI, type SuiviAction } from "@/lib/suiviDonateurs";
 
 export default async function PipelinePage() {
   const supabase = await createClient();
-  const [{ data: { user } }, { data: prospectsData }, { data: donsData }, jaugeRes, obtenusRes] = await Promise.all([
+  // Les prospects (et leur suivi) sont chargés page par page dans l'onglet Prospections.
+  const [{ data: { user } }, { data: donsData }, jaugeRes, obtenusRes] = await Promise.all([
     supabase.auth.getUser(),
-    supabase
-      .from("prospects")
-      .select("*")
-      .order("prochaine_action_date", { ascending: true, nullsFirst: false })
-      .order("nom"),
     supabase
       .from("dons")
       .select(
@@ -34,7 +29,7 @@ export default async function PipelinePage() {
   const slugVu = roleByEmail(await emailVue(user?.email))?.slug ?? "";
   // Suivi des relations : historique des actions et auteur (prénom Recherche de fonds ou profil).
   const [{ data: suiviData }, ctx] = await Promise.all([
-    supabase.from("suivi_actions").select("*").order("cree_le", { ascending: false }),
+    supabase.from("suivi_actions").select("*").eq("cible_type", "donateur").order("cree_le", { ascending: false }),
     contexteRecherche(supabase),
   ]);
 
@@ -51,7 +46,6 @@ export default async function PipelinePage() {
         </div>
       )}
       <PipelineTabs
-        prospects={(prospectsData ?? []) as Prospect[]}
         dons={(donsData ?? []) as Don[]}
         obtenus={obtenus}
         peutLier={["tresorier", "president", "administrateur", "directeur-spirituel"].includes(slugVu)}

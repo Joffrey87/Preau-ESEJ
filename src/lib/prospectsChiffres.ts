@@ -46,6 +46,21 @@ export const nomComplet = (p: Pick<PiiProspect, "titre" | "prenom" | "nom">): st
   [abregerCivilite(p.titre), p.prenom, p.nom].filter(Boolean).join(" ");
 
 /** Hydrate les prospects : coffre ouvert → coordonnées lues ; fermé → « 🔒 » ; en clair → inchangés. */
+/** Déchiffrement hors React (exports, import) : même règle que useProspectsDechiffres. */
+export async function dechiffrerProspects(prospects: Prospect[], estOuvert: boolean, dechiffrer: (c: string) => Promise<string>): Promise<ProspectLisible[]> {
+  return Promise.all(prospects.map(async (p): Promise<ProspectLisible> => {
+    if (!p.pii_chiffre) return enClair(p);
+    if (!estOuvert) return { ...enClair(p), affiche: "🔒 verrouillé", chiffre: true, verrouille: true };
+    try {
+      const pii = JSON.parse(await dechiffrer(p.pii_chiffre)) as PiiProspect;
+      return { ...p, nom: pii.nom ?? p.nom, titre: pii.titre, prenom: pii.prenom, adresse: pii.adresse, cp_ville: pii.cp_ville,
+        affiche: nomComplet({ titre: null, prenom: pii.prenom, nom: pii.nom }) || p.nom, chiffre: true, verrouille: false };
+    } catch {
+      return { ...enClair(p), affiche: "🔒 illisible", chiffre: true, verrouille: true };
+    }
+  }));
+}
+
 export function useProspectsDechiffres(prospects: Prospect[]) {
   const { estOuvert, estConfigure, dechiffrer } = useCoffre();
   const [resultat, setResultat] = useState<ProspectLisible[]>(() => prospects.map(enClair));

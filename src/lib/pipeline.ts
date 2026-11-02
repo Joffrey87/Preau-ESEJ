@@ -89,7 +89,7 @@ export const TYPES_PROSPECT: { key: TypeProspect; label: string }[] = [
   { key: "communaute", label: "Communauté" },
   { key: "autre", label: "Autre" },
 ];
-const TYPE_DE_SEGMENT: Record<Segment, TypeProspect> = {
+export const TYPE_DE_SEGMENT: Record<Segment, TypeProspect> = {
   particulier: "particulier", cercle_interieur: "particulier", grand_donateur: "particulier",
   entreprise: "pro", pro: "pro", fondation: "association", association: "association",
   reseau_catho: "communaute", communaute: "communaute", autre: "autre",

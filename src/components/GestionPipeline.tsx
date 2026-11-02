@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { formatEuros } from "@/lib/format";
 import { Modal, Field, FormFooter, inputCls } from "@/components/GestionComptes";
@@ -9,16 +8,14 @@ import { AjoutSuivi, HistoriqueSuivi } from "@/components/SuiviDonateur";
 import { ETATS_PROSPECT, AIDE_ETAT, TON_ETAT, etatProspect, estEtatProspect, ICONE_ETAT, LEGENDE_ETATS, type EtatProspect, type EtatCalcule } from "@/lib/etatProspect";
 import { TYPES_ACTION_PROSPECT, dernierCommentaire, formatDateHeure, suiviParCle, type SuiviAction } from "@/lib/suiviDonateurs";
 import { trierListe, useTri } from "@/components/TriColonnes";
-import { ICONE_CAPACITE, TON_CAPACITE } from "@/lib/pipeline";
+import { ICONE_CAPACITE, TON_CAPACITE, TYPE_DE_SEGMENT } from "@/lib/pipeline";
 import SuiviCoche from "@/components/SuiviCoche";
 import RelationResponsable from "@/components/RelationResponsable";
 import { nomCliquableCls } from "@/lib/ui";
 import { useCoffre } from "@/components/CoffreProvider";
 import DeverrouillerCoffre from "@/components/DeverrouillerCoffre";
 import ImportProspects from "@/components/ImportProspects";
-import BoutonFiltresMultiples, { CasePastille } from "@/components/BoutonFiltresMultiples";
-import { useFiltresMultiples } from "@/lib/filtresMultiples";
-import { NOM_NEUTRE, abregerCivilite, estListeChiffree, nomComplet, useProspectsDechiffres, type ProspectLisible } from "@/lib/prospectsChiffres";
+import { NOM_NEUTRE, abregerCivilite, estListeChiffree, nomComplet, useProspectsDechiffres, dechiffrerProspects, type ProspectLisible } from "@/lib/prospectsChiffres";
 import { nomSoigne } from "@/lib/nomPropre";
 import type { Don } from "@/components/GestionDons";
 import Icon from "@/components/Icon";
@@ -71,6 +68,7 @@ const COLONNES_P = [
 ] as const;
 type ColP = (typeof COLONNES_P)[number]["key"];
 const H24 = 24 * 3600 * 1000;
+const TAILLE_PAGE = 50;
 
 const vide: Form = {
   civilite: "", prenom: "", adresse: "", cp_ville: "",
@@ -83,17 +81,14 @@ const vide: Form = {
 const eur = (s: string) => Number((s.trim() || "0").replace(/\s/g, "").replace(",", ".")) || 0;
 
 export default function GestionPipeline({
-  prospects: brut,
   dons,
   obtenus = {},
   peutLier = false,
   listeInitiale = null,
-  suivi = [],
   peutSuivre = false,
   auteurSuivi = null,
   peutEcrire = false,
 }: {
-  prospects: Prospect[];
   dons: Don[];
   /** « Obtenu » par prospect : somme des écritures comptables liées. */
   obtenus?: Record<string, { montant: number; nb: number }>;
@@ -101,16 +96,24 @@ export default function GestionPipeline({
   peutLier?: boolean;
   /** Liste filtrée à l'ouverture (lien du menu « Mises à jour »). */
   listeInitiale?: string | null;
-  /** Historique des actions de suivi (tous). */
-  suivi?: SuiviAction[];
   /** Ajout d'actions et réservation : Recherche de fonds, Trésorier, Administrateur. */
   peutSuivre?: boolean;
   auteurSuivi?: string | null;
   /** Écriture sur les prospects (même règle que la base : bureau et Recherche de fonds). */
   peutEcrire?: boolean;
 }) {
-  const router = useRouter();
   const coffre = useCoffre();
+  // ————— Chargement page par page (50 au plus), filtré côté base sur les colonnes en clair —————
+  const [brut, setBrut] = useState<Prospect[]>([]);
+  const [suivi, setSuivi] = useState<SuiviAction[]>([]);
+  const [total, setTotal] = useState(0);
+  const [pageN, setPageN] = useState(0);
+  const [chargement, setChargement] = useState(true);
+  const [rev, setRev] = useState(0);
+  const recharger = () => setRev((n) => n + 1);
+  // Valeurs des pastilles (liste, apporteur, type) : colonnes légères de tous les prospects.
+  const [meta, setMeta] = useState<{ liste: string | null; reserve_a: string | null; responsable: string | null; segment: string }[]>([]);
+  const [prefsPretes, setPrefsPretes] = useState(false);
   const { prospects: dechiffres, verrou } = useProspectsDechiffres(brut);
   // Mises à jour optimistes : la modification s'affiche tout de suite, la page se recharge en arrière-plan.
   const [patchs, setPatchs] = useState<Record<string, Partial<ProspectLisible>>>({});
@@ -128,15 +131,18 @@ export default function GestionPipeline({
   const [fApporteurs, setFApporteurs] = useState<string[]>([]);
   const apporteurs = useMemo(() => {
     const m = new Map<string, number>();
-    for (const p of prospects) { const a = apporteurDe(p); if (a) m.set(a, (m.get(a) ?? 0) + 1); }
+    for (const p of meta) { const a = apporteurDe(p); if (a) m.set(a, (m.get(a) ?? 0) + 1); }
     return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0], "fr"));
-  }, [prospects]);
+  }, [meta]);
   // Largeur de la colonne Nom/Prénom : réglable par chacun, gardée dans ce navigateur.
   const [largeurNom, setLargeurNom] = useState(256);
   const glisse = useRef<{ x: number; w: number } | null>(null);
   // Listes d'origine (ex. « Liste Axel ») : filtres en pastilles, cumulables avec « + ».
-  const { actifs: fListes, multiple: listeMultiple, basculer: basculerListe, basculerMultiple: basculerListeMultiple, estActif: listeActive, reinitialiser: reinitialiserListes } = useFiltresMultiples<string>(listeInitiale ? [listeInitiale] : []);
-  const listes = useMemo(() => [...new Set(prospects.map((p) => p.liste).filter((l): l is string => !!l))].sort((a, b) => a.localeCompare(b, "fr")), [prospects]);
+  const [fListes, setFListes] = useState<string[]>(listeInitiale ? [listeInitiale] : []);
+  const listeActive = (l: string) => fListes.includes(l);
+  const basculerListe = (l: string) => setFListes((x) => (x.includes(l) ? x.filter((y) => y !== l) : [...x, l]));
+  const reinitialiserListes = () => setFListes([]);
+  const listes = useMemo(() => [...new Set(meta.map((p) => p.liste).filter((l): l is string => !!l))].sort((a, b) => a.localeCompare(b, "fr")), [meta]);
   const [edit, setEdit] = useState<ProspectLisible | "nouveau" | null>(null);
   const [liaison, setLiaison] = useState<ProspectLisible | null>(null);
   // Suivi des actions : ajout, historique, réservation.
@@ -200,18 +206,77 @@ export default function GestionPipeline({
   const [fEtape, setFEtape] = useState<"" | EtatProspect>("");
   const [fSegments, setFSegments] = useState<TypeProspect[]>([]);
   const [exportEnCours, setExportEnCours] = useState(false);
+  const [qServeur, setQServeur] = useState("");
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => { const t = setTimeout(() => setQServeur(q.trim()), 350); return () => clearTimeout(t); }, [q]);
 
-  const filtres = useMemo(() => {
-    const ql = q.trim().toLowerCase();
-    return prospects.filter(
-      (p) =>
-        (!ql || [p.affiche, p.adresse, p.cp_ville, p.responsable, p.email, p.telephone, p.relation].some((v) => (v ?? "").toLowerCase().includes(ql))) &&
-        (!fEtape || etats.get(p.id)?.affiche === fEtape) &&
-        (fSegments.length === 0 || fSegments.includes(typeDe(p.segment))) &&
-        (fListes.length === 0 || (!!p.liste && fListes.includes(p.liste))) &&
-        (fApporteurs.length === 0 || fApporteurs.includes(apporteurDe(p))),
-    );
-  }, [prospects, q, fEtape, fSegments, fListes, fApporteurs, etats]);
+  // Préférences : dernier choix de chacun ; à défaut, « Apporté par <moi> » si ce prénom existe, sinon tout.
+  const clePrefs = `prospects.filtres:${auteurSuivi ?? "profil"}`;
+  useEffect(() => {
+    void createClient().from("prospects").select("liste, reserve_a, responsable, segment").then(({ data }) => {
+      const m = (data ?? []) as typeof meta;
+      setMeta(m);
+      if (prefsPretes) return;
+      let lu: { listes?: string[]; apporteurs?: string[]; segments?: TypeProspect[]; etape?: "" | EtatProspect } | null = null;
+      try { lu = JSON.parse(localStorage.getItem(clePrefs) ?? "null"); } catch {}
+      if (lu) {
+        if (!listeInitiale && lu.listes) setFListes(lu.listes);
+        setFApporteurs(lu.apporteurs ?? []);
+        setFSegments(lu.segments ?? []);
+        setFEtape(lu.etape ?? "");
+      } else if (!listeInitiale && auteurSuivi && m.some((p) => apporteurDe(p) === auteurSuivi)) {
+        setFApporteurs([auteurSuivi]);
+      }
+      setPrefsPretes(true);
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rev]);
+  useEffect(() => {
+    if (!prefsPretes) return;
+    try { localStorage.setItem(clePrefs, JSON.stringify({ listes: fListes, apporteurs: fApporteurs, segments: fSegments, etape: fEtape })); } catch {}
+    setPageN(0);
+  }, [prefsPretes, clePrefs, fListes, fApporteurs, fSegments, fEtape, qServeur]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  /** Requête filtrée côté base (colonnes en clair seulement : les noms chiffrés ne sont pas cherchables). */
+  function requete(avecCompte: boolean) {
+    let r = createClient().from("prospects").select("*", avecCompte ? { count: "exact" } : undefined);
+    const lst = (v: string[]) => v.map((x) => `"${x.replace(/"/g, "")}"`).join(",");
+    if (fListes.length) r = r.in("liste", fListes);
+    if (fApporteurs.length) r = r.or(`reserve_a.in.(${lst(fApporteurs)}),and(reserve_a.is.null,responsable.in.(${lst(fApporteurs)}))`);
+    if (fSegments.length) r = r.in("segment", (Object.keys(TYPE_DE_SEGMENT) as Segment[]).filter((sg) => fSegments.includes(TYPE_DE_SEGMENT[sg])));
+    if (fEtape === "Pas contacté") r = r.or("etat_unifie.is.null,etat_unifie.eq.Pas contacté");
+    else if (fEtape === "Sans réponse, à relancer") r = r.in("etat_unifie", [fEtape, "En pause"]);
+    else if (fEtape === "Pas intéressé") r = r.in("etat_unifie", [fEtape, "Perdu"]);
+    else if (fEtape) r = r.eq("etat_unifie", fEtape);
+    const qs = qServeur.replace(/[,()"*%]/g, " ").trim();
+    if (qs) r = r.or(["nom", "email", "telephone", "relation", "cp_ville", "responsable", "reserve_a", "liste"].map((c) => `${c}.ilike.*${qs}*`).join(","));
+    return r.order("updated_at", { ascending: false }).order("id");
+  }
+
+  useEffect(() => {
+    if (!prefsPretes) return;
+    let annule = false;
+    (async () => {
+      setChargement(true);
+      const { data, count } = await requete(true).range(pageN * TAILLE_PAGE, pageN * TAILLE_PAGE + TAILLE_PAGE - 1);
+      const rows = (data ?? []) as Prospect[];
+      const ids = rows.map((p) => p.id);
+      const { data: sv } = ids.length
+        ? await createClient().from("suivi_actions").select("*").eq("cible_type", "prospect").in("cible_cle", ids).order("cree_le", { ascending: false })
+        : { data: [] };
+      if (annule) return;
+      setBrut(rows);
+      setSuivi((sv ?? []) as SuiviAction[]);
+      setTotal(count ?? rows.length);
+      setChargement(false);
+    })();
+    return () => { annule = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prefsPretes, pageN, rev, fListes, fApporteurs, fSegments, fEtape, qServeur]);
+
+  // Filtres et recherche appliqués par la base (page de 50 au plus).
+  const filtres = prospects;
 
   const relationsConnues = useMemo(
     () => [...new Set(prospects.map((p) => (p.relation ?? "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr")),
@@ -224,8 +289,9 @@ export default function GestionPipeline({
       {bouton(col, label)}
     </th>
   );
-  const tries = trierListe(filtres, tri, (p, col): string | number | null => {
-    const h = suiviProspect.get(p.id);
+  const valTri = (sp: Map<string, SuiviAction[]>) => (p: ProspectLisible, col: ColTriP): string | number | null => {
+    const h = sp.get(p.id);
+    const etatDe = (x: ProspectLisible) => etatProspect(x, sp.get(x.id), (obtenus[x.id]?.nb ?? 0) > 0);
     switch (col) {
       case "prospect": return p.verrouille ? null : nomComplet({ titre: null, prenom: p.prenom, nom: p.nom }) || null;
       case "nom": return p.verrouille ? null : p.nom?.trim() || null;
@@ -241,10 +307,11 @@ export default function GestionPipeline({
       case "cible": return p.capacite ?? null;
       case "obtenu": return obtenus[p.id]?.montant ?? null;
     }
-  });
+  };
+  const tries = trierListe(filtres, tri, valTri(suiviProspect));
+
 
   // Analyse (sur la sélection filtrée).
-  const actifs = filtres.filter((p) => etatDe(p).affiche !== "Pas intéressé");
   const totalObtenu = filtres.reduce((s, p) => s + (obtenus[p.id]?.montant ?? 0), 0);
 
   // Répartition par étape (pour la barre de progression du pipeline).
@@ -256,7 +323,9 @@ export default function GestionPipeline({
     try {
       const { telechargerListeProspects } = await import("@/lib/prospectsPdf");
       const ferme = "coffre fermé";
-      const lignes = tries.map((p) => {
+      const { rows, sp: suiviProspect } = await tousFiltres();
+      const etatDe = (p: ProspectLisible) => etatProspect(p, suiviProspect.get(p.id), (obtenus[p.id]?.nb ?? 0) > 0);
+      const lignes = trierListe(rows, tri, valTri(suiviProspect)).map((p) => {
         const h = suiviProspect.get(p.id) ?? [];
         const der = [...h].sort((a, b) => b.cree_le.localeCompare(a.cree_le))[0];
         return {
@@ -283,9 +352,20 @@ export default function GestionPipeline({
     }
   }
 
-  function lignesExport() {
+  /** Tous les prospects filtrés (pas seulement la page), déchiffrés, avec leur suivi. */
+  async function tousFiltres() {
+    const { data } = await requete(false);
+    const rows = await dechiffrerProspects((data ?? []) as Prospect[], coffre.estOuvert, coffre.dechiffrer);
+    const { data: sv } = await createClient().from("suivi_actions").select("*").eq("cible_type", "prospect").order("cree_le", { ascending: false });
+    return { rows, sp: suiviParCle((sv ?? []) as SuiviAction[]) };
+  }
+
+  async function lignesExport() {
     const ferme = "coffre fermé";
-    return tries.map((p) => {
+    const { rows, sp } = await tousFiltres();
+    const suiviProspect = sp;
+    const etatDe = (p: ProspectLisible) => etatProspect(p, sp.get(p.id), (obtenus[p.id]?.nb ?? 0) > 0);
+    return trierListe(rows, tri, valTri(sp)).map((p) => {
       const h = suiviProspect.get(p.id) ?? [];
       const der = [...h].sort((a, b) => b.cree_le.localeCompare(a.cree_le))[0];
       return {
@@ -308,8 +388,9 @@ export default function GestionPipeline({
     });
   }
 
-  function exporterCsv() {
-    const lignes = lignesExport();
+  async function exporterCsv() {
+    setExportEnCours(true);
+    const lignes = await lignesExport().finally(() => setExportEnCours(false));
     const entetes = ["Civilité", "Nom", "Prénom", "Adresse", "CP Ville", "Courriel", "Téléphone", "Type", "État", "Liste", "Relation", "Apporteur", "Dernière action", "Commentaire", "Obtenu (€)"];
     const esc = (v: string) => (/[";\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
     const csv = [entetes, ...lignes.map((l) => Object.values(l))].map((r) => r.map((v) => esc(String(v ?? ""))).join(";")).join("\r\n");
@@ -404,7 +485,7 @@ export default function GestionPipeline({
         : await supabase.from("prospects").update(payload).eq("id", (edit as Prospect).id);
     setSaving(false);
     if (err) return echec("Enregistrement impossible : " + err.message);
-    router.refresh();
+    recharger();
     return true;
   }
 
@@ -414,7 +495,7 @@ export default function GestionPipeline({
     setBusy(p.id);
     await createClient().from("prospects").update({ etat_unifie: etat || null, etat_unifie_le: new Date().toISOString(), etat_unifie_par: auteurSuivi, updated_at: new Date().toISOString() }).eq("id", p.id);
     setBusy(null);
-    router.refresh();
+    recharger();
   }
 
   /** Clic sur le Suivi : modifier sa dernière action (moins de 24 h, même auteur), sinon en ajouter une. */
@@ -435,7 +516,7 @@ export default function GestionPipeline({
       ? await sb.rpc("modifier_suivi_action", { p_id: der.id, p_actions: der.actions, p_note: texte, p_auteur: auteurSuivi ?? "" })
       : await sb.rpc("ajouter_suivi_action", { p_cible_type: "prospect", p_cible_cle: p.id, p_dons_ids: [], p_actions: [], p_etat: "", p_note: texte, p_auteur: auteurSuivi ?? "" });
     if (e) return setErreurReserve("Commentaire non enregistré : " + e.message);
-    router.refresh();
+    recharger();
   }
 
   /** Modification directe d'un état depuis le tableau (étape, segment, capacité, responsable…). */
@@ -447,7 +528,7 @@ export default function GestionPipeline({
     setBusy(p.id);
     await createClient().from("prospects").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", p.id);
     setBusy(null);
-    router.refresh();
+    recharger();
   }
 
 
@@ -459,14 +540,14 @@ export default function GestionPipeline({
     setSupprimes((s) => new Set(s).add(p.id));
     await supabase.from("prospects").delete().eq("id", p.id);
     setBusy(null);
-    router.refresh();
+    recharger();
   }
 
   return (
     <div className="space-y-5">
       {/* Analyse */}
       <div className="grid grid-cols-2 gap-3">
-        <Tuile label="Prospects actifs" valeur={String(actifs.length)} />
+        <Tuile label="Prospects (filtres actifs)" valeur={String(total)} />
         <Tuile label="Déjà obtenu" valeur={formatEuros(totalObtenu)} accent="positive" />
       </div>
 
@@ -558,9 +639,9 @@ export default function GestionPipeline({
           title="PDF des prospects affichés (filtres actifs), ou de tous sans filtre">
           {exportEnCours ? "Export…" : "Exporter PDF"}
         </button>
-        <button type="button" onClick={exporterCsv}
+        <button type="button" onClick={() => void exporterCsv()} disabled={exportEnCours}
           className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-surface-2"
-          title="CSV (Excel) des prospects affichés, filtres et tri actifs">
+          title="CSV (Excel) de tous les prospects filtrés (toutes les pages), tri actif">
           Exporter CSV
         </button>
         {peutEcrire && <ImportProspects prospects={prospects} dons={dons} auteur={auteurSuivi} relations={relationsConnues} />}
@@ -617,11 +698,10 @@ export default function GestionPipeline({
               aria-pressed={listeActive(l)}
               className={`rounded-full border px-3 py-1 text-sm transition ${listeActive(l) ? "border-accent bg-accent-soft font-medium text-accent" : "border-border text-muted hover:bg-surface-2"}`}
             >
-              {listeMultiple && <CasePastille coche={listeActive(l)} />}
+              {listeActive(l) ? "✓ " : ""}
               {l}
             </button>
           ))}
-          <BoutonFiltresMultiples actif={listeMultiple} onClick={basculerListeMultiple} nombre={fListes.length} />
         </div>
       )}
 
@@ -675,6 +755,18 @@ export default function GestionPipeline({
           </div>
         </Modal>
       )}
+
+      {/* Pagination */}
+      <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+        <span className="text-muted">
+          {chargement ? "Chargement…" : total === 0 ? "Aucun prospect pour ces filtres" : `${pageN * TAILLE_PAGE + 1}–${Math.min(total, (pageN + 1) * TAILLE_PAGE)} sur ${total} prospect${total > 1 ? "s" : ""}`}
+        </span>
+        <span className="inline-flex gap-1.5">
+          <button type="button" disabled={pageN === 0 || chargement} onClick={() => setPageN((n) => n - 1)} className="rounded-lg border border-border px-3 py-1 hover:bg-surface-2 disabled:opacity-40">← Précédent</button>
+          <span className="px-2 py-1 tabular-nums text-muted">Page {pageN + 1} / {Math.max(1, Math.ceil(total / TAILLE_PAGE))}</span>
+          <button type="button" disabled={(pageN + 1) * TAILLE_PAGE >= total || chargement} onClick={() => setPageN((n) => n + 1)} className="rounded-lg border border-border px-3 py-1 hover:bg-surface-2 disabled:opacity-40">Suivant →</button>
+        </span>
+      </div>
 
       {/* Table */}
       <div className="overflow-x-auto rounded-xl border border-border bg-surface">
@@ -767,7 +859,7 @@ export default function GestionPipeline({
                             const { error: e } = await sb.rpc("definir_reserve_pour_prospect", { p_id: p.id, p_valeur: rsv ?? "" });
                             if (e) return e.message;
                           }
-                          router.refresh();
+                          recharger();
                           return null;
                         }}
                       />
@@ -925,7 +1017,7 @@ export default function GestionPipeline({
                       if ((resp ?? "") !== (edit.reserve_a ?? "")) { const { error: e } = await sb.rpc("definir_reserve_prospect", { p_id: edit.id, p_valeur: resp ?? "" }); if (e) return e.message; }
                       if ((rsv ?? "") !== (edit.reserve_pour ?? "")) { const { error: e } = await sb.rpc("definir_reserve_pour_prospect", { p_id: edit.id, p_valeur: rsv ?? "" }); if (e) return e.message; }
                       setEdit({ ...edit, reserve_a: resp, reserve_pour: rsv });
-                      router.refresh();
+                      recharger();
                       return null;
                     }} />
                 </Field>

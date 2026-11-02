@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Don } from "@/components/GestionDons";
 import { useCoffre } from "@/components/CoffreProvider";
@@ -8,7 +8,8 @@ import DeverrouillerCoffre from "@/components/DeverrouillerCoffre";
 import { createClient } from "@/lib/supabase/client";
 import { Modal, inputCls } from "@/components/GestionComptes";
 import { useDonsDechiffres } from "@/lib/donsChiffre";
-import { NOM_NEUTRE, estListeChiffree, nomComplet, type ProspectLisible } from "@/lib/prospectsChiffres";
+import { NOM_NEUTRE, estListeChiffree, nomComplet, useProspectsDechiffres, type ProspectLisible } from "@/lib/prospectsChiffres";
+import type { Prospect } from "@/lib/pipeline";
 import { CHAMPS, convertir, lireFichier, tableauDesFeuilles, type Champ, type LigneImport, type Tableau } from "@/lib/importProspectsColonnes";
 import { ETAPE_LABEL, TYPES_PROSPECT, type Etape, type Segment } from "@/lib/pipeline";
 import { ChoixReserve } from "@/components/SuiviDonateur";
@@ -43,7 +44,8 @@ export default function ImportProspects({
   auteur = null,
   relations = [],
 }: {
-  prospects: ProspectLisible[];
+  /** Prospects existants (pour écarter les doublons) ; absents : chargés à l'ouverture de la fenêtre. */
+  prospects?: ProspectLisible[];
   dons: Don[];
   /** Personne qui importe (prénom Recherche de fonds, ou prénom/titulaire du rôle) : relation proposée par défaut. */
   auteur?: string | null;
@@ -61,10 +63,23 @@ export default function ImportProspects({
       >
         📥 Importer
       </button>
-      {ouvert && <Fenetre prospects={prospects} dons={dons} auteur={auteur} relations={relations} onClose={() => setOuvert(false)} />}
+      {ouvert && !prospects && <FenetreChargee dons={dons} auteur={auteur} relations={relations} onClose={() => setOuvert(false)} />}
+      {ouvert && prospects && <Fenetre prospects={prospects} dons={dons} auteur={auteur} relations={relations} onClose={() => setOuvert(false)} />}
     </>
   );
 }
+
+/** Charge tous les prospects (pour les doublons) seulement quand la fenêtre d'import s'ouvre. */
+function FenetreChargee(props: { dons: Don[]; auteur: string | null; relations: string[]; onClose: () => void }) {
+  const [brut, setBrut] = useState<Prospect[] | null>(null);
+  useEffect(() => {
+    void createClient().from("prospects").select("*").then(({ data }) => setBrut((data ?? []) as Prospect[]));
+  }, []);
+  const { prospects } = useProspectsDechiffres(brut ?? VIDE);
+  if (!brut) return <Modal title="Importer des prospects" onClose={props.onClose}><p className="text-sm text-muted">Chargement des prospects existants…</p></Modal>;
+  return <Fenetre prospects={prospects} {...props} />;
+}
+const VIDE: Prospect[] = [];
 
 function Fenetre({
   prospects,

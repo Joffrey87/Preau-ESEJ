@@ -110,7 +110,8 @@ export default function GestionPipeline({
   const [pageN, setPageN] = useState(0);
   const [chargement, setChargement] = useState(true);
   const [rev, setRev] = useState(0);
-  const recharger = () => setRev((n) => n + 1);
+  const cachePages = useRef(new Map<string, Promise<{ rows: Prospect[]; sv: SuiviAction[]; count: number }>>());
+  const recharger = () => { cachePages.current.clear(); setRev((n) => n + 1); };
   // Valeurs des pastilles (liste, apporteur, type) : colonnes légères de tous les prospects.
   const [meta, setMeta] = useState<{ liste: string | null; reserve_a: string | null; responsable: string | null; segment: string }[]>([]);
   const [prefsPretes, setPrefsPretes] = useState(false);
@@ -257,19 +258,35 @@ export default function GestionPipeline({
   useEffect(() => {
     if (!prefsPretes) return;
     let annule = false;
-    (async () => {
-      setChargement(true);
-      const { data, count } = await requete(true).range(pageN * TAILLE_PAGE, pageN * TAILLE_PAGE + TAILLE_PAGE - 1);
+    const base = JSON.stringify([rev, fListes, fApporteurs, fSegments, fEtape, qServeur]);
+    const charge = async (n: number) => {
+      const { data, count } = await requete(true).range(n * TAILLE_PAGE, n * TAILLE_PAGE + TAILLE_PAGE - 1);
       const rows = (data ?? []) as Prospect[];
       const ids = rows.map((p) => p.id);
       const { data: sv } = ids.length
         ? await createClient().from("suivi_actions").select("*").eq("cible_type", "prospect").in("cible_cle", ids).order("cree_le", { ascending: false })
         : { data: [] };
+      return { rows, sv: (sv ?? []) as SuiviAction[], count: count ?? rows.length };
+    };
+    (async () => {
+      const cle = `${base}|${pageN}`;
+      const enCache = cachePages.current.get(cle);
+      if (!enCache) setChargement(true);
+      const page = await (enCache ?? charge(pageN));
       if (annule) return;
-      setBrut(rows);
-      setSuivi((sv ?? []) as SuiviAction[]);
-      setTotal(count ?? rows.length);
+      setBrut(page.rows);
+      setSuivi(page.sv);
+      setTotal(page.count);
       setChargement(false);
+      // Page suivante préchargée en arrière-plan : « Suivant » devient instantané.
+      if (cachePages.current.size > 20) cachePages.current.clear();
+      cachePages.current.set(cle, Promise.resolve(page));
+      const suiv = `${base}|${pageN + 1}`;
+      if ((pageN + 1) * TAILLE_PAGE < page.count && !cachePages.current.has(suiv)) {
+        const p = charge(pageN + 1);
+        cachePages.current.set(suiv, p);
+        p.catch(() => cachePages.current.delete(suiv));
+      }
     })();
     return () => { annule = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps

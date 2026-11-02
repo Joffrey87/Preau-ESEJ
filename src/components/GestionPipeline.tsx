@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { formatEuros } from "@/lib/format";
@@ -61,7 +61,7 @@ type Form = {
 };
 
 type ColTriP =
-  | "prospect" | "relation" | "suivi" | "suiviDate" | "etat" | "commentaire" | "reserve"
+  | "prospect" | "nom" | "prenom" | "relation" | "suivi" | "suiviDate" | "etat" | "commentaire" | "reserve"
   | "responsable" | "action" | "cible" | "obtenu";
 /** Colonnes masquables du tableau (préférence par personne). */
 const COLONNES_P = [
@@ -111,7 +111,29 @@ export default function GestionPipeline({
 }) {
   const router = useRouter();
   const coffre = useCoffre();
-  const { prospects, verrou } = useProspectsDechiffres(brut);
+  const { prospects: dechiffres, verrou } = useProspectsDechiffres(brut);
+  // Mises à jour optimistes : la modification s'affiche tout de suite, la page se recharge en arrière-plan.
+  const [patchs, setPatchs] = useState<Record<string, Partial<ProspectLisible>>>({});
+  const [supprimes, setSupprimes] = useState<Set<string>>(new Set());
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => { setPatchs({}); setSupprimes(new Set()); }, [brut]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+  const prospects = useMemo(
+    () => dechiffres.filter((p) => !supprimes.has(p.id)).map((p) => (patchs[p.id] ? { ...p, ...patchs[p.id] } as ProspectLisible : p)),
+    [dechiffres, patchs, supprimes],
+  );
+  const patcher = (id: string, patch: Partial<ProspectLisible>) => setPatchs((m) => ({ ...m, [id]: { ...m[id], ...patch } }));
+  // Apporteur (« réservé à » ou responsable) : filtres en pastilles, ex. « Axel », « Pierre-Emmanuel ».
+  const apporteurDe = (p: { reserve_a?: string | null; responsable?: string | null }) => (p.reserve_a ?? p.responsable ?? "").trim();
+  const [fApporteurs, setFApporteurs] = useState<string[]>([]);
+  const apporteurs = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const p of prospects) { const a = apporteurDe(p); if (a) m.set(a, (m.get(a) ?? 0) + 1); }
+    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0], "fr"));
+  }, [prospects]);
+  // Largeur de la colonne Nom/Prénom : réglable par chacun, gardée dans ce navigateur.
+  const [largeurNom, setLargeurNom] = useState(256);
+  const glisse = useRef<{ x: number; w: number } | null>(null);
   // Listes d'origine (ex. « Liste Axel ») : filtres en pastilles, cumulables avec « + ».
   const { actifs: fListes, multiple: listeMultiple, basculer: basculerListe, basculerMultiple: basculerListeMultiple, estActif: listeActive, reinitialiser: reinitialiserListes } = useFiltresMultiples<string>(listeInitiale ? [listeInitiale] : []);
   const listes = useMemo(() => [...new Set(prospects.map((p) => p.liste).filter((l): l is string => !!l))].sort((a, b) => a.localeCompare(b, "fr")), [prospects]);
@@ -136,6 +158,30 @@ export default function GestionPipeline({
     return n;
   });
   const vis = (k: ColP) => !masquees.includes(k);
+  const cleLargeur = `prospects.largeurNom:${auteurSuivi ?? "profil"}`;
+  /* eslint-disable react-hooks/set-state-in-effect */
+  useEffect(() => {
+    try { const v = Number(localStorage.getItem(cleLargeur)); if (v >= 120 && v <= 900) setLargeurNom(v); } catch {}
+  }, [cleLargeur]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+  function debutRedim(e: React.PointerEvent) {
+    e.preventDefault();
+    glisse.current = { x: e.clientX, w: largeurNom };
+    let derniere = largeurNom;
+    const bouge = (ev: PointerEvent) => {
+      if (!glisse.current) return;
+      derniere = Math.min(900, Math.max(120, glisse.current.w + ev.clientX - glisse.current.x));
+      setLargeurNom(derniere);
+    };
+    const fin = () => {
+      glisse.current = null;
+      window.removeEventListener("pointermove", bouge);
+      window.removeEventListener("pointerup", fin);
+      try { localStorage.setItem(cleLargeur, String(derniere)); } catch {}
+    };
+    window.addEventListener("pointermove", bouge);
+    window.addEventListener("pointerup", fin);
+  }
   const [editCom, setEditCom] = useState<string | null>(null);
   const [erreurReserve, setErreurReserve] = useState<string | null>(null);
   const suiviProspect = useMemo(() => suiviParCle(suivi), [suivi]);
@@ -162,9 +208,10 @@ export default function GestionPipeline({
         (!ql || [p.affiche, p.adresse, p.cp_ville, p.responsable, p.email, p.telephone, p.relation].some((v) => (v ?? "").toLowerCase().includes(ql))) &&
         (!fEtape || etats.get(p.id)?.affiche === fEtape) &&
         (fSegments.length === 0 || fSegments.includes(typeDe(p.segment))) &&
-        (fListes.length === 0 || (!!p.liste && fListes.includes(p.liste))),
+        (fListes.length === 0 || (!!p.liste && fListes.includes(p.liste))) &&
+        (fApporteurs.length === 0 || fApporteurs.includes(apporteurDe(p))),
     );
-  }, [prospects, q, fEtape, fSegments, fListes, etats]);
+  }, [prospects, q, fEtape, fSegments, fListes, fApporteurs, etats]);
 
   const relationsConnues = useMemo(
     () => [...new Set(prospects.map((p) => (p.relation ?? "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr")),
@@ -181,6 +228,8 @@ export default function GestionPipeline({
     const h = suiviProspect.get(p.id);
     switch (col) {
       case "prospect": return p.verrouille ? null : nomComplet({ titre: null, prenom: p.prenom, nom: p.nom }) || null;
+      case "nom": return p.verrouille ? null : p.nom?.trim() || null;
+      case "prenom": return p.verrouille ? null : p.prenom?.trim() || null;
       case "relation": return p.relation?.trim() || null;
       case "suivi": return h?.[0]?.actions.join(", ") || null;
       case "suiviDate": return h?.[0]?.cree_le ?? null;
@@ -232,6 +281,45 @@ export default function GestionPipeline({
     } finally {
       setExportEnCours(false);
     }
+  }
+
+  function lignesExport() {
+    const ferme = "coffre fermé";
+    return tries.map((p) => {
+      const h = suiviProspect.get(p.id) ?? [];
+      const der = [...h].sort((a, b) => b.cree_le.localeCompare(a.cree_le))[0];
+      return {
+        civilite: p.verrouille ? "" : p.titre ?? "",
+        nom: p.verrouille ? ferme : p.nom ?? "",
+        prenom: p.verrouille ? "" : p.prenom ?? "",
+        adresse: p.verrouille ? ferme : p.adresse ?? "",
+        cp_ville: p.verrouille ? "" : p.cp_ville ?? "",
+        courriel: p.email ?? "",
+        telephone: p.telephone ?? "",
+        type: libelleType(p),
+        etat: etatDe(p).affiche,
+        liste: p.liste ?? "",
+        relation: p.relation ?? "",
+        apporteur: apporteurDe(p),
+        derniereAction: der ? `${[...der.actions, der.etat].filter(Boolean).join(", ") || "Action"} — ${new Date(der.cree_le).toLocaleDateString("fr-FR")}${der.auteur ? ` (${der.auteur})` : ""}` : "",
+        commentaire: dernierCommentaire(h) ?? "",
+        obtenu: obtenus[p.id]?.montant ? String(obtenus[p.id].montant).replace(".", ",") : "",
+      };
+    });
+  }
+
+  function exporterCsv() {
+    const lignes = lignesExport();
+    const entetes = ["Civilité", "Nom", "Prénom", "Adresse", "CP Ville", "Courriel", "Téléphone", "Type", "État", "Liste", "Relation", "Apporteur", "Dernière action", "Commentaire", "Obtenu (€)"];
+    const esc = (v: string) => (/[";\n\r]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v);
+    const csv = [entetes, ...lignes.map((l) => Object.values(l))].map((r) => r.map((v) => esc(String(v ?? ""))).join(";")).join("\r\n");
+    const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `prospects-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
 
   function ouvrir(p: ProspectLisible | "nouveau") {
@@ -322,6 +410,7 @@ export default function GestionPipeline({
 
   /** État unifié choisi depuis le tableau (ou suggestion acceptée). */
   async function definirEtat(p: ProspectLisible, etat: string) {
+    patcher(p.id, { etat_unifie: etat || null, etat_unifie_le: new Date().toISOString(), etat_unifie_par: auteurSuivi } as Partial<ProspectLisible>);
     setBusy(p.id);
     await createClient().from("prospects").update({ etat_unifie: etat || null, etat_unifie_le: new Date().toISOString(), etat_unifie_par: auteurSuivi, updated_at: new Date().toISOString() }).eq("id", p.id);
     setBusy(null);
@@ -354,6 +443,7 @@ export default function GestionPipeline({
     p: ProspectLisible,
     patch: Partial<Pick<Prospect, "etape" | "segment" | "capacite" | "responsable" | "prochaine_action" | "prochaine_action_date" | "montant_cible">>,
   ) {
+    patcher(p.id, patch as Partial<ProspectLisible>);
     setBusy(p.id);
     await createClient().from("prospects").update({ ...patch, updated_at: new Date().toISOString() }).eq("id", p.id);
     setBusy(null);
@@ -366,6 +456,7 @@ export default function GestionPipeline({
     if (!confirm(`Supprimer « ${p.affiche} » du pipeline ?`)) return;
     setBusy(p.id);
     const supabase = createClient();
+    setSupprimes((s) => new Set(s).add(p.id));
     await supabase.from("prospects").delete().eq("id", p.id);
     setBusy(null);
     router.refresh();
@@ -465,7 +556,12 @@ export default function GestionPipeline({
         <button type="button" onClick={() => void exporterListe()} disabled={exportEnCours}
           className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-surface-2 disabled:opacity-50"
           title="PDF des prospects affichés (filtres actifs), ou de tous sans filtre">
-          {exportEnCours ? "Export…" : "Exporter liste"}
+          {exportEnCours ? "Export…" : "Exporter PDF"}
+        </button>
+        <button type="button" onClick={exporterCsv}
+          className="rounded-lg border border-border px-3 py-1.5 text-sm hover:bg-surface-2"
+          title="CSV (Excel) des prospects affichés, filtres et tri actifs">
+          Exporter CSV
         </button>
         {peutEcrire && <ImportProspects prospects={prospects} dons={dons} auteur={auteurSuivi} relations={relationsConnues} />}
         {peutEcrire && (
@@ -482,6 +578,26 @@ export default function GestionPipeline({
           ))}
         </datalist>
       </div>
+
+      {apporteurs.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="mr-1 text-sm text-muted">Apporté par</span>
+          <button type="button" onClick={() => setFApporteurs([])}
+            className={`rounded-full border px-3 py-1 text-sm transition ${fApporteurs.length === 0 ? "border-accent bg-accent-soft font-medium text-accent" : "border-border text-muted hover:bg-surface-2"}`}>
+            Tous
+          </button>
+          {apporteurs.map(([a, n]) => {
+            const actif = fApporteurs.includes(a);
+            return (
+              <button key={a} type="button" aria-pressed={actif}
+                onClick={() => setFApporteurs((l) => (actif ? l.filter((x) => x !== a) : [...l, a]))}
+                className={`rounded-full border px-3 py-1 text-sm transition ${actif ? "border-accent bg-accent-soft font-medium text-accent" : "border-border text-muted hover:bg-surface-2"}`}>
+                {actif ? "✓ " : ""}{a} <span className="tabular-nums">({n})</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {listes.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5">
@@ -565,7 +681,18 @@ export default function GestionPipeline({
         <table className="w-full text-sm [&_th:first-child]:text-left [&_td:not(:first-child)]:text-center [&_th:not(:first-child)]:text-center">
           <thead>
             <tr className="border-b border-border text-left text-muted">
-              {thTri("prospect", "Prospect")}
+              <th className="relative px-4 py-3 font-medium" style={{ width: largeurNom, minWidth: largeurNom }} aria-sort={ariaSort("prospect")}>
+                <span className="inline-flex flex-wrap items-center gap-2">
+                  {bouton("prospect", "Prospect")}
+                  <span className="text-xs font-normal">{bouton("nom", "Nom")} {bouton("prenom", "Prénom")}</span>
+                </span>
+                <span role="separator" aria-orientation="vertical" title="Glisser pour élargir ou réduire la colonne"
+                  onPointerDown={debutRedim}
+                  onDoubleClick={() => { setLargeurNom(256); try { localStorage.removeItem(cleLargeur); } catch {} }}
+                  className="absolute right-0 top-0 flex h-full w-3 cursor-col-resize select-none items-center justify-center text-muted hover:bg-accent/20 hover:text-accent">
+                  ⋮
+                </span>
+              </th>
               {vis("relation") && thTri("relation", "Relation · Responsable")}
               {vis("suivi") && <th className="px-4 py-3 font-medium border-x-2 border-x-blue-900 dark:border-x-blue-400" aria-sort={ariaSort("suivi", "suiviDate")}>
                 {bouton("suiviDate", "Suivi", "Trier par date de la dernière action")}
@@ -589,8 +716,8 @@ export default function GestionPipeline({
                 const nomP = !p.verrouille ? nomComplet({ titre: p.titre, prenom: p.prenom, nom: p.nom }) : p.affiche;
                 return (
                   <tr key={p.id} className={`border-b border-border last:border-0 ${ec.affiche === "Pas intéressé" ? "opacity-50" : ""}`}>
-                    <td className="max-w-64 px-3 py-1">
-                      <button type="button" onClick={() => ouvrir(p)} title={`${nomP} — ouvrir la fiche du prospect`} className={`${nomCliquableCls} block max-w-full truncate font-medium hover:underline`}>
+                    <td className="px-3 py-1" style={{ width: largeurNom, maxWidth: largeurNom }}>
+                      <button type="button" onClick={() => ouvrir(p)} title={`${nomP} — ouvrir la fiche du prospect`} className={`${nomCliquableCls} block max-w-full whitespace-normal break-words text-left font-medium hover:underline`}>
                         {nomP}
                       </button>
                       <div className="flex min-w-0 items-center gap-1 text-[11px] leading-tight text-muted">

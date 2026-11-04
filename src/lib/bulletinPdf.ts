@@ -175,13 +175,13 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
         noms.forEach((l, i) => texte(l, cols.matiere + 12, top + 11 + i * 10.5, regular, 8.5));
         ens.forEach((l, i) => texte(l, cols.matiere + 12, top + 11 + noms.length * 10.5 - 1.5 + i * 8.5, regular, 6.5, GRIS));
         if (!m.appreciationSeule) chiffres(m.chiffre, top + 11, semi, NAVY);
-        // Notes du relevé : séparées par une virgule couleur or (comme le libellé de groupe).
+        // Notes du relevé : séparées par un point médian « · » (couleur du texte ; doré seulement à l’écran).
         com.forEach((l, i) => {
           let x = cols.com + 6;
           l.split(" | ").forEach((morceau, j) => {
             if (j) {
-              texte(",", x, top + 11 + i * 10, regular, 7.8, OR);
-              x += largeur(", ", regular, 7.8);
+              texte("·", x + 3, top + 11 + i * 10, regular, 7.8);
+              x += largeur("·", regular, 7.8) + 6;
             }
             texte(morceau, x, top + 11 + i * 10, regular, 7.8);
             x += largeur(morceau, regular, 7.8);

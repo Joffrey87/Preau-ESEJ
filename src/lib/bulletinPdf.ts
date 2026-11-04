@@ -22,7 +22,6 @@ type Rendu = { octets: Uint8Array; pages: number };
 export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { echelles: number[]; debordements: number[] }): Promise<Uint8Array> {
   const [{ PDFDocument, rgb }, { default: fontkit }, res] = await Promise.all([import("pdf-lib"), import("@pdf-lib/fontkit"), chargerRessources()]);
   const NAVY = rgb(0.008, 0.114, 0.318), OR = rgb(0.784, 0.584, 0.184), OR_DOUX = rgb(0.953, 0.902, 0.788);
-  const AMBRE = rgb(0.892, 0.792, 0.592); // = var(--gold) #c8952f à 50 % sur blanc, comme border-l-gold/50
   const GRIS = rgb(0.42, 0.45, 0.5), TRAIT = rgb(0.9, 0.875, 0.808), BLANC = rgb(1, 1, 1), CREME = rgb(0.969, 0.953, 0.918);
 
   async function rendre(s: Synthese, k: number): Promise<Rendu> {
@@ -176,13 +175,13 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
         noms.forEach((l, i) => texte(l, cols.matiere + 12, top + 11 + i * 10.5, regular, 8.5));
         ens.forEach((l, i) => texte(l, cols.matiere + 12, top + 11 + noms.length * 10.5 - 1.5 + i * 8.5, regular, 6.5, GRIS));
         if (!m.appreciationSeule) chiffres(m.chiffre, top + 11, semi, NAVY);
-        // Notes du relevé : séparées par un « | » ambre.
+        // Notes du relevé : séparées par une virgule couleur or (comme le libellé de groupe).
         com.forEach((l, i) => {
           let x = cols.com + 6;
           l.split(" | ").forEach((morceau, j) => {
             if (j) {
-              { const yb = top + 11 + i * 10; for (const dx of [0, 0.35, 0.7]) texte("|", x + 3 + dx, yb, semi, 8.4, AMBRE); } // gras simulé (pas de police bold embarquée)
-              x += largeur("|", semi, 7.8) + 6;
+              texte(",", x, top + 11 + i * 10, regular, 7.8, OR);
+              x += largeur(", ", regular, 7.8);
             }
             texte(morceau, x, top + 11 + i * 10, regular, 7.8);
             x += largeur(morceau, regular, 7.8);

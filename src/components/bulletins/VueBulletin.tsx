@@ -148,7 +148,7 @@ function Groupe({ g, avecRang, releve, avecClasse }: { g: Synthese["groupes"][nu
           <td className="px-3 py-1.5 text-[12.5px]">
             {m.commentaire?.split(" | ").map((x, i) => (
               <Fragment key={i}>
-                {i > 0 && <span className="mx-1 font-black text-gold/50">|</span>}
+                {i > 0 && <span className="mr-1 text-gold">,</span>}
                 {x}
               </Fragment>
             ))}

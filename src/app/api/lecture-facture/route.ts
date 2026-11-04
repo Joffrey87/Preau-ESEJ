@@ -3,6 +3,7 @@ import { messageErreurLecture } from "@/lib/erreurLecture";
 import { createClient } from "@/lib/supabase/server";
 import { lireFactureAvecClaude, MODELE_LECTURE } from "@/lib/lectureFacture";
 import { journaliserConso, nouveauSuivi } from "@/lib/consoClaude";
+import { MSG_TROP_DE_PAGES, pdfTropLong } from "@/lib/lectureDocument";
 
 // Lecture automatique d'une facture fournisseur. Réservé aux membres Événementiel et au Trésorier
 // (fonction SQL peut_saisir_factures). Ni le fichier ni la clé ne sont journalisés.
@@ -28,6 +29,7 @@ export async function POST(req: Request) {
   if (!(f instanceof File)) return NextResponse.json({ erreur: "Aucun fichier reçu." }, { status: 400 });
   if (!TYPES.includes(f.type)) return NextResponse.json({ erreur: "Format non pris en charge (JPEG, PNG, WebP ou PDF)." }, { status: 415 });
   if (f.size > TAILLE_MAX) return NextResponse.json({ erreur: "Fichier trop lourd (10 Mo max)." }, { status: 413 });
+  if (await pdfTropLong(f)) return NextResponse.json({ erreur: MSG_TROP_DE_PAGES }, { status: 413 });
 
   // Suivi du crédit Claude : type lu dans la réponse (facture, RIB ou les deux) ; en échec, d'après l'écran appelant.
   const suivi = nouveauSuivi(MODELE_LECTURE);

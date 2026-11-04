@@ -3,6 +3,7 @@ import { messageErreurLecture } from "@/lib/erreurLecture";
 import { createClient } from "@/lib/supabase/server";
 import { lireCaisseAvecClaude, MODELE_LECTURE } from "@/lib/lectureCaisse";
 import { journaliserConso, nouveauSuivi } from "@/lib/consoClaude";
+import { MSG_TROP_DE_PAGES, pdfTropLong } from "@/lib/lectureDocument";
 
 // Lecture automatique d'une feuille de caisse (photo). Réservé aux profils qui ont accès aux Caisses
 // (Trésorier, Directrice, Événementiel). Ni le fichier ni la clé ne sont journalisés.
@@ -27,6 +28,7 @@ export async function POST(req: Request) {
   if (!(f instanceof File)) return NextResponse.json({ erreur: "Aucun fichier reçu." }, { status: 400 });
   if (!TYPES.includes(f.type)) return NextResponse.json({ erreur: "Format non pris en charge (JPEG, PNG, WebP ou PDF)." }, { status: 415 });
   if (f.size > TAILLE_MAX) return NextResponse.json({ erreur: "Fichier trop lourd (10 Mo max)." }, { status: 413 });
+  if (await pdfTropLong(f)) return NextResponse.json({ erreur: MSG_TROP_DE_PAGES }, { status: 413 });
 
   const suivi = nouveauSuivi(MODELE_LECTURE); // suivi du crédit Claude
   try {

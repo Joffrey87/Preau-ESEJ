@@ -19,9 +19,10 @@ import {
   type ModePaiementFacture,
 } from "@/lib/evenement";
 import { useEnregistrer } from "./useEnregistrer";
+import { ActionsSuppressionFacture } from "./Suppression";
 import { BlocRib, RibsAConfirmer, type RibAttente, type RibLu } from "./ImportRib";
+import FenetreFacturesDetectees, { NOUVEAU_FOURNISSEUR as NOUVEAU, type CarteFacture, type CommunFactures } from "./FenetreFacturesDetectees";
 
-const NOUVEAU = "__nouveau__";
 /** Catégorie de dépense proposée par défaut (si elle existe dans la Comptabilité). */
 const CATEGORIE_DEFAUT = "fournitures pour ventes diverses";
 const normaliser = (t: string | null | undefined) =>
@@ -71,6 +72,8 @@ type Lue = {
   iban?: string | null;
   bic?: string | null;
   titulaire?: string | null;
+  /** Le document réunit plusieurs factures distinctes. */
+  factures?: (Lue & { pages: number[] })[];
 };
 export type CategorieDepense = { id: string; nom: string };
 const libMode = (m: string | null | undefined) => MODES_PAIEMENT_FACTURE.find((x) => x.v === m)?.l ?? "";
@@ -98,6 +101,7 @@ export function evenementLePlusProche(evenements: Pick<EvenementCaisse, "id" | "
 export default function FacturesFournisseurs({
   peutModifier,
   estTresorier,
+  demandesEnAttente,
   factures,
   fournisseurs,
   evenements,
@@ -114,6 +118,8 @@ export default function FacturesFournisseurs({
   /** Import d'un RIB : aussi permis à la Directrice (lecture seule sur les factures). */
   peutImporterRib?: boolean;
   estTresorier: boolean;
+  /** Dépenses dont la suppression a été demandée au Trésorier (en attente). */
+  demandesEnAttente?: string[];
   factures: FactureFournisseur[];
   fournisseurs: ContactEvenement[];
   evenements: Pick<EvenementCaisse, "id" | "nom" | "date">[];
@@ -157,6 +163,7 @@ export default function FacturesFournisseurs({
   const [candidates, setCandidates] = useState<{ facture: string; ops: Candidate[]; etendu: boolean; auto: boolean } | null>(null);
   const [ribLu, setRibLu] = useState<{ lu: RibLu; fournisseur: string; fichier: File | null; n: number } | null>(null);
   const [docFacture, setDocFacture] = useState(true);
+  const [detectees, setDetectees] = useState<CarteFacture[] | null>(null);
   const numRib = useRef(0);
   const fichierRef = useRef<HTMLInputElement>(null);
   const nomF = (id: string) => {
@@ -172,6 +179,7 @@ export default function FacturesFournisseurs({
     setSaisie(false);
     choisirFichier(null);
     setErreurLecture(null);
+    setDetectees(null);
     setF(vide());
   }
 
@@ -195,6 +203,24 @@ export default function FacturesFournisseurs({
     return proches[0]?.id ?? null;
   }
 
+  /** Facture lue → champs à vérifier (fournisseur retrouvé dans le Carnet, ou à créer). */
+  function carteDe(l: Lue & { pages: number[] }): CarteFacture {
+    const trouve = fournisseurFixe ?? retrouverFournisseur(l);
+    return {
+      fournisseur_id: trouve ?? (l.fournisseur_entreprise || l.fournisseur_nom ? NOUVEAU : ""),
+      a_verifier: !fournisseurFixe && !!trouve,
+      fournisseur_lu: [l.fournisseur_entreprise, [l.fournisseur_prenom, l.fournisseur_nom].filter(Boolean).join(" ")].filter(Boolean).join(" · "),
+      nv_entreprise: l.fournisseur_entreprise ?? "",
+      nv_nom: l.fournisseur_nom ?? "",
+      nv_prenom: l.fournisseur_prenom ?? "",
+      montant: l.montant_ttc != null ? String(l.montant_ttc).replace(".", ",") : "",
+      date: l.date ?? new Date().toISOString().slice(0, 10),
+      numero: l.numero ?? "",
+      libelle: l.libelle ?? "",
+      pages: l.pages,
+    };
+  }
+
   async function choisirFichier(brut: File | null) {
     setErreurLecture(null);
     if (apercu) URL.revokeObjectURL(apercu);
@@ -206,6 +232,7 @@ export default function FacturesFournisseurs({
     }
     setRibLu(null);
     setDocFacture(true);
+    setDetectees(null);
     const fic = await compresserPhoto(brut);
     setFichier(fic);
     setApercu(fic.type.startsWith("image/") ? URL.createObjectURL(fic) : null);
@@ -225,19 +252,23 @@ export default function FacturesFournisseurs({
         if (!j.contient_rib) setErreurLecture("Ce document ne semble être ni une facture ni un RIB.");
         return;
       }
-      const aLu = j.fournisseur_entreprise || j.fournisseur_nom;
+      if (j.factures && j.factures.length > 1) {
+        setDetectees(j.factures.map(carteDe));
+        return;
+      }
+      const c = carteDe({ ...j, pages: [] });
       setF((p) => ({
         ...p,
-        fournisseur_id: trouve ?? (aLu ? NOUVEAU : p.fournisseur_id),
-        a_verifier: !fournisseurFixe && !!trouve,
-        fournisseur_lu: [j.fournisseur_entreprise, [j.fournisseur_prenom, j.fournisseur_nom].filter(Boolean).join(" ")].filter(Boolean).join(" · "),
-        nv_entreprise: j.fournisseur_entreprise ?? "",
-        nv_nom: j.fournisseur_nom ?? "",
-        nv_prenom: j.fournisseur_prenom ?? "",
-        montant: j.montant_ttc != null ? String(j.montant_ttc).replace(".", ",") : p.montant,
+        fournisseur_id: c.fournisseur_id || p.fournisseur_id,
+        a_verifier: c.a_verifier,
+        fournisseur_lu: c.fournisseur_lu,
+        nv_entreprise: c.nv_entreprise,
+        nv_nom: c.nv_nom,
+        nv_prenom: c.nv_prenom,
+        montant: c.montant || p.montant,
         date: j.date ?? p.date,
-        numero: j.numero ?? p.numero,
-        libelle: j.libelle ?? p.libelle,
+        numero: c.numero || p.numero,
+        libelle: c.libelle || p.libelle,
       }));
     } catch (e) {
       setErreurLecture(e instanceof Error ? e.message : "La lecture automatique a échoué.");
@@ -247,15 +278,14 @@ export default function FacturesFournisseurs({
   }
 
   /** Crée le fournisseur lu dans le Carnet d'adresses s'il n'existe pas encore. */
-  async function idFournisseur(): Promise<string | null> {
-    if (f.fournisseur_id !== NOUVEAU) return f.fournisseur_id;
-    const ent = f.nv_entreprise.trim();
-    const { data, error } = await supabase.rpc("enregistrer_contact_evenement", {
+  function creerFournisseur(entreprise: string, nom: string, prenom: string) {
+    const ent = entreprise.trim();
+    return supabase.rpc("enregistrer_contact_evenement", {
       p_id: null,
       p_categorie: "vendeur",
       p_personne_morale: !!ent,
-      p_nom: f.nv_nom.trim() || ent,
-      p_prenom: f.nv_prenom.trim() || null,
+      p_nom: nom.trim() || ent,
+      p_prenom: prenom.trim() || null,
       p_raison_sociale: ent || null,
       p_courriel: null,
       p_telephone: null,
@@ -263,6 +293,11 @@ export default function FacturesFournisseurs({
       p_cp_ville: null,
       p_notes: null,
     });
+  }
+
+  async function idFournisseur(): Promise<string | null> {
+    if (f.fournisseur_id !== NOUVEAU) return f.fournisseur_id;
+    const { data, error } = await creerFournisseur(f.nv_entreprise, f.nv_nom, f.nv_prenom);
     if (error) {
       setErreur(`Fournisseur non créé : ${error.message}`);
       return null;
@@ -309,6 +344,72 @@ export default function FacturesFournisseurs({
         : supabase.from("factures_fournisseurs").insert(ligne),
     );
     if (ok) reinitialiser();
+  }
+
+  /** Crée les factures détectées, chacune avec ses seules pages : toutes ou aucune (fournisseurs mis à part). */
+  async function creerDetectees(cartes: CarteFacture[], commun: CommunFactures) {
+    if (!fichier) return;
+    const fic = fichier;
+    const ok = await executer(async () => {
+      const { extrairePages } = await import("@/lib/lectureDocument");
+      const nouveaux = new Map<string, string>();
+      const chemins: string[] = [];
+      const annuler = async (message: string) => {
+        if (chemins.length) await supabase.storage.from(BUCKET_FACTURES).remove(chemins);
+        return { error: { message } };
+      };
+      const lignes = [];
+      for (const [i, c] of cartes.entries()) {
+        const montant = nombre(c.montant);
+        if (montant === null || !(montant > 0)) return annuler(`Facture ${i + 1} : montant invalide.`);
+        let fournisseurId = c.fournisseur_id;
+        if (fournisseurId === NOUVEAU) {
+          if (!c.nv_entreprise.trim() && !c.nv_nom.trim()) return annuler(`Facture ${i + 1} : indiquez l'entreprise ou le nom du fournisseur.`);
+          // Même nouveau fournisseur sur plusieurs factures : créé une seule fois.
+          const cle = normaliser([c.nv_entreprise, c.nv_nom, c.nv_prenom].join(" "));
+          fournisseurId = nouveaux.get(cle) ?? "";
+          if (!fournisseurId) {
+            const { data, error } = await creerFournisseur(c.nv_entreprise, c.nv_nom, c.nv_prenom);
+            if (error) return annuler(`Fournisseur non créé : ${error.message}`);
+            fournisseurId = data as string;
+            nouveaux.set(cle, fournisseurId);
+          }
+        }
+        const extrait = await extrairePages(fic, c.pages);
+        const ext = fic.name.split(".").pop()?.toLowerCase() ?? "pdf";
+        const chemin = `${fournisseurId}/${crypto.randomUUID()}.${ext}`;
+        const envoi = await supabase.storage.from(BUCKET_FACTURES).upload(chemin, extrait, { contentType: extrait.type });
+        if (envoi.error) return annuler(`Fichier de la facture ${i + 1} non envoyé : ${envoi.error.message}`);
+        chemins.push(chemin);
+        lignes.push({
+          fournisseur_id: fournisseurId,
+          montant,
+          date: c.date,
+          numero: c.numero.trim() || null,
+          libelle: c.libelle.trim() || null,
+          categorie_id: commun.categorie_id || null,
+          doute: false,
+          evenement_id: commun.evenement_id || null,
+          fichier: chemin,
+          notes: null,
+          domaine: commun.domaine,
+          mode_paiement: null,
+          fournisseur_a_verifier: c.a_verifier,
+          fournisseur_lu: c.fournisseur_lu || null,
+          statut: "pas_importee",
+        });
+      }
+      const { error } = await supabase.from("factures_fournisseurs").insert(lignes);
+      return error ? annuler(error.message) : { error: null };
+    });
+    if (ok) reinitialiser();
+  }
+
+  /** Détection erronée : une seule facture, avec le total de la dernière (comme une facture sur plusieurs pages). */
+  function garderUneSeule(cartes: CarteFacture[]) {
+    const total = [...cartes].reverse().find((x) => x.montant)?.montant ?? "";
+    setF((p) => ({ ...p, ...cartes[0], montant: total || p.montant }));
+    setDetectees(null);
   }
 
   async function ouvrir(chemin: string) {
@@ -368,6 +469,23 @@ export default function FacturesFournisseurs({
   return (
     <div className="space-y-6">
       {erreur && <p className="rounded-lg bg-negative/10 px-3 py-2 text-sm text-negative">{erreur}</p>}
+      {detectees && (
+        <FenetreFacturesDetectees
+          initiales={detectees}
+          commun={{ categorie_id: f.categorie_id, evenement_id: f.evenement_id, domaine: f.domaine }}
+          fournisseurs={fournisseurs}
+          fournisseurFixe={!!fournisseurFixe}
+          categories={categories}
+          evenements={evenements.map((ev) => ({ id: ev.id, nom: `${ev.nom} · ${formatDate(ev.date)}` }))}
+          domainesGerables={domainesGerables}
+          nomFichier={fichier?.name ?? ""}
+          occupe={occupe}
+          erreur={erreur}
+          onCreer={creerDetectees}
+          onUneSeule={garderUneSeule}
+          onAnnuler={reinitialiser}
+        />
+      )}
       {estTresorier && <RibsAConfirmer liste={ribsAConfirmer} />}
       {(peutModifier || peutImporterRib) && (
         <section className="space-y-3 rounded-2xl border border-border bg-surface p-5 shadow-sm">
@@ -721,6 +839,7 @@ export default function FacturesFournisseurs({
                         )}
                       </div>
                     )}
+                    {peutModifier && <ActionsSuppressionFacture facture={x} demandeEnAttente={demandesEnAttente?.includes(x.id)} />}
                   </td>
                 </tr>
               );

@@ -27,7 +27,7 @@ import { telechargerBulletins } from "@/lib/bulletinPdf";
 import { syntheseReleve, type ContexteDocs, type DocReleve } from "@/lib/relevesTrimestre";
 import type { Droits } from "./Bulletins";
 import SaisieNotes from "./SaisieNotes";
-import { BoutonLot, CommutateurPret, confirmerPret, PastilleStatut, ZoneAppreciation } from "./outils";
+import { BoutonLot, GroupeEtats, CommutateurPret, confirmerPret, PastilleStatut, ZoneAppreciation } from "./outils";
 import { enregistrerTout } from "@/lib/sauvegardeAuto";
 
 const OUVERTS: Statut[] = ["nouveau", "en_cours"];
@@ -299,7 +299,8 @@ export default function ReleveClasse({
     ) : null;
 
   // Matières où l'on peut créer une évaluation (celles dont on est responsable, hors appréciation seule).
-  const matieresEvaluation = toutVerrouille
+  // La Directrice ne crée pas d'évaluation (elle saisit et corrige les notes existantes).
+  const matieresEvaluation = toutVerrouille || directrice
     ? []
     : vue.matieres.filter((m) => m.actif && !estAppreciationSeule(m.nom, vue.classe.niveaux) && droits.peutSaisirNotes(m) && (droits.enseignantId ? m.enseignants.includes(droits.enseignantId) || directrice : droits.peutNoter(m))).sort((a, b) => (vue.groupes.find((g) => g.id === a.groupe_id)?.ordre ?? 0) - (vue.groupes.find((g) => g.id === b.groupe_id)?.ordre ?? 0) || a.ordre - b.ordre);
   const creerEvaluationDans = (m: Matiere) => {
@@ -327,7 +328,7 @@ export default function ReleveClasse({
   );
 
   const boutons = (
-    <div className="ml-auto flex flex-wrap gap-2">
+    <GroupeEtats titre="État des relevés" aide="Circuit des relevés de la classe : En cours (saisie) → Prêt (saisie terminée) → Valider (la Directrice approuve) → Publier aux familles (visibles dans l'Espace famille).">
             {(directrice || titulaire) && (
           <CommutateurPret
             publie={periode.fin < todayISO() || (docs_.length > 0 && docs_.every((d) => d.statut === "publie"))}
@@ -339,16 +340,16 @@ export default function ReleveClasse({
         )}
             {directrice && (
               <>
-                <BoutonLot n={n("nouveau") + n("en_cours") + n("pret")} onClick={() => changer("valide")} disabled={occupe}>
+                <BoutonLot title="Valider : la Directrice approuve les relevés de la classe (le nombre indique ceux qui restent à valider). Les familles ne les voient pas encore." n={n("nouveau") + n("en_cours") + n("pret")} onClick={() => changer("valide")} disabled={occupe}>
                   Valider
                 </BoutonLot>
-                <BoutonLot n={n("valide")} onClick={publier} fort disabled={occupe}>
+                <BoutonLot title="Publier aux familles : rend visibles dans l'Espace famille les relevés validés (le nombre indique ceux prêts à être publiés)." n={n("valide")} onClick={publier} fort disabled={occupe}>
                   Publier aux familles
                 </BoutonLot>
               </>
             )}
-            {directrice && <BoutonLot onClick={pdf}>PDF de la classe</BoutonLot>}
-          </div>
+            {directrice && <BoutonLot title="Télécharge un PDF réunissant les relevés de toute la classe." onClick={pdf}>PDF de la classe</BoutonLot>}
+          </GroupeEtats>
   );
 
   return (
@@ -485,7 +486,7 @@ export default function ReleveClasse({
       )}
       {/* Tableau transposé : une ligne par matière (par ensemble : Français, Mathématiques…), une colonne par élève
           (par niveau). Un clic sur une matière ou une case ouvre la saisie ; un clic sur un élève, ses appréciations. */}
-      <div ref={defilementRef} className={`mx-auto max-h-[calc(100vh-8rem)] w-fit max-w-full overflow-auto rounded-xl border border-border bg-surface ${matiere ? "hidden" : ""}`}>
+      <div ref={defilementRef} className={`mx-auto w-fit max-w-full overflow-x-auto rounded-xl border border-border bg-surface ${matiere ? "hidden" : ""}`}>
         <table className="text-[12.5px] [&_td]:align-middle [&_th]:align-middle [&_td:not(:first-child)]:text-center [&_th:not(:first-child)]:text-center">
           <thead className="sticky top-0 z-20 bg-surface">
             {multiNiveaux && tousNiveaux && (

@@ -40,7 +40,7 @@ const libelleProfil = (p: Profil) =>
 
 const nb = (n: number) => Number(n ?? 0);
 /** Petits montants : jusqu'à 4 décimales (une lecture coûte quelques centimes). */
-function montant(v: number, devise: "$" | "€") {
+export function montant(v: number, devise: "$" | "€") {
   const n = nb(v);
   const petit = n !== 0 && Math.abs(n) < 1;
   return `${n.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: petit ? 4 : 2 })} ${devise}`;

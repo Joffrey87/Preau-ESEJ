@@ -15,7 +15,7 @@ import {
   type DocReleve,
   type DocTrimestre,
 } from "@/lib/relevesTrimestre";
-import { BoutonEnregistrer, BoutonLot, CommutateurPret, confirmerPret, ZoneAppreciation } from "./outils";
+import { BoutonEnregistrer, BoutonLot, GroupeEtats, CommutateurPret, confirmerPret, ZoneAppreciation } from "./outils";
 import { enregistrerTout } from "@/lib/sauvegardeAuto";
 
 const OUVERTS: Statut[] = ["nouveau", "en_cours"];
@@ -126,7 +126,7 @@ export default function DocumentsClasse({
   }, []);
 
   const boutons = (
-    <div className="ml-auto flex flex-wrap gap-2">
+    <GroupeEtats titre={mode === "releve" ? "État des relevés" : "État des bulletins"} aide="Circuit de la classe : En cours (saisie) → Prêt (saisie terminée) → Valider (la Directrice approuve) → Publier aux familles (visibles dans l'Espace famille).">
             {(directrice || titulaire) && (
           <CommutateurPret
             publie={(mode === "releve" && periode.fin < todayISO()) || (docs.length > 0 && docs.every((d) => d.statut === "publie"))}
@@ -138,16 +138,16 @@ export default function DocumentsClasse({
         )}
             {directrice && (
               <>
-                <BoutonLot n={n("nouveau") + n("en_cours") + n("pret")} onClick={() => changer("valide")} disabled={occupe}>
+                <BoutonLot title="Valider : la Directrice approuve les documents de la classe (le nombre indique ceux qui restent à valider). Les familles ne les voient pas encore." n={n("nouveau") + n("en_cours") + n("pret")} onClick={() => changer("valide")} disabled={occupe}>
                   Valider
                 </BoutonLot>
-                <BoutonLot n={n("valide")} onClick={publier} fort disabled={occupe}>
+                <BoutonLot title="Publier aux familles : rend visibles dans l'Espace famille les documents validés (le nombre indique ceux prêts à être publiés)." n={n("valide")} onClick={publier} fort disabled={occupe}>
                   Publier aux familles
                 </BoutonLot>
               </>
             )}
-            {directrice && <BoutonLot onClick={pdf}>PDF de la classe</BoutonLot>}
-          </div>
+            {directrice && <BoutonLot title="Télécharge un PDF réunissant les documents de toute la classe." onClick={pdf}>PDF de la classe</BoutonLot>}
+          </GroupeEtats>
   );
 
   // Bouton d'élève précédent / suivant (haut et bas de la fiche) ; le passage à un autre niveau est signalé.

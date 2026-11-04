@@ -330,7 +330,11 @@ function FilOuvert({
   );
   // Signal temps réel : le fil est relu (la liste l'est déjà par le parent).
   useEffect(() => (signal ? differe(charger) : undefined), [signal, charger]);
-  useEffect(() => fin.current?.scrollIntoView({ block: "end" }), [messages]);
+  // Accolades obligatoires : Chrome récent renvoie une promesse depuis scrollIntoView ; renvoyée par l'effet, React
+  // la prenait pour une fonction de nettoyage (« destroy_ is not a function ») et toute la page tombait en erreur.
+  useEffect(() => {
+    fin.current?.scrollIntoView({ block: "end" });
+  }, [messages]);
 
   async function agir(p: PromiseLike<{ error: { message: string } | null }>) {
     setOccupe(true);

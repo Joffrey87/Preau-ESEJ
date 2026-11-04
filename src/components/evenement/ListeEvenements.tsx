@@ -6,15 +6,21 @@ import { createClient } from "@/lib/supabase/client";
 import { formatDate, formatEuros } from "@/lib/format";
 import { bouton, champ, nombre, recettes, type EvenementCaisse, type MembreEvenement } from "@/lib/evenement";
 import { useEnregistrer } from "./useEnregistrer";
+import { ActionsSuppressionEvenement, BoutonHistorique } from "./Suppression";
 
 const vide = { nom: "", date: "", responsable_id: "", caisse_avant: "", caisse_apres: "" };
 
 export default function ListeEvenements({
   peutModifier,
+  peutSupprimer = false,
+  demandesEnAttente = [],
   membres,
   evenements,
 }: {
   peutModifier: boolean;
+  /** Responsable de l'Événementiel ou Trésorier : supprime un événement entier ; les autres en font la demande. */
+  peutSupprimer?: boolean;
+  demandesEnAttente?: string[];
   membres: MembreEvenement[];
   evenements: EvenementCaisse[];
 }) {
@@ -84,6 +90,11 @@ export default function ListeEvenements({
         </section>
       )}
 
+      {peutModifier && (
+        <div className="flex justify-end text-sm">
+          <BoutonHistorique libelle="Historique des actions" />
+        </div>
+      )}
       <section className="overflow-x-auto rounded-2xl border border-border bg-surface shadow-sm">
         <table className="w-full text-sm">
           <thead className="text-left text-muted">
@@ -119,7 +130,7 @@ export default function ListeEvenements({
                   <td className="px-4 py-2 text-right">{e.caisse_avant == null ? "—" : formatEuros(Number(e.caisse_avant))}</td>
                   <td className="px-4 py-2 text-right">{e.caisse_apres == null ? "—" : formatEuros(Number(e.caisse_apres))}</td>
                   <td className="px-4 py-2 text-right font-semibold">{r == null ? "—" : formatEuros(r)}</td>
-                  <td className="px-4 py-2 text-right">
+                  <td className="space-x-3 whitespace-nowrap px-4 py-2 text-right">
                     {peutModifier && (
                       <button
                         type="button"
@@ -138,6 +149,9 @@ export default function ListeEvenements({
                       >
                         Modifier
                       </button>
+                    )}
+                    {peutModifier && (
+                      <ActionsSuppressionEvenement evenement={e} peutSupprimer={peutSupprimer} demandeEnAttente={demandesEnAttente.includes(e.id)} />
                     )}
                   </td>
                 </tr>

@@ -132,6 +132,12 @@ export default function Bulletins({
   }, [chargerRef, enseignantId]);
 
   const classe = ref?.classes.find((c) => c.id === classeId) ?? null;
+  // PS/MS : appréciations seulement (relevé maternelle), ni relevés de notes ni bulletins chiffrés.
+  const sansNotes = !!classe && classe.niveaux.length > 0 && classe.niveaux.every((n) => n === "PS" || n === "MS");
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- classe sans notes : retour au relevé maternelle
+    if (sansNotes && (onglet === "releves" || onglet === "trimestre")) setOnglet("maternelle");
+  }, [sansNotes, onglet]);
   const periode = ref?.periodes.find((p) => p.id === periodeId) ?? null;
 
   const recharger = useCallback(async () => {
@@ -301,7 +307,7 @@ export default function Bulletins({
             {evaluation && (
               <div className="flex flex-wrap gap-1 rounded-lg border border-border p-0.5">
                 {onglets
-                  .filter((o) => GROUPE_EVAL.includes(o.v))
+                  .filter((o) => GROUPE_EVAL.includes(o.v) && !(sansNotes && (o.v === "releves" || o.v === "trimestre")))
                   .map((o) => (
                     <button
                       key={o.v}

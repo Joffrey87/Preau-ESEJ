@@ -19,6 +19,7 @@ import {
   type ModePaiementFacture,
 } from "@/lib/evenement";
 import { useEnregistrer } from "./useEnregistrer";
+import { ActionsSuppressionFacture } from "./Suppression";
 import { BlocRib, RibsAConfirmer, type RibAttente, type RibLu } from "./ImportRib";
 
 const NOUVEAU = "__nouveau__";
@@ -98,6 +99,7 @@ export function evenementLePlusProche(evenements: Pick<EvenementCaisse, "id" | "
 export default function FacturesFournisseurs({
   peutModifier,
   estTresorier,
+  demandesEnAttente,
   factures,
   fournisseurs,
   evenements,
@@ -114,6 +116,8 @@ export default function FacturesFournisseurs({
   /** Import d'un RIB : aussi permis à la Directrice (lecture seule sur les factures). */
   peutImporterRib?: boolean;
   estTresorier: boolean;
+  /** Dépenses dont la suppression a été demandée au Trésorier (en attente). */
+  demandesEnAttente?: string[];
   factures: FactureFournisseur[];
   fournisseurs: ContactEvenement[];
   evenements: Pick<EvenementCaisse, "id" | "nom" | "date">[];
@@ -721,6 +725,7 @@ export default function FacturesFournisseurs({
                         )}
                       </div>
                     )}
+                    {peutModifier && <ActionsSuppressionFacture facture={x} demandeEnAttente={demandesEnAttente?.includes(x.id)} />}
                   </td>
                 </tr>
               );

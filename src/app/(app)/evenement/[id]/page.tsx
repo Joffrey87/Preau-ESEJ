@@ -55,6 +55,7 @@ export default async function EvenementDetailPage({ params }: { params: Promise<
     { l: "Carte", v: formatEuros(parMode("carte")) },
     { l: "Autre", v: formatEuros(parMode("autre")) },
   ];
+  const { data: demandesFactures } = await supabase.from("demandes_suppression").select("cible_id").eq("cible", "facture").eq("statut", "en_attente");
   return (
     <div className="mx-auto max-w-6xl space-y-6 px-5 py-8 md:px-8">
       <Link href="/evenement" className="text-sm text-accent hover:underline">
@@ -92,6 +93,7 @@ export default async function EvenementDetailPage({ params }: { params: Promise<
       <FacturesFournisseurs
         peutModifier={peutModifier}
         estTresorier={estTresorier}
+        demandesEnAttente={(demandesFactures ?? []).map((d) => d.cible_id as string)}
         factures={liste}
         fournisseurs={(fournisseurs ?? []) as ContactEvenement[]}
         evenements={(evenements ?? []) as Pick<EvenementCaisse, "id" | "nom" | "date">[]}

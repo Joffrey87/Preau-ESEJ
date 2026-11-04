@@ -3,6 +3,7 @@ import PageHeader from "@/components/PageHeader";
 import NouvelleOperation from "@/components/NouvelleOperation";
 import MenuPeriodeCompta from "@/components/MenuPeriodeCompta";
 import ListeOperations from "@/components/ListeOperations";
+import DemandesSuppression, { type DemandeSuppression } from "@/components/evenement/DemandesSuppression";
 import type { Affectation, Inscription } from "@/components/AffectationScolarite";
 import { createClient } from "@/lib/supabase/server";
 import { toutesLesOperations } from "@/lib/operations";
@@ -180,6 +181,12 @@ export default async function ComptabilitePage({
           .reverse()
           .join(" + ");
 
+  const { data: demandesRes } = await supabase
+    .from("demandes_suppression")
+    .select("id, cible, cible_id, libelle, operations, motif, demande_par_libelle, demande_le")
+    .eq("statut", "en_attente")
+    .order("demande_le");
+  const demandesSuppression = (demandesRes ?? []) as DemandeSuppression[];
   return (
     <div className="mx-auto max-w-6xl px-5 py-8 md:px-8">
       <PageHeader
@@ -236,6 +243,8 @@ export default async function ComptabilitePage({
         />
       )}
 
+      <DemandesSuppression demandes={demandesSuppression} lectureSeule={lectureSeule} />
+
       <ListeOperations
         operations={operations}
         categories={catsRes.data ?? []}
@@ -249,6 +258,11 @@ export default async function ComptabilitePage({
         inscriptions={(inscriptionsRes.data ?? []) as Inscription[]}
         affectations={(affectationsRes.data ?? []) as Affectation[]}
         lectureSeule={lectureSeule}
+        demandesSuppression={Object.fromEntries(
+          demandesSuppression.flatMap((d) =>
+            d.operations.map((o) => [o, `Demande de suppression (${d.demande_par_libelle ?? "Événementiel"}) : ${d.cible === "facture" ? "dépense" : "événement"} « ${d.libelle} »`]),
+          ),
+        )}
         factures={Object.fromEntries(((facturesRes.data ?? []) as { operation_id: string; numero: string }[]).map((f) => [f.operation_id, f.numero]))}
       />
     </div>

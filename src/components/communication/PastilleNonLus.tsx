@@ -10,14 +10,26 @@ let arreter: (() => void) | null = null;
 function abonner(sb: ReturnType<typeof createClient>) {
   abonnes += 1;
   if (abonnes === 1) {
-    const canal = sb
-      .channel("com-signaux")
-      .on("postgres_changes", { event: "*", schema: "public", table: "com_signaux" }, (p) => {
-        const fil = (p.new as { fil_id?: string } | null)?.fil_id ?? null;
-        window.dispatchEvent(new CustomEvent(EVT_SIGNAL, { detail: fil }));
-      })
-      .subscribe();
-    arreter = () => sb.removeChannel(canal);
+    // Sujet unique à chaque abonnement : `removeChannel` est asynchrone, et `sb.channel("com-signaux")` rendait
+    // l'ancien canal encore abonné si la pastille se remontait avant la fin du désabonnement (navigation, retour
+    // en ligne) ; `.on()` levait alors « cannot add postgres_changes callbacks … after subscribe() », erreur
+    // non rattrapée qui faisait tomber toute la page (« This page couldn't load »).
+    try {
+      const canal = sb
+        .channel(`com-signaux-${Math.random().toString(36).slice(2)}-${Date.now()}`)
+        .on("postgres_changes", { event: "*", schema: "public", table: "com_signaux" }, (p) => {
+          const fil = (p.new as { fil_id?: string } | null)?.fil_id ?? null;
+          window.dispatchEvent(new CustomEvent(EVT_SIGNAL, { detail: fil }));
+        })
+        .subscribe();
+      arreter = () => {
+        sb.removeChannel(canal).catch(() => {});
+      };
+    } catch (e) {
+      // Sans temps réel, la relecture périodique et au retour sur l'onglet prend le relais.
+      console.warn("Messagerie : temps réel indisponible", e);
+      arreter = null;
+    }
   }
   return () => {
     abonnes -= 1;

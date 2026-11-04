@@ -19,6 +19,7 @@ export default async function FacturationEvenementPage() {
     estTresorier ? supabase.rpc("ribs_a_confirmer") : Promise.resolve({ data: [] }),
   ]);
   const domainesGerables = [gEcole === true ? "ecole" : null, gEv === true ? "evenement" : null].filter(Boolean) as ("ecole" | "evenement")[];
+  const { data: demandesFactures } = await supabase.from("demandes_suppression").select("cible_id").eq("cible", "facture").eq("statut", "en_attente");
   return (
     <div className="mx-auto max-w-6xl px-5 py-8 md:px-8">
       <PageHeader title="Facturation" />
@@ -27,6 +28,7 @@ export default async function FacturationEvenementPage() {
         ribsAConfirmer={(ribs ?? []) as RibAttente[]}
         peutModifier={peutModifier}
         estTresorier={estTresorier}
+        demandesEnAttente={(demandesFactures ?? []).map((d) => d.cible_id as string)}
         factures={(factures ?? []) as FactureFournisseur[]}
         fournisseurs={(fournisseurs ?? []) as ContactEvenement[]}
         categories={(categories ?? []) as CategorieDepense[]}

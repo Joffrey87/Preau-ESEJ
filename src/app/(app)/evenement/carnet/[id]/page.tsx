@@ -34,6 +34,7 @@ export default async function FicheFournisseurPage({ params }: { params: Promise
     })
     .filter((h) => h.n > 0);
   const total = (s: string) => liste.filter((f) => f.statut === s).reduce((t, f) => t + Number(f.montant), 0);
+  const { data: demandesFactures } = await supabase.from("demandes_suppression").select("cible_id").eq("cible", "facture").eq("statut", "en_attente");
   return (
     <div className="mx-auto max-w-5xl space-y-6 px-5 py-8 md:px-8">
       <Link href="/evenement/carnet" className="text-sm text-accent hover:underline">
@@ -85,6 +86,7 @@ export default async function FicheFournisseurPage({ params }: { params: Promise
         peutImporterRib={peutImporterRib}
         peutModifier={peutModifier}
         estTresorier={estTresorier}
+        demandesEnAttente={(demandesFactures ?? []).map((d) => d.cible_id as string)}
         factures={liste}
         fournisseurs={[contact as ContactEvenement]}
         evenements={(evenements ?? []) as Pick<EvenementCaisse, "id" | "nom" | "date">[]}

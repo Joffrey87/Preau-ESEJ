@@ -123,6 +123,7 @@ export default function ListeOperations({
   affectations,
   factures = {},
   lectureSeule = false,
+  demandesSuppression = {},
 }: {
   operations: OperationRow[];
   categories: Categorie[];
@@ -143,6 +144,8 @@ export default function ListeOperations({
   lectureSeule?: boolean;
   /** Numéro de la facture éditée pour une écriture (frais de scolarité), par identifiant d'écriture. */
   factures?: Record<string, string>;
+  /** Demande de suppression de l'Événementiel en attente, par identifiant d'opération bancaire liée (alerte ambre). */
+  demandesSuppression?: Record<string, string>;
 }) {
   const router = useRouter();
   const coffre = useCoffre();
@@ -424,6 +427,7 @@ export default function ListeOperations({
    * d'elle-même au dernier rattachement.
    */
   const questionDe = (op: OperationRow): string | null =>
+    demandesSuppression[op.id] ||
     op.a_verifier ||
     (fillesDe.get(op.id) ?? []).map((fi) => fi.a_verifier).find((q): q is string => !!q) ||
     (estAmitieSainteAnne(`${op.libelle_origine ?? ""} ${op.libelle}`) && scolariteIncomplete(op)

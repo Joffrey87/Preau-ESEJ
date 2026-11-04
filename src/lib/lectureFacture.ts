@@ -1,5 +1,7 @@
 // Lecture automatique d'UNE facture fournisseur (photo ou PDF) par Claude. Côté serveur uniquement.
 import { leverErreurApi, verifierFin } from "@/lib/erreurLecture";
+import { ibanValide } from "@/lib/iban";
+import { ibansDuPdf } from "@/lib/ibanPdf";
 import { objetsJson } from "@/lib/lectureDocument";
 import type { SuiviConso, UsageClaude } from "@/lib/consoClaude";
 
@@ -36,13 +38,17 @@ Règles :
 - une facture peut s'étendre sur plusieurs pages (suite du détail, conditions générales, total en dernière page) : c'est alors UNE seule entrée ;
 - ne fais plusieurs entrées que pour des factures réellement distinctes : numéros différents, émetteurs différents, ou chacune son propre total à payer. En cas de doute, une seule entrée ;
 - pages : numéros des pages de cette facture, à partir de 1, annexes comprises ;
-- contient_rib : vrai si un IBAN y figure ; iban : l'IBAN du fournisseur tel qu'imprimé (lettres et chiffres, sans espaces), bic : le code BIC/SWIFT, titulaire : le titulaire du compte ;
+- contient_rib : vrai si un IBAN y figure ; iban : l'IBAN du fournisseur tel qu'imprimé (lettres et chiffres, sans espaces ; le dernier groupe compte souvent moins de 4 caractères, 3 pour un IBAN français : ne le complète jamais), bic : le code BIC/SWIFT, titulaire : le titulaire du compte ;
 - le fournisseur est l'émetteur de la facture (pas le client destinataire) : nom de l'entreprise, et/ou nom et prénom de la personne ;
 - date d'émission de la facture au format AAAA-MM-JJ ;
 - numero : le numéro de facture tel qu'imprimé ;
 - montant_ttc : total TTC à payer en euros (nombre décimal avec point) ;
 - libelle : objet de la facture en 2 à 6 mots (ex. « Location de tables », « Courses kermesse ») ;
 - n'invente rien : null pour ce que tu ne lis pas.`;
+
+const consigneRelectureIban = (iban: string) => `Sur ce document, tu as lu l'IBAN ${iban}, mais sa clé de contrôle est fausse : au moins un caractère est mal lu, en trop ou manquant (un IBAN français compte exactement 27 caractères ; celui-ci en compte ${iban.length}).
+Relis l'IBAN imprimé, groupe par groupe, sans partir de cette lecture, sans répéter un chiffre et sans compléter le dernier groupe, qui compte souvent moins de 4 caractères.
+Réponds UNIQUEMENT par un objet JSON : {"iban":"…"} (lettres et chiffres, sans espaces), ou {"iban":null} si tu ne peux pas le lire avec certitude.`;
 
 const texte = (x: unknown) => (typeof x === "string" && x.trim() ? x.trim() : null);
 function nombre(x: unknown): number | null {
@@ -102,27 +108,52 @@ export function analyserReponse(t: string): FactureLue {
 export async function lireFactureAvecClaude(cle: string, base64: string, mediaType: string, suivi?: SuiviConso): Promise<FactureLue> {
   const source = { type: "base64", media_type: mediaType, data: base64 };
   const bloc = mediaType === "application/pdf" ? { type: "document", source } : { type: "image", source };
-  const rep = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "x-api-key": cle,
-      "anthropic-version": "2023-06-01",
-      "content-type": "application/json",
-      ...(process.env.ANTHROPIC_WORKSPACE_ID ? { "anthropic-workspace-id": process.env.ANTHROPIC_WORKSPACE_ID } : {}),
-    },
-    body: JSON.stringify({
-      model: MODELE_LECTURE,
-      max_tokens: 4000,
-      // Sonnet 5.5 « réfléchit » par défaut (effort high) et cette réflexion compte dans max_tokens :
-      // effort bas pour une simple lecture (plus rapide, la réponse JSON n'est pas tronquée).
-      output_config: { effort: "low" },
-      messages: [{ role: "user", content: [bloc, { type: "text", text: CONSIGNE }] }],
-    }),
-  });
-  if (!rep.ok) await leverErreurApi(rep);
-  const d = (await rep.json()) as { content?: { type: string; text?: string }[]; stop_reason?: string; usage?: UsageClaude };
-  // Jetons facturés (même si la réponse est ensuite inexploitable) : pour le suivi du crédit.
-  if (suivi) suivi.usage = d.usage ?? null;
-  verifierFin(d);
-  return analyserReponse((d.content ?? []).filter((b) => b.type === "text").map((b) => b.text).join(""));
+  const appeler = async (consigne: string) => {
+    const rep = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "x-api-key": cle,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+        ...(process.env.ANTHROPIC_WORKSPACE_ID ? { "anthropic-workspace-id": process.env.ANTHROPIC_WORKSPACE_ID } : {}),
+      },
+      body: JSON.stringify({
+        model: MODELE_LECTURE,
+        max_tokens: 4000,
+        // Sonnet 5.5 « réfléchit » par défaut (effort high) et cette réflexion compte dans max_tokens :
+        // effort bas pour une simple lecture (plus rapide, la réponse JSON n'est pas tronquée).
+        output_config: { effort: "low" },
+        messages: [{ role: "user", content: [bloc, { type: "text", text: consigne }] }],
+      }),
+    });
+    if (!rep.ok) await leverErreurApi(rep);
+    const d = (await rep.json()) as { content?: { type: string; text?: string }[]; stop_reason?: string; usage?: UsageClaude };
+    // Jetons facturés (même si la réponse est ensuite inexploitable) : pour le suivi du crédit.
+    if (suivi) {
+      const u = d.usage ?? null;
+      suivi.usage = suivi.usage && u ? { ...u, input_tokens: (suivi.usage.input_tokens ?? 0) + (u.input_tokens ?? 0), output_tokens: (suivi.usage.output_tokens ?? 0) + (u.output_tokens ?? 0) } : u;
+    }
+    verifierFin(d);
+    return (d.content ?? []).filter((b) => b.type === "text").map((b) => b.text).join("");
+  };
+
+  const lu = analyserReponse(await appeler(CONSIGNE));
+  // IBAN à la clé de contrôle fausse (chiffre doublé ou confondu à la lecture) : une relecture ciblée. Seul un IBAN
+  // valide remplace le premier ; aucune correction n'est devinée, l'écran signale l'erreur s'il reste invalide.
+  if (lu.iban && !ibanValide(lu.iban)) {
+    // PDF avec du texte : l'IBAN s'y copie tel quel, sans relecture (s'il n'y en a qu'un, sans ambiguïté).
+    const duTexte = mediaType === "application/pdf" ? await ibansDuPdf(base64) : [];
+    if (duTexte.length === 1) {
+      lu.iban = duTexte[0];
+      return lu;
+    }
+    try {
+      const j = objetsJson(await appeler(consigneRelectureIban(lu.iban)))[0];
+      const iban = texte(j?.iban)?.replace(/[\s-]/g, "").toUpperCase();
+      if (iban && ibanValide(iban)) lu.iban = iban;
+    } catch (e) {
+      console.error("lecture-facture : relecture de l'IBAN impossible", e instanceof Error ? e.message : e);
+    }
+  }
+  return lu;
 }

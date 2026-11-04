@@ -486,7 +486,7 @@ export default function ReleveClasse({
       {/* Tableau transposé : une ligne par matière (par ensemble : Français, Mathématiques…), une colonne par élève
           (par niveau). Un clic sur une matière ou une case ouvre la saisie ; un clic sur un élève, ses appréciations. */}
       <div ref={defilementRef} className={`mx-auto max-h-[calc(100vh-8rem)] w-fit max-w-full overflow-auto rounded-xl border border-border bg-surface ${matiere ? "hidden" : ""}`}>
-        <table className="text-[12.5px]">
+        <table className="text-[12.5px] [&_td]:align-middle [&_th]:align-middle [&_td:not(:first-child)]:text-center [&_th:not(:first-child)]:text-center">
           <thead className="sticky top-0 z-20 bg-surface">
             {multiNiveaux && tousNiveaux && (
               <tr className="text-[11px]">
@@ -603,10 +603,10 @@ export default function ReleveClasse({
                               setMatiereOuverte(m.id);
                             }}
                             title={droit ? `${t.length ? `${t.join(" · ")} — ` : ""}Détail des notes, moyenne et appréciation · ${m.nom} · ${nomEleve(e)}` : undefined}
-                            className={`group px-0.5 py-2 text-center tabular-nums md:px-1.5 ${bord} ${droit ? "cursor-pointer hover:bg-accent-soft/50" : concerne ? "" : "bg-surface-2/50"}`}
+                            className={`group relative h-9 px-0.5 py-1 text-center align-middle tabular-nums md:px-1.5 ${bord} ${droit ? "cursor-pointer hover:bg-accent-soft/50" : concerne ? "" : "bg-surface-2/50"}`}
                           >
-                            {/* Relevé : les notes seules, séparées par « | » ambre (04/11/2026), sans moyenne. */}
-                            <span className="inline-block max-w-[10rem] text-[12.5px] leading-snug">{t.map((x, i) => (
+                            {/* Relevé : les notes seules, séparées par « · » or, sans moyenne ; une seule ligne (retour seulement si très long), centrées verticalement. */}
+                            <span className={`inline-block align-middle text-[12.5px] leading-snug ${t.join(" · ").length > 28 ? "max-w-[12rem] whitespace-normal" : "whitespace-nowrap"}`}>{t.map((x, i) => (
                               <Fragment key={i}>
                                 {i > 0 && <span className="mx-1 text-gold">·</span>}
                                 {x}
@@ -620,7 +620,7 @@ export default function ReleveClasse({
                             {/* Au survol : « + » pour ajouter une évaluation ou une note. */}
                             {droit && responsable && (
                               <span
-                                className={`inline-grid h-4 w-4 place-items-center rounded-full border border-gold/50 bg-gold-soft align-middle text-[11px] font-bold leading-none text-gold opacity-0 transition-opacity group-hover:opacity-100 ${t.length ? "ml-1" : ""}`}
+                                className={`${t.length ? "absolute right-0.5 top-1/2 -translate-y-1/2" : "inline-grid align-middle"} h-4 w-4 place-items-center rounded-full border border-gold/50 bg-gold-soft text-[11px] font-bold leading-none text-gold opacity-0 transition-opacity group-hover:opacity-100 ${t.length ? "grid" : ""}`}
                                 aria-hidden
                               >
                                 +

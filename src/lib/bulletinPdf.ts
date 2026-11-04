@@ -22,6 +22,7 @@ type Rendu = { octets: Uint8Array; pages: number };
 export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { echelles: number[]; debordements: number[] }): Promise<Uint8Array> {
   const [{ PDFDocument, rgb }, { default: fontkit }, res] = await Promise.all([import("pdf-lib"), import("@pdf-lib/fontkit"), chargerRessources()]);
   const NAVY = rgb(0.008, 0.114, 0.318), OR = rgb(0.784, 0.584, 0.184), OR_DOUX = rgb(0.953, 0.902, 0.788);
+  const AMBRE = rgb(0.851, 0.467, 0.024);
   const GRIS = rgb(0.42, 0.45, 0.5), TRAIT = rgb(0.9, 0.875, 0.808), BLANC = rgb(1, 1, 1), CREME = rgb(0.969, 0.953, 0.918);
 
   async function rendre(s: Synthese, k: number): Promise<Rendu> {
@@ -165,7 +166,8 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
         // Intitulé long (« Systèmes de poids et mesures ») : coupé sur deux lignes dans sa colonne, jamais tronqué.
         const wNom = (releve ? cols.com : cols.moy) - cols.matiere - 18;
         const noms = coupe(m.nom, regular, 8.5, wNom);
-        const ens = m.enseignants ? coupe(m.enseignants, regular, 6.5, wNom) : [];
+        // Relevé et bulletin trimestriel (04/11/2026) : le professeur n'est plus répété sous chaque matière.
+        const ens = m.enseignants && !s.mode ? coupe(m.enseignants, regular, 6.5, wNom) : [];
         // Catéchisme : l'appréciation du professeur puis celle du Directeur spirituel, chacune sous son étiquette.
         const apps = (m.appreciations ?? []).map((x) => ({ titre: x.titre, lignes: coupe(x.texte, italic, 7.8, wCom) }));
         const hCom = com.length * 10 + apps.reduce((t, x) => t + 9.5 + x.lignes.length * 10 + 2, 0);
@@ -174,7 +176,18 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
         noms.forEach((l, i) => texte(l, cols.matiere + 12, top + 11 + i * 10.5, regular, 8.5));
         ens.forEach((l, i) => texte(l, cols.matiere + 12, top + 11 + noms.length * 10.5 - 1.5 + i * 8.5, regular, 6.5, GRIS));
         if (!m.appreciationSeule) chiffres(m.chiffre, top + 11, semi, NAVY);
-        com.forEach((l, i) => texte(l, cols.com + 6, top + 11 + i * 10, regular, 7.8));
+        // Notes du relevé : séparées par un « | » ambre.
+        com.forEach((l, i) => {
+          let x = cols.com + 6;
+          l.split(" | ").forEach((morceau, j) => {
+            if (j) {
+              texte("|", x + 3, top + 11 + i * 10, semi, 7.8, AMBRE);
+              x += largeur("|", semi, 7.8) + 6;
+            }
+            texte(morceau, x, top + 11 + i * 10, regular, 7.8);
+            x += largeur(morceau, regular, 7.8);
+          });
+        });
         let tA = top + 11 + com.length * 10 + (com.length ? 2 : 0);
         for (const x of apps) {
           texte(x.titre, cols.com + 6, tA - 1, semi, 6.8, OR);

@@ -206,9 +206,9 @@ export function syntheseReleve(ctx: ContexteDocs, periode: Periode, eleve: Eleve
         const apps = estCatechisme(m.nom) ? { appreciations: appreciationsCatechisme(a) } : {};
         if (estAppreciationSeule(m.nom, ctx.classe.niveaux))
           return { nom: m.nom, enseignants: profs(m, o), chiffre: vide, commentaire: null, appreciationSeule: true, ...apps };
-        // Les notes de la période, séparées par « / » (04/11/2026) ; Catéchisme : ses deux appréciations en plus.
+        // Les notes de la période, séparées par « | » (04/11/2026) ; Catéchisme : ses deux appréciations en plus.
         const { textes } = notesPeriode(ctx, eleve.id, m, periode);
-        return { nom: intituleComplet(m.nom), enseignants: profs(m, o), chiffre: vide, commentaire: textes.join(" / ") || null, ...apps };
+        return { nom: intituleComplet(m.nom), enseignants: profs(m, o), chiffre: vide, commentaire: textes.join(" | ") || null, ...apps };
       }),
     })),
     mention: null,

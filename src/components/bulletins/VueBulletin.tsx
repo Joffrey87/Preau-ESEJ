@@ -1,5 +1,6 @@
 "use client";
 
+import { Fragment } from "react";
 import { classeEleve, dateJJMMAAAA, mentionLabel, note20, rangTexte, titreDocument, type Synthese } from "@/lib/bulletins";
 import { texteAbsences } from "@/lib/absences";
 import { tauxTexte } from "@/lib/calendrier";
@@ -141,11 +142,16 @@ function Groupe({ g, avecRang, releve, avecClasse }: { g: Synthese["groupes"][nu
         <tr key={m.nom} className="border-t border-border/60 align-top">
           <td className="px-3 py-1.5 pl-5">
             <div>{m.nom}</div>
-            {m.enseignants && <div className="text-[10.5px] text-muted">{m.enseignants}</div>}
+            {m.enseignants && avecClasse && <div className="text-[10.5px] text-muted">{m.enseignants}</div>}
           </td>
           <Chiffres c={m.chiffre} avecRang={avecRang} releve={releve} vide={!!m.appreciationSeule} avecClasse={avecClasse} />
           <td className="px-3 py-1.5 text-[12.5px]">
-            {m.commentaire}
+            {m.commentaire?.split(" | ").map((x, i) => (
+              <Fragment key={i}>
+                {i > 0 && <span className="mx-1 font-semibold text-amber-600">|</span>}
+                {x}
+              </Fragment>
+            ))}
             {m.appreciations?.map((x) => (
               <span key={x.titre} className="mt-1 block">
                 <span className="block text-[10.5px] font-semibold uppercase tracking-wide text-gold">{x.titre}</span>

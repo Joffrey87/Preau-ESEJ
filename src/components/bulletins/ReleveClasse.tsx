@@ -130,7 +130,7 @@ export default function ReleveClasse({
   const notesDe = useMemo(() => new Map(vue.notes.map((n) => [`${n.evaluation_id}:${n.eleve_id}`, n])), [vue.notes]);
   const evalsDe = (m: Matiere) => vue.evaluations.filter((e) => e.matiere_id === m.id && e.periode_id === periode.id).sort((a, b) => a.date.localeCompare(b.date) || a.titre.localeCompare(b.titre));
 
-  /** Notes d'un élève dans une matière, en abrégé : « 14 / 7/10 / abs » ; reprise École Futée : la moyenne saisie. */
+  /** Notes d'un élève dans une matière, en abrégé : « 14 | 7/10 | abs » ; reprise École Futée : la moyenne saisie. */
   const notesCourtes = (e: EleveBulletin, m: Matiere): string[] => {
     const evals = evalsDe(m);
     if (!evals.length) {
@@ -602,11 +602,16 @@ export default function ReleveClasse({
                               setEleveCible(e.id);
                               setMatiereOuverte(m.id);
                             }}
-                            title={droit ? `${t.length ? `${t.join(" / ")} — ` : ""}Détail des notes, moyenne et appréciation · ${m.nom} · ${nomEleve(e)}` : undefined}
+                            title={droit ? `${t.length ? `${t.join(" | ")} — ` : ""}Détail des notes, moyenne et appréciation · ${m.nom} · ${nomEleve(e)}` : undefined}
                             className={`group px-0.5 py-2 text-center tabular-nums md:px-1.5 ${bord} ${droit ? "cursor-pointer hover:bg-accent-soft/50" : concerne ? "" : "bg-surface-2/50"}`}
                           >
-                            {/* Relevé : les notes seules, séparées par « / » (04/11/2026), sans moyenne. */}
-                            <span className="inline-block max-w-[10rem] text-[12.5px] leading-snug">{t.join(" / ")}</span>
+                            {/* Relevé : les notes seules, séparées par « | » ambre (04/11/2026), sans moyenne. */}
+                            <span className="inline-block max-w-[10rem] text-[12.5px] leading-snug">{t.map((x, i) => (
+                              <Fragment key={i}>
+                                {i > 0 && <span className="mx-1 font-semibold text-amber-600">|</span>}
+                                {x}
+                              </Fragment>
+                            ))}</span>
                             {concerne && moy == null && !t.length && (appreciationDe(d, m)?.texte?.trim() || commentaireMatiere(e.id, m)) && (
                               <span title="Appréciation renseignée" aria-label="Appréciation renseignée" className="ml-1 text-[13px] text-white">
                                 ...

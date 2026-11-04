@@ -289,7 +289,7 @@ export default function DocumentsClasse({
                               <tr key={m.nom} className="border-t border-border/60 align-middle">
                                 <td className="w-[9rem] px-2 py-0.5 pl-4">{m.nom}</td>
                                 <td className={`px-2 py-0.5 ${mode === "trimestre" ? "w-[4.5rem] text-center tabular-nums" : "text-muted"}`}>
-                                  {m.appreciationSeule ? "" : mode === "trimestre" ? note20(m.chiffre.moy) : m.commentaire ? m.commentaire.split(" | ").map((x, i) => <Fragment key={i}>{i > 0 && <span className="mx-1 font-semibold text-amber-600">|</span>}{x}</Fragment>) : "–"}
+                                  {m.appreciationSeule ? "" : mode === "trimestre" ? note20(m.chiffre.moy) : m.commentaire ? m.commentaire.split(" | ").map((x, i) => <Fragment key={i}>{i > 0 && <span className="mx-1 font-semibold text-gold/50">|</span>}{x}</Fragment>) : "–"}
                                 </td>
                                 <td className="px-1 py-0.5">
                                   {mat && d && estCatechisme(mat.nom) ? (

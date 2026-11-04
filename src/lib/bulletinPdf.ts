@@ -22,7 +22,7 @@ type Rendu = { octets: Uint8Array; pages: number };
 export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { echelles: number[]; debordements: number[] }): Promise<Uint8Array> {
   const [{ PDFDocument, rgb }, { default: fontkit }, res] = await Promise.all([import("pdf-lib"), import("@pdf-lib/fontkit"), chargerRessources()]);
   const NAVY = rgb(0.008, 0.114, 0.318), OR = rgb(0.784, 0.584, 0.184), OR_DOUX = rgb(0.953, 0.902, 0.788);
-  const AMBRE = rgb(0.851, 0.467, 0.024);
+  const AMBRE = rgb(0.892, 0.792, 0.592); // = var(--gold) #c8952f à 50 % sur blanc, comme border-l-gold/50
   const GRIS = rgb(0.42, 0.45, 0.5), TRAIT = rgb(0.9, 0.875, 0.808), BLANC = rgb(1, 1, 1), CREME = rgb(0.969, 0.953, 0.918);
 
   async function rendre(s: Synthese, k: number): Promise<Rendu> {

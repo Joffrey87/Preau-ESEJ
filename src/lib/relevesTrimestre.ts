@@ -6,14 +6,15 @@
 // simple de ses matières notées ; la moyenne générale, la moyenne simple des ensembles notés. Aucun coefficient.
 // Une période sans évaluation saisie dans Préau mais avec une moyenne reprise d'École Futée (bulletin_lignes) compte
 // cette moyenne comme une note.
-// Catéchisme (15/10/2026) : une appréciation seule, sans note ni moyenne, sur le relevé comme sur le bulletin ; il
-// n'entre dans aucune moyenne. Le bulletin ne reprend pas les appréciations des relevés : il a la sienne, celle du trimestre.
+// Catéchisme (04/11/2026) : noté comme les autres matières, sauf en maternelle (appréciation seule) ; deux
+// appréciations, celle du professeur et celle du Directeur spirituel. Le bulletin ne reprend pas les appréciations des relevés : il a la sienne, celle du trimestre.
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   arrondi,
   estAppreciationSeule,
   estCatechisme,
+  intituleComplet,
   matiereConcerne,
   niveauDe,
   nomEnseignant,
@@ -44,7 +45,14 @@ export type DocReleve = {
 };
 export type DocTrimestre = Omit<DocReleve, "periode_id"> & { annee_scolaire: string; trimestre: number };
 /** bulletin_id : le bulletin trimestriel, ou le relevé de la période (appréciation du Catéchisme). */
-export type AppreciationIntervenant = { bulletin_id: string; matiere_id: string; texte: string | null };
+export type AppreciationIntervenant = { bulletin_id: string; matiere_id: string; texte: string | null; texte_professeur?: string | null };
+
+/** Catéchisme : les deux appréciations, étiquetées (celle du professeur, puis celle du Directeur spirituel). */
+export const appreciationsCatechisme = (a: AppreciationIntervenant | undefined) =>
+  [
+    { titre: "Appréciation du professeur", texte: a?.texte_professeur?.trim() ?? "" },
+    { titre: "Appréciation du Directeur spirituel", texte: a?.texte?.trim() ?? "" },
+  ].filter((x) => x.texte);
 
 export type ContexteDocs = {
   classe: Classe;
@@ -99,10 +107,10 @@ export async function chargerDocs(sb: SupabaseClient, classe: Classe, periode: P
     evaluations.length ? sb.from("evaluation_notes").select("*").in("evaluation_id", evaluations.map((x) => x.id)) : Promise.resolve({ data: [] }),
     bulletinsPeriode.length ? sb.from("bulletin_lignes").select("*").in("bulletin_id", bulletinsPeriode.map((x) => x.id)) : Promise.resolve({ data: [] }),
     trimestriels.length
-      ? sb.from("bulletins_trimestre_appreciations").select("bulletin_id, matiere_id, texte").in("bulletin_id", trimestriels.map((x) => x.id))
+      ? sb.from("bulletins_trimestre_appreciations").select("bulletin_id, matiere_id, texte, texte_professeur").in("bulletin_id", trimestriels.map((x) => x.id))
       : Promise.resolve({ data: [] }),
     releves.length
-      ? sb.from("releves_notes_appreciations").select("releve_id, matiere_id, texte").in("releve_id", releves.map((x) => x.id))
+      ? sb.from("releves_notes_appreciations").select("releve_id, matiere_id, texte, texte_professeur").in("releve_id", releves.map((x) => x.id))
       : Promise.resolve({ data: [] }),
   ]);
   return {
@@ -121,7 +129,7 @@ export async function chargerDocs(sb: SupabaseClient, classe: Classe, periode: P
     // Les identifiants (uuid) des relevés et des bulletins trimestriels ne se recouvrent pas : une seule liste.
     appreciations: [
       ...((ap.data ?? []) as AppreciationIntervenant[]),
-      ...((ar.data ?? []) as { releve_id: string; matiere_id: string; texte: string | null }[]).map((x) => ({ bulletin_id: x.releve_id, matiere_id: x.matiere_id, texte: x.texte })),
+      ...((ar.data ?? []) as { releve_id: string; matiere_id: string; texte: string | null; texte_professeur: string | null }[]).map((x) => ({ bulletin_id: x.releve_id, matiere_id: x.matiere_id, texte: x.texte, texte_professeur: x.texte_professeur })),
     ],
   };
 }
@@ -194,14 +202,13 @@ export function syntheseReleve(ctx: ContexteDocs, periode: Periode, eleve: Eleve
       nom: g.groupe.nom,
       chiffre: vide,
       matieres: g.matieres.map((m) => {
-        if (estAppreciationSeule(m.nom, ctx.classe.niveaux)) {
-          const a = ctx.appreciations.find((x) => x.bulletin_id === doc?.id && x.matiere_id === m.id);
-          return { nom: m.nom, enseignants: profs(m, o), chiffre: vide, commentaire: a?.texte?.trim() || null, appreciationSeule: true };
-        }
+        const a = estCatechisme(m.nom) ? ctx.appreciations.find((x) => x.bulletin_id === doc?.id && x.matiere_id === m.id) : undefined;
+        const apps = estCatechisme(m.nom) ? { appreciations: appreciationsCatechisme(a) } : {};
+        if (estAppreciationSeule(m.nom, ctx.classe.niveaux))
+          return { nom: m.nom, enseignants: profs(m, o), chiffre: vide, commentaire: null, appreciationSeule: true, ...apps };
+        // Les notes de la période, séparées par « / » (04/11/2026) ; Catéchisme : ses deux appréciations en plus.
         const { textes } = notesPeriode(ctx, eleve.id, m, periode);
-        // Catéchisme noté : les notes, puis l'appréciation du Directeur spirituel s'il y en a une.
-        const a = estCatechisme(m.nom) ? ctx.appreciations.find((x) => x.bulletin_id === doc?.id && x.matiere_id === m.id)?.texte?.trim() : null;
-        return { nom: m.nom, enseignants: profs(m, o), chiffre: vide, commentaire: [textes.join(" · "), a].filter(Boolean).join(" — ") || null };
+        return { nom: intituleComplet(m.nom), enseignants: profs(m, o), chiffre: vide, commentaire: textes.join(" / ") || null, ...apps };
       }),
     })),
     mention: null,
@@ -224,14 +231,15 @@ export function syntheseTrimestre(ctx: ContexteDocs, eleve: EleveBulletin, doc: 
   const gs = groupes.map((g) => {
     const matieres = g.matieres.map((m) => {
       // Catéchisme : appréciation seule, hors des moyennes.
+      const cat = estCatechisme(m.nom) ? appreciationsCatechisme(ctx.appreciations.find((a) => a.bulletin_id === doc?.id && a.matiere_id === m.id)) : undefined;
       if (estAppreciationSeule(m.nom, ctx.classe.niveaux))
-        return { nom: m.nom, enseignants: profs(m, o), chiffre: vide, commentaire: app.get(m.id) ?? null, brut: null, appreciationSeule: true as const };
+        return { nom: m.nom, enseignants: profs(m, o), chiffre: vide, commentaire: null, brut: null, appreciationSeule: true as const, appreciations: cat };
       const valeurs = ctx.periodes.flatMap((p) => notesPeriode(ctx, eleve.id, m, p).valeurs);
       const moy = moyenne(valeurs);
-      return { nom: m.nom, enseignants: profs(m, o), chiffre: { ...vide, moy: arrondi(moy) }, commentaire: avecAppreciation.has(m.id) ? (app.get(m.id) ?? null) : null, brut: moy, appreciationSeule: undefined };
+      return { nom: intituleComplet(m.nom), enseignants: profs(m, o), chiffre: { ...vide, moy: arrondi(moy) }, commentaire: cat ? null : avecAppreciation.has(m.id) ? (app.get(m.id) ?? null) : null, brut: moy, appreciationSeule: undefined, appreciations: cat };
     });
     const moy = moyenne(matieres.map((m) => m.brut).filter((x): x is number => x !== null));
-    return { nom: g.groupe.nom, chiffre: { ...vide, moy: arrondi(moy) }, matieres: matieres.map((x) => ({ nom: x.nom, enseignants: x.enseignants, chiffre: x.chiffre, commentaire: x.commentaire, ...(x.appreciationSeule ? { appreciationSeule: true } : {}) })), brut: moy };
+    return { nom: g.groupe.nom, chiffre: { ...vide, moy: arrondi(moy) }, matieres: matieres.map((x) => ({ nom: x.nom, enseignants: x.enseignants, chiffre: x.chiffre, commentaire: x.commentaire, ...(x.appreciationSeule ? { appreciationSeule: true } : {}), ...(x.appreciations ? { appreciations: x.appreciations } : {}) })), brut: moy };
   });
   const general = moyenne(gs.map((g) => g.brut).filter((x): x is number => x !== null));
   return {

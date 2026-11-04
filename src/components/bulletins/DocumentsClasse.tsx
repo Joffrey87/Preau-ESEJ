@@ -4,7 +4,7 @@ import { todayISO } from "@/lib/format";
 import { createPortal } from "react-dom";
 import { Fragment, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { estSynthese, nomEleve, note20, trimestreEnLettres, type Enseignant, type Matiere, type Periode, type Statut, type Synthese, niveauDe, type EleveBulletin } from "@/lib/bulletins";
+import { estCatechisme, intituleComplet, estSynthese, nomEleve, note20, trimestreEnLettres, type Enseignant, type Matiere, type Periode, type Statut, type Synthese, niveauDe, type EleveBulletin } from "@/lib/bulletins";
 import { telechargerBulletins } from "@/lib/bulletinPdf";
 import {
   matieresAvecAppreciation,
@@ -282,7 +282,7 @@ export default function DocumentsClasse({
                             <td />
                           </tr>
                           {g.matieres.map((m) => {
-                            const mat = avecAppreciation.find((x) => x.nom === m.nom);
+                            const mat = avecAppreciation.find((x) => intituleComplet(x.nom) === m.nom || x.nom === m.nom);
                             const a = mat && d ? ctx.appreciations.find((x) => x.bulletin_id === d.id && x.matiere_id === mat.id) : undefined;
                             const modifiable = !!mat && !!d && (peutApprecier ?? peutNoter)(mat) && (directrice || OUVERTS.includes(d.statut));
                             return (
@@ -292,7 +292,28 @@ export default function DocumentsClasse({
                                   {m.appreciationSeule ? "" : mode === "trimestre" ? note20(m.chiffre.moy) : m.commentaire ?? "–"}
                                 </td>
                                 <td className="px-1 py-0.5">
-                                  {mat && d ? (
+                                  {mat && d && estCatechisme(mat.nom) ? (
+                                    // Catéchisme : l'appréciation du professeur, puis celle du Directeur spirituel.
+                                    <div className="max-w-[36rem] space-y-1">
+                                      {([["texte_professeur", "Professeur", peutNoter(mat)], ["texte", "Directeur spirituel", (peutApprecier ?? peutNoter)(mat)]] as const).map(([col, qui, droit]) => {
+                                        const ok = droit && (directrice || OUVERTS.includes(d.statut));
+                                        return (
+                                          <label key={col} className="block">
+                                            <span className="text-[10.5px] font-semibold text-muted">{qui}</span>
+                                            <ZoneAppreciation
+                                              key={`${d.id}:${mat.id}:${col}`}
+                                              valeur={(col === "texte" ? a?.texte : a?.texte_professeur) ?? ""}
+                                              readOnly={!ok}
+                                              rows={1}
+                                              placeholder={ok ? `Appréciation · ${qui}` : ""}
+                                              onEnregistrer={(v) => ecrire(sb.from("bulletins_trimestre_appreciations").upsert({ bulletin_id: d.id, matiere_id: mat.id, [col]: v.trim() || null }))}
+                                              className={`${champ} min-h-[1.9rem] resize-y`}
+                                            />
+                                          </label>
+                                        );
+                                      })}
+                                    </div>
+                                  ) : mat && d ? (
                                     <div className="max-w-[36rem]">
                                     <ZoneAppreciation
                                       key={`${d.id}:${mat.id}`}

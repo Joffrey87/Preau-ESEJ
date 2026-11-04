@@ -162,13 +162,29 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
       top += 17;
       for (const m of g.matieres) {
         const com = m.commentaire ? coupe(m.commentaire, regular, 7.8, wCom) : [];
-        const h = Math.max(m.enseignants ? 24 : 16, 8 + com.length * 10);
+        // Intitulé long (« Systèmes de poids et mesures ») : coupé sur deux lignes dans sa colonne, jamais tronqué.
+        const wNom = (releve ? cols.com : cols.moy) - cols.matiere - 18;
+        const noms = coupe(m.nom, regular, 8.5, wNom);
+        const ens = m.enseignants ? coupe(m.enseignants, regular, 6.5, wNom) : [];
+        // Catéchisme : l'appréciation du professeur puis celle du Directeur spirituel, chacune sous son étiquette.
+        const apps = (m.appreciations ?? []).map((x) => ({ titre: x.titre, lignes: coupe(x.texte, italic, 7.8, wCom) }));
+        const hCom = com.length * 10 + apps.reduce((t, x) => t + 9.5 + x.lignes.length * 10 + 2, 0);
+        const h = Math.max(8 + noms.length * 10.5 + ens.length * 8.5, 8 + hCom);
         place(h);
-        texte(m.nom, cols.matiere + 12, top + 11, regular, 8.5);
-        if (m.enseignants) texte(m.enseignants, cols.matiere + 12, top + 20, regular, 6.5, GRIS);
-        // Catéchisme : l'appréciation seule, sans note ni moyenne.
+        noms.forEach((l, i) => texte(l, cols.matiere + 12, top + 11 + i * 10.5, regular, 8.5));
+        ens.forEach((l, i) => texte(l, cols.matiere + 12, top + 11 + noms.length * 10.5 - 1.5 + i * 8.5, regular, 6.5, GRIS));
         if (!m.appreciationSeule) chiffres(m.chiffre, top + 11, semi, NAVY);
-        com.forEach((l, i) => texte(l, cols.com + 6, top + 11 + i * 10, m.appreciationSeule ? italic : regular, 7.8));
+        com.forEach((l, i) => texte(l, cols.com + 6, top + 11 + i * 10, regular, 7.8));
+        let tA = top + 11 + com.length * 10 + (com.length ? 2 : 0);
+        for (const x of apps) {
+          texte(x.titre, cols.com + 6, tA - 1, semi, 6.8, OR);
+          tA += 9.5;
+          x.lignes.forEach((l) => {
+            texte(l, cols.com + 6, tA, italic, 7.8);
+            tA += 10;
+          });
+          tA += 2;
+        }
         page.drawLine({ start: { x: M, y: y(top + h) }, end: { x: Wp - M, y: y(top + h) }, thickness: 0.5, color: TRAIT });
         top += h;
       }

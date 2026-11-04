@@ -8,6 +8,7 @@ import {
   arrondi,
   estAppreciationSeule,
   estCatechisme,
+  intituleComplet,
   estSynthese,
   evaluationConcerne,
   matiereConcerne,
@@ -129,18 +130,7 @@ export default function ReleveClasse({
   const notesDe = useMemo(() => new Map(vue.notes.map((n) => [`${n.evaluation_id}:${n.eleve_id}`, n])), [vue.notes]);
   const evalsDe = (m: Matiere) => vue.evaluations.filter((e) => e.matiere_id === m.id && e.periode_id === periode.id).sort((a, b) => a.date.localeCompare(b.date) || a.titre.localeCompare(b.titre));
 
-  /** Notes détaillées d'un élève dans une matière (vue A) : note, date, intitulé et coefficient de chaque évaluation. */
-  const notesDetail = (e: EleveBulletin, m: Matiere): { id: string; note: string; titre: string; date: string; coef: number }[] =>
-    evalsDe(m).flatMap((ev) => {
-      const n = notesDe.get(`${ev.id}:${e.id}`);
-      const base = { id: ev.id, titre: ev.titre, date: ev.date.slice(5).split("-").reverse().join("/"), coef: Number(ev.coef) };
-      if (!n) return evaluationConcerne(ev, niveauDe(e, vue.classe.annee_scolaire)) ? [{ ...base, note: "abs" }] : [];
-      if (n.etat) return [{ ...base, note: ETAT_COURT[n.etat] ?? n.etat }];
-      if (n.note == null) return [];
-      return [{ ...base, note: Number(ev.bareme) === 20 ? nombre(Number(n.note)) : `${nombre(Number(n.note))}/${nombre(Number(ev.bareme))}` }];
-    });
-
-  /** Notes d'un élève dans une matière, en abrégé : « 14 · 7/10 · abs » ; reprise École Futée : la moyenne saisie. */
+  /** Notes d'un élève dans une matière, en abrégé : « 14 / 7/10 / abs » ; reprise École Futée : la moyenne saisie. */
   const notesCourtes = (e: EleveBulletin, m: Matiere): string[] => {
     const evals = evalsDe(m);
     if (!evals.length) {
@@ -249,7 +239,7 @@ export default function ReleveClasse({
     const d = docDe(eleveId);
     const b = bulletinPeriode(eleveId);
     return (
-      (!!d && (!!d.appreciation?.trim() || vue.appreciations.some((x) => x.bulletin_id === d.id && !!x.texte?.trim()))) ||
+      (!!d && (!!d.appreciation?.trim() || vue.appreciations.some((x) => x.bulletin_id === d.id && (!!x.texte?.trim() || !!x.texte_professeur?.trim())))) ||
       (!!b && ctx.lignes.some((l) => l.bulletin_id === b.id && !!l.commentaire?.trim()))
     );
   };
@@ -270,17 +260,6 @@ export default function ReleveClasse({
   const debutNiveau = (e: EleveBulletin) => multiNiveaux && tousNiveaux && groupesNiveau.some((g) => g.eleves[0]?.id === e.id);
   // Affichage de tous les niveaux par défaut, ou d'un seul bloc de niveau.
   const [niveauChoisi, setNiveauChoisi] = useState<string | null>("*");
-  // Présentation des cases (04/11/2026, à comparer) : moyennes seules, A = notes détaillées + moyenne, B = notes seules en ligne.
-  const [presentation, setPresentationEtat] = useState<"moyennes" | "A" | "B">("A");
-  useEffect(() => {
-    const v = window.localStorage.getItem("preau.releve.presentation");
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- choix mémorisé, lu après l'hydratation
-    if (v === "moyennes" || v === "B") setPresentationEtat(v);
-  }, []);
-  const setPresentation = (v: "moyennes" | "A" | "B") => {
-    setPresentationEtat(v);
-    try { window.localStorage.setItem("preau.releve.presentation", v); } catch {}
-  };
   // Téléphone : un seul niveau à l'ouverture (moins de colonnes, donc moins de défilement) ; « Tous les niveaux » reste possible.
   const plusieursGroupes = groupesNiveau.length > 1;
   useEffect(() => {
@@ -431,19 +410,41 @@ export default function ReleveClasse({
                   .map((m) => {
                     const a = appreciationDe(d, m);
                     const modifiable = peutApprecier(d, m);
+                    // Deux appréciations (04/11/2026) : celle du professeur de la matière, celle du Directeur spirituel.
+                    const modifiableProf = !!d && droits.peutNoter(m) && (directrice || OUVERTS.includes(d.statut));
                     return (
-                      <div key={m.id} className="flex max-w-3xl items-start gap-2">
-                        <span className="w-[9rem] shrink-0 pt-1 text-[12.5px] font-semibold">{m.nom}</span>
-                        <ZoneAppreciation
-                          key={`${d.id}:${m.id}`}
-                          valeur={a?.texte ?? ""}
-                          readOnly={!modifiable}
-                          rows={2}
-                          placeholder={modifiable ? `Appréciation · ${m.nom}` : ""}
-                          onEnregistrer={(v) => ecrire(sb.from("releves_notes_appreciations").upsert({ releve_id: d.id, matiere_id: m.id, texte: v.trim() || null }))}
-                          className={champ}
-                        />
-                      </div>
+                      <Fragment key={m.id}>
+                        <div className="flex max-w-3xl items-start gap-2">
+                          <span className="w-[9rem] shrink-0 pt-1 text-[12.5px] font-semibold">
+                            {m.nom}
+                            <span className="block text-[10.5px] font-normal text-muted">Professeur</span>
+                          </span>
+                          <ZoneAppreciation
+                            key={`${d.id}:${m.id}:prof`}
+                            valeur={a?.texte_professeur ?? ""}
+                            readOnly={!modifiableProf}
+                            rows={2}
+                            placeholder={modifiableProf ? `Appréciation du professeur · ${m.nom}` : ""}
+                            onEnregistrer={(v) => ecrire(sb.from("releves_notes_appreciations").upsert({ releve_id: d.id, matiere_id: m.id, texte_professeur: v.trim() || null }))}
+                            className={champ}
+                          />
+                        </div>
+                        <div className="flex max-w-3xl items-start gap-2">
+                          <span className="w-[9rem] shrink-0 pt-1 text-[12.5px] font-semibold">
+                            {m.nom}
+                            <span className="block text-[10.5px] font-normal text-muted">Directeur spirituel</span>
+                          </span>
+                          <ZoneAppreciation
+                            key={`${d.id}:${m.id}`}
+                            valeur={a?.texte ?? ""}
+                            readOnly={!modifiable}
+                            rows={2}
+                            placeholder={modifiable ? `Appréciation du Directeur spirituel · ${m.nom}` : ""}
+                            onEnregistrer={(v) => ecrire(sb.from("releves_notes_appreciations").upsert({ releve_id: d.id, matiere_id: m.id, texte: v.trim() || null }))}
+                            className={champ}
+                          />
+                        </div>
+                      </Fragment>
                     );
                   })}
                 <div className="flex max-w-3xl items-start gap-2">
@@ -470,16 +471,17 @@ export default function ReleveClasse({
           {boutonEvaluation}
         </div>
       )}
-      {!matiere && (
-        <div className="flex flex-wrap items-center justify-center gap-1 text-[12px]" role="group" aria-label="Présentation des notes">
-          <span className="mr-1 text-muted">Présentation :</span>
-          {([["A", "A · Notes détaillées + moyenne"], ["B", "B · Notes seules"], ["moyennes", "Moyennes seules"]] as const).map(([v, l]) => (
-            <button key={v} type="button" onClick={() => setPresentation(v)} aria-pressed={presentation === v}
-              className={`rounded-lg border px-2.5 py-1 font-semibold ${presentation === v ? "border-gold/50 bg-gold-soft text-gold" : "border-border bg-surface text-muted hover:bg-surface-2"}`}>
-              {l}
-            </button>
-          ))}
-        </div>
+      {/* Légende des codes courts (SPM…) : l'intitulé complet, repris seul sur le bulletin. */}
+      {!matiere && vue.matieres.some((m) => m.actif && intituleComplet(m.nom) !== m.nom) && (
+        <p className="text-center text-[11.5px] text-muted">
+          {vue.matieres
+            .filter((m) => m.actif && intituleComplet(m.nom) !== m.nom)
+            .map((m) => (
+              <span key={m.id} className="mx-2">
+                <abbr title={intituleComplet(m.nom)} className="font-semibold text-foreground no-underline">{m.nom}</abbr> : {intituleComplet(m.nom)}
+              </span>
+            ))}
+        </p>
       )}
       {/* Tableau transposé : une ligne par matière (par ensemble : Français, Mathématiques…), une colonne par élève
           (par niveau). Un clic sur une matière ou une case ouvre la saisie ; un clic sur un élève, ses appréciations. */}
@@ -548,7 +550,7 @@ export default function ReleveClasse({
                     <tr key={m.id} className={`border-t border-border/60 ${responsable ? "" : "text-muted opacity-60"} ${matiereOuverte === m.id ? "bg-accent-soft/30" : "hover:bg-surface-2/40"}`}>
                       <td className="sticky left-0 z-10 bg-surface p-0">
                         {seule || !droits.peutSaisirNotes(m) ? (
-                          <div className="break-words px-1 py-1.5 text-[11px] leading-tight md:px-3 md:py-2 md:text-[12.5px]" title={seule ? `${m.nom} : une appréciation, sans note` : m.nom}>
+                          <div className="break-words px-1 py-1.5 text-[11px] leading-tight md:px-3 md:py-2 md:text-[12.5px]" title={seule ? `${m.nom} : une appréciation, sans note` : intituleComplet(m.nom)}>
                             {m.nom}
                             {seule && <span className="ml-1.5 hidden text-[10px] text-muted md:inline">appréciation</span>}
                           </div>
@@ -557,7 +559,7 @@ export default function ReleveClasse({
                             type="button"
                             onClick={() => setMatiereOuverte(matiereOuverte === m.id ? null : m.id)}
                             className={`flex w-full items-baseline gap-1.5 break-words px-1 py-1.5 text-left text-[11px] leading-tight hover:bg-accent-soft/60 md:px-3 md:py-2 md:text-[12.5px] ${matiereOuverte === m.id ? "bg-accent text-accent-fg" : ""}`}
-                            title={`Saisir les notes · ${m.nom}${m.niveaux.length ? ` (${m.niveaux.join(", ")})` : ""}`}
+                            title={`Saisir les notes · ${intituleComplet(m.nom)}${m.niveaux.length ? ` (${m.niveaux.join(", ")})` : ""}`}
                           >
                             {m.nom}
                             {nb > 0 && <span className="hidden text-[10px] opacity-70 md:inline">{nb} éval.</span>}
@@ -570,8 +572,8 @@ export default function ReleveClasse({
                         const concerne = matiereConcerne(m, niveau);
                         const bord = debutNiveau(e) ? "border-l-2 border-l-gold/50" : "border-l border-l-border/40";
                         if (seule) {
-                          const a = concerne ? appreciationDe(d, m)?.texte?.trim() : null;
-                          const droit = concerne && droits.peutApprecier(m);
+                          const a = concerne ? appreciationDe(d, m)?.texte_professeur?.trim() || appreciationDe(d, m)?.texte?.trim() : null;
+                          const droit = concerne && (droits.peutApprecier(m) || droits.peutNoter(m));
                           return (
                             <td
                               key={e.id}
@@ -600,28 +602,11 @@ export default function ReleveClasse({
                               setEleveCible(e.id);
                               setMatiereOuverte(m.id);
                             }}
-                            title={droit ? `${t.length ? `${t.join(" · ")} — ` : ""}Détail des notes, moyenne et appréciation · ${m.nom} · ${nomEleve(e)}` : undefined}
+                            title={droit ? `${t.length ? `${t.join(" / ")} — ` : ""}Détail des notes, moyenne et appréciation · ${m.nom} · ${nomEleve(e)}` : undefined}
                             className={`group px-0.5 py-2 text-center tabular-nums md:px-1.5 ${bord} ${droit ? "cursor-pointer hover:bg-accent-soft/50" : concerne ? "" : "bg-surface-2/50"}`}
                           >
-                            {presentation === "A" && concerne && evalsDe(m).length > 0 ? (
-                              <span className="block min-w-[6.5rem] space-y-0.5 text-left">
-                                {notesDetail(e, m).map((x) => (
-                                  <span key={x.id} className="flex items-baseline gap-1 text-[11px] leading-tight" title={`${x.titre} · ${x.date} · coef. ${String(x.coef).replace(".", ",")}`}>
-                                    <span className="min-w-[2.2rem] font-semibold text-foreground">{x.note}</span>
-                                    <span className="truncate text-muted">{x.date} · {x.titre}{x.coef !== 1 ? ` ×${String(x.coef).replace(".", ",")}` : ""}</span>
-                                  </span>
-                                ))}
-                                {moy != null && <span className="mt-0.5 block border-t border-border/60 pt-0.5 text-center text-[12px] font-bold text-gold">Moy. {nombre(moy)}</span>}
-                              </span>
-                            ) : presentation === "B" && t.length > 0 ? (
-                              <span className="inline-flex max-w-[9rem] flex-wrap justify-center gap-0.5">
-                                {t.map((x, i) => (
-                                  <span key={i} className="rounded bg-surface-2 px-1 text-[11.5px] font-semibold">{x}</span>
-                                ))}
-                              </span>
-                            ) : (
-                              <span className="whitespace-nowrap text-[12.5px]">{moy != null && presentation !== "B" ? nombre(moy) : t.join(" · ")}</span>
-                            )}
+                            {/* Relevé : les notes seules, séparées par « / » (04/11/2026), sans moyenne. */}
+                            <span className="inline-block max-w-[10rem] text-[12.5px] leading-snug">{t.join(" / ")}</span>
                             {concerne && moy == null && !t.length && (appreciationDe(d, m)?.texte?.trim() || commentaireMatiere(e.id, m)) && (
                               <span title="Appréciation renseignée" aria-label="Appréciation renseignée" className="ml-1 text-[13px] text-white">
                                 ...

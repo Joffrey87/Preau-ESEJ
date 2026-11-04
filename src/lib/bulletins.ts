@@ -109,7 +109,16 @@ export type Synthese = {
   periode: { libelle: string; annee: string; trimestre: number | null; numero?: number };
   afficherRang: boolean;
   general: Chiffre;
-  groupes: { nom: string; chiffre: Chiffre; matieres: { nom: string; enseignants: string; chiffre: Chiffre; commentaire: string | null; appreciationSeule?: boolean }[] }[];
+  groupes: { nom: string; chiffre: Chiffre; matieres: {
+      nom: string;
+      enseignants: string;
+      chiffre: Chiffre;
+      commentaire: string | null;
+      appreciationSeule?: boolean;
+      /** Catéchisme (04/11/2026) : l'appréciation du professeur et celle du Directeur spirituel, étiquetées. */
+      appreciations?: { titre: string; texte: string }[];
+    }[];
+  }[];
   mention: Mention | null;
   appreciation: string | null;
   publieLe?: string | null;
@@ -347,6 +356,9 @@ export const titreDocument = (s: Pick<Synthese, "mode" | "periode">) =>
   s.mode === "releve" ? s.periode.libelle : s.mode === "trimestre" && s.periode.trimestre ? trimestreEnLettres(s.periode.trimestre) : titrePeriode(s.periode);
 
 /** Catéchisme : son appréciation reste réservée au Directeur spirituel. */
+/** Intitulés complets des matières à code court (04/11/2026) : le code dans les tableaux, l'intitulé sur le bulletin. */
+export const INTITULES: Record<string, string> = { SPM: "Systèmes de poids et mesures" };
+export const intituleComplet = (nom: string) => INTITULES[nom.trim()] ?? nom;
 export const estCatechisme = (nom: string) => nom.normalize("NFD").replace(/\p{Diacritic}/gu, "").trim().toLowerCase() === "catechisme";
 const NIVEAUX_MAT = ["TPS", "PS", "MS", "GS"];
 /**

@@ -144,7 +144,15 @@ function Groupe({ g, avecRang, releve, avecClasse }: { g: Synthese["groupes"][nu
             {m.enseignants && <div className="text-[10.5px] text-muted">{m.enseignants}</div>}
           </td>
           <Chiffres c={m.chiffre} avecRang={avecRang} releve={releve} vide={!!m.appreciationSeule} avecClasse={avecClasse} />
-          <td className="px-3 py-1.5 text-[12.5px]">{m.commentaire}</td>
+          <td className="px-3 py-1.5 text-[12.5px]">
+            {m.commentaire}
+            {m.appreciations?.map((x) => (
+              <span key={x.titre} className="mt-1 block">
+                <span className="block text-[10.5px] font-semibold uppercase tracking-wide text-gold">{x.titre}</span>
+                <span className="italic">{x.texte}</span>
+              </span>
+            ))}
+          </td>
         </tr>
       ))}
     </>

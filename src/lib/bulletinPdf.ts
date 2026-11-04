@@ -181,7 +181,7 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
           let x = cols.com + 6;
           l.split(" | ").forEach((morceau, j) => {
             if (j) {
-              texte("|", x + 3, top + 11 + i * 10, semi, 7.8, AMBRE);
+              { const yb = top + 11 + i * 10; for (const dx of [0, 0.35, 0.7]) texte("|", x + 3 + dx, yb, semi, 8.4, AMBRE); } // gras simulé (pas de police bold embarquée)
               x += largeur("|", semi, 7.8) + 6;
             }
             texte(morceau, x, top + 11 + i * 10, regular, 7.8);

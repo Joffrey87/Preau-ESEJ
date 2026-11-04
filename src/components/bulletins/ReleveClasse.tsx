@@ -608,7 +608,7 @@ export default function ReleveClasse({
                             {/* Relevé : les notes seules, séparées par « | » ambre (04/11/2026), sans moyenne. */}
                             <span className="inline-block max-w-[10rem] text-[12.5px] leading-snug">{t.map((x, i) => (
                               <Fragment key={i}>
-                                {i > 0 && <span className="mx-1 font-semibold text-gold/50">|</span>}
+                                {i > 0 && <span className="mx-1 font-black text-gold/50">|</span>}
                                 {x}
                               </Fragment>
                             ))}</span>

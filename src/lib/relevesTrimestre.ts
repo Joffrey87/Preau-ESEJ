@@ -13,6 +13,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   arrondi,
   estAppreciationSeule,
+  estCatechisme,
   matiereConcerne,
   niveauDe,
   nomEnseignant,
@@ -193,12 +194,14 @@ export function syntheseReleve(ctx: ContexteDocs, periode: Periode, eleve: Eleve
       nom: g.groupe.nom,
       chiffre: vide,
       matieres: g.matieres.map((m) => {
-        if (estAppreciationSeule(m.nom)) {
+        if (estAppreciationSeule(m.nom, ctx.classe.niveaux)) {
           const a = ctx.appreciations.find((x) => x.bulletin_id === doc?.id && x.matiere_id === m.id);
           return { nom: m.nom, enseignants: profs(m, o), chiffre: vide, commentaire: a?.texte?.trim() || null, appreciationSeule: true };
         }
         const { textes } = notesPeriode(ctx, eleve.id, m, periode);
-        return { nom: m.nom, enseignants: profs(m, o), chiffre: vide, commentaire: textes.join(" · ") || null };
+        // Catéchisme noté : les notes, puis l'appréciation du Directeur spirituel s'il y en a une.
+        const a = estCatechisme(m.nom) ? ctx.appreciations.find((x) => x.bulletin_id === doc?.id && x.matiere_id === m.id)?.texte?.trim() : null;
+        return { nom: m.nom, enseignants: profs(m, o), chiffre: vide, commentaire: [textes.join(" · "), a].filter(Boolean).join(" — ") || null };
       }),
     })),
     mention: null,
@@ -221,7 +224,7 @@ export function syntheseTrimestre(ctx: ContexteDocs, eleve: EleveBulletin, doc: 
   const gs = groupes.map((g) => {
     const matieres = g.matieres.map((m) => {
       // Catéchisme : appréciation seule, hors des moyennes.
-      if (estAppreciationSeule(m.nom))
+      if (estAppreciationSeule(m.nom, ctx.classe.niveaux))
         return { nom: m.nom, enseignants: profs(m, o), chiffre: vide, commentaire: app.get(m.id) ?? null, brut: null, appreciationSeule: true as const };
       const valeurs = ctx.periodes.flatMap((p) => notesPeriode(ctx, eleve.id, m, p).valeurs);
       const moy = moyenne(valeurs);

@@ -4,7 +4,7 @@ import ModificationsFamilles from "@/components/ModificationsFamilles";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { todayISO } from "@/lib/format";
-import { calculerClasse, nomEnseignant, trimestreEnLettres, type ContexteClasse, type Enseignant, type Matiere, type Bulletin, estAppreciationSeule } from "@/lib/bulletins";
+import { calculerClasse, nomEnseignant, trimestreEnLettres, type ContexteClasse, type Enseignant, type Matiere, type Bulletin, estCatechisme } from "@/lib/bulletins";
 import { chargerClasse, chargerReferentiel, periodeCourante, type Referentiel } from "@/lib/bulletinsDonnees";
 import Chargement from "@/components/Chargement";
 import ListeBulletins from "./ListeBulletins";
@@ -208,7 +208,7 @@ export default function Bulletins({
     const peutNoter = (m: Matiere) => directrice || estTitulaire || (!!enseignantId && m.enseignants.includes(enseignantId));
     // Catéchisme : appréciation du seul Directeur spirituel (la base applique la même règle : peut_apprecier).
     const peutSaisirNotes = (m: Matiere) => directrice || (!!enseignantId && m.enseignants.includes(enseignantId));
-    const peutApprecier = (m: Matiere) => (estAppreciationSeule(m.nom) ? !!matiereSeule : peutNoter(m));
+    const peutApprecier = (m: Matiere) => (estCatechisme(m.nom) ? !!matiereSeule : peutNoter(m));
     return {
       directrice,
       titulaire: estTitulaire,

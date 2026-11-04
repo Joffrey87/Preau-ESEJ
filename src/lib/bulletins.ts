@@ -346,8 +346,16 @@ export const trimestreEnLettres = (t: number) => `${["Premier", "Deuxième", "Tr
 export const titreDocument = (s: Pick<Synthese, "mode" | "periode">) =>
   s.mode === "releve" ? s.periode.libelle : s.mode === "trimestre" && s.periode.trimestre ? trimestreEnLettres(s.periode.trimestre) : titrePeriode(s.periode);
 
-/** Matière notée par une appréciation seule, sans note ni moyenne (Catéchisme). */
-export const estAppreciationSeule = (nom: string) => nom.normalize("NFD").replace(/\p{Diacritic}/gu, "").trim().toLowerCase() === "catechisme";
+/** Catéchisme : son appréciation reste réservée au Directeur spirituel. */
+export const estCatechisme = (nom: string) => nom.normalize("NFD").replace(/\p{Diacritic}/gu, "").trim().toLowerCase() === "catechisme";
+const NIVEAUX_MAT = ["TPS", "PS", "MS", "GS"];
+/**
+ * Matière notée par une appréciation seule, sans note ni moyenne : le Catéchisme dans une classe de maternelle seulement.
+ * 04/11/2026 : partout ailleurs (élémentaire, classes mixtes GS/CP), le Catéchisme est noté comme les autres matières,
+ * et garde en plus son appréciation (Directeur spirituel).
+ */
+export const estAppreciationSeule = (nom: string, niveauxClasse: string[] = []) =>
+  estCatechisme(nom) && niveauxClasse.length > 0 && niveauxClasse.every((n) => NIVEAUX_MAT.includes(n));
 
 /** Classe affichée pour un élève : sa section (« Classe : CE1 »), jamais le regroupement de classes (CE1 CE2 CM1). */
 export const classeEleve = (s: Pick<Synthese, "eleve"> | null | undefined) => (s?.eleve.niveau ? `Classe : ${s.eleve.niveau}` : "");

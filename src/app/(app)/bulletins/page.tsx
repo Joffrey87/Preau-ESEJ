@@ -17,7 +17,9 @@ export default async function BulletinsPage({
   // Profil affiché (vue du Webmestre comprise) : le Webmestre en vue Directrice voit exactement l'écran de la Directrice.
   const slug = roleByEmail(await emailVue(user?.email))?.slug;
   const directrice = slug === "directrice";
-  const { data: moi } = await supabase.from("enseignants").select("id").eq("user_id", user?.id ?? "").maybeSingle();
+  // Enseignant du compte : son compte nominatif, ou un compte lié (enseignants_comptes, ex. le Trésorier professeur d'Anglais).
+  const { data: monEnseignant } = await supabase.rpc("mon_enseignant");
+  const moi = monEnseignant ? { id: monEnseignant as string } : null;
   const initial = await searchParams;
   return <Bulletins directrice={directrice} matiereSeule={slug === "directeur-spirituel" ? "Catéchisme" : undefined} enseignantId={(moi?.id as string | undefined) ?? null} initial={initial} />;
 }

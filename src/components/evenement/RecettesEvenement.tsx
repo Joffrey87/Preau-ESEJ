@@ -14,6 +14,7 @@ import {
   type RecetteEvenement,
 } from "@/lib/evenement";
 import { useEnregistrer } from "./useEnregistrer";
+import { ActionsSuppressionRecette, BoutonIcone } from "./Suppression";
 
 const aujourdhui = () => new Date().toISOString().slice(0, 10);
 
@@ -23,12 +24,14 @@ export default function RecettesEvenement({
   operations,
   peutModifier,
   estTresorier,
+  demandesEnAttente = [],
 }: {
   evenementId: string;
   recettes: RecetteEvenement[];
   operations: OperationCandidate[];
   peutModifier: boolean;
   estTresorier: boolean;
+  demandesEnAttente?: string[];
 }) {
   const supabase = createClient();
   const { erreur, occupe, executer } = useEnregistrer();
@@ -36,6 +39,7 @@ export default function RecettesEvenement({
   const [montant, setMontant] = useState("");
   const [date, setDate] = useState(aujourdhui());
   const [libelle, setLibelle] = useState("");
+  const [edition, setEdition] = useState<{ id: string; mode: ModeRecette; montant: string; date: string; libelle: string } | null>(null);
   const [choix, setChoix] = useState<Record<string, string>>({});
   const opParId = new Map(operations.map((o) => [o.id, o]));
   const liees = new Set(recettes.map((r) => r.operation_id).filter(Boolean) as string[]);
@@ -50,6 +54,18 @@ export default function RecettesEvenement({
       setMontant("");
       setLibelle("");
     }
+  }
+  async function enregistrerEdition() {
+    if (!edition) return;
+    const m = nombre(edition.montant);
+    if (!m || m <= 0) return;
+    const ok = await executer(() =>
+      supabase
+        .from("evenement_recettes")
+        .update({ mode: edition.mode, montant: m, date: edition.date, libelle: edition.libelle.trim() || null })
+        .eq("id", edition.id),
+    );
+    if (ok) setEdition(null);
   }
   const lier = (id: string, op: string | null) =>
     executer(() => supabase.from("evenement_recettes").update({ operation_id: op }).eq("id", id));
@@ -91,9 +107,29 @@ export default function RecettesEvenement({
               {estTresorier && r.operation_id && (
                 <button className="text-xs text-accent hover:underline" disabled={occupe} onClick={() => lier(r.id, null)}>Délier</button>
               )}
-              {peutModifier && !r.operation_id && (
-                <button className="text-xs text-negative hover:underline" disabled={occupe}
-                  onClick={() => executer(() => supabase.from("evenement_recettes").delete().eq("id", r.id))}>Supprimer</button>
+              {peutModifier && (!r.operation_id || estTresorier) && (
+                <BoutonIcone
+                  icone="modifier"
+                  libelle="Modifier"
+                  titre="Modifier la recette"
+                  disabled={occupe}
+                  onClick={() => setEdition({ id: r.id, mode: r.mode, montant: String(r.montant).replace(".", ","), date: r.date, libelle: r.libelle ?? "" })}
+                />
+              )}
+              {peutModifier && <ActionsSuppressionRecette recette={r} estTresorier={estTresorier} demandeEnAttente={demandesEnAttente.includes(r.id)} />}
+              {edition?.id === r.id && (
+                <div className="flex w-full flex-wrap items-center gap-2 rounded-lg bg-background p-2">
+                  <select className={`${champ} w-auto`} value={edition.mode} onChange={(e) => setEdition({ ...edition, mode: e.target.value as ModeRecette })}>
+                    {MODES_RECETTE.map((m) => (
+                      <option key={m.v} value={m.v}>{m.l}</option>
+                    ))}
+                  </select>
+                  <input className={`${champ} w-28`} inputMode="decimal" aria-label="Montant" value={edition.montant} onChange={(e) => setEdition({ ...edition, montant: e.target.value })} />
+                  <input className={`${champ} w-40`} type="date" aria-label="Date" value={edition.date} onChange={(e) => setEdition({ ...edition, date: e.target.value })} />
+                  <input className={`${champ} min-w-0 flex-1`} placeholder="Libellé" value={edition.libelle} onChange={(e) => setEdition({ ...edition, libelle: e.target.value })} />
+                  <button className={bouton} disabled={occupe || !edition.montant} onClick={enregistrerEdition}>Enregistrer</button>
+                  <button type="button" className="text-sm text-muted hover:underline" onClick={() => setEdition(null)}>Annuler</button>
+                </div>
               )}
               {estTresorier && !r.operation_id && (
                 <div className="flex w-full items-center gap-2">

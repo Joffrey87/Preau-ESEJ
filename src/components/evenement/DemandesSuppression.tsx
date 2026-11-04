@@ -7,7 +7,7 @@ import { BUCKET_FACTURES } from "@/lib/evenement";
 
 export type DemandeSuppression = {
   id: string;
-  cible: "facture" | "evenement";
+  cible: "facture" | "evenement" | "recette";
   cible_id: string;
   libelle: string;
   operations: string[];
@@ -25,7 +25,7 @@ export default function DemandesSuppression({ demandes, lectureSeule = false }: 
   if (demandes.length === 0) return null;
 
   async function traiter(d: DemandeSuppression, accepter: boolean) {
-    const quoi = `${d.cible === "facture" ? "la dépense" : "l'événement"} « ${d.libelle} »`;
+    const quoi = `${d.cible === "facture" ? "la dépense" : d.cible === "recette" ? "la recette" : "l'événement"} « ${d.libelle} »`;
     const texte = accepter
       ? `Supprimer définitivement ${quoi}${d.cible === "evenement" ? " (avec ses dépenses et recettes)" : ""} ?\nLes opérations bancaires sont conservées ; seul le lien disparaît.`
       : `Refuser la demande de suppression de ${quoi} ?`;
@@ -52,7 +52,7 @@ export default function DemandesSuppression({ demandes, lectureSeule = false }: 
         {demandes.map((d) => (
           <li key={d.id} className="flex flex-wrap items-center justify-between gap-2">
             <span>
-              {d.demande_par_libelle ?? "?"} demande la suppression {d.cible === "facture" ? "de la dépense" : "de l'événement"} « {d.libelle} »
+              {d.demande_par_libelle ?? "?"} demande la suppression {d.cible === "facture" ? "de la dépense" : d.cible === "recette" ? "de la recette" : "de l'événement"} « {d.libelle} »
               {d.operations.length > 0 && " · liée à une opération bancaire (en ambre ci-dessous)"}
               {d.motif && ` · motif : ${d.motif}`}
             </span>

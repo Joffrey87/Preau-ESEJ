@@ -19,7 +19,7 @@ import {
   type ModePaiementFacture,
 } from "@/lib/evenement";
 import { useEnregistrer } from "./useEnregistrer";
-import { ActionsSuppressionFacture } from "./Suppression";
+import { ActionsSuppressionFacture, BoutonIcone } from "./Suppression";
 import { BlocRib, RibsAConfirmer, type RibAttente, type RibLu } from "./ImportRib";
 import FenetreFacturesDetectees, { NOUVEAU_FOURNISSEUR as NOUVEAU, type CarteFacture, type CommunFactures } from "./FenetreFacturesDetectees";
 
@@ -729,13 +729,13 @@ export default function FacturesFournisseurs({
                   </td>
                   <td className="space-x-3 whitespace-nowrap px-4 py-2 text-right">
                     {x.fichier && (
-                      <button type="button" onClick={() => ouvrir(x.fichier!)} className="text-accent hover:underline">
-                        Fichier
-                      </button>
+                      <BoutonIcone icone="facture" libelle="Facture" titre="Ouvrir la facture" onClick={() => ouvrir(x.fichier!)} />
                     )}
                     {peutModifier && (
-                      <button
-                        type="button"
+                      <BoutonIcone
+                        icone="modifier"
+                        libelle="Modifier"
+                        titre="Modifier la facture"
                         onClick={() => {
                           setEdition(x);
                           choisirFichier(null);
@@ -759,10 +759,7 @@ export default function FacturesFournisseurs({
                           setIbanEdition(false);
                           window.scrollTo({ top: 0, behavior: "smooth" });
                         }}
-                        className="text-accent hover:underline"
-                      >
-                        Modifier
-                      </button>
+                      />
                     )}
                     {peutModifier && domainesGerables.includes(x.domaine ?? "evenement") && !x.operation_id &&
                       (x.statut === "payee" ? (
@@ -839,7 +836,9 @@ export default function FacturesFournisseurs({
                         )}
                       </div>
                     )}
-                    {peutModifier && <ActionsSuppressionFacture facture={x} demandeEnAttente={demandesEnAttente?.includes(x.id)} />}
+                    {peutModifier && domainesGerables.includes(x.domaine ?? "evenement") && (
+                      <ActionsSuppressionFacture facture={x} estTresorier={estTresorier} demandeEnAttente={demandesEnAttente?.includes(x.id)} />
+                    )}
                   </td>
                 </tr>
               );

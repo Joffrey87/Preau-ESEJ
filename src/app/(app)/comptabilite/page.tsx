@@ -260,7 +260,7 @@ export default async function ComptabilitePage({
         lectureSeule={lectureSeule}
         demandesSuppression={Object.fromEntries(
           demandesSuppression.flatMap((d) =>
-            d.operations.map((o) => [o, `Demande de suppression (${d.demande_par_libelle ?? "Événementiel"}) : ${d.cible === "facture" ? "dépense" : "événement"} « ${d.libelle} »`]),
+            d.operations.map((o) => [o, `Demande de suppression (${d.demande_par_libelle ?? "Événementiel"}) : ${d.cible === "facture" ? "dépense" : d.cible === "recette" ? "recette" : "événement"} « ${d.libelle} »`]),
           ),
         )}
         factures={Object.fromEntries(((facturesRes.data ?? []) as { operation_id: string; numero: string }[]).map((f) => [f.operation_id, f.numero]))}

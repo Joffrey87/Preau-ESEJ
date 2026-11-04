@@ -261,7 +261,7 @@ export default function SaisieNotes({
           · coef {String(matiere.coef).replace(".", ",")}
         </span>
         </div>
-        {peutNoter && !nouvelle ? (
+        {peutNoter && !nouvelle && !droits.directrice ? (
           <button
             type="button"
             onClick={() => setNouvelle({ titre: `Évaluation ${evals.length + 1}`, date: todayISO() <= ctx.periode.fin ? todayISO() : ctx.periode.fin, coef: 1, bareme: 20, niveaux: niveauSeul && niveauxPossibles.includes(niveauSeul) ? [niveauSeul] : niveauxPossibles })}

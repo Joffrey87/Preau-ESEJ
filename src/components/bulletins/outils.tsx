@@ -73,6 +73,7 @@ export function CommutateurPret({ pret, publie = false, onChange, disabled = fal
   const option = (valeur: boolean, libelle: string, actif: string) => (
     <button
       type="button"
+      title={valeur ? "Prêt : la saisie est terminée, la Directrice peut valider (cliquer de nouveau pour revenir en cours)." : "En cours : la saisie n'est pas terminée, rien n'est encore proposé à la validation."}
       role="radio"
       aria-checked={pret === valeur}
       disabled={disabled}
@@ -87,6 +88,18 @@ export function CommutateurPret({ pret, publie = false, onChange, disabled = fal
     <div role="radiogroup" title={titre} className="inline-flex gap-0.5 rounded-lg bg-surface-2 p-0.5">
       {option(false, "En cours", "bg-gold-soft text-gold shadow-sm")}
       {option(true, "Prêt", "bg-positive text-white shadow-sm")}
+    </div>
+  );
+}
+
+/** Ensemble de boutons d'état d'une classe, avec son titre (le survol explique le circuit). */
+export function GroupeEtats({ titre, aide, children }: { titre: string; aide: string; children: React.ReactNode }) {
+  return (
+    <div className="ml-auto flex flex-wrap items-center gap-2">
+      <span title={aide} className="cursor-help text-[11.5px] font-semibold uppercase tracking-wide text-muted">
+        {titre} <span aria-hidden>ⓘ</span>
+      </span>
+      {children}
     </div>
   );
 }

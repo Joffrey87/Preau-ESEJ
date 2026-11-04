@@ -8,6 +8,7 @@ import { cookies } from "next/headers";
 import { COOKIE_PRENOM, ROLES_PRENOM_A_L_ACCES, roleByEmail } from "@/lib/roles";
 import { chargerTableauDeBord, type Ton } from "@/lib/tableauDeBord";
 import JaugeDons, { type DonsExercice } from "@/components/JaugeDons";
+import CarteConsoClaude from "@/components/CarteConsoClaude";
 
 // Tableau de bord : page d'accueil de chaque profil d'Administration. Les priorités du jour, puis une tuile par onglet
 // du profil avec ses chiffres essentiels (voir lib/tableauDeBord.ts).
@@ -45,6 +46,11 @@ export default async function Home() {
       icone: "chart",
       ton: "ambre",
     });
+  // Webmestre sur son propre profil (pas en vue d'un autre profil) : résumé des coûts Claude.
+  const consoClaude =
+    ac && email === user?.email
+      ? ((await supabase.rpc("claude_conso_stats")).data as { mois: { usd: number; eur: number }; annee: { usd: number; eur: number }; debut_annee: string } | null)
+      : null;
   const finances = tuiles.some((t) => t.href === "/comptabilite");
   const rechercheFonds = role?.slug === "recherche-fonds";
   const jauge = rechercheFonds
@@ -109,6 +115,14 @@ export default async function Home() {
           </div>
         )}
       </section>
+
+      {consoClaude && (
+        <CarteConsoClaude
+          mois={consoClaude.mois}
+          annee={consoClaude.annee}
+          anneeLabel={`${consoClaude.debut_annee.slice(0, 4)}-${Number(consoClaude.debut_annee.slice(0, 4)) + 1}`}
+        />
+      )}
 
       {/* Accès des familles (visible du Trésorier et des administrateurs seulement) */}
       <AccesFamilles />

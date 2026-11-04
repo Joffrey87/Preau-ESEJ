@@ -14,6 +14,8 @@ export default function Erreur({ error, reset }: { error: Error & { digest?: str
         Un incident passager est survenu (connexion interrompue ou mise à jour du site). Rechargez la page ; si le problème persiste,
         prévenez le webmestre{error.digest ? ` en indiquant le code ${error.digest}` : ""}.
       </p>
+      {error.digest && <p className="text-[11px] text-muted/70">Code : {error.digest}</p>}
+      {!error.digest && error.message && <p className="max-w-full break-words text-[11px] text-muted/70">Détail : {error.message}</p>}
       <div className="flex gap-3">
         <button
           type="button"

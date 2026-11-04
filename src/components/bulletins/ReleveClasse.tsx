@@ -471,18 +471,6 @@ export default function ReleveClasse({
           {boutonEvaluation}
         </div>
       )}
-      {/* Légende des codes courts (SPM…) : l'intitulé complet, repris seul sur le bulletin. */}
-      {!matiere && vue.matieres.some((m) => m.actif && intituleComplet(m.nom) !== m.nom) && (
-        <p className="text-center text-[11.5px] text-muted">
-          {vue.matieres
-            .filter((m) => m.actif && intituleComplet(m.nom) !== m.nom)
-            .map((m) => (
-              <span key={m.id} className="mx-2">
-                <abbr title={intituleComplet(m.nom)} className="font-semibold text-foreground no-underline">{m.nom}</abbr> : {intituleComplet(m.nom)}
-              </span>
-            ))}
-        </p>
-      )}
       {/* Tableau transposé : une ligne par matière (par ensemble : Français, Mathématiques…), une colonne par élève
           (par niveau). Un clic sur une matière ou une case ouvre la saisie ; un clic sur un élève, ses appréciations. */}
       <div ref={defilementRef} className={`mx-auto max-h-[calc(100vh-8rem)] w-fit max-w-full overflow-auto rounded-xl border border-border bg-surface ${matiere ? "hidden" : ""}`}>
@@ -499,7 +487,7 @@ export default function ReleveClasse({
               </tr>
             )}
             <tr className="text-[11px] text-muted">
-              <th className="sticky left-0 z-10 w-[4.25rem] max-w-[4.25rem] border-b border-border bg-surface px-1 py-2 text-left text-[10px] font-medium tracking-wide md:w-auto md:max-w-none md:min-w-40 md:px-3 md:text-[11px] md:uppercase">Matière</th>
+              <th className="sticky left-0 z-10 w-[5.5rem] max-w-[5.5rem] border-b border-border bg-surface px-1 py-2 text-left text-[10px] font-medium tracking-wide md:w-auto md:max-w-56 md:min-w-48 md:px-3 md:text-[11px] md:uppercase">Matière</th>
               {visibles.map((e) => {
                 const actif = eleveOuvert === e.id;
                 return (
@@ -551,7 +539,7 @@ export default function ReleveClasse({
                       <td className="sticky left-0 z-10 bg-surface p-0">
                         {seule || !droits.peutSaisirNotes(m) ? (
                           <div className="break-words px-1 py-1.5 text-[11px] leading-tight md:px-3 md:py-2 md:text-[12.5px]" title={seule ? `${m.nom} : une appréciation, sans note` : intituleComplet(m.nom)}>
-                            {m.nom}
+                            {intituleComplet(m.nom)}
                             {seule && <span className="ml-1.5 hidden text-[10px] text-muted md:inline">appréciation</span>}
                           </div>
                         ) : (
@@ -561,7 +549,7 @@ export default function ReleveClasse({
                             className={`flex w-full items-baseline gap-1.5 break-words px-1 py-1.5 text-left text-[11px] leading-tight hover:bg-accent-soft/60 md:px-3 md:py-2 md:text-[12.5px] ${matiereOuverte === m.id ? "bg-accent text-accent-fg" : ""}`}
                             title={`Saisir les notes · ${intituleComplet(m.nom)}${m.niveaux.length ? ` (${m.niveaux.join(", ")})` : ""}`}
                           >
-                            {m.nom}
+                            {intituleComplet(m.nom)}
                             {nb > 0 && <span className="hidden text-[10px] opacity-70 md:inline">{nb} éval.</span>}
                           </button>
                         )}

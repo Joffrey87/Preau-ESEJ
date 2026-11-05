@@ -6,7 +6,7 @@ import { createClient } from "@/lib/supabase/client";
 import { formatDate, formatEuros } from "@/lib/format";
 import { bouton, champ, nombre, recettes, type EvenementCaisse, type MembreEvenement } from "@/lib/evenement";
 import { useEnregistrer } from "./useEnregistrer";
-import { ActionsSuppressionEvenement, BoutonHistorique } from "./Suppression";
+import { ActionsSuppressionEvenement, BoutonHistorique, BoutonIcone } from "./Suppression";
 
 const vide = { nom: "", date: "", responsable_id: "", caisse_avant: "", caisse_apres: "" };
 
@@ -132,8 +132,10 @@ export default function ListeEvenements({
                   <td className="px-4 py-2 text-right font-semibold">{r == null ? "—" : formatEuros(r)}</td>
                   <td className="space-x-3 whitespace-nowrap px-4 py-2 text-right">
                     {peutModifier && (
-                      <button
-                        type="button"
+                      <BoutonIcone
+                        icone="modifier"
+                        seulIcone
+                        titre="Modifier l'événement"
                         onClick={() => {
                           setEdition(e.id);
                           setEv({
@@ -145,10 +147,7 @@ export default function ListeEvenements({
                           });
                           window.scrollTo({ top: 0, behavior: "smooth" });
                         }}
-                        className="text-accent hover:underline"
-                      >
-                        Modifier
-                      </button>
+                      />
                     )}
                     {peutModifier && (
                       <ActionsSuppressionEvenement evenement={e} peutSupprimer={peutSupprimer} demandeEnAttente={demandesEnAttente.includes(e.id)} />

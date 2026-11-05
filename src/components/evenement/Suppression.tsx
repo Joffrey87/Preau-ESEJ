@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { FileText, History, Pencil, Send, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@/lib/supabase/client";
 import { formatDate, formatEuros } from "@/lib/format";
@@ -15,7 +16,7 @@ async function effacerFichiers(supabase: Client, fichiers: unknown) {
 }
 
 /** Demande de suppression transmise au Trésorier par la messagerie interne. */
-async function demander(supabase: Client, cible: "facture" | "evenement", id: string, quoi: string, lie: boolean) {
+async function demander(supabase: Client, cible: "facture" | "evenement" | "recette", id: string, quoi: string, lie: boolean) {
   const ok = window.confirm(
     `${lie ? `${quoi} est liée à une opération bancaire : seul le Trésorier peut la supprimer.\n\n` : ""}` +
       `Transmettre une demande de suppression de ${quoi.toLowerCase()} au Trésorier ?\n` +
@@ -32,18 +33,58 @@ async function demander(supabase: Client, cible: "facture" | "evenement", id: st
 
 const lien = "hover:underline";
 
+type Ton = "accent" | "danger" | "ambre" | "neutre";
+const TONS: Record<Ton, string> = { accent: "text-accent", danger: "text-negative", ambre: "text-amber-700", neutre: "text-muted" };
+const ICONES = { modifier: Pencil, supprimer: Trash2, demander: Send, historique: History, facture: FileText };
+
+/** Bouton d'action à icône claire (crayon, corbeille, horloge…). `seulIcone` : icône seule + info-bulle / aria-label (à la place du libellé). */
+export function BoutonIcone({
+  icone,
+  libelle,
+  titre,
+  ton = "accent",
+  onClick,
+  disabled,
+  seulIcone = false,
+}: {
+  icone: keyof typeof ICONES;
+  libelle?: ReactNode;
+  titre?: string;
+  ton?: Ton;
+  onClick: () => void;
+  disabled?: boolean;
+  seulIcone?: boolean;
+}) {
+  const I = ICONES[icone];
+  const t = titre ?? (typeof libelle === "string" ? libelle : undefined);
+  return (
+    <button type="button" title={t} aria-label={t} disabled={disabled} onClick={onClick} className={`inline-flex items-center gap-1 align-middle ${TONS[ton]} ${lien} disabled:opacity-50`}>
+      <I aria-hidden className="h-3.5 w-3.5 shrink-0" />
+      {!seulIcone && libelle != null && libelle !== "" ? <span>{libelle}</span> : null}
+    </button>
+  );
+}
+
 /** Boutons « Supprimer » / « Demander la suppression » et « Historique » d'une dépense Événement. */
-export function ActionsSuppressionFacture({ facture, demandeEnAttente }: { facture: FactureFournisseur; demandeEnAttente?: boolean }) {
+export function ActionsSuppressionFacture({
+  facture,
+  demandeEnAttente,
+  estTresorier = false,
+}: {
+  facture: FactureFournisseur;
+  demandeEnAttente?: boolean;
+  estTresorier?: boolean;
+}) {
   const supabase = createClient();
   const router = useRouter();
   const [occupe, setOccupe] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
-  if ((facture.domaine ?? "evenement") !== "evenement") return null;
-  const lie = !!facture.operation_id || !!facture.caisse_mouvement_id;
+  const evenementiel = (facture.domaine ?? "evenement") === "evenement";
+  const lie = !estTresorier && (!!facture.operation_id || !!facture.caisse_mouvement_id);
   const quoi = `La dépense « ${facture.libelle || facture.numero || "sans libellé"} » (${formatEuros(Number(facture.montant))})`;
 
   async function supprimer() {
-    if (!window.confirm(`Supprimer définitivement ${quoi.charAt(0).toLowerCase() + quoi.slice(1)} ?${facture.fichier ? "\nLe fichier joint sera aussi effacé." : ""}\n\nVous pourrez annuler depuis l'Historique (sans le fichier).`)) return;
+    if (!window.confirm(`Supprimer définitivement ${quoi.charAt(0).toLowerCase() + quoi.slice(1)} ?${facture.fichier ? "\nLe fichier joint sera aussi effacé." : ""}${facture.operation_id ? "\nL'opération bancaire liée est conservée (seul le lien disparaît)." : ""}${evenementiel ? "\n\nVous pourrez annuler depuis l'Historique (sans le fichier)." : ""}`)) return;
     setOccupe(true);
     setErreur(null);
     const { data, error } = await supabase.from("factures_fournisseurs").delete().eq("id", facture.id).select("id");
@@ -72,16 +113,65 @@ export function ActionsSuppressionFacture({ facture, demandeEnAttente }: { factu
           Suppression demandée
         </span>
       ) : lie ? (
-        <button type="button" disabled={occupe} onClick={demande} className={`text-amber-700 ${lien}`}>
-          Demander la suppression
-        </button>
+        <BoutonIcone icone="demander" ton="ambre" libelle="Demander la suppression" titre="Liée à une opération bancaire ou de caisse : demander la suppression au Trésorier" disabled={occupe} onClick={demande} />
       ) : (
-        <button type="button" disabled={occupe} onClick={supprimer} className={`text-negative ${lien}`}>
-          Supprimer
-        </button>
+        <BoutonIcone icone="supprimer" ton="danger" seulIcone titre="Supprimer la dépense" disabled={occupe} onClick={supprimer} />
       )}
-      <BoutonHistorique lignes={[facture.id]} />
+      {evenementiel && <BoutonHistorique lignes={[facture.id]} />}
       {erreur && <span className="block text-left text-xs text-negative">{erreur}</span>}
+    </>
+  );
+}
+
+/** Boutons « Supprimer » / « Demander la suppression » et « Historique » d'une recette d'événement. */
+export function ActionsSuppressionRecette({
+  recette,
+  estTresorier,
+  demandeEnAttente,
+}: {
+  recette: { id: string; libelle: string | null; mode: string; montant: number; operation_id: string | null };
+  estTresorier: boolean;
+  demandeEnAttente?: boolean;
+}) {
+  const supabase = createClient();
+  const router = useRouter();
+  const [occupe, setOccupe] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
+  const lie = !estTresorier && !!recette.operation_id;
+  const quoi = `La recette « ${recette.libelle || recette.mode} » (${formatEuros(Number(recette.montant))})`;
+
+  async function supprimer() {
+    if (!window.confirm(`Supprimer définitivement ${quoi.charAt(0).toLowerCase() + quoi.slice(1)} ?${recette.operation_id ? "\nL'opération bancaire liée est conservée (seul le lien disparaît)." : ""}\n\nVous pourrez annuler depuis l'Historique.`)) return;
+    setOccupe(true);
+    setErreur(null);
+    const { data, error } = await supabase.from("evenement_recettes").delete().eq("id", recette.id).select("id");
+    setOccupe(false);
+    if (error || !data?.length) {
+      setErreur(error?.message ?? "Suppression refusée.");
+      return;
+    }
+    router.refresh();
+  }
+
+  async function demande() {
+    setOccupe(true);
+    const r = await demander(supabase, "recette", recette.id, quoi, true);
+    setOccupe(false);
+    if (r) setErreur(r);
+    else if (r === "") router.refresh();
+  }
+
+  return (
+    <>
+      {demandeEnAttente ? (
+        <span className="text-xs text-amber-700">Suppression demandée</span>
+      ) : lie ? (
+        <BoutonIcone icone="demander" ton="ambre" libelle="Demander la suppression" titre="Validée en banque : demander la suppression au Trésorier" disabled={occupe} onClick={demande} />
+      ) : (
+        <BoutonIcone icone="supprimer" ton="danger" seulIcone titre="Supprimer la recette" disabled={occupe} onClick={supprimer} />
+      )}
+      <BoutonHistorique lignes={[recette.id]} />
+      {erreur && <span className="block w-full text-left text-xs text-negative">{erreur}</span>}
     </>
   );
 }
@@ -159,13 +249,9 @@ export function ActionsSuppressionEvenement({
       {demandeEnAttente ? (
         <span className="text-xs text-amber-700">Suppression demandée</span>
       ) : peutSupprimer ? (
-        <button type="button" disabled={occupe} onClick={supprimer} className={`text-negative ${lien}`}>
-          Supprimer
-        </button>
+        <BoutonIcone icone="supprimer" ton="danger" seulIcone titre="Supprimer l'événement entier" disabled={occupe} onClick={supprimer} />
       ) : (
-        <button type="button" disabled={occupe} onClick={demande} className={`text-amber-700 ${lien}`}>
-          Demander la suppression
-        </button>
+        <BoutonIcone icone="demander" ton="ambre" libelle="Demander la suppression" titre="Seules les responsables suppriment un événement : demander la suppression" disabled={occupe} onClick={demande} />
       )}
       <BoutonHistorique lignes={[evenement.id]} evenementId={evenement.id} />
       {erreur && <span className="block text-left text-xs text-negative">{erreur}</span>}
@@ -227,9 +313,7 @@ export function BoutonHistorique({ lignes, evenementId, libelle = "Historique" }
   const [ouvert, setOuvert] = useState(false);
   return (
     <>
-      <button type="button" onClick={() => setOuvert(true)} className={`text-muted ${lien}`}>
-        {libelle}
-      </button>
+      <BoutonIcone icone="historique" ton="neutre" seulIcone libelle={libelle} titre={typeof libelle === "string" ? libelle : "Historique des actions (et annulation)"} onClick={() => setOuvert(true)} />
       {ouvert && <Historique lignes={lignes} evenementId={evenementId} fermer={() => setOuvert(false)} />}
     </>
   );

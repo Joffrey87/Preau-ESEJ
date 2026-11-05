@@ -506,6 +506,9 @@ export default function ListeOperations({
     return motsRecherche.every((mot) => {
       const m = montantDe(mot);
       if (m != null && ecritures.some((e) => Math.abs(Number(e.montant) - m) < 0.005)) return true;
+      // Montant partiel : « 315 » trouve 315,34 (le chiffre se lit dans le montant écrit à la française).
+      const chiffres = mot.replace(/€|euros?$/, "").replace(/\./g, ",");
+      if (/^\d+,?\d*$/.test(chiffres) && ecritures.some((e) => Number(e.montant).toFixed(2).replace(".", ",").includes(chiffres))) return true;
       return texte.includes(mot);
     });
   };

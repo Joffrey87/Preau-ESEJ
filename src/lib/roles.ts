@@ -65,6 +65,8 @@ export const PAGES_RESERVEES: { prefixe: string; roles: string[] }[] = [
   // Comptabilité : le Président la consulte seulement (pas d'import de relevé ni de règles de correspondance).
   // Dépôt en banque : Trésorier et Président (le lien avec la comptabilité est confirmé par le Trésorier).
   { prefixe: "/cheques", roles: ["tresorier", "president"] },
+  // Situation financière : Président et Trésorier seulement.
+  { prefixe: "/comptabilite/situation", roles: ["president", "tresorier"] },
   { prefixe: "/comptabilite/import", roles: ["tresorier", "administrateur"] },
   { prefixe: "/comptabilite/correspondances", roles: ["tresorier", "administrateur"] },
 ];

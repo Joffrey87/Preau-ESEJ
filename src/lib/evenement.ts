@@ -37,11 +37,12 @@ export type ContactEvenement = {
   bic?: string | null;
 };
 
-export type StatutFacture = "pas_importee" | "recue_a_payer" | "payee";
+export type StatutFacture = "pas_importee" | "recue_a_payer" | "payee" | "mise_de_cote";
 export const STATUTS_FACTURE: { v: StatutFacture; l: string; cls: string }[] = [
   { v: "pas_importee", l: "À payer", cls: "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300" },
   { v: "recue_a_payer", l: "À payer", cls: "bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300" },
   { v: "payee", l: "Payée", cls: "bg-positive/10 text-positive" },
+  { v: "mise_de_cote", l: "Mise de côté", cls: "bg-surface-2 text-muted" },
 ];
 export const libelleStatut = (s: string) => STATUTS_FACTURE.find((x) => x.v === s);
 

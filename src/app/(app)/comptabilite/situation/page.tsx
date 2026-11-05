@@ -218,7 +218,7 @@ export default async function SituationPage() {
             </tr></thead>
             <tbody>
               {factures.map((f) => (
-                <tr key={f.id} className={`border-t border-border ${f.ambre ? "text-amber-600 dark:text-amber-400" : "text-fg dark:text-white"}`}>
+                <tr key={f.id} className={`border-t border-border ${f.ambre ? "text-amber-600 dark:text-amber-400" : "text-foreground dark:text-white"}`}>
                   <td className="px-3 py-1.5">{f.date ? formatDate(f.date) : "—"}</td>
                   <td className="px-3 py-1.5">{f.qui}</td>
                   <td className="px-3 py-1.5">{f.objet}</td>

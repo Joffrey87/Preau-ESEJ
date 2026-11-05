@@ -356,7 +356,7 @@ export const titreDocument = (s: Pick<Synthese, "mode" | "periode">) =>
   s.mode === "releve" ? s.periode.libelle : s.mode === "trimestre" && s.periode.trimestre ? trimestreEnLettres(s.periode.trimestre) : titrePeriode(s.periode);
 
 /** Catéchisme : son appréciation reste réservée au Directeur spirituel. */
-/** Intitulés complets des matières à code court (04/11/2026) : le code dans les tableaux, l'intitulé sur le bulletin. */
+/** Intitulés complets des matières à code court : affichés partout (relevé, bulletin), le code reste en base. */
 export const INTITULES: Record<string, string> = { SPM: "Systèmes de poids et mesures" };
 export const intituleComplet = (nom: string) => INTITULES[nom.trim()] ?? nom;
 export const estCatechisme = (nom: string) => nom.normalize("NFD").replace(/\p{Diacritic}/gu, "").trim().toLowerCase() === "catechisme";

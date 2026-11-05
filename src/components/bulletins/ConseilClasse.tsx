@@ -2,7 +2,7 @@
 
 import { Fragment, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { MENTIONS, mentionLabel, nomEleve, note20, rangTexte, type Bulletin, type Chiffre, type ContexteClasse, type Mention, type ResultatEleve } from "@/lib/bulletins";
+import { calculerClasse, MENTIONS, mentionLabel, nomEleve, note20, rangTexte, type Bulletin, type Chiffre, type ContexteClasse, type Mention, type ResultatEleve } from "@/lib/bulletins";
 import type { Droits } from "./Bulletins";
 import { ChampTexte } from "./FicheBulletin";
 import { PastilleStatut } from "./outils";
@@ -44,15 +44,22 @@ export default function ConseilClasse({
         .filter((x) => x.ms.length),
     [ctx],
   );
+  // Classe à plusieurs niveaux : toujours regroupée par niveau, moyennes et rangs calculés par niveau
+  // (indépendamment du réglage rang_par_niveau, qui ne change que le bulletin).
+  const multi = ctx.classe.niveaux.length > 1;
+  const res = useMemo(
+    () => (multi && !ctx.classe.rang_par_niveau ? calculerClasse({ ...ctx, classe: { ...ctx.classe, rang_par_niveau: true } }) : resultats),
+    [multi, ctx, resultats],
+  );
   const niveaux = useMemo(() => {
     const parNiveau = new Map<string, ResultatEleve[]>();
-    for (const r of [...resultats].sort((a, b) => nomEleve(a.eleve).localeCompare(nomEleve(b.eleve), "fr"))) {
-      const k = ctx.classe.rang_par_niveau ? (r.niveau ?? "—") : "Classe";
+    for (const r of [...res].sort((a, b) => nomEleve(a.eleve).localeCompare(nomEleve(b.eleve), "fr"))) {
+      const k = multi ? (r.niveau ?? "—") : "Classe";
       parNiveau.set(k, [...(parNiveau.get(k) ?? []), r]);
     }
     const ordre = ctx.classe.niveaux;
     return [...parNiveau].sort((a, b) => ordre.indexOf(a[0]) - ordre.indexOf(b[0]));
-  }, [resultats, ctx.classe]);
+  }, [res, multi, ctx.classe.niveaux]);
   const nbColonnes = 1 + colonnes.reduce((n, c) => n + c.ms.length + 1, 0) + 4;
 
   const chiffreMatiere = (r: ResultatEleve, id: string) => r.groupes.flatMap((g) => g.matieres).find((m) => m.matiere.id === id)?.chiffre ?? null;
@@ -119,10 +126,11 @@ export default function ConseilClasse({
           <tbody>
             {niveaux.map(([niveau, lot]) => (
               <Fragment key={niveau}>
-                {ctx.classe.rang_par_niveau && ctx.classe.niveaux.length > 1 && (
+                {multi && (
                   <tr>
-                    <td colSpan={nbColonnes} className="sticky left-0 border-t border-border bg-surface-2 px-3 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted">
-                      {niveau} · {lot.length} élève{lot.length > 1 ? "s" : ""}
+                    {/* Même trait doré et même titre que l'en-tête de groupe du relevé de classe. */}
+                    <td colSpan={nbColonnes} className="sticky left-0 border-t-2 border-gold/50 bg-gold-soft/50 px-3 py-1 text-[11px] font-bold text-gold">
+                      {niveau === "—" ? "Niveau non renseigné" : niveau} · {lot.length} élève(s)
                     </td>
                   </tr>
                 )}
@@ -212,7 +220,7 @@ export default function ConseilClasse({
                   );
                 })}
                 <tr className="border-t border-border bg-surface-2/60 text-[11.5px] text-muted">
-                  <td className="sticky left-0 z-10 bg-surface-2 px-3 py-1 font-medium">Moyenne {ctx.classe.rang_par_niveau && ctx.classe.niveaux.length > 1 ? `des ${niveau}` : "de la classe"}</td>
+                  <td className="sticky left-0 z-10 bg-surface-2 px-3 py-1 font-medium">Moyenne {multi ? `des ${niveau}` : "de la classe"}</td>
                   {colonnes.map(({ g, ms }) => (
                     <Fragment key={g.id}>
                       {ms.map((m) => (

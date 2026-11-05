@@ -37,7 +37,7 @@ type Ton = "accent" | "danger" | "ambre" | "neutre";
 const TONS: Record<Ton, string> = { accent: "text-accent", danger: "text-negative", ambre: "text-amber-700", neutre: "text-muted" };
 const ICONES = { modifier: Pencil, supprimer: Trash2, demander: Send, historique: History, facture: FileText };
 
-/** Bouton d'action à icône claire (crayon, corbeille, horloge…) avec libellé court, info-bulle et aria-label. */
+/** Bouton d'action à icône claire (crayon, corbeille, horloge…). `seulIcone` : icône seule + info-bulle / aria-label (à la place du libellé). */
 export function BoutonIcone({
   icone,
   libelle,
@@ -45,20 +45,22 @@ export function BoutonIcone({
   ton = "accent",
   onClick,
   disabled,
+  seulIcone = false,
 }: {
   icone: keyof typeof ICONES;
-  libelle: ReactNode;
+  libelle?: ReactNode;
   titre?: string;
   ton?: Ton;
   onClick: () => void;
   disabled?: boolean;
+  seulIcone?: boolean;
 }) {
   const I = ICONES[icone];
   const t = titre ?? (typeof libelle === "string" ? libelle : undefined);
   return (
     <button type="button" title={t} aria-label={t} disabled={disabled} onClick={onClick} className={`inline-flex items-center gap-1 align-middle ${TONS[ton]} ${lien} disabled:opacity-50`}>
       <I aria-hidden className="h-3.5 w-3.5 shrink-0" />
-      <span>{libelle}</span>
+      {!seulIcone && libelle != null && libelle !== "" ? <span>{libelle}</span> : null}
     </button>
   );
 }
@@ -113,7 +115,7 @@ export function ActionsSuppressionFacture({
       ) : lie ? (
         <BoutonIcone icone="demander" ton="ambre" libelle="Demander la suppression" titre="Liée à une opération bancaire ou de caisse : demander la suppression au Trésorier" disabled={occupe} onClick={demande} />
       ) : (
-        <BoutonIcone icone="supprimer" ton="danger" libelle="Supprimer" titre="Supprimer la dépense" disabled={occupe} onClick={supprimer} />
+        <BoutonIcone icone="supprimer" ton="danger" seulIcone titre="Supprimer la dépense" disabled={occupe} onClick={supprimer} />
       )}
       {evenementiel && <BoutonHistorique lignes={[facture.id]} />}
       {erreur && <span className="block text-left text-xs text-negative">{erreur}</span>}
@@ -166,7 +168,7 @@ export function ActionsSuppressionRecette({
       ) : lie ? (
         <BoutonIcone icone="demander" ton="ambre" libelle="Demander la suppression" titre="Validée en banque : demander la suppression au Trésorier" disabled={occupe} onClick={demande} />
       ) : (
-        <BoutonIcone icone="supprimer" ton="danger" libelle="Supprimer" titre="Supprimer la recette" disabled={occupe} onClick={supprimer} />
+        <BoutonIcone icone="supprimer" ton="danger" seulIcone titre="Supprimer la recette" disabled={occupe} onClick={supprimer} />
       )}
       <BoutonHistorique lignes={[recette.id]} />
       {erreur && <span className="block w-full text-left text-xs text-negative">{erreur}</span>}
@@ -247,7 +249,7 @@ export function ActionsSuppressionEvenement({
       {demandeEnAttente ? (
         <span className="text-xs text-amber-700">Suppression demandée</span>
       ) : peutSupprimer ? (
-        <BoutonIcone icone="supprimer" ton="danger" libelle="Supprimer" titre="Supprimer l'événement entier" disabled={occupe} onClick={supprimer} />
+        <BoutonIcone icone="supprimer" ton="danger" seulIcone titre="Supprimer l'événement entier" disabled={occupe} onClick={supprimer} />
       ) : (
         <BoutonIcone icone="demander" ton="ambre" libelle="Demander la suppression" titre="Seules les responsables suppriment un événement : demander la suppression" disabled={occupe} onClick={demande} />
       )}
@@ -311,7 +313,7 @@ export function BoutonHistorique({ lignes, evenementId, libelle = "Historique" }
   const [ouvert, setOuvert] = useState(false);
   return (
     <>
-      <BoutonIcone icone="historique" ton="neutre" libelle={libelle} titre="Historique des actions (et annulation)" onClick={() => setOuvert(true)} />
+      <BoutonIcone icone="historique" ton="neutre" seulIcone libelle={libelle} titre={typeof libelle === "string" ? libelle : "Historique des actions (et annulation)"} onClick={() => setOuvert(true)} />
       {ouvert && <Historique lignes={lignes} evenementId={evenementId} fermer={() => setOuvert(false)} />}
     </>
   );

@@ -734,7 +734,7 @@ export default function FacturesFournisseurs({
                     {peutModifier && (
                       <BoutonIcone
                         icone="modifier"
-                        libelle="Modifier"
+                        seulIcone
                         titre="Modifier la facture"
                         onClick={() => {
                           setEdition(x);

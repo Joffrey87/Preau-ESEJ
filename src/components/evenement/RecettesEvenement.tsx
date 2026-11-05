@@ -110,7 +110,7 @@ export default function RecettesEvenement({
               {peutModifier && (!r.operation_id || estTresorier) && (
                 <BoutonIcone
                   icone="modifier"
-                  libelle="Modifier"
+                  seulIcone
                   titre="Modifier la recette"
                   disabled={occupe}
                   onClick={() => setEdition({ id: r.id, mode: r.mode, montant: String(r.montant).replace(".", ","), date: r.date, libelle: r.libelle ?? "" })}

@@ -134,7 +134,7 @@ export default function ListeEvenements({
                     {peutModifier && (
                       <BoutonIcone
                         icone="modifier"
-                        libelle="Modifier"
+                        seulIcone
                         titre="Modifier l'événement"
                         onClick={() => {
                           setEdition(e.id);

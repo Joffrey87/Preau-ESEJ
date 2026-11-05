@@ -401,8 +401,8 @@ export default function GestionVentesDiverses({
                           </td>
                           <td className="px-4 py-2 text-right tabular-nums font-medium">{t.nb}</td>
                           <td className="px-4 py-2 text-right tabular-nums font-medium">{formatEuros(t.attendu)}</td>
-                          <td className="px-4 py-2 text-right tabular-nums font-medium text-positive">{formatEuros(t.paye)}</td>
-                          <td className="px-4 py-2 text-right tabular-nums font-medium">{formatEuros(t.attendu - t.paye)}</td>
+                          <td className="px-4 py-2 text-right tabular-nums font-medium">{formatEuros(t.paye)}</td>
+                          <td className={`px-4 py-2 text-right tabular-nums font-medium ${t.attendu - t.paye > 0.005 ? "text-positive" : ""}`}>{formatEuros(t.attendu - t.paye)}</td>
                         </tr>
                         {ouvert &&
                           t.payeurs.map((g) => (
@@ -428,8 +428,8 @@ export default function GestionVentesDiverses({
                               </td>
                               <td className="px-4 py-1.5 text-right tabular-nums text-muted">{g.nb}</td>
                               <td className="px-4 py-1.5 text-right tabular-nums">{formatEuros(g.attendu)}</td>
-                              <td className="px-4 py-1.5 text-right tabular-nums text-positive">{formatEuros(g.paye)}</td>
-                              <td className="px-4 py-1.5 text-right tabular-nums">{formatEuros(g.attendu - g.paye)}</td>
+                              <td className="px-4 py-1.5 text-right tabular-nums">{formatEuros(g.paye)}</td>
+                              <td className={`px-4 py-1.5 text-right tabular-nums ${g.attendu - g.paye > 0.005 ? "text-positive" : ""}`}>{formatEuros(g.attendu - g.paye)}</td>
                             </tr>
                           ))}
                       </Fragment>

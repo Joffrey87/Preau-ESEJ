@@ -43,6 +43,7 @@ export const NAV: NavSection[] = [
     title: "Comptabilité",
     items: [
       { href: "/comptabilite", label: "Comptabilité", icon: "ledger", ready: true },
+      { href: "/comptabilite/situation", label: "Situation", icon: "chart", ready: true, roles: ["president", "tresorier"] },
       { href: "/budget", label: "Budget", icon: "chart", ready: true },
       { href: "/scolarite", label: "Frais de scolarité", icon: "graduation", ready: true },
       { href: "/ventes-diverses", label: "Ventes diverses", icon: "invoice", ready: true, roles: ["tresorier", "directrice", "president"] },

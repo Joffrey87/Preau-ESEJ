@@ -472,7 +472,8 @@ export default function ListeOperations({
   // (familles de l'onglet Frais de scolarité, donateur du don relié) ; un mot
   // en forme de montant vise aussi le montant exact de la ligne ou d'une
   // sous-écriture.
-  const motsRecherche = normaliser(recherche).split(/\s+/).filter(Boolean);
+  // Un « € » isolé (« 315,34 € ») n'est pas un mot à chercher : il accompagne le montant.
+  const motsRecherche = normaliser(recherche).split(/\s+/).filter((m) => m && !/^(€|euros?)$/.test(m));
   const rattachementsDe = (o: OperationRow): string[] => {
     const textes = (affectationsDe.get(o.id) ?? []).flatMap((a) => [familleDe.get(a.inscription_id), a.notes]);
     // Seul un lien enregistré compte : un don « probable » (même montant à

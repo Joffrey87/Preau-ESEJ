@@ -604,12 +604,13 @@ export default function ReleveClasse({
                               setMatiereOuverte(m.id);
                             }}
                             title={droit ? `${t.length ? `${t.join(" · ")} — ` : ""}Détail des notes, moyenne et appréciation · ${m.nom} · ${nomEleve(e)}` : undefined}
-                            className={`group relative h-9 px-0.5 py-1 align-middle ${t.length > 3 ? "!text-left" : "text-center"} tabular-nums md:px-1.5 ${bord} ${droit ? "cursor-pointer hover:bg-accent-soft/50" : concerne ? "" : "bg-surface-2/50"}`}
+                            className={`group relative min-h-9 px-0.5 py-1 align-middle ${t.length > 3 ? "!text-left" : "text-center"} tabular-nums md:px-1.5 ${bord} ${droit ? "cursor-pointer hover:bg-accent-soft/50" : concerne ? "" : "bg-surface-2/50"}`}
                           >
-                            {/* Relevé : les notes seules, séparées par « · » or, sans moyenne ; ≤ 3 notes : une ligne centrée ; > 3 : retour à la ligne, aligné à gauche, centrées verticalement. */}
-                            <span className={`inline-block align-middle text-[12.5px] leading-snug ${t.length > 3 ? "max-w-[12rem] whitespace-normal text-left" : "whitespace-nowrap"}`}>{t.map((x, i) => (
+                            {/* Relevé (écran seulement) : notes seules séparées par « · » or ; retour à la ligne après chaque groupe de 3 (tous niveaux / matières) ; PDF/bulletins inchangés. */}
+                            <span className={`inline-block align-middle text-[12.5px] leading-snug ${t.length > 3 ? "text-left" : "whitespace-nowrap"}`}>{t.map((x, i) => (
                               <Fragment key={i}>
-                                {i > 0 && <span className="mx-1 text-gold">·</span>}
+                                {i > 0 && i % 3 === 0 && <br />}
+                                {i > 0 && i % 3 !== 0 && <span className="mx-1 text-gold">·</span>}
                                 {x}
                               </Fragment>
                             ))}</span>

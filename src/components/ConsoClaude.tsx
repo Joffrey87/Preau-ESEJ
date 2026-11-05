@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { ROLES } from "@/lib/roles";
+import BarreCreditsNetlify from "@/components/BarreCreditsNetlify";
 
 // Paramètres (Webmestre seulement) : crédit Claude consommé par les lectures automatiques de Préau.
 // Les données viennent de la fonction claude_conso_stats (refusée en base à tout autre compte).
@@ -132,8 +133,9 @@ export default function ConsoClaude() {
             </div>
           )}
 
-          <div className="rounded-xl border border-border bg-surface p-4">
+          <div className="space-y-3 rounded-xl border border-border bg-surface p-4">
             <BarreCredit consomme={nb(s.total.eur)} />
+            <BarreCreditsNetlify />
           </div>
 
           <div className="overflow-x-auto rounded-xl border border-border bg-surface">

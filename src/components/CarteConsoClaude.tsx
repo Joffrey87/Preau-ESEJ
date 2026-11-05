@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Icon from "@/components/Icon";
 import ConsoClaude, { BarreCredit, montant } from "@/components/ConsoClaude";
+import BarreCreditsNetlify from "@/components/BarreCreditsNetlify";
 
 type Somme = { usd: number; eur: number };
 
@@ -25,20 +26,23 @@ export default function CarteConsoClaude({ mois, total }: { mois: Somme; total: 
 
   return (
     <section className="mb-9">
-      <div className="flex flex-wrap items-center gap-x-6 gap-y-3 rounded-xl border border-border bg-surface p-4">
-        <div className="flex items-center gap-2.5">
-          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-accent-soft text-accent">
-            <Icon name="chart" className="h-[18px] w-[18px]" />
+      <div className="space-y-3 rounded-xl border border-border bg-surface p-4">
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-3">
+          <div className="flex items-center gap-2.5">
+            <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-accent-soft text-accent">
+              <Icon name="chart" className="h-[18px] w-[18px]" />
+            </div>
+            <div className="font-medium">Crédit Claude consommé</div>
           </div>
-          <div className="font-medium">Crédit Claude consommé</div>
+          <dl className="flex flex-wrap gap-x-8 gap-y-2">
+            {chiffre("Ce mois-ci", mois)}
+          </dl>
+          <BarreCredit consomme={Number(total.eur)} />
+          <button type="button" onClick={() => setOuvert(true)} className="rounded-lg border border-border px-3 py-1.5 text-[13px] font-medium text-accent hover:bg-accent-soft">
+            Voir le détail
+          </button>
         </div>
-        <dl className="flex flex-wrap gap-x-8 gap-y-2">
-          {chiffre("Ce mois-ci", mois)}
-        </dl>
-        <BarreCredit consomme={Number(total.eur)} />
-        <button type="button" onClick={() => setOuvert(true)} className="rounded-lg border border-border px-3 py-1.5 text-[13px] font-medium text-accent hover:bg-accent-soft">
-          Voir le détail
-        </button>
+        <BarreCreditsNetlify />
       </div>
 
       {ouvert && (

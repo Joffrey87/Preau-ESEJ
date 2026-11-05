@@ -41,7 +41,7 @@ export default async function Home() {
   if (ac?.depasse)
     priorites.unshift({
       titre: "Crédit Claude : seuil mensuel dépassé",
-      detail: `${Number(ac.usd_mois).toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} $ ce mois-ci (seuil ${Number(ac.seuil_usd).toLocaleString("fr-FR")} $)`,
+      detail: `Seuil mensuel atteint : voir le détail dans Paramètres`,
       href: "/parametres#conso-claude",
       icone: "chart",
       ton: "ambre",
@@ -49,7 +49,7 @@ export default async function Home() {
   // Webmestre sur son propre profil (pas en vue d'un autre profil) : résumé des coûts Claude.
   const consoClaude =
     ac && email === user?.email
-      ? ((await supabase.rpc("claude_conso_stats")).data as { mois: { usd: number; eur: number }; annee: { usd: number; eur: number }; debut_annee: string } | null)
+      ? ((await supabase.rpc("claude_conso_stats")).data as { mois: { usd: number; eur: number }; total: { usd: number; eur: number }; taux_jour: { taux: number } | null } | null)
       : null;
   const finances = tuiles.some((t) => t.href === "/comptabilite");
   const rechercheFonds = role?.slug === "recherche-fonds";
@@ -119,8 +119,7 @@ export default async function Home() {
       {consoClaude && (
         <CarteConsoClaude
           mois={consoClaude.mois}
-          annee={consoClaude.annee}
-          anneeLabel={`${consoClaude.debut_annee.slice(0, 4)}-${Number(consoClaude.debut_annee.slice(0, 4)) + 1}`}
+          total={consoClaude.total}
         />
       )}
 

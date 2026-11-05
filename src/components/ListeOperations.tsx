@@ -91,9 +91,11 @@ type FormState = {
 /** Texte comparable : minuscules, sans accents. */
 const normaliser = (t: string) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
-/** Mot de recherche qui ressemble à un montant (« 60 », « 60,50 », « 1 234,5 »). */
-const montantDe = (mot: string): number | null =>
-  /^\d+([.,]\d{1,2})?$/.test(mot) ? Number(mot.replace(",", ".")) : null;
+/** Mot de recherche qui ressemble à un montant (« 60 », « 60,50 », « 315,34€ »). */
+const montantDe = (mot: string): number | null => {
+  const m = mot.replace(/€|eur(os?)?$/i, "").replace(/[  ]/g, "");
+  return /^\d+([.,]\d{1,2})?$/.test(m) ? Number(m.replace(",", ".")) : null;
+};
 
 function formDepuis(op: OperationRow): FormState {
   return {

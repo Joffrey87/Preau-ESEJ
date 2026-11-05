@@ -604,6 +604,20 @@ export default function GestionScolarite({
                     <td className="px-3 py-1.5">
                       <span className={`mr-1.5 inline-block text-muted transition-transform ${deroulee ? "rotate-90" : ""}`}>›</span>
                       {i.famille_nom}
+                      {(() => {
+                        // Note de la fiche de frais de scolarité et/ou de la fiche famille (Carnet).
+                        const note = [i.notes?.trim(), familles.find((x) => x.id === i.famille_id)?.notes?.trim()]
+                          .filter((n, k, a): n is string => !!n && a.indexOf(n) === k)
+                          .join(" — Fiche famille : ");
+                        return note ? (
+                          <span className="ml-1.5 inline-flex cursor-help align-middle text-amber-600 dark:text-amber-400" title={note} aria-label={`Note : ${note}`}>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-4 w-4" aria-hidden="true">
+                              <path d="M5 3h14a1 1 0 0 1 1 1v10l-6 6H5a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Z" />
+                              <path d="M14 20v-5a1 1 0 0 1 1-1h5M8 8h8M8 12h4" />
+                            </svg>
+                          </span>
+                        ) : null;
+                      })()}
                     </td>
                     <td className="px-3 py-1.5 text-center tabular-nums">{i.nb_enfants ?? "—"}</td>
                     <td

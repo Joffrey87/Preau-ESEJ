@@ -4,7 +4,7 @@ import { leverErreurApi, verifierFin } from "@/lib/erreurLecture";
 import type { SuiviConso, UsageClaude } from "@/lib/consoClaude";
 
 import { MODELE_LECTURE } from "@/lib/lectureCaisse";
-import type { ModeAttendu } from "@/lib/ventes";
+import { synthetiser, type ModeAttendu } from "@/lib/ventes";
 
 export type LigneVenteLue = {
   objet: string | null;
@@ -12,12 +12,16 @@ export type LigneVenteLue = {
   date: string | null;
   payeur: string | null;
   mode: ModeAttendu | null;
+  /** Synthèse courte de ce qui a été commandé. */
+  description: string | null;
+  /** Commande complète (si plus longue que la synthèse). */
+  detail: string | null;
 };
 
 const CONSIGNE = `Tu lis UNE liste de ventes (feuille manuscrite, tableau photographié ou PDF) : pour chaque vente, ce qui a été vendu,
 le montant, éventuellement la date, la famille (ou la personne) qui achète, et le mode de paiement.
 Réponds UNIQUEMENT par un objet JSON, sans texte autour :
-{"lignes":[{"objet":"…"|null,"montant":12.50|null,"date":"AAAA-MM-JJ"|null,"payeur":"…"|null,"mode":"liquide"|"cheque"|"virement"|null}]}
+{"lignes":[{"objet":"…"|null,"montant":12.50|null,"date":"AAAA-MM-JJ"|null,"payeur":"…"|null,"mode":"liquide"|"cheque"|"virement"|null,"description":"…"|null,"detail":"…"|null}]}
 Règles :
 - une ligne par vente ; si un objet ou une date est écrit en titre de colonne ou de section, reporte-le sur chaque ligne concernée ;
 - objet : ce qui est vendu, en quelques mots (ex. « Photo de classe », « Sapin ») ;
@@ -25,6 +29,8 @@ Règles :
 - date au format AAAA-MM-JJ si lisible, sinon null ;
 - payeur : nom de famille ou nom de la personne, tel qu'écrit ;
 - mode : « liquide » (espèces), « cheque » (chèque), « virement » (virement à venir, IBAN, SumUp, carte) ; null si absent ;
+- description : synthèse très courte (60 caractères max) de ce que la personne a commandé (ex. « 2 sapins, 1 couronne »), null si rien n'est précisé ;
+- detail : la commande complète, mot pour mot (tous les articles et quantités), uniquement si elle est plus longue que la description, sinon null ;
 - n'invente rien : omets une ligne illisible plutôt que d'inventer ;
 - maximum 150 lignes.`;
 
@@ -65,6 +71,14 @@ export function dateVente(x: unknown): string | null {
   return `${an}-${m[2].padStart(2, "0")}-${m[1].padStart(2, "0")}`;
 }
 
+/** Description courte + détail complet : on synthétise quand le texte est long, le détail complet est conservé. */
+export function descriptionVente(description: string | null, detail: string | null): { description: string | null; detail: string | null } {
+  const complet = detail ?? description;
+  if (!complet) return { description: null, detail: null };
+  const courte = description && description.length <= 60 ? description : synthetiser(complet);
+  return { description: courte, detail: complet !== courte ? complet : null };
+}
+
 export function analyserReponseVentes(t: string): LigneVenteLue[] {
   const m = t.match(/\{[\s\S]*\}/);
   if (!m) throw new Error("Réponse illisible");
@@ -73,7 +87,7 @@ export function analyserReponseVentes(t: string): LigneVenteLue[] {
   return j.lignes
     .map((l) => {
       const r = l as Record<string, unknown>;
-      return { objet: texte(r.objet), montant: nombreVente(r.montant), date: dateVente(r.date), payeur: texte(r.payeur), mode: modeVente(r.mode) };
+      return { objet: texte(r.objet), montant: nombreVente(r.montant), date: dateVente(r.date), payeur: texte(r.payeur), mode: modeVente(r.mode), ...descriptionVente(texte(r.description), texte(r.detail)) };
     })
     .filter((l) => l.objet || l.payeur || l.montant != null);
 }
@@ -97,6 +111,7 @@ export function lignesDepuisTableau(rangees: unknown[][]): LigneVenteLue[] {
     date: col(/date/),
     payeur: col(/famille|payeur|nom|acheteur|client|personne/),
     mode: col(/mode|paiement|reglement/),
+    description: entete.findIndex((c, i) => i !== col(/objet|article|intitule|produit|vente/) && /description|commande|detail|contenu|designation/.test(c)),
   };
   if (c.montant < 0) throw new Error("Colonne « Montant » introuvable.");
   return rangees
@@ -107,6 +122,7 @@ export function lignesDepuisTableau(rangees: unknown[][]): LigneVenteLue[] {
       date: c.date >= 0 ? dateVente(r[c.date]) : null,
       payeur: c.payeur >= 0 ? texte(r[c.payeur]) : null,
       mode: c.mode >= 0 ? modeVente(r[c.mode]) : null,
+      ...descriptionVente(null, c.description >= 0 ? texte(r[c.description]) : null),
     }))
     .filter((l) => l.objet || l.payeur || l.montant != null);
 }

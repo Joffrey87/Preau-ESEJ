@@ -160,7 +160,7 @@ export default function FamilleEnfants({
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-2.5">
       <div>
         <div className="flex items-center justify-between">
           <h4 className="text-xs font-semibold uppercase tracking-wide text-muted">Fiche famille</h4>
@@ -169,7 +169,7 @@ export default function FamilleEnfants({
           </button>
         </div>
         {ficheOuverte && fiche ? (
-          <div className="mt-1 grid gap-1.5">
+          <div className="mt-1 grid gap-1.5 sm:grid-cols-2">
             {CHAMPS_FICHE.map(({ k, l }) => (
               <input
                 key={k}
@@ -183,22 +183,46 @@ export default function FamilleEnfants({
               type="button"
               onClick={enregistrerFiche}
               disabled={busy}
-              className="justify-self-end rounded-lg bg-accent px-3 py-1 text-xs font-medium text-accent-fg disabled:opacity-50"
+              className="justify-self-end rounded-lg bg-accent px-3 py-1 text-xs font-medium text-accent-fg disabled:opacity-50 sm:col-span-2"
             >
               Enregistrer
             </button>
-            <p className="text-[11px] text-muted">Visible par la famille dans son espace.</p>
+            <p className="text-[11px] text-muted sm:col-span-2">Visible par la famille dans son espace.</p>
           </div>
         ) : (
-          <dl className="mt-1 space-y-0.5 text-xs">
-            {CHAMPS_FICHE.filter(({ k }) => famille[k]).map(({ k, l }) => (
-              <div key={k} className="flex gap-2">
-                <dt className="w-20 shrink-0 text-muted">{l}</dt>
-                <dd>{famille[k] as string}</dd>
+          <div className="mt-1.5 grid gap-x-6 gap-y-2 text-xs sm:grid-cols-3">
+            {CHAMPS_FICHE.every(({ k }) => !famille[k]) && <p className="text-muted sm:col-span-3">Fiche à compléter.</p>}
+            {(famille.adresse || famille.cp_ville) && (
+              <div className="min-w-0">
+                <div className="text-[10.5px] font-medium uppercase tracking-wide text-muted">Adresse</div>
+                <div>{famille.adresse}</div>
+                <div className="text-muted">{famille.cp_ville}</div>
               </div>
-            ))}
-            {CHAMPS_FICHE.every(({ k }) => !famille[k]) && <p className="text-muted">Fiche à compléter.</p>}
-          </dl>
+            )}
+            {([1, 2] as const).map((n) => {
+              const prenom = famille[`parent${n}_prenom`];
+              const nom = famille[`parent${n}_nom`];
+              const tel = famille[`parent${n}_telephone`];
+              const mel = famille[`parent${n}_courriel`];
+              if (!prenom && !nom && !tel && !mel) return null;
+              return (
+                <div key={n} className="min-w-0">
+                  <div className="text-[10.5px] font-medium uppercase tracking-wide text-muted">{n === 1 ? "Monsieur" : "Madame"}</div>
+                  <div className="font-medium">{[prenom, nom].filter(Boolean).join(" ")}</div>
+                  {tel && (
+                    <a href={`tel:${tel.replace(/\s/g, "")}`} className="block text-muted hover:text-accent">
+                      {tel}
+                    </a>
+                  )}
+                  {mel && (
+                    <a href={`mailto:${mel}`} className="block truncate text-muted hover:text-accent" title={mel}>
+                      {mel}
+                    </a>
+                  )}
+                </div>
+              );
+            })}
+          </div>
         )}
       </div>
 
@@ -209,21 +233,25 @@ export default function FamilleEnfants({
             + Ajouter
           </button>
         </div>
-        <ul className="mt-1 space-y-1 text-xs">
+        <ul className="mt-1.5 flex flex-wrap gap-1.5 text-xs">
           {eleves.map((e) => {
             const classe = classeEn(e, annee);
             return (
-              <li key={e.id} className="flex flex-wrap items-center gap-x-2">
+              <li key={e.id} className="flex flex-wrap items-center gap-x-1.5 rounded-full border border-border bg-background px-2.5 py-0.5">
                 <span className="font-medium">{nomEleve(e)}</span>
                 <span className={classe ? "" : "text-muted"}>{classe ?? "hors école cette année"}</span>
-                <span className="text-muted">{depuis(e)}</span>
+                <span className="hidden text-muted sm:inline">{depuis(e)}</span>
                 {termineEnJuin(e, annee) && (
                   <span className="rounded bg-gold-soft px-1 text-[10px] font-medium text-gold" title="Juin non dû pour cet enfant (couvert par le mois d'avance)">
                     fin de scolarité en juin
                   </span>
                 )}
-                <button type="button" onClick={() => editerEleve(e)} className="text-accent hover:underline">modifier</button>
-                <button type="button" onClick={() => supprimerEleve(e)} className="text-muted hover:text-negative">✕</button>
+                <button type="button" onClick={() => editerEleve(e)} className="text-muted hover:text-accent" title="Modifier" aria-label={`Modifier ${nomEleve(e)}`}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5" aria-hidden="true">
+                    <path d="M4 20h4L20 8a2.8 2.8 0 0 0-4-4L4 16v4Zm11-13 4 4" />
+                  </svg>
+                </button>
+                <button type="button" onClick={() => supprimerEleve(e)} className="text-muted hover:text-negative" title="Retirer de la famille" aria-label={`Retirer ${nomEleve(e)}`}>✕</button>
               </li>
             );
           })}
@@ -265,13 +293,15 @@ export default function FamilleEnfants({
       </div>
 
       {gereAcces && (
-        <div>
+        <div className="border-t border-border/60 pt-2">
           <div className="flex items-center justify-between">
             <h4 className="text-xs font-semibold uppercase tracking-wide text-muted">Espace famille</h4>
             <a href={`/apercu-famille/${famille.id}`} className="text-xs font-medium text-accent hover:underline">
               Voir son espace (aperçu) →
             </a>
           </div>
+          <details className="mt-1">
+            <summary className="cursor-pointer text-[11px] text-muted hover:text-accent">Rattacher un compte famille</summary>
           <p className="mt-1 text-[11px] text-muted">
             Invitez la famille depuis Supabase (Authentication → Invite user) : elle choisira son mot de passe via le lien reçu.
             Rattachez ensuite son adresse ici.
@@ -289,6 +319,7 @@ export default function FamilleEnfants({
             </button>
           </div>
           {messageCompte && <p className="mt-1 text-[11px] text-muted">{messageCompte}</p>}
+          </details>
         </div>
       )}
     </div>

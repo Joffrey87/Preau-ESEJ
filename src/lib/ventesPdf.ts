@@ -1,7 +1,7 @@
 // Export PDF des ventes diverses (totaux par sous-catégorie + détail dus/payés), charte Préau/ESEJ.
 
 import { creerPlume, telechargerPdf, M, W } from "@/lib/documentPdf";
-import { DOMAINES, STATUTS, statutVente, type DomaineVente, type SousCategorie, type VenteDue, type VentePaiement } from "@/lib/ventes";
+import { DOMAINES, STATUTS, dateObjet, statutVente, type DomaineVente, type SousCategorie, type VenteDue, type VentePaiement } from "@/lib/ventes";
 import { formatEuros } from "@/lib/format";
 
 export async function telechargerVentesPdf(opts: {
@@ -11,18 +11,31 @@ export async function telechargerVentesPdf(opts: {
   dues: VenteDue[];
   paiements: VentePaiement[];
   payeurDe: (d: VenteDue) => string;
+  /** Objets de vente à exporter (tous si absent). */
+  objetsIds?: Set<string>;
+  /** Lignes à exporter : toutes, soldées ou restant à solder. */
+  statut?: "tous" | "soldees" | "non_soldees";
 }) {
-  const { exercice, domaine, sousCats, dues, paiements, payeurDe } = opts;
+  const { exercice, domaine, sousCats, paiements, payeurDe, objetsIds, statut = "tous" } = opts;
+  const payeDe = (id: string) => paiements.filter((x) => x.vente_due_id === id).reduce((a, x) => a + Number(x.montant), 0);
+  const soldee = (d: VenteDue) => payeDe(d.id) >= Number(d.montant_attendu) - 0.005;
+  const dues = opts.dues.filter(
+    (d) => (!objetsIds || objetsIds.has(d.sous_categorie_id)) && (statut === "tous" || (statut === "soldees") === soldee(d)),
+  );
   const domaines = domaine === "tous" ? (["ecole", "evenement"] as DomaineVente[]) : [domaine];
   const p = await creerPlume();
   const { NAVY, OR_DOUX, GRIS, BLANC, TRAIT } = p.c;
-  const sousTitre = domaine === "tous" ? "Tous domaines" : DOMAINES.find((d) => d.v === domaine)?.label ?? "";
+  const sousTitre =
+    (domaine === "tous" ? "Tous domaines" : DOMAINES.find((d) => d.v === domaine)?.label ?? "") +
+    (statut === "soldees" ? " · soldées" : statut === "non_soldees" ? " · restant à solder" : "");
   p.entete(`Ventes diverses · ${exercice}`, sousTitre);
   p.texte(`Édité le ${new Date().toLocaleDateString("fr-FR", { day: "numeric", month: "long", year: "numeric" })}`, M, p.top, p.italic, 8.5, GRIS);
   p.top += 16;
 
   for (const dom of domaines) {
-    const cats = sousCats.filter((s) => s.domaine === dom && !s.archive);
+    const cats = sousCats
+      .filter((s) => s.domaine === dom && !s.archive && (!objetsIds || objetsIds.has(s.id)) && (statut === "tous" || dues.some((d) => d.sous_categorie_id === s.id)))
+      .sort((a, b) => dateObjet(b).localeCompare(dateObjet(a)));
     const duesDom = dues.filter((d) => d.domaine === dom);
     p.place(40);
     p.rect(M, p.top, W - 2 * M, 22, OR_DOUX);
@@ -77,7 +90,14 @@ export async function telechargerVentesPdf(opts: {
     // Détail
     p.texte("Détail des ventes", M + 4, p.top + 10, p.semi, 9);
     p.top += 16;
-    for (const d of duesDom) {
+    const rangCat = new Map(cats.map((c, i) => [c.id, i]));
+    const duesTriees = [...duesDom].sort(
+      (a, b) =>
+        (rangCat.get(a.sous_categorie_id) ?? 0) - (rangCat.get(b.sous_categorie_id) ?? 0) ||
+        Number(soldee(a)) - Number(soldee(b)) ||
+        payeurDe(a).localeCompare(payeurDe(b), "fr"),
+    );
+    for (const d of duesTriees) {
       const pay = paiements.filter((x) => x.vente_due_id === d.id).reduce((a, x) => a + Number(x.montant), 0);
       const st = STATUTS.find((s) => s.v === statutVente(Number(d.montant_attendu), pay))!;
       const cat = sousCats.find((s) => s.id === d.sous_categorie_id)?.nom ?? "—";

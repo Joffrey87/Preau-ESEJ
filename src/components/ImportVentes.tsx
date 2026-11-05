@@ -39,6 +39,9 @@ type Ligne = {
   date: string;
   mode: ModeAttendu;
   modeDevine: boolean;
+  description: string;
+  /** Commande complète, si la description en est une synthèse. */
+  detail: string;
 };
 
 /** Famille ou personne reconnue d'après le nom écrit (égalité, ou nom de famille contenu une seule fois). */
@@ -104,6 +107,8 @@ export default function ImportVentes({
         date: l.date ?? "",
         mode: l.mode ?? "virement",
         modeDevine: l.mode == null,
+        description: l.description ?? "",
+        detail: l.detail ?? "",
       })),
     );
 
@@ -182,6 +187,8 @@ export default function ImportVentes({
           montant_attendu: m,
           mode_attendu: l.mode,
           notes,
+          description: l.description.trim() || null,
+          description_detail: l.detail.trim() && l.detail.trim() !== l.description.trim() ? l.detail.trim() : null,
         })
         .select("id")
         .single();
@@ -274,6 +281,7 @@ export default function ImportVentes({
                         <th className="px-2 py-1.5" />
                         <th className="px-2 py-1.5 font-medium">Objet de vente</th>
                         <th className="px-2 py-1.5 font-medium">Famille ou personne</th>
+                        <th className="px-2 py-1.5 font-medium">Description</th>
                         <th className="px-2 py-1.5 font-medium text-right">Montant</th>
                         <th className="px-2 py-1.5 font-medium">Date</th>
                         <th className="px-2 py-1.5 font-medium">Mode</th>
@@ -330,6 +338,16 @@ export default function ImportVentes({
                               l.payeurLu && <div className="mt-0.5 truncate text-[10.5px] text-muted">lu : {l.payeurLu}</div>
                             )}
                           </td>
+                          <td className="w-56 px-2 py-1.5">
+                            <input
+                              className={sel}
+                              value={l.description}
+                              placeholder="Ce qui a été commandé"
+                              title={l.detail || undefined}
+                              onChange={(e) => maj(l.cle, { description: e.target.value })}
+                            />
+                            {l.detail && <div className="mt-0.5 truncate text-[10.5px] text-muted" title={l.detail}>détail conservé : {l.detail}</div>}
+                          </td>
                           <td className="w-24 px-2 py-1.5">
                             <input className={`${sel} text-right`} value={l.montant} onChange={(e) => maj(l.cle, { montant: e.target.value })} />
                           </td>
@@ -354,7 +372,7 @@ export default function ImportVentes({
                       ))}
                       {lignes.length === 0 && (
                         <tr>
-                          <td colSpan={6} className="px-2 py-6 text-center text-muted">
+                          <td colSpan={7} className="px-2 py-6 text-center text-muted">
                             Aucune vente reconnue dans ce fichier.
                           </td>
                         </tr>

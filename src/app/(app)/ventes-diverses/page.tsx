@@ -20,7 +20,7 @@ export default async function VentesDiversesPage({ searchParams }: { searchParam
     exercices[0];
 
   const [sc, du, pay] = await Promise.all([
-    supabase.from("ventes_sous_categories").select("id, nom, domaine, archive").order("nom"),
+    supabase.from("ventes_sous_categories").select("id, nom, domaine, archive, created_at, date_evenement").order("nom"),
     exercice ? supabase.from("ventes_dues").select("*").eq("exercice_id", exercice.id).order("created_at") : Promise.resolve({ data: [] }),
     supabase.from("ventes_paiements").select("id, vente_due_id, montant, type, operation_id, caisse_mouvement_id, created_at"),
   ]);

@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from "react";
 import Icon from "@/components/Icon";
-import ConsoClaude, { montant } from "@/components/ConsoClaude";
+import ConsoClaude, { BarreCredit, montant } from "@/components/ConsoClaude";
 
 type Somme = { usd: number; eur: number };
 
-/** Tableau de bord du Webmestre : coût Claude du mois et de l'année scolaire ; le détail s'ouvre dans une fenêtre. */
-export default function CarteConsoClaude({ mois, annee, anneeLabel }: { mois: Somme; annee: Somme; anneeLabel: string }) {
+/** Tableau de bord du Webmestre : coût Claude du mois (en €) et barre du crédit total ; le détail s'ouvre dans une fenêtre. */
+export default function CarteConsoClaude({ mois, total }: { mois: Somme; total: Somme }) {
   const [ouvert, setOuvert] = useState(false);
   useEffect(() => {
     if (!ouvert) return;
@@ -20,7 +20,6 @@ export default function CarteConsoClaude({ mois, annee, anneeLabel }: { mois: So
     <div className="min-w-0">
       <dt className="truncate text-[11px] text-muted">{label}</dt>
       <dd className="text-[15px] font-semibold tabular-nums">{montant(v.eur, "€")}</dd>
-      <dd className="text-[11.5px] tabular-nums text-muted">{montant(v.usd, "$")}</dd>
     </div>
   );
 
@@ -35,9 +34,9 @@ export default function CarteConsoClaude({ mois, annee, anneeLabel }: { mois: So
         </div>
         <dl className="flex flex-wrap gap-x-8 gap-y-2">
           {chiffre("Ce mois-ci", mois)}
-          {chiffre(`Année scolaire ${anneeLabel}`, annee)}
         </dl>
-        <button type="button" onClick={() => setOuvert(true)} className="ml-auto rounded-lg border border-border px-3 py-1.5 text-[13px] font-medium text-accent hover:bg-accent-soft">
+        <BarreCredit consomme={Number(total.eur)} />
+        <button type="button" onClick={() => setOuvert(true)} className="rounded-lg border border-border px-3 py-1.5 text-[13px] font-medium text-accent hover:bg-accent-soft">
           Voir le détail
         </button>
       </div>

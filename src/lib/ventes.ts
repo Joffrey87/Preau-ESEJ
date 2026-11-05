@@ -11,6 +11,9 @@ export type SousCategorie = {
   /** Mots-clés reconnus dans le libellé d'une recette à l'import (après le nom complet). */
   alias?: string[] | null;
   archive: boolean;
+  created_at?: string;
+  /** Date modifiable de l'événement ; vide = date de création. */
+  date_evenement?: string | null;
 };
 
 export type VenteDue = {
@@ -24,6 +27,10 @@ export type VenteDue = {
   montant_attendu: number;
   mode_attendu: ModeAttendu;
   notes: string | null;
+  /** Synthèse de ce qui a été commandé. */
+  description?: string | null;
+  /** Détail complet de la commande (si plus long que la synthèse). */
+  description_detail?: string | null;
   created_at: string;
 };
 
@@ -47,7 +54,7 @@ export const DOMAINES: { v: DomaineVente; label: string }[] = [
 export const MODES: { v: ModeAttendu; label: string }[] = [
   { v: "virement", label: "Virement attendu" },
   { v: "cheque", label: "Chèque attendu" },
-  { v: "liquide", label: "Liquide attendu / payé" },
+  { v: "liquide", label: "Liquide attendu" },
 ];
 
 export const STATUTS: { v: StatutVente; label: string; cls: string }[] = [
@@ -55,6 +62,30 @@ export const STATUTS: { v: StatutVente; label: string; cls: string }[] = [
   { v: "paye", label: "Payé", cls: "bg-emerald-50 text-emerald-800 dark:bg-emerald-900/20 dark:text-emerald-300" },
   { v: "trop_percu", label: "Trop-perçu", cls: "bg-sky-50 text-sky-800 dark:bg-sky-900/20 dark:text-sky-300" },
 ];
+
+export const LONGUEUR_SYNTHESE = 60;
+
+/** Version courte d'une commande : les premiers articles qui tiennent, puis « … (+n) ». Inchangée si elle est déjà courte. */
+export function synthetiser(detail: string, max = LONGUEUR_SYNTHESE): string {
+  const t = detail.replace(/\s+/g, " ").trim();
+  if (t.length <= max) return t;
+  const morceaux = t.split(/\s*(?:[,;+\n]|\s-\s)\s*/).filter(Boolean);
+  const gardes: string[] = [];
+  for (const m of morceaux) {
+    const suite = [...gardes, m].join(", ");
+    if (suite.length > max - 8 && gardes.length > 0) break;
+    gardes.push(m);
+  }
+  const reste = morceaux.length - gardes.length;
+  const base = gardes.join(", ");
+  if (reste <= 0) return base.length > max ? `${base.slice(0, max - 1).trimEnd()}…` : base;
+  return `${base.length > max - 8 ? `${base.slice(0, max - 8).trimEnd()}…` : base} (+${reste})`;
+}
+
+/** Date affichée et utilisée pour le tri d'un objet de vente (AAAA-MM-JJ). */
+export function dateObjet(o: Pick<SousCategorie, "created_at" | "date_evenement">): string {
+  return o.date_evenement || (o.created_at ?? "").slice(0, 10);
+}
 
 export function statutVente(attendu: number, paye: number): StatutVente {
   if (paye > attendu + 0.005) return "trop_percu";

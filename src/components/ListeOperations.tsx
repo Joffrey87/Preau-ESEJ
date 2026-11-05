@@ -91,9 +91,11 @@ type FormState = {
 /** Texte comparable : minuscules, sans accents. */
 const normaliser = (t: string) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
 
-/** Mot de recherche qui ressemble à un montant (« 60 », « 60,50 », « 1 234,5 »). */
-const montantDe = (mot: string): number | null =>
-  /^\d+([.,]\d{1,2})?$/.test(mot) ? Number(mot.replace(",", ".")) : null;
+/** Mot de recherche qui ressemble à un montant (« 60 », « 60,50 », « 315,34€ »). */
+const montantDe = (mot: string): number | null => {
+  const m = mot.replace(/€|eur(os?)?$/i, "").replace(/[  ]/g, "");
+  return /^\d+([.,]\d{1,2})?$/.test(m) ? Number(m.replace(",", ".")) : null;
+};
 
 function formDepuis(op: OperationRow): FormState {
   return {
@@ -470,7 +472,8 @@ export default function ListeOperations({
   // (familles de l'onglet Frais de scolarité, donateur du don relié) ; un mot
   // en forme de montant vise aussi le montant exact de la ligne ou d'une
   // sous-écriture.
-  const motsRecherche = normaliser(recherche).split(/\s+/).filter(Boolean);
+  // Un « € » isolé (« 315,34 € ») n'est pas un mot à chercher : il accompagne le montant.
+  const motsRecherche = normaliser(recherche).split(/\s+/).filter((m) => m && !/^(€|euros?)$/.test(m));
   const rattachementsDe = (o: OperationRow): string[] => {
     const textes = (affectationsDe.get(o.id) ?? []).flatMap((a) => [familleDe.get(a.inscription_id), a.notes]);
     // Seul un lien enregistré compte : un don « probable » (même montant à
@@ -503,6 +506,9 @@ export default function ListeOperations({
     return motsRecherche.every((mot) => {
       const m = montantDe(mot);
       if (m != null && ecritures.some((e) => Math.abs(Number(e.montant) - m) < 0.005)) return true;
+      // Montant partiel : « 315 » trouve 315,34 (le chiffre se lit dans le montant écrit à la française).
+      const chiffres = mot.replace(/€|euros?$/, "").replace(/\./g, ",");
+      if (/^\d+,?\d*$/.test(chiffres) && ecritures.some((e) => Number(e.montant).toFixed(2).replace(".", ",").includes(chiffres))) return true;
       return texte.includes(mot);
     });
   };

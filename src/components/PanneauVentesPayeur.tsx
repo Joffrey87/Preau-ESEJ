@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { createClient } from "@/lib/supabase/client";
 import { formatDate, formatEuros, todayISO } from "@/lib/format";
@@ -19,9 +19,13 @@ type LigneDetail = {
   notes: string | null;
   saisi_par: string | null;
   operations: { id: string; date: string; libelle: string; exercice_id: string | null }[];
+  description: string | null;
+  description_detail: string | null;
 };
 
 const MODE_LIB: Record<string, string> = { virement: "Virement", cheque: "Chèque", liquide: "Liquide" };
+
+const l_solde = (l: { montant: number; paye: number }) => l.paye >= l.montant - 0.005;
 
 /** Panneau latéral : toutes les ventes d'une famille / personne, par année scolaire, avec historique. */
 export default function PanneauVentesPayeur({
@@ -88,7 +92,10 @@ export default function PanneauVentesPayeur({
     }
     return exercices.filter((e) => m.has(e.id)).map((e) => ({ id: e.id, ...m.get(e.id)! }));
   }, [lignes, exercices]);
-  const duAnnee = (lignes ?? []).filter((l) => l.exercice_id === annee);
+  // Achats non soldés d'abord, puis soldés ; à statut égal, du plus récent au plus ancien.
+  const duAnnee = (lignes ?? [])
+    .filter((l) => l.exercice_id === annee)
+    .sort((a, b) => Number(l_solde(a)) - Number(l_solde(b)) || b.date_vente.localeCompare(a.date_vente));
   const totalAnnee = duAnnee.reduce((s, l) => s + l.montant, 0);
   const payeAnnee = duAnnee.reduce((s, l) => s + Math.min(l.paye, l.montant), 0);
 
@@ -115,6 +122,13 @@ export default function PanneauVentesPayeur({
               Ventes {libAnnee(annee)} · {duAnnee.length} vente{duAnnee.length > 1 ? "s" : ""} · {formatEuros(payeAnnee)} payé sur {formatEuros(totalAnnee)}
             </p>
           </div>
+          <Link
+            href={cle.startsWith("c:") && !estTresorier ? `/evenement/carnet/${cle.slice(2)}` : `/carnet?q=${encodeURIComponent(libelle)}`}
+            className="shrink-0 rounded-lg border border-border px-2.5 py-1 text-xs font-medium hover:bg-surface-2"
+            title="Ouvrir sa fiche contact pour mettre à jour ses informations"
+          >
+            Fiche contact
+          </Link>
           <button type="button" onClick={onClose} className="rounded-lg px-2 py-1 text-lg leading-none text-muted hover:bg-surface-2" title="Fermer (Échap)">
             ×
           </button>
@@ -152,16 +166,23 @@ export default function PanneauVentesPayeur({
             <p className="text-sm text-muted">Aucune vente sur cette année scolaire.</p>
           ) : (
             <ul className="space-y-3">
-              {duAnnee.map((l) => {
+              {duAnnee.map((l, i) => {
                 const st = STATUTS.find((s) => s.v === statutVente(l.montant, l.paye))!;
                 return (
-                  <li key={l.id} className="rounded-xl border border-border bg-surface p-3 text-sm">
+                  <Fragment key={l.id}>
+                  {(i === 0 || l_solde(duAnnee[i - 1]) !== l_solde(l)) && (
+                    <li className="list-none text-[11px] font-semibold uppercase tracking-wider text-muted">{l_solde(l) ? "Soldés" : "Non soldés"}</li>
+                  )}
+                  <li className="rounded-xl border border-border bg-surface p-3 text-sm">
                     <div className="flex items-start gap-2">
                       <div className="min-w-0 flex-1">
                         <div className="font-medium">
                           {l.objet}
                           {l.quantite ? <span className="ml-1 text-muted">× {l.quantite}</span> : null}
                         </div>
+                        {(l.description_detail || l.description) && (
+                          <div className="mt-0.5 whitespace-pre-line text-[13px]">{l.description_detail || l.description}</div>
+                        )}
                         <div className="text-xs text-muted">
                           {formatDate(l.date_vente)} · {DOMAINES.find((d) => d.v === l.domaine)?.label} · {MODE_LIB[l.mode] ?? l.mode}
                         </div>
@@ -219,6 +240,7 @@ export default function PanneauVentesPayeur({
                       </dd>
                     </dl>
                   </li>
+                  </Fragment>
                 );
               })}
             </ul>

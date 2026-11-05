@@ -40,7 +40,28 @@ const libelleProfil = (p: Profil) =>
 
 const nb = (n: number) => Number(n ?? 0);
 /** Petits montants : jusqu'à 4 décimales (une lecture coûte quelques centimes). */
-export function montant(v: number, devise: "$" | "€") {
+export const CREDIT_TOTAL_EUR = 5;
+
+/** Barre : crédit consommé depuis le début du suivi, sur le crédit total (5 €). */
+export function BarreCredit({ consomme }: { consomme: number }) {
+  const pct = Math.min(100, Math.max(0, (consomme / CREDIT_TOTAL_EUR) * 100));
+  const ton = consomme >= CREDIT_TOTAL_EUR ? "bg-negative" : pct >= 80 ? "bg-gold" : "bg-positive";
+  return (
+    <div className="min-w-[14rem] flex-1">
+      <div className="mb-1 flex items-baseline justify-between gap-3 text-[11px] text-muted">
+        <span>Crédit total</span>
+        <span className="tabular-nums">
+          {montant(consomme, "€")} sur {montant(CREDIT_TOTAL_EUR, "€")} · reste {montant(Math.max(0, CREDIT_TOTAL_EUR - consomme), "€")}
+        </span>
+      </div>
+      <div className="h-2.5 overflow-hidden rounded-full bg-surface-2" role="progressbar" aria-valuemin={0} aria-valuemax={CREDIT_TOTAL_EUR} aria-valuenow={Math.min(consomme, CREDIT_TOTAL_EUR)} aria-label="Crédit Claude consommé">
+        <div className={`h-full rounded-full ${ton}`} style={{ width: `${pct}%` }} />
+      </div>
+    </div>
+  );
+}
+
+export function montant(v: number, devise: "€" = "€") {
   const n = nb(v);
   const petit = n !== 0 && Math.abs(n) < 1;
   return `${n.toLocaleString("fr-FR", { minimumFractionDigits: 2, maximumFractionDigits: petit ? 4 : 2 })} ${devise}`;
@@ -67,7 +88,8 @@ export default function ConsoClaude() {
     if (error) return setErreur(error.message);
     const st = data as Stats;
     setS(st);
-    setSeuil(String(nb(st.seuil_usd)).replace(".", ","));
+    const t = nb(st.taux_jour?.taux ?? 0) || (nb(st.total.usd) > 0 ? nb(st.total.eur) / nb(st.total.usd) : 0.9);
+    setSeuil((Math.round(nb(st.seuil_usd) * t * 100) / 100).toString().replace(".", ","));
   }, []);
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement initial depuis la base
@@ -79,20 +101,23 @@ export default function ConsoClaude() {
     setEtat(null);
     const v = Number(seuil.replace(/\s/g, "").replace(",", "."));
     if (!isFinite(v) || v < 0) return setEtat("Erreur : seuil invalide.");
-    const { error } = await createClient().rpc("claude_conso_seuil_definir", { p_seuil: v });
+    const { error } = await createClient().rpc("claude_conso_seuil_definir", { p_seuil: v / taux });
     setEtat(error ? "Erreur : " + error.message : "Enregistré.");
     if (!error) void charger();
   }
 
   const anneeScolaire = s ? `${s.debut_annee.slice(0, 4)}-${Number(s.debut_annee.slice(0, 4)) + 1}` : "";
   const depasse = !!s && nb(s.mois.usd) > nb(s.seuil_usd);
+  // Les coûts sont suivis en $ côté base : on les affiche en € (taux BCE du jour, à défaut le taux moyen des lectures).
+  const taux = s ? nb(s.taux_jour?.taux ?? 0) || (nb(s.total.usd) > 0 ? nb(s.total.eur) / nb(s.total.usd) : 0.9) : 0.9;
+  const eur = (usd: number) => nb(usd) * taux;
 
   return (
     <section id="conso-claude" className="scroll-mt-6">
       <h2 className="mb-1 text-lg font-semibold">Crédit Claude consommé</h2>
       <p className="mb-3 text-sm text-muted">
-        Coût des lectures automatiques (factures, RIB, chèques, caisses, ventes) facturées par l&apos;API Claude, en dollars
-        (monnaie de facturation) et en euros au taux BCE du jour de chaque lecture. Visible du Webmestre seulement.
+        Coût des lectures automatiques (factures, RIB, chèques, caisses, ventes) facturées par l&apos;API Claude, en euros au taux
+        BCE du jour de chaque lecture. Visible du Webmestre seulement.
       </p>
 
       {erreur && <p className="rounded-lg border border-negative/40 bg-negative/5 px-3 py-2 text-sm text-negative">Statistiques indisponibles : {erreur}</p>}
@@ -103,9 +128,13 @@ export default function ConsoClaude() {
           {depasse && (
             <div role="alert" className="rounded-xl border border-gold/60 bg-gold/10 px-4 py-3 text-sm">
               <span className="font-semibold text-gold">Seuil mensuel dépassé : </span>
-              {montant(s.mois.usd, "$")} consommés ce mois-ci pour un seuil de {montant(s.seuil_usd, "$")}.
+              {montant(s.mois.eur, "€")} consommés ce mois-ci pour un seuil de {montant(eur(s.seuil_usd), "€")}.
             </div>
           )}
+
+          <div className="rounded-xl border border-border bg-surface p-4">
+            <BarreCredit consomme={nb(s.total.eur)} />
+          </div>
 
           <div className="overflow-x-auto rounded-xl border border-border bg-surface">
             <table className="w-full text-sm">
@@ -113,7 +142,6 @@ export default function ConsoClaude() {
                 <tr>
                   <th className={th}>Période</th>
                   <th className={th}>Lectures</th>
-                  <th className={`${th} text-right`}>Coût $</th>
                   <th className={`${th} text-right`}>Coût €</th>
                 </tr>
               </thead>
@@ -128,7 +156,6 @@ export default function ConsoClaude() {
                   <tr key={l} className={l === "Total" ? "font-semibold" : ""}>
                     <td className="px-3 py-2">{l}</td>
                     <td className={td}>{lectures(v)}</td>
-                    <td className={`${td} text-right`}>{montant(v.usd, "$")}</td>
                     <td className={`${td} text-right`}>{montant(v.eur, "€")}</td>
                   </tr>
                 ))}
@@ -145,7 +172,6 @@ export default function ConsoClaude() {
                     <tr>
                       <th className={th}>Mois</th>
                       <th className={th}>Lectures</th>
-                      <th className={`${th} text-right`}>Coût $</th>
                       <th className={`${th} text-right`}>Coût €</th>
                     </tr>
                   </thead>
@@ -154,8 +180,7 @@ export default function ConsoClaude() {
                       <tr key={m.mois}>
                         <td className="px-3 py-2">{moisLabel(m.mois)}</td>
                         <td className={td}>{lectures(m)}</td>
-                        <td className={`${td} text-right ${nb(m.usd) > nb(s.seuil_usd) ? "font-semibold text-gold" : ""}`}>{montant(m.usd, "$")}</td>
-                        <td className={`${td} text-right`}>{montant(m.eur, "€")}</td>
+                        <td className={`${td} text-right ${nb(m.usd) > nb(s.seuil_usd) ? "font-semibold text-gold" : ""}`}>{montant(m.eur, "€")}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -175,7 +200,6 @@ export default function ConsoClaude() {
                       <th className={th}>Lectures</th>
                       <th className={`${th} text-right`}>Ce mois-ci</th>
                       <th className={`${th} text-right`}>Année scolaire</th>
-                      <th className={`${th} text-right`}>Total $</th>
                       <th className={`${th} text-right`}>Total €</th>
                     </tr>
                   </thead>
@@ -197,10 +221,9 @@ export default function ConsoClaude() {
                             </button>
                           </td>
                           <td className={td}>{lectures(p)}</td>
-                          <td className={`${td} text-right`}>{montant(p.usd_mois, "$")}</td>
-                          <td className={`${td} text-right`}>{montant(p.usd_annee, "$")}</td>
-                          <td className={`${td} text-right font-medium`}>{montant(p.usd, "$")}</td>
-                          <td className={`${td} text-right`}>{montant(p.eur, "€")}</td>
+                          <td className={`${td} text-right`}>{montant(eur(p.usd_mois), "€")}</td>
+                          <td className={`${td} text-right`}>{montant(eur(p.usd_annee), "€")}</td>
+                          <td className={`${td} text-right font-medium`}>{montant(p.eur, "€")}</td>
                         </tr>,
                         ...(ouvert[cle]
                           ? types.map((t) => (
@@ -209,7 +232,6 @@ export default function ConsoClaude() {
                                 <td className="px-3 py-1.5 tabular-nums">{nb(t.nb)}</td>
                                 <td />
                                 <td />
-                                <td className="px-3 py-1.5 text-right tabular-nums">{montant(t.usd, "$")}</td>
                                 <td className="px-3 py-1.5 text-right tabular-nums">{montant(t.eur, "€")}</td>
                               </tr>
                             ))
@@ -222,7 +244,7 @@ export default function ConsoClaude() {
               {s.par_type.length > 0 && (
                 <p className="mt-2 text-xs text-muted">
                   Tous profils :{" "}
-                  {s.par_type.map((t) => `${TYPES[t.type] ?? t.type} ${montant(t.usd, "$")} (${nb(t.nb)})`).join(" · ")}
+                  {s.par_type.map((t) => `${TYPES[t.type] ?? t.type} ${montant(t.eur, "€")} (${nb(t.nb)})`).join(" · ")}
                 </p>
               )}
             </div>
@@ -230,7 +252,7 @@ export default function ConsoClaude() {
 
           <form onSubmit={enregistrerSeuil} className="flex flex-wrap items-end gap-3 rounded-xl border border-border bg-surface p-4">
             <label className="block text-sm">
-              <span className="mb-1 block text-xs text-muted">Seuil d&apos;alerte mensuel ($)</span>
+              <span className="mb-1 block text-xs text-muted">Seuil d&apos;alerte mensuel (€)</span>
               <input value={seuil} onChange={(e) => setSeuil(e.target.value)} inputMode="decimal" className={input} />
             </label>
             <button type="submit" className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-accent-fg hover:opacity-90">
@@ -246,17 +268,10 @@ export default function ConsoClaude() {
             {s.tarifs.map((t) => (
               <span key={t.modele}>
                 {" "}
-                Tarif {t.modele} : {nb(t.entree_mtok)} $ / million de jetons en entrée, {nb(t.sortie_mtok)} $ en sortie (réflexion comprise), cache{" "}
-                {nb(t.cache_ecriture_mtok)} $ en écriture et {nb(t.cache_lecture_mtok)} $ en lecture{t.source ? ` (${t.source})` : ""}.
+                Tarif {t.modele} : {montant(eur(t.entree_mtok), "€")} / million de jetons en entrée, {montant(eur(t.sortie_mtok), "€")} en sortie (réflexion comprise), cache{" "}
+                {montant(eur(t.cache_ecriture_mtok), "€")} en écriture et {montant(eur(t.cache_lecture_mtok), "€")} en lecture{t.source ? ` (${t.source})` : ""}.
               </span>
             ))}
-            {s.taux_jour && (
-              <span>
-                {" "}
-                Dernier taux archivé : 1 $ = {nb(s.taux_jour.taux).toLocaleString("fr-FR", { maximumFractionDigits: 4 })} € (
-                {new Date(`${s.taux_jour.jour}T12:00:00`).toLocaleDateString("fr-FR")}, BCE).
-              </span>
-            )}
             {nb(s.taux_estimes) > 0 && (
               <span className="text-gold">
                 {" "}

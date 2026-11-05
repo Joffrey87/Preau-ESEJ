@@ -215,6 +215,9 @@ export default function VentilationOperation({
       });
     }
 
+    // Ligne entièrement ventilée en dons : le don d'ensemble resté sur la ligne bancaire ferait doublon.
+    if (nomCat(categorieId) === "Don" && ventile + m >= total - 0.005) await retirerDonDEnsemble();
+
     await journaliser(supabase, lot, `Sous-écriture ajoutée à « ${mere.libelle} »`, entrees);
 
     setBusy(false);
@@ -223,6 +226,15 @@ export default function VentilationOperation({
     setLibelle("");
     setExerciceId(mere.exercice_id ?? "");
     router.refresh();
+  }
+
+  /** Dons restés sur la ligne bancaire une fois celle-ci ventilée en dons individuels (mis à la corbeille, restaurables). */
+  async function retirerDonDEnsemble() {
+    await createClient()
+      .from("dons")
+      .update({ supprime_le: new Date().toISOString(), supprime_par: "ventilation" })
+      .eq("operation_id", mere.id)
+      .is("supprime_le", null);
   }
 
   async function retirerFille(f: OperationVentilable) {
@@ -381,6 +393,7 @@ export default function VentilationOperation({
         apres: extraire({ ...mere, est_ventilee: true } as unknown as OperationJournalisable),
       });
     }
+    if (ventile + p.somme >= total - 0.005) await retirerDonDEnsemble();
     await journaliser(supabase, nouveauLot(), `Ventilation de « ${mere.libelle} » en ${p.dons.length} don${p.dons.length > 1 ? "s" : ""} reliés`, entrees);
     setBusy(false);
     router.refresh();

@@ -175,7 +175,7 @@ export default function ProfilEnseignantForm({ initial }: { initial: ProfilEnsei
           )}
         </div>
         <p className="mt-2 text-xs text-muted">
-          PNG ou JPEG, fond blanc de préférence, environ 600 × 200 pixels. Utilisée plus tard sur les PDF (relevés, bulletins).
+          PNG ou JPEG, fond blanc de préférence, environ 600 × 200 pixels.
         </p>
       </div>
 

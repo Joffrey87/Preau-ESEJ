@@ -15,7 +15,7 @@ globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
   return origFetch(input as any, init);
 }) as typeof fetch;
 
-const { construireBulletinsPdf } = await import("../src/lib/bulletinPdf.ts");
+const { construireBulletinsPdf } = await import("../src/lib/bulletinPdf");
 const vide = { moy: null, moyClasse: null, rang: null };
 
 const TEXTE_ENSEIGNANTE =

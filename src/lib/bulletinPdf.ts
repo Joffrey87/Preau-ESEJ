@@ -178,12 +178,11 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
           .join(", ");
         const ens = ensLib ? coupe(ensLib, regular, 7, wNom) : [];
         // Catéchisme : l'appréciation du professeur puis celle du Directeur spirituel, chacune sous son étiquette.
-        const apps = (m.appreciations ?? []).map((x) => ({
-          titre: x.titre,
-          sousTitre: x.sousTitre,
-          lignes: coupe(x.texte, italic, 7.8, wCom),
-        }));
-        const hCom = com.length * 10 + apps.reduce((t, x) => t + 9.5 + (x.sousTitre ? 8.5 : 0) + x.lignes.length * 10 + 2, 0);
+        // Colonne note/appréciation : contenu seul (notes ou texte). Pas de nom ni de matière (déjà en colonne matière).
+        const apps = (m.appreciations ?? [])
+          .map((x) => ({ lignes: coupe(x.texte, italic, 7.8, wCom) }))
+          .filter((x) => x.lignes.length);
+        const hCom = com.length * 10 + apps.reduce((t, x) => t + x.lignes.length * 10 + 2, 0);
         const h = Math.max(8 + noms.length * 10.5 + ens.length * 9, 8 + hCom);
         place(h);
         noms.forEach((l, i) => texte(l, cols.matiere + 12, top + 11 + i * 10.5, regular, 8.5));
@@ -203,13 +202,6 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
         });
         let tA = top + 11 + com.length * 10 + (com.length ? 2 : 0);
         for (const x of apps) {
-          // Bulletin intervenants : nom (titre) puis matière en plus petit (sousTitre).
-          texte(x.titre, cols.com + 6, tA - 1, semi, 7.2, OR);
-          tA += 9.5;
-          if (x.sousTitre) {
-            texte(x.sousTitre, cols.com + 6, tA - 1, regular, 6.2, GRIS);
-            tA += 8.5;
-          }
           x.lignes.forEach((l) => {
             texte(l, cols.com + 6, tA, italic, 7.8);
             tA += 10;

@@ -48,7 +48,7 @@ export type DocTrimestre = Omit<DocReleve, "periode_id"> & { annee_scolaire: str
 /** bulletin_id : le bulletin trimestriel, ou le relevé de la période (appréciation du Catéchisme). */
 export type AppreciationIntervenant = { bulletin_id: string; matiere_id: string; texte: string | null; texte_professeur?: string | null };
 
-/** Catéchisme : enseignante (nom + commentaire si présent) puis Directeur (texte seul ; son nom est sous la matière). */
+/** Catéchisme : Directeur d'abord (texte seul ; nom sous la matière), puis enseignante (nom + commentaire si présent). */
 export function appreciationsCatechisme(
   a: AppreciationIntervenant | undefined,
   opts?: { bulletin?: boolean; nomProfesseur?: string; nomDirecteur?: string; matiere?: string },
@@ -59,8 +59,8 @@ export function appreciationsCatechisme(
   void opts?.matiere;
   const nomEns = developperCiviliteNom(opts?.nomProfesseur) || opts?.nomProfesseur?.trim() || "";
   return [
-    { titre: nomEns, texte: a?.texte_professeur?.trim() ?? "" },
     { titre: "", texte: a?.texte?.trim() ?? "" },
+    { titre: nomEns, texte: a?.texte_professeur?.trim() ?? "" },
   ].filter((x) => x.texte);
 }
 

@@ -177,12 +177,12 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
           .filter((x) => x && x !== (s.classe.titulaire ?? "").trim())
           .join(", ");
         const ens = ensLib ? coupe(ensLib, regular, 7, wNom) : [];
-        // Catéchisme : enseignante (nom + commentaire si présent) puis Directeur (texte seul ; nom déjà sous la matière).
+        // Catéchisme : Directeur (texte seul) puis enseignante (nom + commentaire si présent).
         // Autres matières : contenu seul. Pas de 2e ligne vide si l'enseignante n'a pas commenté.
         const apps = (m.appreciations ?? [])
           .map((x) => ({ titre: (x.titre ?? "").trim(), lignes: coupe(x.texte, italic, 7.8, wCom) }))
           .filter((x) => x.lignes.length);
-        // Écart entre deux appréciations (enseignante / Directeur) pour les distinguer clairement.
+        // Écart entre deux appréciations (Directeur / enseignante) pour les distinguer clairement.
         const ecartApps = apps.length > 1 ? 5 : 0;
         const hTitreApp = 9.5;
         const hCom =

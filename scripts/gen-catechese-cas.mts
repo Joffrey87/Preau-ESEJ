@@ -107,8 +107,8 @@ function baseBulletin(apps: { titre: string; texte: string }[]) {
 }
 
 const avec = [
-  { titre: "Mademoiselle de Fonclare", texte: TEXTE_ENSEIGNANTE },
   { titre: "", texte: TEXTE_CHANOINE },
+  { titre: "Mademoiselle de Fonclare", texte: TEXTE_ENSEIGNANTE },
 ];
 const sans = [{ titre: "", texte: TEXTE_CHANOINE }];
 

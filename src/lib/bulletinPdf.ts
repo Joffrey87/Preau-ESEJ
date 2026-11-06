@@ -177,12 +177,19 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
           .filter((x) => x && x !== (s.classe.titulaire ?? "").trim())
           .join(", ");
         const ens = ensLib ? coupe(ensLib, regular, 7, wNom) : [];
-        // Catéchisme : l'appréciation du professeur puis celle du Directeur spirituel, chacune sous son étiquette.
+        // Catéchisme : appréciation enseignante (si présente) puis Directeur spirituel — textes seuls, 2 blocs distincts.
         // Colonne note/appréciation : contenu seul (notes ou texte). Pas de nom ni de matière (déjà en colonne matière).
+        // Pas de 2e ligne vide si l'enseignante n'a pas commenté (filtre des textes vides).
         const apps = (m.appreciations ?? [])
           .map((x) => ({ lignes: coupe(x.texte, italic, 7.8, wCom) }))
           .filter((x) => x.lignes.length);
-        const hCom = com.length * 10 + apps.reduce((t, x) => t + x.lignes.length * 10 + 2, 0);
+        // Écart entre deux appréciations (enseignante / Directeur) pour les distinguer clairement.
+        const ecartApps = apps.length > 1 ? 5 : 0;
+        const hCom =
+          com.length * 10 +
+          (com.length && apps.length ? 2 : 0) +
+          apps.reduce((t, x) => t + x.lignes.length * 10, 0) +
+          Math.max(0, apps.length - 1) * ecartApps;
         const h = Math.max(8 + noms.length * 10.5 + ens.length * 9, 8 + hCom);
         place(h);
         noms.forEach((l, i) => texte(l, cols.matiere + 12, top + 11 + i * 10.5, regular, 8.5));
@@ -201,13 +208,13 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
           });
         });
         let tA = top + 11 + com.length * 10 + (com.length ? 2 : 0);
-        for (const x of apps) {
+        apps.forEach((x, iApp) => {
+          if (iApp) tA += ecartApps;
           x.lignes.forEach((l) => {
             texte(l, cols.com + 6, tA, italic, 7.8);
             tA += 10;
           });
-          tA += 2;
-        }
+        });
         page.drawLine({ start: { x: M, y: y(top + h) }, end: { x: Wp - M, y: y(top + h) }, thickness: 0.5, color: TRAIT });
         top += h;
       }

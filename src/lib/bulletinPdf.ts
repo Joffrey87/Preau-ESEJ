@@ -253,16 +253,12 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
     if (!app.length) texte("—", M + 12, top + 32, regular, 9, GRIS);
     top += hApp + 18;
 
-    // Signatures. Relevé / trimestre : Enseignante ou Enseignant (nom + rôle + espace) et encart parents — pas de Directrice.
+    // Signatures. Relevé / trimestre : deux encarts identiques (Enseignante/Enseignant + parents) — pas de Directrice.
     if (s.mode) {
       const hSig = 62, wSig = 200;
       place(hSig);
-      if (s.classe.titulaire) {
-        texte(s.classe.titulaire, M, top + 12, semi, 9);
-        texte(`${role} de la classe`, M, top + 24, regular, 8, GRIS);
-      } else {
-        texte(`Signature de l'${role.toLowerCase()}`, M, top + 13, semi, 8.5);
-      }
+      page.drawRectangle({ x: M, y: y(top + hSig), width: wSig, height: hSig, borderColor: TRAIT, borderWidth: 0.8 });
+      texte(`Signature de l'${role.toLowerCase()}`, M + 10, top + 13, semi, 8.5);
       page.drawRectangle({ x: Wp - M - wSig, y: y(top + hSig), width: wSig, height: hSig, borderColor: TRAIT, borderWidth: 0.8 });
       texte("Signature des parents", Wp - M - wSig + 10, top + 13, semi, 8.5);
       top += hSig;

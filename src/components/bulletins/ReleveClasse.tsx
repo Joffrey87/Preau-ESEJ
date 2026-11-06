@@ -64,7 +64,7 @@ export default function ReleveClasse({
   docs: ContexteDocs;
   periode: Periode;
   nomTitulaire: string | null;
-  roleTitulaire?: "Institutrice" | "Instituteur";
+  roleTitulaire?: "Enseignante" | "Enseignant";
   onRecharger: () => Promise<void>;
   /** Barre de la page où se placent les boutons d'état (une seule tuile en haut). */
   emplacement?: HTMLElement | null;

@@ -134,7 +134,7 @@ export async function chargerDocs(sb: SupabaseClient, classe: Classe, periode: P
   };
 }
 
-type Outils = { titulaire: string | null; roleTitulaire?: "Institutrice" | "Instituteur"; enseignants: Map<string, Enseignant> };
+type Outils = { titulaire: string | null; roleTitulaire?: "Enseignante" | "Enseignant"; enseignants: Map<string, Enseignant> };
 
 function groupesDe(ctx: ContexteDocs, eleve: EleveBulletin) {
   const niveau = niveauDe(eleve, ctx.classe.annee_scolaire);

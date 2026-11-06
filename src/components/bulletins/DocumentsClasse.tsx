@@ -49,7 +49,7 @@ export default function DocumentsClasse({
   /** Appréciation d'une matière (le Catéchisme est réservé au Directeur spirituel). */
   peutApprecier?: (m: Matiere) => boolean;
   nomTitulaire: string | null;
-  roleTitulaire?: "Institutrice" | "Instituteur";
+  roleTitulaire?: "Enseignante" | "Enseignant";
   enseignants: Map<string, Enseignant>;
   onRecharger: () => Promise<void>;
   /** Barre de la page où se placent les boutons d'état (une seule tuile en haut). */

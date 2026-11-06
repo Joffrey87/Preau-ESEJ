@@ -105,7 +105,7 @@ export type Synthese = {
   source?: string | null;
   /** naissance : date ISO, imprimée sur le bulletin trimestriel. */
   eleve: { prenom: string; nom: string; niveau: string | null; naissance?: string | null };
-  classe: { nom: string; titulaire: string | null; /** Institutrice / Instituteur (civilité du titulaire). */ roleTitulaire?: "Institutrice" | "Instituteur" };
+  classe: { nom: string; titulaire: string | null; /** Enseignante / Enseignant (civilité du titulaire). */ roleTitulaire?: "Enseignante" | "Enseignant" };
   periode: { libelle: string; annee: string; trimestre: number | null; numero?: number };
   afficherRang: boolean;
   general: Chiffre;
@@ -145,20 +145,31 @@ export const libellePeriode = (p: Pick<Periode, "libelle" | "debut" | "fin">) =>
 export const nomProfesseur = (e: Pick<Enseignant, "prenom" | "nom">) => [e.prenom, e.nom].filter(Boolean).join(" ");
 export const nomEnseignant = (e: Pick<Enseignant, "civilite" | "prenom" | "nom">) => [e.civilite, e.prenom, e.nom].filter(Boolean).join(" ");
 
-/** Intitulé du titulaire sur les documents PDF, d'après la civilité (Mme/Mlle → Institutrice, M. → Instituteur). */
-export function roleTitulaire(civilite: string | null | undefined): "Institutrice" | "Instituteur" {
+/** Intitulé du titulaire sur les documents PDF, d'après la civilité (Mme/Mlle → Enseignante, M. → Enseignant). */
+export function roleTitulaire(civilite: string | null | undefined): "Enseignante" | "Enseignant" {
   const c = (civilite ?? "").trim().toLowerCase().replace(/\./g, "");
-  if (/^(m|mr|monsieur)$/.test(c)) return "Instituteur";
-  if (/^(mme|mlle|madame|mademoiselle)$/.test(c)) return "Institutrice";
-  // École majoritairement féminine : défaut Institutrice si civilité inconnue.
-  return "Institutrice";
+  if (/^(m|mr|monsieur)$/.test(c)) return "Enseignant";
+  if (/^(mme|mlle|madame|mademoiselle)$/.test(c)) return "Enseignante";
+  // École majoritairement féminine : défaut Enseignante si civilité inconnue.
+  return "Enseignante";
 }
 
 /** Même intitulé à partir du nom déjà formaté (« Mme X », « M. Y ») — utile pour une synthèse déjà publiée. */
-export function roleTitulaireDepuisNom(titulaire: string | null | undefined): "Institutrice" | "Instituteur" {
-  if (!titulaire?.trim()) return "Institutrice";
+export function roleTitulaireDepuisNom(titulaire: string | null | undefined): "Enseignante" | "Enseignant" {
+  if (!titulaire?.trim()) return "Enseignante";
   const debut = titulaire.trim().split(/\s+/)[0] ?? "";
   return roleTitulaire(debut);
+}
+
+/** Anciennes synthèses peuvent encore porter « Institutrice » / « Instituteur ». */
+export function normaliserRoleTitulaire(
+  role: string | null | undefined,
+  titulaire?: string | null,
+): "Enseignante" | "Enseignant" {
+  if (role === "Enseignante" || role === "Enseignant") return role;
+  if (role === "Institutrice") return "Enseignante";
+  if (role === "Instituteur") return "Enseignant";
+  return roleTitulaireDepuisNom(titulaire);
 }
 export const nomEleve = (e: Pick<EleveBulletin, "prenom" | "nom">) => `${e.prenom ?? ""} ${e.nom}`.trim();
 

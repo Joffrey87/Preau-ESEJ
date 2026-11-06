@@ -79,8 +79,10 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
     // En-tête : logo, école, période (dates sur leur propre ligne) ; cartouche de l'élève à droite, séparé du
     // bloc de gauche par une gouttière, et dont la hauteur suit le nom (prénom au-dessus, nom réduit puis coupé
     // s'il est long : jamais de débordement).
-    // Logo un peu plus grand ; cartouche ~172 pt (une enseignante) : wrap + hauteur si le libellé est long.
-    const CW = 172, bx = Wp - M - CW, gx = M + 84, gw = bx - 18 - gx, iw = CW - 24;
+    // Logo un peu plus grand ; cartouche dimensionné pour « Enseignante : Mademoiselle de Fonclare »
+    // sur une ligne (mesure réelle + marge) ; wrap + hauteur si le libellé est encore plus long.
+    const iwCartouche = largeur("Enseignante : Mademoiselle de Fonclare", regular, 8.5) + 8;
+    const CW = Math.ceil(iwCartouche + 24), bx = Wp - M - CW, gx = M + 84, gw = bx - 18 - gx, iw = CW - 24;
     page.drawImage(logo, { x: M, y: y(top + 71), width: 72, height: 71 });
     texte("École du Saint-Enfant-Jésus", gx, top + 16, semi, ajuste("École du Saint-Enfant-Jésus", semi, 13, gw, 10));
     const sousTitre = `${s.mode === "releve" ? "Relevé de notes" : "Bulletin scolaire"} · Année ${s.periode.annee}`;

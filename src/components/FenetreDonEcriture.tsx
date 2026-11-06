@@ -141,7 +141,21 @@ export default function FenetreDonEcriture({
       <div className="max-h-[78vh] space-y-4 overflow-y-auto pr-1">
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-surface-2 px-3 py-2 text-sm">
           <span>
-            Don du <strong>{formatDate(don.date_don)}</strong> de <strong>{formatEuros(Number(don.montant))}</strong>
+            Don du <strong>{formatDate(don.date_don)}</strong>
+            {fille ? (
+              <>
+                {" "}
+                · {don.mode_paiement === "Chèque" ? "encaissé" : "versé"} le{" "}
+                <strong>{formatDate(fille.date_operation)}</strong>
+              </>
+            ) : don.operation?.date_operation ? (
+              <>
+                {" "}
+                · {don.mode_paiement === "Chèque" ? "encaissé" : "versé"} le{" "}
+                <strong>{formatDate(don.operation.date_operation)}</strong>
+              </>
+            ) : null}{" "}
+            de <strong>{formatEuros(Number(don.montant))}</strong>
             {nom ? <> — {nom}</> : null}
           </span>
           <button type="button" onClick={onModifierDon} className="text-xs font-medium text-accent hover:underline">
@@ -157,8 +171,8 @@ export default function FenetreDonEcriture({
               <Concordance ok={Math.abs(ecartMontant) < 0.005} bon={`Montant identique (${formatEuros(Number(fille.montant))})`}
                 mauvais={`Montant différent : don ${formatEuros(Number(don.montant))}, écriture ${formatEuros(Number(fille.montant))} (écart ${formatEuros(Math.abs(ecartMontant))})`} />
               <Concordance ok={ecartJours <= 3} souple={ecartJours <= 35}
-                bon={ecartJours === 0 ? "Même date" : `Date proche (${ecartJours} j d'écart)`}
-                mauvais={`Date éloignée : don du ${formatDate(don.date_don)}, écriture du ${formatDate(fille.date_operation)} (${ecartJours} j)`} />
+                bon={ecartJours === 0 ? "Même date (don et versement)" : `Date du don ${formatDate(don.date_don)} · versement ${formatDate(fille.date_operation)} (${ecartJours} j)`}
+                mauvais={`Écart important : date du don ${formatDate(don.date_don)}, versement ${formatDate(fille.date_operation)} (${ecartJours} j)`} />
               {intitule && (
                 <li className="text-muted">
                   Intitulé bancaire : <span className="text-foreground">{intitule}</span>

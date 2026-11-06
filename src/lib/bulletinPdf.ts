@@ -78,8 +78,8 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
     // En-tête : logo, école, période (dates sur leur propre ligne) ; cartouche de l'élève à droite, séparé du
     // bloc de gauche par une gouttière, et dont la hauteur suit le nom (prénom au-dessus, nom réduit puis coupé
     // s'il est long : jamais de débordement).
-    // Logo un peu plus grand ; cartouche 196 pt : les infos (classe / enseignante) reviennent à la ligne si besoin.
-    const CW = 196, bx = Wp - M - CW, gx = M + 84, gw = bx - 18 - gx, iw = CW - 24;
+    // Logo un peu plus grand ; cartouche ~172 pt (une enseignante) : wrap + hauteur si le libellé est long.
+    const CW = 172, bx = Wp - M - CW, gx = M + 84, gw = bx - 18 - gx, iw = CW - 24;
     page.drawImage(logo, { x: M, y: y(top + 71), width: 72, height: 71 });
     texte("École du Saint-Enfant-Jésus", gx, top + 16, semi, ajuste("École du Saint-Enfant-Jésus", semi, 13, gw, 10));
     const sousTitre = `${s.mode === "releve" ? "Relevé de notes" : "Bulletin scolaire"} · Année ${s.periode.annee}`;
@@ -313,6 +313,7 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
       place(hSig);
       page.drawRectangle({ x: M, y: y(top + hSig), width: wSig, height: hSig, borderColor: TRAIT, borderWidth: 0.8 });
       texte(`Signature de l'${role.toLowerCase()}`, M + 10, top + 13, semi, 8.5);
+      // Titre + nom sous l'intitulé, regular 8,5 comme la ligne Enseignante du cartouche.
       lignesSig.forEach((l, i) => texte(l, M + 10, top + 26 + i * 11, regular, tSig));
       page.drawRectangle({ x: Wp - M - wSig, y: y(top + hSig), width: wSig, height: hSig, borderColor: TRAIT, borderWidth: 0.8 });
       texte("Signature des parents", Wp - M - wSig + 10, top + 13, semi, 8.5);

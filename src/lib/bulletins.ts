@@ -159,13 +159,31 @@ export function civiliteEnLettres(civilite: string | null | undefined): string {
 export const nomEnseignant = (e: Pick<Enseignant, "civilite" | "prenom" | "nom">) =>
   [civiliteEnLettres(e.civilite), e.nom].filter(Boolean).join(" ");
 
-/** Développe une civilité abrégée en tête d'un libellé déjà figé (« Mlle de Fonclare » → « Mademoiselle de Fonclare »). */
+/** Particule de nom (ne pas confondre avec un prénom). */
+const PARTICULE_NOM = /^(d'|de|du|des|la|le|les|van|von|di|da|del|della)$/i;
+
+/** Retire un prénom éventuel devant le nom de famille (« Eulalie de Fonclare » → « de Fonclare », « Blandine Bernard » → « Bernard »). */
+function sansPrenomEnseignant(rest: string): string {
+  const tokens = rest.trim().split(/\s+/).filter(Boolean);
+  if (tokens.length <= 1) return rest.trim();
+  if (PARTICULE_NOM.test(tokens[0]!)) return rest.trim();
+  return tokens.slice(1).join(" ");
+}
+
+/**
+ * Libellé enseignant pour les PDF : titre en toutes lettres + nom, sans prénom.
+ * Accepte une chaîne déjà figée (« Mlle Eulalie de Fonclare », « Madame Blandine Bernard »)
+ * ou déjà normalisée (« Mademoiselle de Fonclare ») ; plusieurs noms séparés par « et » / virgule.
+ */
 export function developperCiviliteNom(libelle: string | null | undefined): string {
   const s = (libelle ?? "").trim();
   if (!s) return "";
-  const m = s.match(/^(M\.|Mme|Mlle|Mr\.?)\s+(.+)$/i);
+  const morceaux = s.split(/\s+et\s+|\s*,\s*/).map((x) => x.trim()).filter(Boolean);
+  if (morceaux.length > 1) return morceaux.map(developperCiviliteNom).filter(Boolean).join(" et ");
+  const m = s.match(/^(M\.|Mme|Mlle|Mr\.?|Monsieur|Madame|Mademoiselle|Chanoine)\s+(.+)$/i);
   if (!m) return s;
-  return [civiliteEnLettres(m[1]), m[2]].filter(Boolean).join(" ");
+  const titre = civiliteEnLettres(m[1]) || m[1]!.trim();
+  return [titre, sansPrenomEnseignant(m[2]!)].filter(Boolean).join(" ");
 }
 
 /** Intitulé du titulaire sur les documents PDF, d'après la civilité (Madame/Mademoiselle → Enseignante, Monsieur → Enseignant). */

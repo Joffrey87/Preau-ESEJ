@@ -78,7 +78,7 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
     // En-tête : logo, école, période (dates sur leur propre ligne) ; cartouche de l'élève à droite, séparé du
     // bloc de gauche par une gouttière, et dont la hauteur suit le nom (prénom au-dessus, nom réduit puis coupé
     // s'il est long : jamais de débordement).
-    // Logo un peu plus grand ; cartouche assez large pour « Enseignante : Mademoiselle … » (06/11/2026).
+    // Logo un peu plus grand ; cartouche 196 pt : les infos (classe / enseignante) reviennent à la ligne si besoin.
     const CW = 196, bx = Wp - M - CW, gx = M + 84, gw = bx - 18 - gx, iw = CW - 24;
     page.drawImage(logo, { x: M, y: y(top + 71), width: 72, height: 71 });
     texte("École du Saint-Enfant-Jésus", gx, top + 16, semi, ajuste("École du Saint-Enfant-Jésus", semi, 13, gw, 10));
@@ -117,8 +117,33 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
     const infos = [ligneClasse && { t: ligneClasse, gris: false }, naissance && { t: naissance, gris: true }, titulaireNom && { t: `${role} : ${titulaireNom}`, gris: true }].filter(
       (x): x is { t: string; gris: boolean } => !!x,
     );
-    // Lignes de base : prénom à 16, nom(s) tous les tNom + 3, première information 15 plus bas, les suivantes 13 ; 9 de marge.
-    const hCart = 16 + lignesNom.length * (tNom + 3) + (infos.length ? 15 + (infos.length - 1) * 13 : 0) + 9;
+    // Classe / Enseignante : d'abord retour à la ligne dans le cartouche (hauteur qui suit) ;
+    // préfère couper après « Rôle : » ; police réduite seulement si un mot isolé dépasse encore.
+    const coupeInfo = (str: string, font: PDFFont, size: number, w: number) => {
+      if (largeur(str, font, size) <= w) return [str];
+      const m = str.match(/^([^:]+:\s*)([\s\S]+)$/);
+      if (m && largeur(m[1], font, size) <= w) {
+        const reste = coupe(m[2], font, size, w);
+        if (reste.length && largeur(m[1] + reste[0], font, size) <= w) return [m[1] + reste[0], ...reste.slice(1)];
+        return [m[1].trimEnd(), ...reste];
+      }
+      return coupe(str, font, size, w);
+    };
+    const infosRendues = infos.map((x) => {
+      let taille = x.gris ? 8.5 : 9;
+      let lignes = coupeInfo(x.t, regular, taille, iw);
+      while (lignes.some((l) => largeur(l, regular, taille) > iw + 0.01) && taille > 7) {
+        taille -= 0.25;
+        lignes = coupeInfo(x.t, regular, taille, iw);
+      }
+      return { lignes, taille, gris: x.gris };
+    });
+    // Lignes de base : prénom à 16, nom(s) tous les tNom + 3, première info +15, suivantes +13, wraps +11 ; marge basse 12.
+    let hInfos = 0;
+    infosRendues.forEach((x, i) => {
+      hInfos += (i === 0 ? 15 : 13) + Math.max(0, x.lignes.length - 1) * 11;
+    });
+    const hCart = 16 + lignesNom.length * (tNom + 3) + hInfos + 12;
     rect(bx, top, CW, hCart, CREME);
     page.drawRectangle({ x: bx, y: y(top + hCart), width: 2.5, height: hCart, color: OR });
     let tc = top + 16;
@@ -127,11 +152,12 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
       tc += tNom + 3;
       texte(l, bx + 14, tc, semi, tNom);
     }
-    infos.forEach((x, i) => {
+    infosRendues.forEach((x, i) => {
       tc += i === 0 ? 15 : 13;
-      // Classe / Enseignante : police réduite si le libellé dépasse (noms longs).
-      const taille = ajuste(x.t, regular, x.gris ? 8.5 : 9, iw, 7);
-      texte(x.t, bx + 14, tc, regular, taille, x.gris ? GRIS : NAVY);
+      x.lignes.forEach((l, j) => {
+        if (j) tc += 11;
+        texte(l, bx + 14, tc, regular, x.taille, x.gris ? GRIS : NAVY);
+      });
     });
     top += Math.max(71, hCart) + 18;
 
@@ -276,11 +302,18 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
 
     // Signatures. Relevé / trimestre : encart Enseignante/Enseignant (titre + nom) + encart parents — pas de Directrice.
     if (s.mode) {
-      const hSig = 62, wSig = 200;
+      const wSig = 200, wNomSig = wSig - 20;
+      let tSig = 8.5;
+      let lignesSig = titulaireNom ? coupe(titulaireNom, regular, tSig, wNomSig) : [];
+      while (lignesSig.some((l) => largeur(l, regular, tSig) > wNomSig + 0.01) && tSig > 7) {
+        tSig -= 0.25;
+        lignesSig = coupe(titulaireNom!, regular, tSig, wNomSig);
+      }
+      const hSig = Math.max(62, 40 + Math.max(1, lignesSig.length) * 11);
       place(hSig);
       page.drawRectangle({ x: M, y: y(top + hSig), width: wSig, height: hSig, borderColor: TRAIT, borderWidth: 0.8 });
       texte(`Signature de l'${role.toLowerCase()}`, M + 10, top + 13, semi, 8.5);
-      if (titulaireNom) texte(titulaireNom, M + 10, top + 26, regular, 8.5);
+      lignesSig.forEach((l, i) => texte(l, M + 10, top + 26 + i * 11, regular, tSig));
       page.drawRectangle({ x: Wp - M - wSig, y: y(top + hSig), width: wSig, height: hSig, borderColor: TRAIT, borderWidth: 0.8 });
       texte("Signature des parents", Wp - M - wSig + 10, top + 13, semi, 8.5);
       top += hSig;
@@ -288,7 +321,11 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
       // Bulletin de période historique : Directrice + titulaire.
       place(40);
       texte("La Directrice", Wp - M - 160, top + 10, semi, 9);
-      if (titulaireNom) texte(titulaireNom, M, top + 10, semi, 9);
+      if (titulaireNom) {
+        const wHist = 200;
+        const tHist = ajuste(titulaireNom, semi, 9, wHist, 7);
+        texte(titulaireNom, M, top + 10, semi, tHist);
+      }
       texte(titulaireNom ? `${role} de la classe` : "", M, top + 22, regular, 8, GRIS);
     }
 

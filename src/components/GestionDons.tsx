@@ -860,6 +860,26 @@ export default function GestionDons({
     router.refresh();
   }
 
+  /** Reçu par courriel : un clic sur « À envoyer » le marque envoyé (aujourd'hui, courriel). */
+  async function marquerEnvoyeCourriel(d: Don) {
+    if (!d.recu_numero || !numeroEtabli(d.recu_numero)) return;
+    if (!window.confirm(`Marquer le reçu ${d.recu_numero} comme envoyé par courriel aujourd'hui ?`)) return;
+    const memes = donsInit.filter((x) => x.recu_numero === d.recu_numero && !x.supprime_le);
+    const jour = todayISO();
+    const supabase = createClient();
+    const { error: errRecu } = await supabase
+      .from("recus")
+      .update({ envoye_le: jour, envoi_mode: "courriel", envoi_precision: null })
+      .eq("recu_numero", d.recu_numero);
+    if (errRecu) return setGenErreur("Registre des reçus non mis à jour : " + errRecu.message);
+    const { error } = await supabase
+      .from("dons")
+      .update({ recu_etat: etatEnvoye(formatDate(jour), "courriel") })
+      .in("id", memes.map((x) => x.id));
+    if (error) return setGenErreur("Mise à jour impossible : " + error.message);
+    router.refresh();
+  }
+
   const colsAff = avecMedaille ? { ...cols, statut: true, medaille: true } : modeRecherche ? { ...cols, medaille: false } : modeMedailles ? { ...cols, statut: false, recu: false } : cols;
   const cellPad = compact ? "px-3 py-1.5" : "px-4 py-3";
   const ringManque = (estVide: boolean) =>
@@ -1395,6 +1415,16 @@ export default function GestionDons({
                               type="button"
                               onClick={() => void avancerCourrier(d, c.key as "passer" | "verifier_poste")}
                               title={c.key === "passer" ? "Cliquer quand le reçu est passé au secrétaire" : "Cliquer pour valider : le courrier est posté"}
+                              className={`${cls} cursor-pointer hover:opacity-80`}
+                            >
+                              {c.label}
+                            </button>
+                          ) : c.key === "envoyer" && estTresorier && !vueCorbeille && d.recu_numero ? (
+                            <button
+                              key={c.key}
+                              type="button"
+                              onClick={() => void marquerEnvoyeCourriel(d)}
+                              title="Cliquer pour marquer ce reçu envoyé par courriel"
                               className={`${cls} cursor-pointer hover:opacity-80`}
                             >
                               {c.label}

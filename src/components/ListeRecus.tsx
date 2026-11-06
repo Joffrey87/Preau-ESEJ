@@ -780,6 +780,15 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
                   <td className="px-4 py-3">
                     {g.numero && !g.reserve && (st === "passer" || st === "verifier" || (st === "envoye" && prefereCourrier(g.representant))) ? (
                       <EtapePostaleListe numero={g.numero} idsDons={g.dons.map((d) => d.id)} etape={st === "envoye" ? "envoye" : st} />
+                    ) : st === "edite" && g.numero && !g.reserve ? (
+                      <button
+                        type="button"
+                        onClick={() => setEnvoi(g)}
+                        title="Cliquer pour marquer ce reçu envoyé"
+                        className={`inline-flex cursor-pointer rounded-full px-2 py-0.5 text-xs font-medium hover:opacity-80 ${TON[st]}`}
+                      >
+                        {LIBELLE[st]}
+                      </button>
                     ) : (
                       <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${TON[st]}`}>
                         {LIBELLE[st]}
@@ -804,24 +813,26 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
                     )}
                   </td>
                   <td className="px-4 py-3 text-right whitespace-nowrap">
-                    {verrou ? (
-                      <span className="text-xs text-muted">🔒</span>
-                    ) : g.numero && !g.reserve ? (
+                    {g.numero && !g.reserve ? (
                       <span className="inline-flex items-center gap-3 text-xs">
                         <button type="button" onClick={() => telecharger(g)} disabled={busy === g.cle} className="text-accent hover:underline disabled:opacity-50" title="Ouvrir le reçu dans un onglet">
                           PDF
                         </button>
-                        <button type="button" onClick={() => setNumeroRecu(g)} className="text-muted hover:text-foreground hover:underline" title="Corriger le numéro de ce reçu (celui réellement remis au donateur)">
-                          N°
-                        </button>
+                        {!verrou && (
+                          <button type="button" onClick={() => setNumeroRecu(g)} className="text-muted hover:text-foreground hover:underline" title="Corriger le numéro de ce reçu (celui réellement remis au donateur)">
+                            N°
+                          </button>
+                        )}
                         {st === "edite" && (
                           <>
                             <button type="button" onClick={() => setEnvoi(g)} disabled={busy === g.cle} className="text-positive hover:underline disabled:opacity-50">
                               Marquer envoyé
                             </button>
-                            <button type="button" onClick={() => annuler(g)} disabled={busy === g.cle} className="text-muted hover:text-negative disabled:opacity-50">
-                              Annuler
-                            </button>
+                            {!verrou && (
+                              <button type="button" onClick={() => annuler(g)} disabled={busy === g.cle} className="text-muted hover:text-negative disabled:opacity-50">
+                                Annuler
+                              </button>
+                            )}
                           </>
                         )}
                         {st === "passer" && (
@@ -829,9 +840,11 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
                             <button type="button" onClick={() => void avancerPostal(g, "verifier")} disabled={busy === g.cle} className="text-positive hover:underline disabled:opacity-50" title="Le reçu (avec sa lettre) a été remis au secrétaire pour envoi postal">
                               Passé au secrétaire
                             </button>
-                            <button type="button" onClick={() => annuler(g)} disabled={busy === g.cle} className="text-muted hover:text-negative disabled:opacity-50">
-                              Annuler
-                            </button>
+                            {!verrou && (
+                              <button type="button" onClick={() => annuler(g)} disabled={busy === g.cle} className="text-muted hover:text-negative disabled:opacity-50">
+                                Annuler
+                              </button>
+                            )}
                           </>
                         )}
                         {st === "verifier" && (
@@ -848,7 +861,10 @@ export default function ListeRecus({ dons, recus }: { dons: DonRow[]; recus: Rec
                             </button>
                           </>
                         )}
+                        {verrou && <span className="text-muted" title="Coffre verrouillé : noms masqués, mais l'envoi du reçu reste possible">🔒</span>}
                       </span>
+                    ) : verrou ? (
+                      <span className="text-xs text-muted">🔒</span>
                     ) : g.sans ? (
                       <button type="button" onClick={() => retablirRecu(g)} disabled={busy === g.cle} className="text-xs text-accent hover:underline disabled:opacity-50">
                         Rétablir le reçu
@@ -1066,18 +1082,36 @@ function EnvoiRecu({
     setBusy(true);
     setErreur(null);
     const supabase = createClient();
-    const { data, error } = await supabase
+    // Pas de .select() après l'update : sous RLS, RETURNING peut revenir vide alors que
+    // l'écriture a réussi, et l'UI affichait à tort « reçu absent du registre ».
+    const { error } = await supabase
       .from("recus")
       .update(
         annulerEnvoi
           ? { envoye_le: null, envoi_mode: null, envoi_precision: null }
           : { envoye_le: date, envoi_mode: moyen, envoi_precision: moyen === "autre" ? precision.trim() || null : null },
       )
-      .eq("recu_numero", groupe.numero)
-      .select("recu_numero");
-    if (error || !data || data.length === 0) {
+      .eq("recu_numero", groupe.numero);
+    if (error) {
       setBusy(false);
-      return setErreur("Enregistrement impossible : " + (error?.message ?? "reçu absent du registre"));
+      return setErreur("Enregistrement impossible : " + error.message);
+    }
+    const { data: verif, error: errVerif } = await supabase
+      .from("recus")
+      .select("recu_numero, envoye_le")
+      .eq("recu_numero", groupe.numero)
+      .maybeSingle();
+    if (errVerif || !verif) {
+      setBusy(false);
+      return setErreur("Enregistrement impossible : " + (errVerif?.message ?? "reçu absent du registre"));
+    }
+    if (!annulerEnvoi && !verif.envoye_le) {
+      setBusy(false);
+      return setErreur("Enregistrement impossible : le registre n'a pas accepté la date d'envoi (droits ?).");
+    }
+    if (annulerEnvoi && verif.envoye_le) {
+      setBusy(false);
+      return setErreur("Annulation impossible : la date d'envoi est toujours présente au registre.");
     }
     const { error: errDons } = await supabase
       .from("dons")

@@ -42,6 +42,8 @@ export type VentePaiement = {
   operation_id: string | null;
   caisse_mouvement_id: string | null;
   created_at: string;
+  /** Date du paiement (AAAA-MM-JJ) : date de l'opération bancaire, sinon date du mouvement de caisse. */
+  date_paiement?: string | null;
 };
 
 export type Payeur = { kind: "famille" | "contact"; id: string; libelle: string };
@@ -86,6 +88,23 @@ export function synthetiser(detail: string, max = LONGUEUR_SYNTHESE): string {
 export function dateObjet(o: Pick<SousCategorie, "created_at" | "date_evenement">): string {
   return o.date_evenement || (o.created_at ?? "").slice(0, 10);
 }
+
+/** Date de paiement affichable (AAAA-MM-JJ) pour un paiement déjà enrichi. */
+export function datePaiement(p: Pick<VentePaiement, "date_paiement">): string | null {
+  const d = p.date_paiement?.slice(0, 10) ?? "";
+  return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null;
+}
+
+/** Dernière date de paiement parmi des paiements (AAAA-MM-JJ), ou null. */
+export function derniereDatePaiement(paiements: Pick<VentePaiement, "date_paiement">[]): string | null {
+  let max: string | null = null;
+  for (const p of paiements) {
+    const d = datePaiement(p);
+    if (d && (!max || d > max)) max = d;
+  }
+  return max;
+}
+
 
 export function statutVente(attendu: number, paye: number): StatutVente {
   if (paye > attendu + 0.005) return "trop_percu";

@@ -4,9 +4,10 @@
 
 import type { PDFFont, PDFPage, RGB } from "pdf-lib";
 import { chargerRessources, assainir } from "@/lib/recuPdf";
-import { classeEleve, dateJJMMAAAA, mentionLabel, nomFichierBulletin, note20, rangTexte, normaliserRoleTitulaire, titreDocument, type Synthese } from "@/lib/bulletins";
+import { classeEleve, dateJJMMAAAA, developperCiviliteNom, mentionLabel, nomFichierBulletin, note20, rangTexte, normaliserRoleTitulaire, titreDocument, type Synthese } from "@/lib/bulletins";
 import { texteAbsences } from "@/lib/absences";
 import { tauxTexte } from "@/lib/calendrier";
+import { visualiserPdf, type OptionsPdf } from "@/lib/documentPdf";
 
 const W = 595.28, H = 841.89, M = 40;
 /** Réduction maximale (0,8) : le corps du texte (8,5–9 pt) ne descend pas sous 7 pt environ. */
@@ -78,8 +79,10 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
     // En-tête : logo, école, période (dates sur leur propre ligne) ; cartouche de l'élève à droite, séparé du
     // bloc de gauche par une gouttière, et dont la hauteur suit le nom (prénom au-dessus, nom réduit puis coupé
     // s'il est long : jamais de débordement).
-    // Logo un peu plus grand ; cartouche nom/prénom un peu plus étroit (06/11/2026).
-    const CW = 172, bx = Wp - M - CW, gx = M + 84, gw = bx - 18 - gx, iw = CW - 24;
+    // Logo un peu plus grand ; cartouche dimensionné pour « Enseignante : Mademoiselle de Fonclare »
+    // sur une ligne (mesure réelle + marge) ; wrap + hauteur si le libellé est encore plus long.
+    const iwCartouche = largeur("Enseignante : Mademoiselle de Fonclare", regular, 8.5) + 8;
+    const CW = Math.ceil(iwCartouche + 24), bx = Wp - M - CW, gx = M + 84, gw = bx - 18 - gx, iw = CW - 24;
     page.drawImage(logo, { x: M, y: y(top + 71), width: 72, height: 71 });
     texte("École du Saint-Enfant-Jésus", gx, top + 16, semi, ajuste("École du Saint-Enfant-Jésus", semi, 13, gw, 10));
     const sousTitre = `${s.mode === "releve" ? "Relevé de notes" : "Bulletin scolaire"} · Année ${s.periode.annee}`;
@@ -112,12 +115,38 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
     // naissance en plus.
     const ligneClasse = classeEleve(s);
     const naissance = s.mode === "trimestre" && s.eleve.naissance ? `Né(e) le ${dateJJMMAAAA(s.eleve.naissance)}` : "";
-    const role = normaliserRoleTitulaire(s.classe.roleTitulaire, s.classe.titulaire);
-    const infos = [ligneClasse && { t: ligneClasse, gris: false }, naissance && { t: naissance, gris: true }, s.classe.titulaire && { t: `${role} : ${s.classe.titulaire}`, gris: true }].filter(
+    const titulaireNom = developperCiviliteNom(s.classe.titulaire);
+    const role = normaliserRoleTitulaire(s.classe.roleTitulaire, titulaireNom || s.classe.titulaire);
+    const infos = [ligneClasse && { t: ligneClasse, gris: false }, naissance && { t: naissance, gris: true }, titulaireNom && { t: `${role} : ${titulaireNom}`, gris: true }].filter(
       (x): x is { t: string; gris: boolean } => !!x,
     );
-    // Lignes de base : prénom à 16, nom(s) tous les tNom + 3, première information 15 plus bas, les suivantes 13 ; 9 de marge.
-    const hCart = 16 + lignesNom.length * (tNom + 3) + (infos.length ? 15 + (infos.length - 1) * 13 : 0) + 9;
+    // Classe / Enseignante : d'abord retour à la ligne dans le cartouche (hauteur qui suit) ;
+    // préfère couper après « Rôle : » ; police réduite seulement si un mot isolé dépasse encore.
+    const coupeInfo = (str: string, font: PDFFont, size: number, w: number) => {
+      if (largeur(str, font, size) <= w) return [str];
+      const m = str.match(/^([^:]+:\s*)([\s\S]+)$/);
+      if (m && largeur(m[1], font, size) <= w) {
+        const reste = coupe(m[2], font, size, w);
+        if (reste.length && largeur(m[1] + reste[0], font, size) <= w) return [m[1] + reste[0], ...reste.slice(1)];
+        return [m[1].trimEnd(), ...reste];
+      }
+      return coupe(str, font, size, w);
+    };
+    const infosRendues = infos.map((x) => {
+      let taille = x.gris ? 8.5 : 9;
+      let lignes = coupeInfo(x.t, regular, taille, iw);
+      while (lignes.some((l) => largeur(l, regular, taille) > iw + 0.01) && taille > 7) {
+        taille -= 0.25;
+        lignes = coupeInfo(x.t, regular, taille, iw);
+      }
+      return { lignes, taille, gris: x.gris };
+    });
+    // Lignes de base : prénom à 16, nom(s) tous les tNom + 3, première info +15, suivantes +13, wraps +11 ; marge basse 12.
+    let hInfos = 0;
+    infosRendues.forEach((x, i) => {
+      hInfos += (i === 0 ? 15 : 13) + Math.max(0, x.lignes.length - 1) * 11;
+    });
+    const hCart = 16 + lignesNom.length * (tNom + 3) + hInfos + 12;
     rect(bx, top, CW, hCart, CREME);
     page.drawRectangle({ x: bx, y: y(top + hCart), width: 2.5, height: hCart, color: OR });
     let tc = top + 16;
@@ -126,9 +155,12 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
       tc += tNom + 3;
       texte(l, bx + 14, tc, semi, tNom);
     }
-    infos.forEach((x, i) => {
+    infosRendues.forEach((x, i) => {
       tc += i === 0 ? 15 : 13;
-      texte(x.t, bx + 14, tc, regular, x.gris ? 8.5 : 9, x.gris ? GRIS : NAVY);
+      x.lignes.forEach((l, j) => {
+        if (j) tc += 11;
+        texte(l, bx + 14, tc, regular, x.taille, x.gris ? GRIS : NAVY);
+      });
     });
     top += Math.max(71, hCart) + 18;
 
@@ -167,15 +199,30 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
         // Intitulé long (« Systèmes de poids et mesures ») : coupé sur deux lignes dans sa colonne, jamais tronqué.
         const wNom = (releve ? cols.com : cols.moy) - cols.matiere - 18;
         const noms = coupe(m.nom, regular, 8.5, wNom);
-        // Relevé et bulletin trimestriel (04/11/2026) : le professeur n'est plus répété sous chaque matière.
-        const ens = m.enseignants && !s.mode ? coupe(m.enseignants, regular, 6.5, wNom) : [];
-        // Catéchisme : l'appréciation du professeur puis celle du Directeur spirituel, chacune sous son étiquette.
-        const apps = (m.appreciations ?? []).map((x) => ({ titre: x.titre, lignes: coupe(x.texte, italic, 7.8, wCom) }));
-        const hCom = com.length * 10 + apps.reduce((t, x) => t + 9.5 + x.lignes.length * 10 + 2, 0);
-        const h = Math.max(8 + noms.length * 10.5 + ens.length * 8.5, 8 + hCom);
+        // Intervenants sous la matière (style discret) ; le titulaire du cartouche n'est pas répété.
+        const ensLib = (m.enseignants ?? "")
+          .split(",")
+          .map((x) => x.trim())
+          .filter((x) => x && x !== (s.classe.titulaire ?? "").trim())
+          .join(", ");
+        const ens = ensLib ? coupe(ensLib, regular, 7, wNom) : [];
+        // Catéchisme : Directeur (texte seul) puis enseignante (nom + commentaire si présent).
+        // Autres matières : contenu seul. Pas de 2e ligne vide si l'enseignante n'a pas commenté.
+        const apps = (m.appreciations ?? [])
+          .map((x) => ({ titre: (x.titre ?? "").trim(), lignes: coupe(x.texte, italic, 7.8, wCom) }))
+          .filter((x) => x.lignes.length);
+        // Écart entre deux appréciations (Directeur / enseignante) pour les distinguer clairement.
+        const ecartApps = apps.length > 1 ? 5 : 0;
+        const hTitreApp = 9.5;
+        const hCom =
+          com.length * 10 +
+          (com.length && apps.length ? 2 : 0) +
+          apps.reduce((t, x) => t + (x.titre ? hTitreApp : 0) + x.lignes.length * 10, 0) +
+          Math.max(0, apps.length - 1) * ecartApps;
+        const h = Math.max(8 + noms.length * 10.5 + ens.length * 9, 8 + hCom);
         place(h);
         noms.forEach((l, i) => texte(l, cols.matiere + 12, top + 11 + i * 10.5, regular, 8.5));
-        ens.forEach((l, i) => texte(l, cols.matiere + 12, top + 11 + noms.length * 10.5 - 1.5 + i * 8.5, regular, 6.5, GRIS));
+        ens.forEach((l, i) => texte(l, cols.matiere + 12, top + 11 + noms.length * 10.5 - 1.5 + i * 9, regular, 7, GRIS));
         if (!m.appreciationSeule) chiffres(m.chiffre, top + 11, semi, NAVY);
         // Notes du relevé : séparées par un point médian « · » (couleur du texte ; doré seulement à l’écran).
         com.forEach((l, i) => {
@@ -190,15 +237,18 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
           });
         });
         let tA = top + 11 + com.length * 10 + (com.length ? 2 : 0);
-        for (const x of apps) {
-          texte(x.titre, cols.com + 6, tA - 1, semi, 6.8, OR);
-          tA += 9.5;
+        apps.forEach((x, iApp) => {
+          if (iApp) tA += ecartApps;
+          if (x.titre) {
+            // Nom de l'enseignante de classe (étiquette) avant son commentaire Catéchisme.
+            texte(x.titre, cols.com + 6, tA - 1, semi, 7.2, OR);
+            tA += hTitreApp;
+          }
           x.lignes.forEach((l) => {
             texte(l, cols.com + 6, tA, italic, 7.8);
             tA += 10;
           });
-          tA += 2;
-        }
+        });
         page.drawLine({ start: { x: M, y: y(top + h) }, end: { x: Wp - M, y: y(top + h) }, thickness: 0.5, color: TRAIT });
         top += h;
       }
@@ -253,12 +303,21 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
     if (!app.length) texte("—", M + 12, top + 32, regular, 9, GRIS);
     top += hApp + 18;
 
-    // Signatures. Relevé / trimestre : deux encarts identiques (Enseignante/Enseignant + parents) — pas de Directrice.
+    // Signatures. Relevé / trimestre : encart Enseignante/Enseignant (titre + nom) + encart parents — pas de Directrice.
     if (s.mode) {
-      const hSig = 62, wSig = 200;
+      const wSig = 200, wNomSig = wSig - 20;
+      let tSig = 8.5;
+      let lignesSig = titulaireNom ? coupe(titulaireNom, regular, tSig, wNomSig) : [];
+      while (lignesSig.some((l) => largeur(l, regular, tSig) > wNomSig + 0.01) && tSig > 7) {
+        tSig -= 0.25;
+        lignesSig = coupe(titulaireNom!, regular, tSig, wNomSig);
+      }
+      const hSig = Math.max(73, 51 + Math.max(1, lignesSig.length) * 11); // +1 ligne vs 62/40
       place(hSig);
       page.drawRectangle({ x: M, y: y(top + hSig), width: wSig, height: hSig, borderColor: TRAIT, borderWidth: 0.8 });
       texte(`Signature de l'${role.toLowerCase()}`, M + 10, top + 13, semi, 8.5);
+      // Titre + nom sous l'intitulé, regular 8,5 comme la ligne Enseignante du cartouche.
+      lignesSig.forEach((l, i) => texte(l, M + 10, top + 26 + i * 11, regular, tSig));
       page.drawRectangle({ x: Wp - M - wSig, y: y(top + hSig), width: wSig, height: hSig, borderColor: TRAIT, borderWidth: 0.8 });
       texte("Signature des parents", Wp - M - wSig + 10, top + 13, semi, 8.5);
       top += hSig;
@@ -266,8 +325,12 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
       // Bulletin de période historique : Directrice + titulaire.
       place(40);
       texte("La Directrice", Wp - M - 160, top + 10, semi, 9);
-      if (s.classe.titulaire) texte(s.classe.titulaire, M, top + 10, semi, 9);
-      texte(s.classe.titulaire ? `${role} de la classe` : "", M, top + 22, regular, 8, GRIS);
+      if (titulaireNom) {
+        const wHist = 200;
+        const tHist = ajuste(titulaireNom, semi, 9, wHist, 7);
+        texte(titulaireNom, M, top + 10, semi, tHist);
+      }
+      texte(titulaireNom ? `${role} de la classe` : "", M, top + 22, regular, 8, GRIS);
     }
 
     return { octets: await brouillon.save(), pages: brouillon.getPageCount() };
@@ -292,10 +355,14 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
   return doc.save();
 }
 
-/** Construit puis télécharge (un bulletin : son nom ; plusieurs : un fichier unique). */
-export async function telechargerBulletins(syntheses: Synthese[], nomLot?: string) {
+/** Construit puis télécharge (ou ouvre en aperçu) un bulletin / un lot. */
+export async function telechargerBulletins(syntheses: Synthese[], nomLot?: string, opts?: OptionsPdf) {
   if (!syntheses.length) return;
   const octets = await construireBulletinsPdf(syntheses);
+  if (opts?.visualiser) {
+    visualiserPdf(octets);
+    return;
+  }
   const url = URL.createObjectURL(new Blob([octets as BlobPart], { type: "application/pdf" }));
   const a = document.createElement("a");
   a.href = url;

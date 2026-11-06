@@ -296,8 +296,10 @@ export async function construireRecuPdf(don: DonPourRecu, options: OptionsRecu =
 
   // ---- Valeurs du don ------------------------------------------------------
   const montant = Number(don.montant);
+  // Date du don sur le reçu : date_don si renseignée, sinon aujourd'hui.
+  const dateDonFiscale = (don.date_don && don.date_don.trim()) || todayISO();
   // « Reçu fiscal AAAA » ne couvre que les dons de l'année AAAA.
-  const anneesDons = [...new Set((don.versements?.length ? don.versements.map((v) => v.date) : [don.date_don]).map((d) => d.slice(0, 4)))];
+  const anneesDons = [...new Set((don.versements?.length ? don.versements.map((v) => v.date) : [dateDonFiscale]).map((d) => d.slice(0, 4)))];
   if (anneesDons.length > 1) {
     throw new Error(`Un reçu fiscal ne peut couvrir qu'une seule année civile (ici ${anneesDons.sort().join(" et ")}) : scindez-le.`);
   }
@@ -328,7 +330,7 @@ export async function construireRecuPdf(don: DonPourRecu, options: OptionsRecu =
   const lignesVersements = syntheseVersements(
     don.versements && don.versements.length > 0
       ? don.versements
-      : [{ date: don.date_don, montant, mode: don.mode_paiement }],
+      : [{ date: dateDonFiscale, montant, mode: don.mode_paiement }],
   );
 
   const fonts = { regular, italic };
@@ -636,7 +638,7 @@ export function titreRecu(don: DonPourRecu): string {
   const qui = don.est_personne_morale
     ? propre(don.raison_sociale) || propre(don.donateur_nom) || propre(don.donateur_titre)
     : nomPropre || propre(don.raison_sociale) || propre(don.donateur_titre);
-  const dates = don.versements?.length ? don.versements.map((v) => v.date) : [don.date_don];
+  const dates = don.versements?.length ? don.versements.map((v) => v.date) : [(don.date_don && don.date_don.trim()) || todayISO()];
   const annee = dates.map((d) => d.slice(0, 4)).sort()[0];
   const num = numeroCourt(don.recu_numero);
   return `Reçu fiscal ${annee} - ${num ? `N°${num}` : "sans numéro"} - ${qui || "donateur"}`;

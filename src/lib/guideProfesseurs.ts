@@ -65,7 +65,7 @@ export const GUIDE_PROFESSEURS: SectionGuide[] = [
       "Cliquez sur le nom d'un élève (en tête de colonne) pour rédiger son appréciation générale (titulaire de la classe) : le champ s'agrandit pour montrer tout le texte.",
       "Catéchisme : noté comme les autres matières par le professeur de la classe (hors maternelle) ; son appréciation reste réservée au Directeur spirituel, les autres professeurs la lisent sans pouvoir la modifier.",
       "Le commutateur « En cours / Prêt » (en haut à droite) bascule toute la classe d'un clic. Le passage à « Prêt » demande une confirmation : il prévient la Directrice, et vous ne pouvez plus modifier ni ajouter de notes ni d'appréciations. La Directrice valide, puis publie aux familles. Le commutateur passe alors en « Publié » (en vert) et se fige ; il affiche aussi « Publié » pour une période passée.",
-      "Dans le panneau d'un élève, ‹ et › passent à l'élève précédent ou suivant. Le PDF de la classe est réservé à la Directrice. Sur téléphone, les en-têtes d'élèves se réduisent au prénom et à l'initiale du nom.",
+      "Dans le panneau d'un élève, ‹ et › passent à l'élève précédent ou suivant. Titulaire : le bouton « PDF de la classe » ouvre l'aperçu du relevé (votre classe uniquement) ; la Directrice peut aussi le télécharger. Sur téléphone, les en-têtes d'élèves se réduisent au prénom et à l'initiale du nom.",
     ],
     astuce: "Un relevé publié verrouille les notes de l'élève pour la période (cadenas).",
     schema: {

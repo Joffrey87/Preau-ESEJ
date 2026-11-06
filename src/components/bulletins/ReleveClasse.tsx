@@ -222,7 +222,7 @@ export default function ReleveClasse({
       return;
     }
     const suffixe = filtre && filtre.size < niveauxClasse.length ? ` (${[...filtre].join(", ")})` : "";
-    await telechargerBulletins(ss, `Relevés de notes ${vue.classe.nom} - Période ${periode.ordre}${suffixe}`);
+    await telechargerBulletins(ss, `Relevés de notes ${vue.classe.nom} - Période ${periode.ordre}${suffixe}`, { visualiser: !directrice });
   };
   const pdf = () => {
     if (niveauxClasse.length > 1) setChoixNiveauxPdf(true);
@@ -379,7 +379,7 @@ export default function ReleveClasse({
                 </BoutonLot>
               </>
             )}
-            {directrice && <BoutonLot title="Télécharge un PDF réunissant les relevés de toute la classe." onClick={pdf}>PDF de la classe</BoutonLot>}
+            {(directrice || titulaire) && <BoutonLot title={directrice ? "Télécharge un PDF réunissant les relevés de toute la classe." : "Ouvre l'aperçu PDF des relevés de votre classe."} onClick={pdf}>PDF de la classe</BoutonLot>}
           </GroupeEtats>
   );
 
@@ -702,8 +702,8 @@ export default function ReleveClasse({
               <td className="sticky left-0 z-10 bg-surface px-3 py-1 text-[12.5px] font-semibold">Relevé</td>
               {visibles.map((e) => (
                 <td key={e.id} className={`px-1.5 py-1 text-center ${debutNiveau(e) ? "border-l-2 border-l-gold/50" : "border-l border-l-border/40"}`}>
-                  {directrice && (
-                    <button type="button" onClick={() => telechargerBulletins([synthese(e)])} className="text-[12.5px] text-accent hover:underline">
+                  {(directrice || titulaire) && (
+                    <button type="button" onClick={() => telechargerBulletins([synthese(e)], undefined, { visualiser: !directrice })} className="text-[12.5px] text-accent hover:underline" title={directrice ? "Télécharger le PDF" : "Aperçu PDF"}>
                       PDF
                     </button>
                   )}

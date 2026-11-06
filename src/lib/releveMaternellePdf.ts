@@ -1,8 +1,8 @@
 // Relevé d'appréciations de maternelle en PDF : une page par élève (suite si besoin), charte Préau / ESEJ.
 
-import { creerPlume, telechargerPdf, M, W } from "@/lib/documentPdf";
+import { creerPlume, telechargerPdf, M, W, type OptionsPdf } from "@/lib/documentPdf";
 import type { NiveauAcquis } from "@/lib/releveMaternelle";
-import { roleTitulaireDepuisNom } from "@/lib/bulletins";
+import { developperCiviliteNom, roleTitulaireDepuisNom } from "@/lib/bulletins";
 
 export type ReleveImprimable = {
   eleve: { prenom: string; nom: string; niveau: string | null };
@@ -14,19 +14,24 @@ export type ReleveImprimable = {
   appreciation: string | null;
 };
 
-export async function telechargerRelevesMaternelle(releves: ReleveImprimable[], nom: string) {
+export async function telechargerRelevesMaternelle(releves: ReleveImprimable[], nom: string, opts?: OptionsPdf) {
   if (!releves.length) return;
   const p = await creerPlume();
   const { NAVY, OR, GRIS, BLANC, CREME, TRAIT } = p.c;
   releves.forEach((r, i) => {
     if (i) p.nouvellePage();
     p.entete(`Relevé d'appréciations · Année ${r.annee}`, r.titre);
-    // Cartouche de l'élève.
-    p.rect(M, p.top, W - 2 * M, 34, CREME);
-    p.rect(M, p.top, 2.5, 34, OR);
+    // Cartouche de l'élève (titre enseignant en toutes lettres, sans prénom ; retour à la ligne si besoin).
+    const titulaireNom = developperCiviliteNom(r.classe.titulaire);
+    const ligneInfos = [r.eleve.niveau && `Classe : ${r.eleve.niveau}`, titulaireNom].filter(Boolean).join(" · ");
+    const wCart = W - 2 * M - 28;
+    const infosL = ligneInfos ? p.coupe(ligneInfos, p.regular, 8.5, wCart) : [];
+    const hCart = Math.max(34, 22 + Math.max(1, infosL.length) * 12);
+    p.rect(M, p.top, W - 2 * M, hCart, CREME);
+    p.rect(M, p.top, 2.5, hCart, OR);
     p.texte(`${r.eleve.prenom} ${r.eleve.nom.toUpperCase()}`, M + 14, p.top + 15, p.semi, 11.5);
-    p.texte([r.eleve.niveau && `Classe : ${r.eleve.niveau}`, r.classe.titulaire].filter(Boolean).join(" · "), M + 14, p.top + 28, p.regular, 8.5, GRIS);
-    p.top += 46;
+    infosL.forEach((l, i) => p.texte(l, M + 14, p.top + 28 + i * 12, p.regular, 8.5, GRIS));
+    p.top += hCart + 12;
 
     // Relevé : Domaine + Commentaire seulement (la colonne Niveau reste réservée aux bulletins).
     const cols = { nom: M + 6, com: M + 168 };
@@ -59,16 +64,20 @@ export async function telechargerRelevesMaternelle(releves: ReleveImprimable[], 
     if (!app.length) p.texte("—", M + 12, p.top + 32, p.regular, 9, GRIS);
     p.top += hApp + 18;
 
-    // Comme le relevé primaire : deux encarts identiques (Enseignante/Enseignant + parents), sans Directrice.
-    const hSig = 62, wSig = 200;
+    // Comme le relevé primaire : encart Enseignante/Enseignant (titre + nom) + encart parents, sans Directrice.
+    const wSig = 200, wNomSig = wSig - 20;
+    const lignesSig = titulaireNom ? p.coupe(titulaireNom, p.regular, 8.5, wNomSig) : [];
+    const hSig = Math.max(73, 51 + Math.max(1, lignesSig.length) * 11); // +1 ligne vs 62/40
     p.place(hSig);
-    const role = roleTitulaireDepuisNom(r.classe.titulaire);
+    const role = roleTitulaireDepuisNom(titulaireNom || r.classe.titulaire);
     p.cadre(M, p.top, wSig, hSig, TRAIT);
     p.texte(`Signature de l'${role.toLowerCase()}`, M + 10, p.top + 13, p.semi, 8.5);
+    // Titre + nom sous l'intitulé, regular 8,5 comme le cartouche.
+    lignesSig.forEach((l, i) => p.texte(l, M + 10, p.top + 26 + i * 11, p.regular, 8.5));
     p.cadre(W - M - wSig, p.top, wSig, hSig, TRAIT);
     p.texte("Signature des parents", W - M - wSig + 10, p.top + 13, p.semi, 8.5);
     p.top += hSig;
   });
   const octets = await p.terminer("");
-  telechargerPdf(octets, nom);
+  telechargerPdf(octets, nom, opts);
 }

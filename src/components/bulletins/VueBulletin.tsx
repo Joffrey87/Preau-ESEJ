@@ -153,8 +153,9 @@ function Groupe({ g, avecRang, releve, avecClasse }: { g: Synthese["groupes"][nu
               </Fragment>
             ))}
             {m.appreciations?.map((x) => (
-              <span key={x.titre} className="mt-1 block">
-                <span className="block text-[10.5px] font-semibold uppercase tracking-wide text-gold">{x.titre}</span>
+              <span key={`${x.titre}|${x.sousTitre ?? ""}`} className="mt-1 block">
+                <span className="block text-[11px] font-semibold text-gold">{x.titre}</span>
+                {x.sousTitre && <span className="block text-[10px] text-muted">{x.sousTitre}</span>}
                 <span className="italic">{x.texte}</span>
               </span>
             ))}

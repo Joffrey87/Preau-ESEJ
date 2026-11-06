@@ -71,7 +71,7 @@ export default function ListeBulletins({
   async function pdf(liste: ResultatEleve[], nom: string) {
     setOccupe("PDF");
     try {
-      await telechargerBulletins(liste.map((r) => syntheseDe(r, ctx, titulaire, enseignants)), nom);
+      await telechargerBulletins(liste.map((r) => syntheseDe(r, ctx, titulaire, enseignants)), nom, { visualiser: !droits.directrice });
     } catch (e) {
       setMessage(`PDF impossible : ${e instanceof Error ? e.message : e}`);
     } finally {
@@ -137,15 +137,15 @@ export default function ListeBulletins({
           </BoutonLot>
         )}
         <span className="mx-1 h-5 w-px bg-border" />
-        {droits.directrice && (
-          <BoutonLot disabled={!!occupe} onClick={() => pdf(lignes, titreLot)} title="Un seul fichier, une page par élève (envoi postal ou courriel)">
+        {(droits.directrice || droits.titulaire) && (
+          <BoutonLot disabled={!!occupe} onClick={() => pdf(lignes, titreLot)} title={droits.directrice ? "Un seul fichier, une page par élève (envoi postal ou courriel)" : "Aperçu PDF des bulletins de votre classe"}>
             PDF de la classe
           </BoutonLot>
         )}
         {selection.length > 0 && (
           <div className="flex flex-wrap items-center gap-2 rounded-lg bg-accent-soft px-2 py-1 text-[12px]">
             <span className="font-medium text-accent">{selection.length} sélectionné{selection.length > 1 ? "s" : ""} :</span>
-            {droits.directrice && (
+            {(droits.directrice || droits.titulaire) && (
               <BoutonLot disabled={!!occupe} onClick={() => pdf(selection, titreLot)}>
                 PDF
               </BoutonLot>
@@ -251,8 +251,8 @@ export default function ListeBulletins({
                     {b?.envoye_courrier_le && <div className="text-muted">Courrier le {dateFr(b.envoye_courrier_le)}</div>}
                   </td>
                   <td className="px-2 py-2 text-right" onClick={(e) => e.stopPropagation()}>
-                    {droits.directrice && (
-                      <button type="button" onClick={() => pdf([r], "")} className="rounded-md px-1.5 py-0.5 text-[11.5px] text-accent hover:bg-accent-soft" title="Télécharger le PDF">
+                    {(droits.directrice || droits.titulaire) && (
+                      <button type="button" onClick={() => pdf([r], "")} className="rounded-md px-1.5 py-0.5 text-[11.5px] text-accent hover:bg-accent-soft" title={droits.directrice ? "Télécharger le PDF" : "Aperçu PDF"}>
                         PDF
                       </button>
                     )}

@@ -246,15 +246,17 @@ export default function ReleveMaternelle({
               Valider les relevés prêts
             </button>
           )}
+          {(directrice || titulaire) && (
           <button
             type="button"
             disabled={!imprimables.length}
-            title={imprimables.length ? undefined : "Aucun relevé validé"}
-            onClick={() => telechargerRelevesMaternelle(imprimables, `Relevés ${classe.nom} — ${bornes.titre} ${classe.annee_scolaire}`)}
+            title={imprimables.length ? (directrice ? undefined : "Aperçu PDF de votre classe") : "Aucun relevé validé"}
+            onClick={() => telechargerRelevesMaternelle(imprimables, `Relevés ${classe.nom} — ${bornes.titre} ${classe.annee_scolaire}`, { visualiser: !directrice })}
             className="rounded-lg bg-accent px-3 py-1 text-[12.5px] font-medium text-accent-fg disabled:opacity-50"
           >
             PDF de la classe ({imprimables.length})
           </button>
+          )}
         </div>
       </div>
 
@@ -391,18 +393,20 @@ export default function ReleveMaternelle({
                 </button>
               )}
               {!modifiable && <span className="text-[12px] text-muted">Relevé validé : seule la Directrice peut le modifier.</span>}
+              {(directrice || titulaire) && (
               <button
                 type="button"
                 disabled={releve?.statut !== "valide"}
-                title={releve?.statut === "valide" ? undefined : "Imprimable une fois validé par la Directrice"}
+                title={releve?.statut === "valide" ? (directrice ? undefined : "Aperçu PDF") : "Imprimable une fois validé par la Directrice"}
                 onClick={() => {
                   const r = imprimable(eleve);
-                  if (r) telechargerRelevesMaternelle([r], `Relevé ${nomEleve(eleve)} — ${bornes.titre} ${classe.annee_scolaire}`);
+                  if (r) telechargerRelevesMaternelle([r], `Relevé ${nomEleve(eleve)} — ${bornes.titre} ${classe.annee_scolaire}`, { visualiser: !directrice });
                 }}
                 className="ml-auto rounded-lg border border-border px-3 py-1.5 text-[13px] hover:bg-surface-2 disabled:opacity-40"
               >
                 PDF
               </button>
+              )}
             </div>
           </div>
         )}

@@ -4,7 +4,8 @@ import ModificationsFamilles from "@/components/ModificationsFamilles";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { todayISO } from "@/lib/format";
-import { calculerClasse, nomEnseignant, trimestreEnLettres, type ContexteClasse, type Enseignant, type Matiere, type Bulletin, estCatechisme } from "@/lib/bulletins";
+import { calculerClasse, nomEnseignant,
+  roleTitulaire, trimestreEnLettres, type ContexteClasse, type Enseignant, type Matiere, type Bulletin, estCatechisme } from "@/lib/bulletins";
 import { chargerClasse, chargerReferentiel, periodeCourante, type Referentiel } from "@/lib/bulletinsDonnees";
 import Chargement from "@/components/Chargement";
 import ListeBulletins from "./ListeBulletins";
@@ -397,6 +398,7 @@ export default function Bulletins({
               docs={docs}
               periode={periode}
               nomTitulaire={titulaire ? nomEnseignant(titulaire) : null}
+              roleTitulaire={titulaire ? roleTitulaire(titulaire.civilite) : undefined}
               onRecharger={recharger}
               emplacement={emplacement}
             />
@@ -411,6 +413,7 @@ export default function Bulletins({
               enseignantId={enseignantId}
               peutApprecier={droits.peutApprecier}
               nomTitulaire={titulaire ? nomEnseignant(titulaire) : null}
+              roleTitulaire={titulaire ? roleTitulaire(titulaire.civilite) : undefined}
               enseignants={enseignants}
               onRecharger={recharger}
               emplacement={emplacement}

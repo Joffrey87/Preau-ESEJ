@@ -104,10 +104,12 @@ export async function creerPlume(): Promise<Plume> {
     },
     async terminer(pied) {
       const pages = doc.getPages();
-      pages.forEach((pg, i) => {
-        const t = `${pied}${pages.length > 1 ? ` — page ${i + 1}/${pages.length}` : ""}`;
-        pg.drawText(assainir(t), { x: M, y: 22, size: 7, font: regular, color: c.GRIS });
-      });
+      if (pied.trim()) {
+        pages.forEach((pg, i) => {
+          const t = `${pied}${pages.length > 1 ? ` — page ${i + 1}/${pages.length}` : ""}`;
+          pg.drawText(assainir(t), { x: M, y: 22, size: 7, font: regular, color: c.GRIS });
+        });
+      }
       return doc.save();
     },
   };

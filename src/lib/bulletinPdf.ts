@@ -4,7 +4,7 @@
 
 import type { PDFFont, PDFPage, RGB } from "pdf-lib";
 import { chargerRessources, assainir } from "@/lib/recuPdf";
-import { classeEleve, dateJJMMAAAA, mentionLabel, nomFichierBulletin, note20, rangTexte, titreDocument, type Synthese } from "@/lib/bulletins";
+import { classeEleve, dateJJMMAAAA, mentionLabel, nomFichierBulletin, note20, rangTexte, roleTitulaireDepuisNom, titreDocument, type Synthese } from "@/lib/bulletins";
 import { texteAbsences } from "@/lib/absences";
 import { tauxTexte } from "@/lib/calendrier";
 
@@ -78,8 +78,9 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
     // En-tête : logo, école, période (dates sur leur propre ligne) ; cartouche de l'élève à droite, séparé du
     // bloc de gauche par une gouttière, et dont la hauteur suit le nom (prénom au-dessus, nom réduit puis coupé
     // s'il est long : jamais de débordement).
-    const CW = 196, bx = Wp - M - CW, gx = M + 76, gw = bx - 18 - gx, iw = CW - 26;
-    page.drawImage(logo, { x: M, y: y(top + 62), width: 63, height: 62 });
+    // Logo un peu plus grand ; cartouche nom/prénom un peu plus étroit (06/11/2026).
+    const CW = 172, bx = Wp - M - CW, gx = M + 84, gw = bx - 18 - gx, iw = CW - 24;
+    page.drawImage(logo, { x: M, y: y(top + 71), width: 72, height: 71 });
     texte("École du Saint-Enfant-Jésus", gx, top + 16, semi, ajuste("École du Saint-Enfant-Jésus", semi, 13, gw, 10));
     const sousTitre = `${s.mode === "releve" ? "Relevé de notes" : "Bulletin scolaire"} · Année ${s.periode.annee}`;
     texte(sousTitre, gx, top + 31, regular, ajuste(sousTitre, regular, 9.5, gw, 8), GRIS);
@@ -111,7 +112,8 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
     // naissance en plus.
     const ligneClasse = classeEleve(s);
     const naissance = s.mode === "trimestre" && s.eleve.naissance ? `Né(e) le ${dateJJMMAAAA(s.eleve.naissance)}` : "";
-    const infos = [ligneClasse && { t: ligneClasse, gris: false }, naissance && { t: naissance, gris: true }, s.classe.titulaire && { t: `Titulaire : ${s.classe.titulaire}`, gris: true }].filter(
+    const role = s.classe.roleTitulaire ?? roleTitulaireDepuisNom(s.classe.titulaire);
+    const infos = [ligneClasse && { t: ligneClasse, gris: false }, naissance && { t: naissance, gris: true }, s.classe.titulaire && { t: `${role} : ${s.classe.titulaire}`, gris: true }].filter(
       (x): x is { t: string; gris: boolean } => !!x,
     );
     // Lignes de base : prénom à 16, nom(s) tous les tNom + 3, première information 15 plus bas, les suivantes 13 ; 9 de marge.
@@ -128,7 +130,7 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
       tc += i === 0 ? 15 : 13;
       texte(x.t, bx + 14, tc, regular, x.gris ? 8.5 : 9, x.gris ? GRIS : NAVY);
     });
-    top += Math.max(62, hCart) + 18;
+    top += Math.max(71, hCart) + 18;
 
     // Tableau.
     // Relevé : aucune colonne chiffrée (les notes vont dans la dernière colonne) ; trimestre : moyenne seule.
@@ -256,7 +258,7 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
       place(hSig);
       if (s.classe.titulaire) {
         texte(s.classe.titulaire, M, top + 12, semi, 9);
-        texte("Titulaire de la classe", M, top + 24, regular, 8, GRIS);
+        texte(`${role} de la classe`, M, top + 24, regular, 8, GRIS);
       }
       page.drawRectangle({ x: Wp - M - wSig, y: y(top + hSig), width: wSig, height: hSig, borderColor: TRAIT, borderWidth: 0.8 });
       texte("Signature des parents", Wp - M - wSig + 10, top + 13, semi, 8.5);
@@ -265,7 +267,7 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
       place(40);
       texte("La Directrice", Wp - M - 160, top + 10, semi, 9);
       if (s.classe.titulaire) texte(s.classe.titulaire, M, top + 10, semi, 9);
-      texte(s.classe.titulaire ? "Titulaire de la classe" : "", M, top + 22, regular, 8, GRIS);
+      texte(s.classe.titulaire ? `${role} de la classe` : "", M, top + 22, regular, 8, GRIS);
     }
 
     return { octets: await brouillon.save(), pages: brouillon.getPageCount() };
@@ -286,12 +288,7 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
     const poses = await doc.embedPdf(r.octets, [...Array(r.pages).keys()]);
     for (const p of poses) doc.addPage([W, H]).drawPage(p, { x: 0, y: 0, xScale: k, yScale: k });
   }
-  const GRIS_PIED = GRIS;
-  const pages = doc.getPages();
-  pages.forEach((p, i) => {
-    const pied = `ARIL · École du Saint-Enfant-Jésus — bulletin édité avec Préau${pages.length > 1 ? ` — page ${i + 1}/${pages.length}` : ""}`;
-    p.drawText(assainir(pied), { x: M, y: 14, size: 6.5, font: regular, color: GRIS_PIED });
-  });
+  // Pas de pied de page (ni ARIL / Préau, ni numérotation).
   return doc.save();
 }
 

@@ -37,6 +37,7 @@ export const NAV: NavSection[] = [
       { href: "/bulletins?onglet=inscriptions", label: "Inscriptions", icon: "mail", ready: true, roles: ["directrice"] },
       // Le guide remis aux Professeurs, consultable par la Directrice.
       { href: "/guide-professeurs", label: "Guide Professeurs", icon: "ampoule", ready: true, roles: ["directrice"] },
+      { href: "/mon-profil", label: "Mon profil", icon: "contact", ready: true, roles: ["directrice", "directeur-spirituel"] },
     ],
   },
   {

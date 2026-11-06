@@ -3,6 +3,7 @@
 import { creerPlume, telechargerPdf, M, W } from "@/lib/documentPdf";
 import { niveauLabel, type NiveauAcquis } from "@/lib/releveMaternelle";
 import { texteAbsences, type ResumeAbsences } from "@/lib/absences";
+import { roleTitulaireDepuisNom } from "@/lib/bulletins";
 
 export type ReleveImprimable = {
   eleve: { prenom: string; nom: string; niveau: string | null };
@@ -74,9 +75,9 @@ export async function telechargerRelevesMaternelle(releves: ReleveImprimable[], 
     p.texte("La Directrice", W - M - 160, p.top + 10, p.semi, 9);
     if (r.classe.titulaire) {
       p.texte(r.classe.titulaire, M, p.top + 10, p.semi, 9);
-      p.texte("Titulaire de la classe", M, p.top + 22, p.regular, 8, GRIS);
+      p.texte(`${roleTitulaireDepuisNom(r.classe.titulaire)} de la classe`, M, p.top + 22, p.regular, 8, GRIS);
     }
   });
-  const octets = await p.terminer("ARIL · École du Saint-Enfant-Jésus — relevé édité avec Préau");
+  const octets = await p.terminer("");
   telechargerPdf(octets, nom);
 }

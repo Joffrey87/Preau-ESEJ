@@ -6,9 +6,21 @@ type Etat =
   | { kind: "chargement" }
   | { kind: "non_configure"; message: string }
   | { kind: "erreur"; message: string }
-  | { kind: "ok"; pct: number; deploiements_mois: number; credits_utilises: number };
+  | {
+      kind: "ok";
+      pct: number;
+      deploiements_mois: number;
+      credits_utilises: number;
+      credits_restants: number;
+      credits_total: number;
+    };
 
-/** Barre sous celle des coûts Claude : % du quota Netlify mensuel + nb de déploiements du mois. */
+function fmtCredits(n: number) {
+  // Un décimal si besoin (ex. 1090.5), sinon entier.
+  return Number.isInteger(n) ? String(n) : n.toLocaleString("fr-FR", { maximumFractionDigits: 1, minimumFractionDigits: 0 });
+}
+
+/** Barre sous celle des coûts Claude : % consommé (plan + packs) + nb de déploiements du mois. */
 export default function BarreCreditsNetlify() {
   const [etat, setEtat] = useState<Etat>({ kind: "chargement" });
 
@@ -24,6 +36,8 @@ export default function BarreCreditsNetlify() {
           pct?: number;
           deploiements_mois?: number;
           credits_utilises?: number;
+          credits_restants?: number;
+          credits_total?: number;
         };
         if (annule) return;
         if (!rep.ok) {
@@ -39,6 +53,8 @@ export default function BarreCreditsNetlify() {
           pct: Number(j.pct) || 0,
           deploiements_mois: Number(j.deploiements_mois) || 0,
           credits_utilises: Number(j.credits_utilises) || 0,
+          credits_restants: Number(j.credits_restants) || 0,
+          credits_total: Number(j.credits_total) || 0,
         });
       } catch (e) {
         if (!annule) setEtat({ kind: "erreur", message: e instanceof Error ? e.message : "Échec réseau" });
@@ -67,6 +83,7 @@ export default function BarreCreditsNetlify() {
   const ton = etat.pct >= 75 ? "bg-negative" : etat.pct >= 50 ? "bg-gold" : "bg-positive";
   const deploiements = etat.deploiements_mois;
   const libDeploy = deploiements <= 1 ? `${deploiements} déploiement` : `${deploiements} déploiements`;
+  const titre = `${fmtCredits(etat.credits_restants)} restants / ${fmtCredits(etat.credits_total)} (plan + packs) · ${fmtCredits(etat.credits_utilises)} utilisés`;
 
   return (
     <div className="min-w-[14rem] flex-1">
@@ -82,8 +99,8 @@ export default function BarreCreditsNetlify() {
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={Math.round(pctAffiche)}
-        aria-label={`Crédits Netlify : ${Math.round(etat.pct)} pour cent, ${libDeploy} ce mois`}
-        title={`${etat.credits_utilises} / 1000 crédits (quota mensuel, hors packs)`}
+        aria-label={`Crédits Netlify : ${Math.round(etat.pct)} pour cent utilisés, ${fmtCredits(etat.credits_restants)} restants sur ${fmtCredits(etat.credits_total)}, ${libDeploy} ce mois`}
+        title={titre}
       >
         <div className={`h-full rounded-full ${ton}`} style={{ width: `${pctAffiche}%` }} />
       </div>

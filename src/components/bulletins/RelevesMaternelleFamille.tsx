@@ -2,8 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { resumeAbsences, texteAbsences, type Absence } from "@/lib/absences";
-import { NIVEAUX_ACQUIS, libelleTrimestre, type NiveauAcquis } from "@/lib/releveMaternelle";
+import { libelleTrimestre, type NiveauAcquis } from "@/lib/releveMaternelle";
 import { telechargerRelevesMaternelle, type ReleveImprimable } from "@/lib/releveMaternellePdf";
 
 type ReleveFamille = {
@@ -29,24 +28,15 @@ const titre = (r: ReleveFamille) =>
 export default function RelevesMaternelleFamille() {
   const sb = useMemo(() => createClient(), []);
   const [releves, setReleves] = useState<ReleveFamille[]>([]);
-  const [absences, setAbsences] = useState<Absence[]>([]);
   const [ouvert, setOuvert] = useState<string | null>(null);
 
   useEffect(() => {
-    sb.rpc("releves_maternelle_famille").then(async ({ data }) => {
-      const liste = (data ?? []) as ReleveFamille[];
-      setReleves(liste);
-      const ids = [...new Set(liste.map((r) => r.eleve_id))];
-      if (ids.length) {
-        const a = await sb.from("absences").select("*").in("eleve_id", ids);
-        setAbsences((a.data ?? []) as Absence[]);
-      }
+    sb.rpc("releves_maternelle_famille").then(({ data }) => {
+      setReleves((data ?? []) as ReleveFamille[]);
     });
   }, [sb]);
 
   if (!releves.length) return null;
-  const resume = (r: ReleveFamille) =>
-    resumeAbsences(absences.filter((a) => a.eleve_id === r.eleve_id && (!r.debut || a.date >= r.debut) && (!r.fin || a.date <= r.fin)));
   const imprimable = (r: ReleveFamille): ReleveImprimable => ({
     eleve: { prenom: r.prenom, nom: r.nom, niveau: null },
     classe: { nom: r.classe, titulaire: r.titulaire },
@@ -54,7 +44,6 @@ export default function RelevesMaternelleFamille() {
     titre: titre(r),
     matieres: r.matieres,
     appreciation: r.appreciation,
-    absences: resume(r),
   });
 
   return (
@@ -82,22 +71,12 @@ export default function RelevesMaternelleFamille() {
           </div>
           {ouvert === r.id && (
             <div className="space-y-2 border-t border-border px-4 py-3 text-[13px]">
-              {r.matieres.map((m) => {
-                const n = NIVEAUX_ACQUIS.find((x) => x.v === m.niveau);
-                return (
+              {r.matieres.map((m) => (
                   <div key={m.nom}>
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{m.nom}</span>
-                      {n && <span className={`rounded border px-1.5 py-0.5 text-[11px] ${n.classe}`}>{n.label}</span>}
-                    </div>
+                    <span className="font-medium">{m.nom}</span>
                     {m.commentaire && <p className="text-muted">{m.commentaire}</p>}
                   </div>
-                );
-              })}
-              <p>
-                <span className="text-muted">Absences : </span>
-                {texteAbsences(resume(r))}
-              </p>
+              ))}
               {r.appreciation && (
                 <div className="rounded-lg border border-gold/40 bg-gold-soft/40 p-3">
                   <p className="font-medium">Appréciation générale</p>

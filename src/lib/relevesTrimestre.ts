@@ -160,11 +160,13 @@ function notesPeriode(ctx: ContexteDocs, eleveId: string, m: Matiere, p: Periode
     const n = notes.get(`${ev.id}:${eleveId}`);
     if (!n) continue;
     if (n.etat) {
-      textes.push(`${ev.titre} : ${ETATS[n.etat] ?? n.etat}`);
+      // Relevé PDF / aperçu : état seul, sans le titre d'évaluation (comme l'écran).
+      textes.push(`${ETATS[n.etat] ?? n.etat}`);
       continue;
     }
     if (n.note === null || n.note === undefined) continue;
-    textes.push(`${ev.titre} : ${nombre(Number(n.note))}/${nombre(Number(ev.bareme))}`);
+    // Relevé PDF / aperçu : note/barème seul, sans « titre : » (comme l'écran).
+    textes.push(`${nombre(Number(n.note))}/${nombre(Number(ev.bareme))}`);
     valeurs.push((Number(n.note) / Number(ev.bareme)) * 20);
   }
   if (!evals.length) {

@@ -661,7 +661,12 @@ export default function FacturesFournisseurs({
         </section>
       )}
 
-      <section className="overflow-x-auto rounded-2xl border border-border bg-surface shadow-sm">
+      {[
+        { cle: "a_payer", liste: factures.filter((x) => x.statut !== "payee"), messageVide: factures.length === 0 ? "Aucune facture." : "Aucune facture à payer." },
+        { cle: "payees", liste: factures.filter((x) => x.statut === "payee"), messageVide: "Aucune facture payée." },
+      ].map(({ cle, liste, messageVide }) => {
+      const contenu = (
+      <section key={cle} className="overflow-x-auto rounded-2xl border border-border bg-surface shadow-sm">
         <table className="w-full text-sm">
           <thead className="text-left text-muted">
             <tr>
@@ -676,14 +681,14 @@ export default function FacturesFournisseurs({
             </tr>
           </thead>
           <tbody>
-            {factures.length === 0 && (
+            {liste.length === 0 && (
               <tr>
                 <td colSpan={8} className="px-4 py-6 text-center text-muted">
-                  Aucune facture.
+                  {messageVide}
                 </td>
               </tr>
             )}
-            {factures.map((x) => {
+            {liste.map((x) => {
               const st = libelleStatut(x.statut);
               return (
                 <tr key={x.id} className="border-t border-border align-top">
@@ -846,6 +851,17 @@ export default function FacturesFournisseurs({
           </tbody>
         </table>
       </section>
+      );
+      // Les factures payées restent consultables, dans un bloc replié par défaut.
+      return cle === "payees" ? (
+        <details key={cle} className="group rounded-2xl border border-border bg-surface shadow-sm">
+          <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold">Facture payée ({liste.length})</summary>
+          {contenu}
+        </details>
+      ) : (
+        contenu
+      );
+      })}
     </div>
   );
 }

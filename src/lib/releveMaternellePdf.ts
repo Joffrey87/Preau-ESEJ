@@ -78,6 +78,6 @@ export async function telechargerRelevesMaternelle(releves: ReleveImprimable[], 
       p.texte(`${roleTitulaireDepuisNom(r.classe.titulaire)} de la classe`, M, p.top + 22, p.regular, 8, GRIS);
     }
   });
-  const octets = await p.terminer("ARIL · École du Saint-Enfant-Jésus — relevé édité avec Préau");
+  const octets = await p.terminer("");
   telechargerPdf(octets, nom);
 }

@@ -335,6 +335,7 @@ const NAV_PROFESSEUR: typeof NAV = [
     ],
   },
   { title: "Aide", items: [{ href: "/guide-professeurs", label: "Guide", icon: "ampoule", ready: true }] },
+  { title: "", items: [{ href: "/mon-profil", label: "Mon profil", icon: "contact", ready: true }] },
 ];
 
 /** Menu du compte : un profil restreint ne voit que ses pages. */

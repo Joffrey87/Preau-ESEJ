@@ -288,12 +288,7 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
     const poses = await doc.embedPdf(r.octets, [...Array(r.pages).keys()]);
     for (const p of poses) doc.addPage([W, H]).drawPage(p, { x: 0, y: 0, xScale: k, yScale: k });
   }
-  const GRIS_PIED = GRIS;
-  const pages = doc.getPages();
-  pages.forEach((p, i) => {
-    const pied = `ARIL · École du Saint-Enfant-Jésus — bulletin édité avec Préau${pages.length > 1 ? ` — page ${i + 1}/${pages.length}` : ""}`;
-    p.drawText(assainir(pied), { x: M, y: 14, size: 6.5, font: regular, color: GRIS_PIED });
-  });
+  // Pas de pied de page (ni ARIL / Préau, ni numérotation).
   return doc.save();
 }
 

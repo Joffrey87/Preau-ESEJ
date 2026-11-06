@@ -28,6 +28,7 @@ import { syntheseReleve, type ContexteDocs, type DocReleve } from "@/lib/releves
 import type { Droits } from "./Bulletins";
 import SaisieNotes from "./SaisieNotes";
 import { BoutonLot, GroupeEtats, CommutateurPret, confirmerPret, PastilleStatut, ZoneAppreciation } from "./outils";
+import ChoixNiveauxPdf from "./ChoixNiveauxPdf";
 import { enregistrerTout } from "@/lib/sauvegardeAuto";
 
 const OUVERTS: Statut[] = ["nouveau", "en_cours"];
@@ -50,6 +51,7 @@ export default function ReleveClasse({
   docs,
   periode,
   nomTitulaire,
+  roleTitulaire,
   onRecharger,
   emplacement,
   demandeEvaluation = 0,
@@ -62,6 +64,7 @@ export default function ReleveClasse({
   docs: ContexteDocs;
   periode: Periode;
   nomTitulaire: string | null;
+  roleTitulaire?: "Institutrice" | "Instituteur";
   onRecharger: () => Promise<void>;
   /** Barre de la page où se placent les boutons d'état (une seule tuile en haut). */
   emplacement?: HTMLElement | null;
@@ -72,6 +75,7 @@ export default function ReleveClasse({
   const { directrice, titulaire } = droits;
   const [message, setMessage] = useState<string | null>(null);
   const [occupe, setOccupe] = useState(false);
+  const [choixNiveauxPdf, setChoixNiveauxPdf] = useState(false);
   const [matiereOuverte, setMatiereOuverte] = useState<string | null>(null);
   const [eleveOuvert, setEleveOuvert] = useState<string | null>(null);
   // « + Évaluation » : saisie de la première matière dont on est responsable, formulaire de création ouvert.
@@ -155,7 +159,7 @@ export default function ReleveClasse({
   const toutVerrouille = !directrice && vue.releves.length > 0 && vue.releves.every((d) => !OUVERTS.includes(d.statut));
   const verrouNotes = (eleveId: string) => verrou(eleveId) || (!directrice && !!docDe(eleveId) && !OUVERTS.includes(docDe(eleveId)!.statut));
   const droitsSaisie: Droits = toutVerrouille ? { ...droits, peutNoter: () => false, peutSaisirNotes: () => false, peutCommenter: () => false, peutEditer: () => false } : droits;
-  const outils = { titulaire: nomTitulaire, enseignants };
+  const outils = { titulaire: nomTitulaire, roleTitulaire, enseignants };
   const synthese = (e: EleveBulletin): Synthese => {
     const d = docDe(e.id);
     if (d?.statut === "publie" && estSynthese(d.synthese)) return d.synthese;
@@ -190,12 +194,39 @@ export default function ReleveClasse({
     });
     return agir(sb.rpc("releves_publier", { p_doc: "releve", p_items: items }));
   };
-  const pdf = async () => {
+  const niveauxClasse = useMemo(() => {
+    const vus = new Set<string>();
+    for (const e of vue.eleves) {
+      const n = niveauDe(e, vue.classe.annee_scolaire);
+      if (n) vus.add(n);
+    }
+    // Ordre de la classe, puis éventuels niveaux hors liste.
+    const ordres = vue.classe.niveaux.filter((n) => vus.has(n));
+    for (const n of [...vus].sort((a, b) => a.localeCompare(b, "fr"))) if (!ordres.includes(n)) ordres.push(n);
+    return ordres;
+  }, [vue.eleves, vue.classe.annee_scolaire, vue.classe.niveaux]);
+
+  const telechargerPdf = async (niveauxChoisis?: string[]) => {
+    const filtre = niveauxChoisis?.length ? new Set(niveauxChoisis) : null;
     const ss = docs_.flatMap((d) => {
       const e = eleveDe(d.eleve_id);
-      return e ? [synthese(e)] : [];
+      if (!e) return [];
+      if (filtre) {
+        const n = niveauDe(e, vue.classe.annee_scolaire);
+        if (!n || !filtre.has(n)) return [];
+      }
+      return [synthese(e)];
     });
-    await telechargerBulletins(ss, `Relevés de notes ${vue.classe.nom} - Période ${periode.ordre}`);
+    if (!ss.length) {
+      setMessage("Aucun élève pour les niveaux choisis.");
+      return;
+    }
+    const suffixe = filtre && filtre.size < niveauxClasse.length ? ` (${[...filtre].join(", ")})` : "";
+    await telechargerBulletins(ss, `Relevés de notes ${vue.classe.nom} - Période ${periode.ordre}${suffixe}`);
+  };
+  const pdf = () => {
+    if (niveauxClasse.length > 1) setChoixNiveauxPdf(true);
+    else void telechargerPdf();
   };
   const matiere = vue.matieres.find((m) => m.id === matiereOuverte);
   // Ligne d'un élève : en la quittant, les appréciations en attente partent, puis le relevé est relu (résumé, état).
@@ -356,6 +387,16 @@ export default function ReleveClasse({
     <div ref={haut} className="mx-auto scroll-mt-4 space-y-3">
       {/* Barre d'actions sur une ligne. */}
       {emplacement && createPortal(boutons, emplacement)}
+      {choixNiveauxPdf && (
+        <ChoixNiveauxPdf
+          niveaux={niveauxClasse}
+          onAnnuler={() => setChoixNiveauxPdf(false)}
+          onConfirmer={(n) => {
+            setChoixNiveauxPdf(false);
+            void telechargerPdf(n);
+          }}
+        />
+      )}
       {(!emplacement || message) && (
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-surface px-2 py-1 text-[13px]">
         {!emplacement && boutons}

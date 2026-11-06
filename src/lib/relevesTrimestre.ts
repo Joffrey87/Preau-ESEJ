@@ -134,7 +134,7 @@ export async function chargerDocs(sb: SupabaseClient, classe: Classe, periode: P
   };
 }
 
-type Outils = { titulaire: string | null; enseignants: Map<string, Enseignant> };
+type Outils = { titulaire: string | null; roleTitulaire?: "Institutrice" | "Instituteur"; enseignants: Map<string, Enseignant> };
 
 function groupesDe(ctx: ContexteDocs, eleve: EleveBulletin) {
   const niveau = niveauDe(eleve, ctx.classe.annee_scolaire);
@@ -191,7 +191,7 @@ export function syntheseReleve(ctx: ContexteDocs, periode: Periode, eleve: Eleve
     v: 1,
     mode: "releve",
     eleve: { prenom: eleve.prenom ?? "", nom: eleve.nom, niveau },
-    classe: { nom: ctx.classe.nom, titulaire: o.titulaire },
+    classe: { nom: ctx.classe.nom, titulaire: o.titulaire, roleTitulaire: o.roleTitulaire },
     periode: {
       libelle: `Du ${periode.debut.split("-").reverse().join("/")} au ${periode.fin.split("-").reverse().join("/")}`,
       annee: ctx.classe.annee_scolaire,
@@ -248,7 +248,7 @@ export function syntheseTrimestre(ctx: ContexteDocs, eleve: EleveBulletin, doc: 
     v: 1,
     mode: "trimestre",
     eleve: { prenom: eleve.prenom ?? "", nom: eleve.nom, niveau, naissance: eleve.date_naissance ?? null },
-    classe: { nom: ctx.classe.nom, titulaire: o.titulaire },
+    classe: { nom: ctx.classe.nom, titulaire: o.titulaire, roleTitulaire: o.roleTitulaire },
     periode: { libelle: "", annee: ctx.classe.annee_scolaire, trimestre: ctx.trimestre },
     afficherRang: false,
     general: { ...vide, moy: arrondi(general) },

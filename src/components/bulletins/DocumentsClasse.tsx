@@ -16,6 +16,7 @@ import {
   type DocTrimestre,
 } from "@/lib/relevesTrimestre";
 import { BoutonEnregistrer, BoutonLot, GroupeEtats, CommutateurPret, confirmerPret, ZoneAppreciation } from "./outils";
+import ChoixNiveauxPdf from "./ChoixNiveauxPdf";
 import { enregistrerTout } from "@/lib/sauvegardeAuto";
 
 const OUVERTS: Statut[] = ["nouveau", "en_cours"];
@@ -34,6 +35,7 @@ export default function DocumentsClasse({
   enseignantId,
   peutApprecier,
   nomTitulaire,
+  roleTitulaire,
   enseignants,
   onRecharger,
   emplacement,
@@ -47,6 +49,7 @@ export default function DocumentsClasse({
   /** Appréciation d'une matière (le Catéchisme est réservé au Directeur spirituel). */
   peutApprecier?: (m: Matiere) => boolean;
   nomTitulaire: string | null;
+  roleTitulaire?: "Institutrice" | "Instituteur";
   enseignants: Map<string, Enseignant>;
   onRecharger: () => Promise<void>;
   /** Barre de la page où se placent les boutons d'état (une seule tuile en haut). */
@@ -55,10 +58,11 @@ export default function DocumentsClasse({
   const sb = useMemo(() => createClient(), []);
   const [message, setMessage] = useState<string | null>(null);
   const [occupe, setOccupe] = useState(false);
+  const [choixNiveauxPdf, setChoixNiveauxPdf] = useState(false);
   const table = mode === "releve" ? "releves_notes" : "bulletins_trimestre";
   const docs: (DocReleve | DocTrimestre)[] = mode === "releve" ? ctx.releves : ctx.trimestriels;
   const docDe = (eleveId: string) => docs.find((d) => d.eleve_id === eleveId);
-  const outils = { titulaire: nomTitulaire, enseignants };
+  const outils = { titulaire: nomTitulaire, roleTitulaire, enseignants };
   const avecAppreciation = mode === "trimestre" ? matieresAvecAppreciation(ctx) : [];
   const peutNoter = (m: Matiere) => directrice || titulaire || (!!enseignantId && m.enseignants.includes(enseignantId));
   const peutEditer = (d: { statut: Statut } | undefined) => !!d && (directrice || (titulaire && OUVERTS.includes(d.statut)));
@@ -89,9 +93,43 @@ export default function DocumentsClasse({
     const items = cible.filter((d) => d.statut === "valide").map((d) => ({ id: d.id, synthese: synthese(d.eleve_id) }));
     return agir(sb.rpc("releves_publier", { p_doc: mode, p_items: items }));
   };
-  const pdf = async () => {
-    const ss = docs.map((d) => synthese(d.eleve_id)).filter((s): s is Synthese => !!s);
-    await telechargerBulletins(ss, `${mode === "releve" ? "Relevés de notes" : "Bulletins"} ${ctx.classe.nom} - ${mode === "releve" ? `Période ${periode.ordre}` : titreTrimestre(ctx.trimestre)}`);
+  const niveauxClasse = (() => {
+    const vus = new Set<string>();
+    for (const e of ctx.eleves) {
+      const n = niveauDe(e, ctx.classe.annee_scolaire);
+      if (n) vus.add(n);
+    }
+    const ordres = ctx.classe.niveaux.filter((n) => vus.has(n));
+    for (const n of [...vus].sort((a, b) => a.localeCompare(b, "fr"))) if (!ordres.includes(n)) ordres.push(n);
+    return ordres;
+  })();
+
+  const telechargerPdf = async (niveauxChoisis?: string[]) => {
+    const filtre = niveauxChoisis?.length ? new Set(niveauxChoisis) : null;
+    const ss = docs
+      .map((d) => {
+        const e = ctx.eleves.find((x) => x.id === d.eleve_id);
+        if (!e) return null;
+        if (filtre) {
+          const n = niveauDe(e, ctx.classe.annee_scolaire);
+          if (!n || !filtre.has(n)) return null;
+        }
+        return synthese(d.eleve_id);
+      })
+      .filter((s): s is Synthese => !!s);
+    if (!ss.length) {
+      setMessage("Aucun élève pour les niveaux choisis.");
+      return;
+    }
+    const suffixe = filtre && filtre.size < niveauxClasse.length ? ` (${[...filtre].join(", ")})` : "";
+    await telechargerBulletins(
+      ss,
+      `${mode === "releve" ? "Relevés de notes" : "Bulletins"} ${ctx.classe.nom} - ${mode === "releve" ? `Période ${periode.ordre}` : titreTrimestre(ctx.trimestre)}${suffixe}`,
+    );
+  };
+  const pdf = () => {
+    if (niveauxClasse.length > 1) setChoixNiveauxPdf(true);
+    else void telechargerPdf();
   };
 
   // Classe à plusieurs niveaux : élèves regroupés par niveau (CE1, puis CE2…), puis par nom.
@@ -181,6 +219,16 @@ export default function DocumentsClasse({
   return (
     <div ref={haut} className="mx-auto max-w-5xl scroll-mt-4 space-y-3">
       {emplacement && createPortal(boutons, emplacement)}
+      {choixNiveauxPdf && (
+        <ChoixNiveauxPdf
+          niveaux={niveauxClasse}
+          onAnnuler={() => setChoixNiveauxPdf(false)}
+          onConfirmer={(n) => {
+            setChoixNiveauxPdf(false);
+            void telechargerPdf(n);
+          }}
+        />
+      )}
       {(!emplacement || message) && (
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-border bg-surface px-2 py-1 text-[13px]">
         {!emplacement && (

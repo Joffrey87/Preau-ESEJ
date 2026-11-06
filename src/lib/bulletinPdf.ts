@@ -170,8 +170,13 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
         // Intitulé long (« Systèmes de poids et mesures ») : coupé sur deux lignes dans sa colonne, jamais tronqué.
         const wNom = (releve ? cols.com : cols.moy) - cols.matiere - 18;
         const noms = coupe(m.nom, regular, 8.5, wNom);
-        // Relevé et bulletin trimestriel (04/11/2026) : le professeur n'est plus répété sous chaque matière.
-        const ens = m.enseignants && !s.mode ? coupe(m.enseignants, regular, 6.5, wNom) : [];
+        // Intervenants sous la matière (style discret) ; le titulaire du cartouche n'est pas répété.
+        const ensLib = (m.enseignants ?? "")
+          .split(",")
+          .map((x) => x.trim())
+          .filter((x) => x && x !== (s.classe.titulaire ?? "").trim())
+          .join(", ");
+        const ens = ensLib ? coupe(ensLib, regular, 7, wNom) : [];
         // Catéchisme : l'appréciation du professeur puis celle du Directeur spirituel, chacune sous son étiquette.
         const apps = (m.appreciations ?? []).map((x) => ({
           titre: x.titre,
@@ -179,10 +184,10 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
           lignes: coupe(x.texte, italic, 7.8, wCom),
         }));
         const hCom = com.length * 10 + apps.reduce((t, x) => t + 9.5 + (x.sousTitre ? 8.5 : 0) + x.lignes.length * 10 + 2, 0);
-        const h = Math.max(8 + noms.length * 10.5 + ens.length * 8.5, 8 + hCom);
+        const h = Math.max(8 + noms.length * 10.5 + ens.length * 9, 8 + hCom);
         place(h);
         noms.forEach((l, i) => texte(l, cols.matiere + 12, top + 11 + i * 10.5, regular, 8.5));
-        ens.forEach((l, i) => texte(l, cols.matiere + 12, top + 11 + noms.length * 10.5 - 1.5 + i * 8.5, regular, 6.5, GRIS));
+        ens.forEach((l, i) => texte(l, cols.matiere + 12, top + 11 + noms.length * 10.5 - 1.5 + i * 9, regular, 7, GRIS));
         if (!m.appreciationSeule) chiffres(m.chiffre, top + 11, semi, NAVY);
         // Notes du relevé : séparées par un point médian « · » (couleur du texte ; doré seulement à l’écran).
         com.forEach((l, i) => {

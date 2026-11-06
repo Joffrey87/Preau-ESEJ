@@ -94,7 +94,7 @@ export type Don = {
   /** Préférence d'envoi des reçus (fiche donateur) : « courrier » (postal) ou, par défaut, courriel. */
   envoi_prefere?: string | null;
   observations: string | null;
-  /** Opération comptable reliée : elle fait foi pour le montant et la date d'encaissement. */
+  /** Opération comptable reliée : elle fait foi pour le montant ; sa date_operation est la date de versement. */
   operation_id?: string | null;
   operation?: { date_operation: string } | null;
   supprime_le: string | null;
@@ -515,9 +515,9 @@ export default function GestionDons({
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) =>
     setF((p) => ({ ...p, [k]: v }));
 
-  // Don relié à la comptabilité : elle fait foi pour le montant et la date
-  // d'encaissement. Un chèque ou des espèces gardent une date de réception
-  // (fiscalement, la remise du chèque), au plus tard l'encaissement.
+  // Don relié : la comptabilité fait foi pour le montant. date_don = Date du don
+  // (reçu fiscal), distincte de operation.date_operation = Date de versement
+  // (encaissement bancaire, souvent postérieur pour HelloAsso).
   // Reçu établi : montant et date figés.
   const [enCaisse, setEnCaisse] = useState(true);
   // Don dont on lie l'écriture comptable depuis la liste (sans ouvrir toute la fiche).
@@ -531,7 +531,8 @@ export default function GestionDons({
   const encaissement = lie ? (donEdite?.operation?.date_operation ?? null) : null;
   const recuFige = /^RE_/.test(donEdite?.recu_numero ?? "");
   const montantFige = lie || recuFige;
-  const dateLibre = !recuFige && (!lie || ["Chèque", "Espèces"].includes(f.mode_paiement));
+  // Date du don éditable tant que le reçu n'est pas établi (même carte/virement liés).
+  const dateLibre = !recuFige;
 
   function ouvrir(d: Don | "nouveau", signale = false) {
     setError(null);
@@ -1625,8 +1626,8 @@ export default function GestionDons({
               </p>
             )}
 
-            <div className="grid grid-cols-2 gap-3">
-              <Field label={dateLibre && lie ? "Date de réception" : "Date d'encaissement"}>
+            <div className={`grid gap-3 ${lie ? "grid-cols-3" : "grid-cols-2"}`}>
+              <Field label="Date du don">
                 <input
                   type="date"
                   required
@@ -1635,13 +1636,24 @@ export default function GestionDons({
                   readOnly={!dateLibre}
                   max={dateLibre && encaissement ? encaissement : undefined}
                   title={
-                    dateLibre && lie
-                      ? `Remise ou réception du chèque / des espèces ; au plus tard l'encaissement (${formatDate(encaissement ?? "")})`
-                      : undefined
+                    lie
+                      ? `Date du paiement (HelloAsso, remise du chèque…) ; au plus tard le versement bancaire (${formatDate(encaissement ?? "")})`
+                      : "Date du don affichée sur le reçu fiscal"
                   }
                   className={`${inputCls} ${dateLibre ? "" : "cursor-not-allowed bg-surface-2 text-muted"}`}
                 />
               </Field>
+              {lie && (
+                <Field label="Date de versement">
+                  <input
+                    type="date"
+                    value={encaissement ?? ""}
+                    readOnly
+                    title="Date de l'opération bancaire (versement HelloAsso, encaissement…)"
+                    className={`${inputCls} cursor-not-allowed bg-surface-2 text-muted`}
+                  />
+                </Field>
+              )}
               <Field label="Montant (€)">
                 <input
                   type="text"

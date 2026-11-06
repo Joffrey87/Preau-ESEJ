@@ -71,7 +71,7 @@ export async function telechargerRelevesMaternelle(releves: ReleveImprimable[], 
     if (!app.length) p.texte("—", M + 12, p.top + 32, p.regular, 9, GRIS);
     p.top += hApp + 18;
 
-    // Comme le relevé primaire : enseignant·e (nom + rôle + espace) + encart parents, sans Directrice.
+    // Comme le relevé primaire : Enseignante ou Enseignant (nom + rôle + espace) + encart parents, sans Directrice.
     const hSig = 62, wSig = 200;
     p.place(hSig);
     const role = roleTitulaireDepuisNom(r.classe.titulaire);

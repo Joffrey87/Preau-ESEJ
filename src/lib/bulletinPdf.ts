@@ -252,7 +252,7 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
     if (!app.length) texte("—", M + 12, top + 32, regular, 9, GRIS);
     top += hApp + 18;
 
-    // Signatures. Relevé / trimestre : enseignant·e (nom + rôle + espace) et encart parents — pas de Directrice.
+    // Signatures. Relevé / trimestre : Enseignante ou Enseignant (nom + rôle + espace) et encart parents — pas de Directrice.
     if (s.mode) {
       const hSig = 62, wSig = 200;
       place(hSig);

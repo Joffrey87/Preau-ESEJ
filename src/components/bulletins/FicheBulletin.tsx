@@ -196,7 +196,7 @@ export default function FicheBulletin({
             <Action onClick={() => statut("valide", "Retirer ce bulletin de l'espace de la famille (il redevient « Validé ») ?")}>Dépublier</Action>
           )}
           {!publie && <Action onClick={() => setApercu((a) => !a)}>{apercu ? "Revenir à la saisie" : "Aperçu famille"}</Action>}
-          {droits.directrice && <Action onClick={() => telechargerBulletins([syntheseDe(r, ctx, titulaire, enseignants)])}>PDF</Action>}
+          {(droits.directrice || droits.titulaire) && <Action onClick={() => telechargerBulletins([syntheseDe(r, ctx, titulaire, enseignants)], undefined, { visualiser: !droits.directrice })} title={droits.directrice ? "Télécharger le PDF" : "Aperçu PDF"}>PDF</Action>}
         </div>
       </div>
 
@@ -329,10 +329,11 @@ function GroupeLignes({ g, avecRang, children }: { g: { groupe: { nom: string };
   );
 }
 
-function Action({ children, onClick, fort = false }: { children: React.ReactNode; onClick: () => void; fort?: boolean }) {
+function Action({ children, onClick, fort = false, title }: { children: React.ReactNode; onClick: () => void; fort?: boolean; title?: string }) {
   return (
     <button
       type="button"
+      title={title}
       onClick={onClick}
       className={`rounded-lg px-3 py-1.5 text-[13px] font-medium ${fort ? "bg-accent text-accent-fg hover:opacity-90" : "border border-border hover:bg-surface-2"}`}
     >

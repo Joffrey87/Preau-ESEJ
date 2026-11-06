@@ -116,8 +116,24 @@ export async function creerPlume(): Promise<Plume> {
   return p;
 }
 
-/** Télécharge des octets PDF sous un nom de fichier. */
-export function telechargerPdf(octets: Uint8Array, nom: string) {
+/** Options d'export PDF : téléchargement (défaut) ou ouverture dans un nouvel onglet (aperçu). */
+export type OptionsPdf = { visualiser?: boolean };
+
+/** Ouvre un PDF dans un nouvel onglet (aperçu navigateur), sans forcer le téléchargement. */
+export function visualiserPdf(octets: Uint8Array) {
+  const url = URL.createObjectURL(new Blob([octets as BlobPart], { type: "application/pdf" }));
+  const w = window.open(url, "_blank", "noopener,noreferrer");
+  // Si le navigateur bloque la popup, repli : navigation dans l'onglet courant.
+  if (!w) window.location.assign(url);
+  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+}
+
+/** Télécharge des octets PDF sous un nom de fichier, ou les ouvre en aperçu si visualiser. */
+export function telechargerPdf(octets: Uint8Array, nom: string, opts?: OptionsPdf) {
+  if (opts?.visualiser) {
+    visualiserPdf(octets);
+    return;
+  }
   const url = URL.createObjectURL(new Blob([octets as BlobPart], { type: "application/pdf" }));
   const a = document.createElement("a");
   a.href = url;

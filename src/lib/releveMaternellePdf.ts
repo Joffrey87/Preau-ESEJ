@@ -1,6 +1,6 @@
 // Relevé d'appréciations de maternelle en PDF : une page par élève (suite si besoin), charte Préau / ESEJ.
 
-import { creerPlume, telechargerPdf, M, W } from "@/lib/documentPdf";
+import { creerPlume, telechargerPdf, M, W, type OptionsPdf } from "@/lib/documentPdf";
 import type { NiveauAcquis } from "@/lib/releveMaternelle";
 import { developperCiviliteNom, roleTitulaireDepuisNom } from "@/lib/bulletins";
 
@@ -14,7 +14,7 @@ export type ReleveImprimable = {
   appreciation: string | null;
 };
 
-export async function telechargerRelevesMaternelle(releves: ReleveImprimable[], nom: string) {
+export async function telechargerRelevesMaternelle(releves: ReleveImprimable[], nom: string, opts?: OptionsPdf) {
   if (!releves.length) return;
   const p = await creerPlume();
   const { NAVY, OR, GRIS, BLANC, CREME, TRAIT } = p.c;
@@ -79,5 +79,5 @@ export async function telechargerRelevesMaternelle(releves: ReleveImprimable[], 
     p.top += hSig;
   });
   const octets = await p.terminer("");
-  telechargerPdf(octets, nom);
+  telechargerPdf(octets, nom, opts);
 }

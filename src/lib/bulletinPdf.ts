@@ -7,6 +7,7 @@ import { chargerRessources, assainir } from "@/lib/recuPdf";
 import { classeEleve, dateJJMMAAAA, developperCiviliteNom, mentionLabel, nomFichierBulletin, note20, rangTexte, normaliserRoleTitulaire, titreDocument, type Synthese } from "@/lib/bulletins";
 import { texteAbsences } from "@/lib/absences";
 import { tauxTexte } from "@/lib/calendrier";
+import { visualiserPdf, type OptionsPdf } from "@/lib/documentPdf";
 
 const W = 595.28, H = 841.89, M = 40;
 /** Réduction maximale (0,8) : le corps du texte (8,5–9 pt) ne descend pas sous 7 pt environ. */
@@ -352,10 +353,14 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
   return doc.save();
 }
 
-/** Construit puis télécharge (un bulletin : son nom ; plusieurs : un fichier unique). */
-export async function telechargerBulletins(syntheses: Synthese[], nomLot?: string) {
+/** Construit puis télécharge (ou ouvre en aperçu) un bulletin / un lot. */
+export async function telechargerBulletins(syntheses: Synthese[], nomLot?: string, opts?: OptionsPdf) {
   if (!syntheses.length) return;
   const octets = await construireBulletinsPdf(syntheses);
+  if (opts?.visualiser) {
+    visualiserPdf(octets);
+    return;
+  }
   const url = URL.createObjectURL(new Blob([octets as BlobPart], { type: "application/pdf" }));
   const a = document.createElement("a");
   a.href = url;

@@ -125,6 +125,7 @@ export default function DocumentsClasse({
     await telechargerBulletins(
       ss,
       `${mode === "releve" ? "Relevés de notes" : "Bulletins"} ${ctx.classe.nom} - ${mode === "releve" ? `Période ${periode.ordre}` : titreTrimestre(ctx.trimestre)}${suffixe}`,
+      { visualiser: !directrice },
     );
   };
   const pdf = () => {
@@ -184,7 +185,7 @@ export default function DocumentsClasse({
                 </BoutonLot>
               </>
             )}
-            {directrice && <BoutonLot title="Télécharge un PDF réunissant les documents de toute la classe." onClick={pdf}>PDF de la classe</BoutonLot>}
+            {(directrice || titulaire) && <BoutonLot title={directrice ? "Télécharge un PDF réunissant les documents de toute la classe." : "Ouvre l'aperçu PDF des documents de votre classe."} onClick={pdf}>PDF de la classe</BoutonLot>}
           </GroupeEtats>
   );
 

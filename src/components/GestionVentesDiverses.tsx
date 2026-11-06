@@ -14,6 +14,7 @@ import {
   DOMAINES,
   MODES,
   dateObjet,
+  derniereDatePaiement,
   synthetiser,
   STATUTS,
   libellePayeur,
@@ -45,6 +46,11 @@ const MOIS_COURTS = ["Janv", "Févr", "Mars", "Avr", "Mai", "Juin", "Juil", "Ao�
 const moisCourt = (iso: string) => {
   const [a, m] = iso.split("-");
   return m && a ? `${MOIS_COURTS[Number(m) - 1] ?? m}-${a.slice(2)}` : "";
+};
+/** « 2026-11-14 » → « 14/11/2026 » (compact, sans décalage TZ). */
+const dateJjMmAaaa = (iso: string) => {
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
+  return m ? `${m[3]}/${m[2]}/${m[1]}` : formatDate(iso);
 };
 
 export default function GestionVentesDiverses({
@@ -130,19 +136,20 @@ export default function GestionVentesDiverses({
       const attendu = lignes.reduce((a, d) => a + Number(d.montant_attendu), 0);
       const paye = lignes.reduce((a, d) => a + payeDe(d.id), 0);
       // Sous-totaux par payeur (famille ou personne du Carnet), pour l'arborescence des Totaux.
-      const parPayeur = new Map<string, { libelle: string; nb: number; attendu: number; paye: number; descs: string[]; details: string[] }>();
+      const parPayeur = new Map<string, { libelle: string; nb: number; attendu: number; paye: number; descs: string[]; details: string[]; dueIds: string[] }>();
       for (const d of lignes) {
         const libelle = libellePayeur(d, familles, contacts);
         const cle = d.famille_id ? `f:${d.famille_id}` : d.contact_id ? `c:${d.contact_id}` : `l:${libelle}`;
-        const g = parPayeur.get(cle) ?? { libelle, nb: 0, attendu: 0, paye: 0, descs: [], details: [] };
+        const g = parPayeur.get(cle) ?? { libelle, nb: 0, attendu: 0, paye: 0, descs: [], details: [], dueIds: [] };
         g.nb += 1;
         g.attendu += Number(d.montant_attendu);
         g.paye += payeDe(d.id);
+        g.dueIds.push(d.id);
         if (d.description?.trim()) g.descs.push(d.description.trim());
         if ((d.description_detail ?? d.description)?.trim()) g.details.push((d.description_detail ?? d.description)!.trim());
         parPayeur.set(cle, g);
       }
-      type Gp = { cle: string; libelle: string; nb: number; attendu: number; paye: number; descs: string[]; details: string[] };
+      type Gp = { cle: string; libelle: string; nb: number; attendu: number; paye: number; descs: string[]; details: string[]; datePaye: string | null };
       const reste = (g: Gp) => g.attendu - g.paye;
       const comparer = (a: Gp, b: Gp) =>
         triFam === "nom_desc"
@@ -154,7 +161,14 @@ export default function GestionVentesDiverses({
               : triFam === "reste_desc"
                 ? reste(b) - reste(a) || a.libelle.localeCompare(b.libelle, "fr")
                 : a.libelle.localeCompare(b.libelle, "fr");
-      const liste: Gp[] = [...parPayeur.entries()].map(([cle, g]) => ({ cle, ...g }));
+      const liste: Gp[] = [...parPayeur.entries()].map(([cle, g]) => {
+        const { dueIds, ...rest } = g;
+        return {
+          cle,
+          ...rest,
+          datePaye: derniereDatePaiement(paiements.filter((p) => dueIds.includes(p.vente_due_id))),
+        };
+      });
       const aSolder = liste.filter((g) => reste(g) > 0.005).sort(comparer);
       const soldes = liste.filter((g) => reste(g) <= 0.005).sort(comparer);
       return { sous: s, attendu, paye, nb: lignes.length, lignes, payeurs: [...aSolder, ...soldes], aSolder, soldes };
@@ -564,7 +578,8 @@ export default function GestionVentesDiverses({
                                   </button>
                                 )}
                                 {g.paye >= g.attendu - 0.005 && (
-                                  <span className="ml-2 text-emerald-600" title="Soldé">
+                                  <span className="ml-1.5 inline-flex items-center gap-1 whitespace-nowrap text-emerald-600" title={g.datePaye ? `Soldé le ${dateJjMmAaaa(g.datePaye)}` : "Soldé"}>
+                                    {g.datePaye && <span className="text-[11px] tabular-nums text-muted">{dateJjMmAaaa(g.datePaye)}</span>}
                                     ✓
                                   </span>
                                 )}
@@ -748,7 +763,14 @@ export default function GestionVentesDiverses({
                             <span className="tabular-nums text-muted">
                               {formatEuros(g.paye)} / {formatEuros(g.attendu)}
                             </span>
-                            {g.paye >= g.attendu - 0.005 ? <span className="text-emerald-600">✓</span> : <span className="w-3" />}
+                            {g.paye >= g.attendu - 0.005 ? (
+                              <span className="inline-flex items-center gap-1 whitespace-nowrap text-emerald-600" title={g.datePaye ? `Soldé le ${dateJjMmAaaa(g.datePaye)}` : "Soldé"}>
+                                {g.datePaye && <span className="text-[11px] tabular-nums text-muted">{dateJjMmAaaa(g.datePaye)}</span>}
+                                ✓
+                              </span>
+                            ) : (
+                              <span className="w-3" />
+                            )}
                           </li>
                         ))}
                       </ul>

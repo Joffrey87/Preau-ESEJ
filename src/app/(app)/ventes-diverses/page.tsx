@@ -29,6 +29,29 @@ export default async function VentesDiversesPage({ searchParams }: { searchParam
   );
   const payeurs = Array.from(new Map(payeursParDomaine.flat().map((p) => [`${p.kind}:${p.id}`, p])).values());
 
+  // Date de paiement : date de l'opération bancaire (relevé) ou date du mouvement de caisse.
+  const paiementsBruts = (pay.data ?? []) as VentePaiement[];
+  const opIds = [...new Set(paiementsBruts.map((x) => x.operation_id).filter((id): id is string => !!id))];
+  const caisseIds = [...new Set(paiementsBruts.map((x) => x.caisse_mouvement_id).filter((id): id is string => !!id))];
+  const datesOp = new Map<string, string>();
+  const datesCaisse = new Map<string, string>();
+  if (opIds.length) {
+    const { data: opsDates } = await supabase.from("operations").select("id, date_operation").in("id", opIds);
+    for (const o of opsDates ?? []) datesOp.set(o.id as string, String(o.date_operation).slice(0, 10));
+  }
+  if (caisseIds.length) {
+    const { data: mDates } = await supabase.from("caisse_mouvements").select("id, date").in("id", caisseIds);
+    for (const m of mDates ?? []) datesCaisse.set(m.id as string, String(m.date).slice(0, 10));
+  }
+  const paiementsEnrichis: VentePaiement[] = paiementsBruts.map((x) => ({
+    ...x,
+    montant: Number(x.montant),
+    date_paiement:
+      (x.operation_id && datesOp.get(x.operation_id)) ||
+      (x.caisse_mouvement_id && datesCaisse.get(x.caisse_mouvement_id)) ||
+      null,
+  }));
+
   // Trésorier : recettes bancaires « Ventes diverses » de l'exercice (lignes non ventilées dans la Comptabilité), avec leur ventilation.
   let operations: OperationVente[] = [];
   let ventilations: { id: string; operation_id: string; sous_categorie_id: string; montant: number }[] = [];
@@ -74,7 +97,7 @@ export default async function VentesDiversesPage({ searchParams }: { searchParam
         peutModifier={peutModifier}
         sousCategories={(sc.data ?? []) as SousCategorie[]}
         dues={((du.data ?? []) as VenteDue[]).map((d) => ({ ...d, montant_attendu: Number(d.montant_attendu) }))}
-        paiements={((pay.data ?? []) as VentePaiement[]).map((p) => ({ ...p, montant: Number(p.montant) }))}
+        paiements={paiementsEnrichis}
         payeurs={payeurs}
         operations={operations}
         ventilations={ventilations}

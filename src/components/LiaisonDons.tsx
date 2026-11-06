@@ -23,8 +23,8 @@ function Indices({ c }: { c: Candidat }) {
 
 /**
  * Lien d'une sous-écriture « Don » avec un don de l'onglet Dons : affiche le don
- * relié (avec « Délier »), ou propose les dons « hors compta » à ±1 mois,
- * classés par nom, date et montant. Rien n'est relié sans clic.
+ * relié (avec « Délier »), ou propose les dons « hors compta » proches (±35 jours,
+ * ou ±1 an sur demande), classés par nom, date et montant. Rien n'est relié sans clic.
  */
 export function LienDonFille({
   filleId,
@@ -60,12 +60,13 @@ export function LienDonFille({
 }) {
   const router = useRouter();
   const [ouvert, setOuvert] = useState(false);
+  const [large, setLarge] = useState(false);
   const [busy, setBusy] = useState(false);
   const [erreur, setErreur] = useState<string | null>(null);
   const lie = lieId ? donParId.get(lieId) : undefined;
   const candidats = useMemo(
-    () => (ouvert ? candidatsPour({ date, montant, texte }, libres, 8, identites) : []),
-    [ouvert, date, montant, texte, libres, identites],
+    () => (ouvert ? candidatsPour({ date, montant, texte }, libres, 8, identites, large ? 366 : 35) : []),
+    [ouvert, large, date, montant, texte, libres, identites],
   );
 
   async function lier(c: Candidat) {
@@ -133,7 +134,7 @@ export function LienDonFille({
         <div className="mt-1.5 max-w-xl rounded-lg border border-border bg-surface p-1.5">
           {verrou && <p className="px-2 pb-1 text-muted">🔒 Coffre verrouillé : les noms ne sont pas lisibles, le classement se fait sur le montant et la date.</p>}
           {candidats.length === 0 ? (
-            <p className="px-2 py-2 text-muted">Aucun don « hors compta » ne correspond à ±1 mois (montant exact ou nom reconnu).</p>
+            <p className="px-2 py-2 text-muted">Aucun don « hors compta » ne correspond à ±{large ? "1 an" : "35 jours"} (montant exact ou nom reconnu).</p>
           ) : (
             candidats.map((c) => (
               <div key={c.don.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-border/60 px-2 py-1.5 last:border-0">
@@ -166,6 +167,9 @@ export function LienDonFille({
               </div>
             ))
           )}
+          <button type="button" onClick={() => setLarge((v) => !v)} className="mt-1 px-2 text-accent hover:underline">
+            {large ? "Revenir à ±35 jours" : "Chercher plus largement (±1 an)"}
+          </button>
         </div>
       )}
     </div>

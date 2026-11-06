@@ -105,13 +105,13 @@ export const JOURS_LIEN_FORT = 3;
 export const estFort = (c: Candidat): boolean => c.nom >= 0.999 && c.jours <= JOURS_LIEN_FORT && Math.abs(c.ecart) < 0.005;
 
 /**
- * Dons « hors compta » à proposer pour une écriture : à ±1 mois, classés par
- * score. Un don n'est retenu que s'il a au moins un point commun fort (nom
- * reconnu, ou montant exact).
+ * Dons « hors compta » à proposer pour une écriture : à ±1 mois par défaut
+ * (ou une autre fenêtre passée en paramètre), classés par score. Un don n'est
+ * retenu que s'il a au moins un point commun fort (nom reconnu, ou montant exact).
  */
-export function candidatsPour(cible: Cible, libres: DonCompta[], max = 8, identites?: IdentiteConnue[]): Candidat[] {
+export function candidatsPour(cible: Cible, libres: DonCompta[], max = 8, identites?: IdentiteConnue[], fenetre = FENETRE_JOURS): Candidat[] {
   const trouves = libres
-    .filter((d) => !d.operation_id && ecartJours(d.date_don, cible.date) <= FENETRE_JOURS && compatibleAvecIntitule(cible.texte, d, identites) !== "non")
+    .filter((d) => !d.operation_id && ecartJours(d.date_don, cible.date) <= fenetre && compatibleAvecIntitule(cible.texte, d, identites) !== "non")
     .map((d) => noter(cible, d))
     .filter((c) => c.nom > 0 || Math.abs(c.ecart) < 0.005)
     .sort((a, b) => b.score - a.score);

@@ -261,7 +261,7 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
       place(hSig);
       page.drawRectangle({ x: M, y: y(top + hSig), width: wSig, height: hSig, borderColor: TRAIT, borderWidth: 0.8 });
       texte(`Signature de l'${role.toLowerCase()}`, M + 10, top + 13, semi, 8.5);
-      if (s.classe.titulaire) texte(s.classe.titulaire, M + 10, top + 26, semi, 9);
+      if (s.classe.titulaire) texte(s.classe.titulaire, M + 10, top + 26, regular, 8.5);
       page.drawRectangle({ x: Wp - M - wSig, y: y(top + hSig), width: wSig, height: hSig, borderColor: TRAIT, borderWidth: 0.8 });
       texte("Signature des parents", Wp - M - wSig + 10, top + 13, semi, 8.5);
       top += hSig;

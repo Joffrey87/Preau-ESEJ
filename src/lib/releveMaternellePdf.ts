@@ -65,7 +65,7 @@ export async function telechargerRelevesMaternelle(releves: ReleveImprimable[], 
     const role = roleTitulaireDepuisNom(r.classe.titulaire);
     p.cadre(M, p.top, wSig, hSig, TRAIT);
     p.texte(`Signature de l'${role.toLowerCase()}`, M + 10, p.top + 13, p.semi, 8.5);
-    if (r.classe.titulaire) p.texte(r.classe.titulaire, M + 10, p.top + 26, p.semi, 9);
+    if (r.classe.titulaire) p.texte(r.classe.titulaire, M + 10, p.top + 26, p.regular, 8.5);
     p.cadre(W - M - wSig, p.top, wSig, hSig, TRAIT);
     p.texte("Signature des parents", W - M - wSig + 10, p.top + 13, p.semi, 8.5);
     p.top += hSig;

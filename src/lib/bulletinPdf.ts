@@ -177,18 +177,18 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
           .filter((x) => x && x !== (s.classe.titulaire ?? "").trim())
           .join(", ");
         const ens = ensLib ? coupe(ensLib, regular, 7, wNom) : [];
-        // Catéchisme : appréciation enseignante (si présente) puis Directeur spirituel — textes seuls, 2 blocs distincts.
-        // Colonne note/appréciation : contenu seul (notes ou texte). Pas de nom ni de matière (déjà en colonne matière).
-        // Pas de 2e ligne vide si l'enseignante n'a pas commenté (filtre des textes vides).
+        // Catéchisme : enseignante (nom + commentaire si présent) puis Directeur (texte seul ; nom déjà sous la matière).
+        // Autres matières : contenu seul. Pas de 2e ligne vide si l'enseignante n'a pas commenté.
         const apps = (m.appreciations ?? [])
-          .map((x) => ({ lignes: coupe(x.texte, italic, 7.8, wCom) }))
+          .map((x) => ({ titre: (x.titre ?? "").trim(), lignes: coupe(x.texte, italic, 7.8, wCom) }))
           .filter((x) => x.lignes.length);
         // Écart entre deux appréciations (enseignante / Directeur) pour les distinguer clairement.
         const ecartApps = apps.length > 1 ? 5 : 0;
+        const hTitreApp = 9.5;
         const hCom =
           com.length * 10 +
           (com.length && apps.length ? 2 : 0) +
-          apps.reduce((t, x) => t + x.lignes.length * 10, 0) +
+          apps.reduce((t, x) => t + (x.titre ? hTitreApp : 0) + x.lignes.length * 10, 0) +
           Math.max(0, apps.length - 1) * ecartApps;
         const h = Math.max(8 + noms.length * 10.5 + ens.length * 9, 8 + hCom);
         place(h);
@@ -210,6 +210,11 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
         let tA = top + 11 + com.length * 10 + (com.length ? 2 : 0);
         apps.forEach((x, iApp) => {
           if (iApp) tA += ecartApps;
+          if (x.titre) {
+            // Nom de l'enseignante de classe (étiquette) avant son commentaire Catéchisme.
+            texte(x.titre, cols.com + 6, tA - 1, semi, 7.2, OR);
+            tA += hTitreApp;
+          }
           x.lignes.forEach((l) => {
             texte(l, cols.com + 6, tA, italic, 7.8);
             tA += 10;

@@ -18,6 +18,7 @@ import {
   matiereConcerne,
   niveauDe,
   nomEnseignant,
+  developperCiviliteNom,
   type Bulletin,
   type Classe,
   type EleveBulletin,
@@ -47,15 +48,18 @@ export type DocTrimestre = Omit<DocReleve, "periode_id"> & { annee_scolaire: str
 /** bulletin_id : le bulletin trimestriel, ou le relevé de la période (appréciation du Catéchisme). */
 export type AppreciationIntervenant = { bulletin_id: string; matiere_id: string; texte: string | null; texte_professeur?: string | null };
 
-/** Catéchisme : les deux appréciations (texte seul ; le nom est sous la matière). */
+/** Catéchisme : enseignante (nom + commentaire si présent) puis Directeur (texte seul ; son nom est sous la matière). */
 export function appreciationsCatechisme(
   a: AppreciationIntervenant | undefined,
   opts?: { bulletin?: boolean; nomProfesseur?: string; nomDirecteur?: string; matiere?: string },
 ) {
-  // opts conservés pour compatibilité d'appel ; noms/matière non répétés dans la colonne appréciation.
-  void opts;
+  // nomDirecteur / matiere / bulletin : compatibilité d'appel ; le Directeur n'est pas ré-étiqueté (déjà sous la matière).
+  void opts?.bulletin;
+  void opts?.nomDirecteur;
+  void opts?.matiere;
+  const nomEns = developperCiviliteNom(opts?.nomProfesseur) || opts?.nomProfesseur?.trim() || "";
   return [
-    { titre: "", texte: a?.texte_professeur?.trim() ?? "" },
+    { titre: nomEns, texte: a?.texte_professeur?.trim() ?? "" },
     { titre: "", texte: a?.texte?.trim() ?? "" },
   ].filter((x) => x.texte);
 }
@@ -217,7 +221,7 @@ export function syntheseReleve(ctx: ContexteDocs, periode: Periode, eleve: Eleve
       chiffre: vide,
       matieres: g.matieres.map((m) => {
         const a = estCatechisme(m.nom) ? ctx.appreciations.find((x) => x.bulletin_id === doc?.id && x.matiere_id === m.id) : undefined;
-        const apps = estCatechisme(m.nom) ? { appreciations: appreciationsCatechisme(a) } : {};
+        const apps = estCatechisme(m.nom) ? { appreciations: appreciationsCatechisme(a, { nomProfesseur: o.titulaire ?? undefined }) } : {};
         if (estAppreciationSeule(m.nom, ctx.classe.niveaux))
           return { nom: m.nom, enseignants: profs(m, o), chiffre: vide, commentaire: null, appreciationSeule: true, ...apps };
         // Les notes de la période, séparées par « | » (04/11/2026) ; Catéchisme : ses deux appréciations en plus.
@@ -250,7 +254,7 @@ export function syntheseTrimestre(ctx: ContexteDocs, eleve: EleveBulletin, doc: 
       const cat = estCatechisme(m.nom)
         ? appreciationsCatechisme(aCat, {
             bulletin: true,
-            nomProfesseur: profs(m, o) || undefined,
+            nomProfesseur: o.titulaire ?? undefined,
             nomDirecteur: directeur,
             matiere: m.nom,
           })

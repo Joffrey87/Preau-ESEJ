@@ -309,7 +309,7 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
         tSig -= 0.25;
         lignesSig = coupe(titulaireNom!, regular, tSig, wNomSig);
       }
-      const hSig = Math.max(62, 40 + Math.max(1, lignesSig.length) * 11);
+      const hSig = Math.max(73, 51 + Math.max(1, lignesSig.length) * 11); // +1 ligne vs 62/40
       place(hSig);
       page.drawRectangle({ x: M, y: y(top + hSig), width: wSig, height: hSig, borderColor: TRAIT, borderWidth: 0.8 });
       texte(`Signature de l'${role.toLowerCase()}`, M + 10, top + 13, semi, 8.5);

@@ -67,7 +67,7 @@ export async function telechargerRelevesMaternelle(releves: ReleveImprimable[], 
     // Comme le relevé primaire : encart Enseignante/Enseignant (titre + nom) + encart parents, sans Directrice.
     const wSig = 200, wNomSig = wSig - 20;
     const lignesSig = titulaireNom ? p.coupe(titulaireNom, p.regular, 8.5, wNomSig) : [];
-    const hSig = Math.max(62, 40 + Math.max(1, lignesSig.length) * 11);
+    const hSig = Math.max(73, 51 + Math.max(1, lignesSig.length) * 11); // +1 ligne vs 62/40
     p.place(hSig);
     const role = roleTitulaireDepuisNom(titulaireNom || r.classe.titulaire);
     p.cadre(M, p.top, wSig, hSig, TRAIT);

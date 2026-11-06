@@ -71,12 +71,16 @@ export async function telechargerRelevesMaternelle(releves: ReleveImprimable[], 
     if (!app.length) p.texte("—", M + 12, p.top + 32, p.regular, 9, GRIS);
     p.top += hApp + 18;
 
-    p.place(40);
-    p.texte("La Directrice", W - M - 160, p.top + 10, p.semi, 9);
+    // Comme le relevé primaire : titulaire + encart parents, sans Directrice.
+    const hSig = 62, wSig = 200;
+    p.place(hSig);
     if (r.classe.titulaire) {
-      p.texte(r.classe.titulaire, M, p.top + 10, p.semi, 9);
-      p.texte(`${roleTitulaireDepuisNom(r.classe.titulaire)} de la classe`, M, p.top + 22, p.regular, 8, GRIS);
+      p.texte(r.classe.titulaire, M, p.top + 12, p.semi, 9);
+      p.texte(`${roleTitulaireDepuisNom(r.classe.titulaire)} de la classe`, M, p.top + 24, p.regular, 8, GRIS);
     }
+    p.cadre(W - M - wSig, p.top, wSig, hSig, TRAIT);
+    p.texte("Signature des parents", W - M - wSig + 10, p.top + 13, p.semi, 8.5);
+    p.top += hSig;
   });
   const octets = await p.terminer("");
   telechargerPdf(octets, nom);

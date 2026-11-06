@@ -4,7 +4,7 @@
 
 import type { PDFFont, PDFPage, RGB } from "pdf-lib";
 import { chargerRessources, assainir } from "@/lib/recuPdf";
-import { classeEleve, dateJJMMAAAA, mentionLabel, nomFichierBulletin, note20, rangTexte, roleTitulaireDepuisNom, titreDocument, type Synthese } from "@/lib/bulletins";
+import { classeEleve, dateJJMMAAAA, mentionLabel, nomFichierBulletin, note20, rangTexte, normaliserRoleTitulaire, titreDocument, type Synthese } from "@/lib/bulletins";
 import { texteAbsences } from "@/lib/absences";
 import { tauxTexte } from "@/lib/calendrier";
 
@@ -112,7 +112,7 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
     // naissance en plus.
     const ligneClasse = classeEleve(s);
     const naissance = s.mode === "trimestre" && s.eleve.naissance ? `Né(e) le ${dateJJMMAAAA(s.eleve.naissance)}` : "";
-    const role = s.classe.roleTitulaire ?? roleTitulaireDepuisNom(s.classe.titulaire);
+    const role = normaliserRoleTitulaire(s.classe.roleTitulaire, s.classe.titulaire);
     const infos = [ligneClasse && { t: ligneClasse, gris: false }, naissance && { t: naissance, gris: true }, s.classe.titulaire && { t: `${role} : ${s.classe.titulaire}`, gris: true }].filter(
       (x): x is { t: string; gris: boolean } => !!x,
     );
@@ -252,18 +252,21 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
     if (!app.length) texte("—", M + 12, top + 32, regular, 9, GRIS);
     top += hApp + 18;
 
-    // Signatures. Relevé et bulletin trimestriel : pas de signature de la Directrice, un encart pour celle des parents.
+    // Signatures. Relevé / trimestre : enseignant·e (nom + rôle + espace) et encart parents — pas de Directrice.
     if (s.mode) {
       const hSig = 62, wSig = 200;
       place(hSig);
       if (s.classe.titulaire) {
         texte(s.classe.titulaire, M, top + 12, semi, 9);
         texte(`${role} de la classe`, M, top + 24, regular, 8, GRIS);
+      } else {
+        texte(`Signature de l'${role.toLowerCase()}`, M, top + 13, semi, 8.5);
       }
       page.drawRectangle({ x: Wp - M - wSig, y: y(top + hSig), width: wSig, height: hSig, borderColor: TRAIT, borderWidth: 0.8 });
       texte("Signature des parents", Wp - M - wSig + 10, top + 13, semi, 8.5);
       top += hSig;
     } else {
+      // Bulletin de période historique : Directrice + titulaire.
       place(40);
       texte("La Directrice", Wp - M - 160, top + 10, semi, 9);
       if (s.classe.titulaire) texte(s.classe.titulaire, M, top + 10, semi, 9);

@@ -78,8 +78,8 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
     // En-tête : logo, école, période (dates sur leur propre ligne) ; cartouche de l'élève à droite, séparé du
     // bloc de gauche par une gouttière, et dont la hauteur suit le nom (prénom au-dessus, nom réduit puis coupé
     // s'il est long : jamais de débordement).
-    // Logo un peu plus grand ; cartouche nom/prénom un peu plus étroit (06/11/2026).
-    const CW = 172, bx = Wp - M - CW, gx = M + 84, gw = bx - 18 - gx, iw = CW - 24;
+    // Logo un peu plus grand ; cartouche assez large pour « Enseignante : Mlle … » (06/11/2026).
+    const CW = 196, bx = Wp - M - CW, gx = M + 84, gw = bx - 18 - gx, iw = CW - 24;
     page.drawImage(logo, { x: M, y: y(top + 71), width: 72, height: 71 });
     texte("École du Saint-Enfant-Jésus", gx, top + 16, semi, ajuste("École du Saint-Enfant-Jésus", semi, 13, gw, 10));
     const sousTitre = `${s.mode === "releve" ? "Relevé de notes" : "Bulletin scolaire"} · Année ${s.periode.annee}`;
@@ -128,7 +128,9 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
     }
     infos.forEach((x, i) => {
       tc += i === 0 ? 15 : 13;
-      texte(x.t, bx + 14, tc, regular, x.gris ? 8.5 : 9, x.gris ? GRIS : NAVY);
+      // Classe / Enseignante : police réduite si le libellé dépasse (noms longs).
+      const taille = ajuste(x.t, regular, x.gris ? 8.5 : 9, iw, 7);
+      texte(x.t, bx + 14, tc, regular, taille, x.gris ? GRIS : NAVY);
     });
     top += Math.max(71, hCart) + 18;
 

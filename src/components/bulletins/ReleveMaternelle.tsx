@@ -4,7 +4,6 @@ import { extensible } from "./outils";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { libellePeriode, niveauDe, nomEleve, type Classe, type EleveBulletin, type Periode } from "@/lib/bulletins";
-import { resumeAbsences, type Absence } from "@/lib/absences";
 import {
   NIVEAUX_ACQUIS,
   libelleTrimestre,
@@ -49,7 +48,6 @@ export default function ReleveMaternelle({
   const [matieres, setMatieres] = useState<MatiereMaternelle[]>([]);
   const [releves, setReleves] = useState<Releve[]>([]);
   const [lignes, setLignes] = useState<LigneReleve[]>([]);
-  const [absences, setAbsences] = useState<Absence[]>([]);
   const [eleveId, setEleveId] = useState<string | null>(null);
   const [brouillon, setBrouillon] = useState<Brouillon | null>(null);
   const [gererMatieres, setGererMatieres] = useState(false);
@@ -72,21 +70,18 @@ export default function ReleveMaternelle({
   }, [mode, periode, periodes, trimestre]);
 
   const charger = useCallback(async () => {
-    const ids = eleves.map((e) => e.id);
     let q = sb.from("releves_maternelle").select("*").eq("classe_id", classe.id);
     q = mode === "periode" ? q.eq("periode_id", periode.id) : q.eq("annee_scolaire", classe.annee_scolaire).eq("trimestre", trimestre);
-    const [m, r, a] = await Promise.all([
+    const [m, r] = await Promise.all([
       sb.from("maternelle_matieres").select("*").eq("classe_id", classe.id).order("ordre").order("created_at"),
       q,
-      ids.length ? sb.from("absences").select("*").in("eleve_id", ids).gte("date", bornes.debut).lte("date", bornes.fin) : Promise.resolve({ data: [] }),
     ]);
     const rel = (r.data ?? []) as Releve[];
     const l = rel.length ? await sb.from("releve_maternelle_lignes").select("*").in("releve_id", rel.map((x) => x.id)) : { data: [] };
     setMatieres((m.data ?? []) as MatiereMaternelle[]);
     setReleves(rel);
     setLignes((l.data ?? []) as LigneReleve[]);
-    setAbsences((a.data ?? []) as Absence[]);
-  }, [sb, classe.id, classe.annee_scolaire, eleves, mode, periode.id, trimestre, bornes.debut, bornes.fin]);
+  }, [sb, classe.id, classe.annee_scolaire, mode, periode.id, trimestre]);
 
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- chargement des relevés
@@ -218,7 +213,6 @@ export default function ReleveMaternelle({
         return { nom: m.nom, niveau: l?.niveau ?? null, commentaire: l?.commentaire ?? null };
       }),
       appreciation: r.appreciation,
-      absences: resumeAbsences(absences.filter((a) => a.eleve_id === e.id)),
     };
   }
   const imprimables = tries.map(imprimable).filter((x): x is ReleveImprimable => !!x);
@@ -325,7 +319,6 @@ export default function ReleveMaternelle({
               <h4 className="text-[14px] font-semibold">{nomEleve(eleve)}</h4>
               <span className="text-[12px] text-muted">{niveauDe(eleve, classe.annee_scolaire)}</span>
               <span className={`rounded px-1.5 py-0.5 text-[11px] ${statutReleve(releve?.statut).classe}`}>{statutReleve(releve?.statut).label}</span>
-              <span className="text-[12px] text-muted">· {(() => { const r = resumeAbsences(absences.filter((a) => a.eleve_id === eleve.id)); return `${r.demiJournees} demi-journée(s) d'absence, ${r.retards} retard(s)`; })()}</span>
             </div>
             <ul className="divide-y divide-border/60">
               {actives.map((m) => {

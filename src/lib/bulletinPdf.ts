@@ -211,7 +211,8 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
       top += 30;
     } else if (s.groupes.length) top += 12;
 
-    if (s.absences) {
+    // Absences : bulletins seulement (pas les relevés de notes).
+    if (!releve && s.absences) {
       place(20);
       texte("Absences :", M, top + 10, regular, 9.5, GRIS);
       texte(texteAbsences(s.absences), M + 54, top + 10, regular, 9.5);

@@ -60,7 +60,7 @@ export default function VueBulletin({ s }: { s: Synthese }) {
         </div>
       )}
 
-      {s.absences && (
+      {!releve && s.absences && (
         <p className="text-sm">
           <span className="text-muted">Absences : </span>
           {texteAbsences(s.absences)}

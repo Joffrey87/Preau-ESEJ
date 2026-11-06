@@ -4,7 +4,7 @@
 
 import type { PDFFont, PDFPage, RGB } from "pdf-lib";
 import { chargerRessources, assainir } from "@/lib/recuPdf";
-import { classeEleve, dateJJMMAAAA, mentionLabel, nomFichierBulletin, note20, rangTexte, normaliserRoleTitulaire, titreDocument, type Synthese } from "@/lib/bulletins";
+import { classeEleve, dateJJMMAAAA, developperCiviliteNom, mentionLabel, nomFichierBulletin, note20, rangTexte, normaliserRoleTitulaire, titreDocument, type Synthese } from "@/lib/bulletins";
 import { texteAbsences } from "@/lib/absences";
 import { tauxTexte } from "@/lib/calendrier";
 
@@ -78,7 +78,7 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
     // En-tête : logo, école, période (dates sur leur propre ligne) ; cartouche de l'élève à droite, séparé du
     // bloc de gauche par une gouttière, et dont la hauteur suit le nom (prénom au-dessus, nom réduit puis coupé
     // s'il est long : jamais de débordement).
-    // Logo un peu plus grand ; cartouche assez large pour « Enseignante : Mlle … » (06/11/2026).
+    // Logo un peu plus grand ; cartouche assez large pour « Enseignante : Mademoiselle … » (06/11/2026).
     const CW = 196, bx = Wp - M - CW, gx = M + 84, gw = bx - 18 - gx, iw = CW - 24;
     page.drawImage(logo, { x: M, y: y(top + 71), width: 72, height: 71 });
     texte("École du Saint-Enfant-Jésus", gx, top + 16, semi, ajuste("École du Saint-Enfant-Jésus", semi, 13, gw, 10));
@@ -112,8 +112,9 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
     // naissance en plus.
     const ligneClasse = classeEleve(s);
     const naissance = s.mode === "trimestre" && s.eleve.naissance ? `Né(e) le ${dateJJMMAAAA(s.eleve.naissance)}` : "";
-    const role = normaliserRoleTitulaire(s.classe.roleTitulaire, s.classe.titulaire);
-    const infos = [ligneClasse && { t: ligneClasse, gris: false }, naissance && { t: naissance, gris: true }, s.classe.titulaire && { t: `${role} : ${s.classe.titulaire}`, gris: true }].filter(
+    const titulaireNom = developperCiviliteNom(s.classe.titulaire);
+    const role = normaliserRoleTitulaire(s.classe.roleTitulaire, titulaireNom || s.classe.titulaire);
+    const infos = [ligneClasse && { t: ligneClasse, gris: false }, naissance && { t: naissance, gris: true }, titulaireNom && { t: `${role} : ${titulaireNom}`, gris: true }].filter(
       (x): x is { t: string; gris: boolean } => !!x,
     );
     // Lignes de base : prénom à 16, nom(s) tous les tNom + 3, première information 15 plus bas, les suivantes 13 ; 9 de marge.
@@ -172,8 +173,12 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
         // Relevé et bulletin trimestriel (04/11/2026) : le professeur n'est plus répété sous chaque matière.
         const ens = m.enseignants && !s.mode ? coupe(m.enseignants, regular, 6.5, wNom) : [];
         // Catéchisme : l'appréciation du professeur puis celle du Directeur spirituel, chacune sous son étiquette.
-        const apps = (m.appreciations ?? []).map((x) => ({ titre: x.titre, lignes: coupe(x.texte, italic, 7.8, wCom) }));
-        const hCom = com.length * 10 + apps.reduce((t, x) => t + 9.5 + x.lignes.length * 10 + 2, 0);
+        const apps = (m.appreciations ?? []).map((x) => ({
+          titre: x.titre,
+          sousTitre: x.sousTitre,
+          lignes: coupe(x.texte, italic, 7.8, wCom),
+        }));
+        const hCom = com.length * 10 + apps.reduce((t, x) => t + 9.5 + (x.sousTitre ? 8.5 : 0) + x.lignes.length * 10 + 2, 0);
         const h = Math.max(8 + noms.length * 10.5 + ens.length * 8.5, 8 + hCom);
         place(h);
         noms.forEach((l, i) => texte(l, cols.matiere + 12, top + 11 + i * 10.5, regular, 8.5));
@@ -193,8 +198,13 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
         });
         let tA = top + 11 + com.length * 10 + (com.length ? 2 : 0);
         for (const x of apps) {
-          texte(x.titre, cols.com + 6, tA - 1, semi, 6.8, OR);
+          // Bulletin intervenants : nom (titre) puis matière en plus petit (sousTitre).
+          texte(x.titre, cols.com + 6, tA - 1, semi, 7.2, OR);
           tA += 9.5;
+          if (x.sousTitre) {
+            texte(x.sousTitre, cols.com + 6, tA - 1, regular, 6.2, GRIS);
+            tA += 8.5;
+          }
           x.lignes.forEach((l) => {
             texte(l, cols.com + 6, tA, italic, 7.8);
             tA += 10;
@@ -261,7 +271,7 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
       place(hSig);
       page.drawRectangle({ x: M, y: y(top + hSig), width: wSig, height: hSig, borderColor: TRAIT, borderWidth: 0.8 });
       texte(`Signature de l'${role.toLowerCase()}`, M + 10, top + 13, semi, 8.5);
-      if (s.classe.titulaire) texte(s.classe.titulaire, M + 10, top + 26, regular, 8.5);
+      if (titulaireNom) texte(titulaireNom, M + 10, top + 26, regular, 8.5);
       page.drawRectangle({ x: Wp - M - wSig, y: y(top + hSig), width: wSig, height: hSig, borderColor: TRAIT, borderWidth: 0.8 });
       texte("Signature des parents", Wp - M - wSig + 10, top + 13, semi, 8.5);
       top += hSig;
@@ -269,8 +279,8 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
       // Bulletin de période historique : Directrice + titulaire.
       place(40);
       texte("La Directrice", Wp - M - 160, top + 10, semi, 9);
-      if (s.classe.titulaire) texte(s.classe.titulaire, M, top + 10, semi, 9);
-      texte(s.classe.titulaire ? `${role} de la classe` : "", M, top + 22, regular, 8, GRIS);
+      if (titulaireNom) texte(titulaireNom, M, top + 10, semi, 9);
+      texte(titulaireNom ? `${role} de la classe` : "", M, top + 22, regular, 8, GRIS);
     }
 
     return { octets: await brouillon.save(), pages: brouillon.getPageCount() };

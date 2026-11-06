@@ -47,12 +47,29 @@ export type DocTrimestre = Omit<DocReleve, "periode_id"> & { annee_scolaire: str
 /** bulletin_id : le bulletin trimestriel, ou le relevé de la période (appréciation du Catéchisme). */
 export type AppreciationIntervenant = { bulletin_id: string; matiere_id: string; texte: string | null; texte_professeur?: string | null };
 
-/** Catéchisme : les deux appréciations, étiquetées (celle du professeur, puis celle du Directeur spirituel). */
-export const appreciationsCatechisme = (a: AppreciationIntervenant | undefined) =>
-  [
+/** Catéchisme : les deux appréciations. Sur un bulletin : nom + matière ; sur un relevé : libellés génériques. */
+export function appreciationsCatechisme(
+  a: AppreciationIntervenant | undefined,
+  opts?: { bulletin?: boolean; nomProfesseur?: string; nomDirecteur?: string; matiere?: string },
+) {
+  const matiere = opts?.matiere?.trim() || "Catéchisme";
+  if (opts?.bulletin) {
+    return [
+      { titre: opts.nomProfesseur?.trim() || "Professeur", sousTitre: matiere, texte: a?.texte_professeur?.trim() ?? "" },
+      { titre: opts.nomDirecteur?.trim() || "Chanoine Journé", sousTitre: matiere, texte: a?.texte?.trim() ?? "" },
+    ].filter((x) => x.texte);
+  }
+  return [
     { titre: "Appréciation du professeur", texte: a?.texte_professeur?.trim() ?? "" },
     { titre: "Appréciation du Directeur spirituel", texte: a?.texte?.trim() ?? "" },
   ].filter((x) => x.texte);
+}
+
+/** Directeur spirituel (Chanoine) parmi les enseignants, pour l'étiquette d'appréciation. */
+const nomDirecteurSpirituel = (enseignants: Map<string, Enseignant>) => {
+  const e = [...enseignants.values()].find((x) => /chanoine/i.test(x.civilite ?? "") || /^journ/i.test(x.nom ?? ""));
+  return e ? nomEnseignant(e) : "Chanoine Journé";
+};
 
 export type ContexteDocs = {
   classe: Classe;
@@ -230,15 +247,43 @@ export function syntheseTrimestre(ctx: ContexteDocs, eleve: EleveBulletin, doc: 
   const { niveau, groupes } = groupesDe(ctx, eleve);
   const avecAppreciation = new Set(matieresAvecAppreciation(ctx).map((m) => m.id));
   const app = new Map(ctx.appreciations.filter((a) => a.bulletin_id === doc?.id).map((a) => [a.matiere_id, a.texte?.trim() || null]));
+  const directeur = nomDirecteurSpirituel(o.enseignants);
   const gs = groupes.map((g) => {
     const matieres = g.matieres.map((m) => {
-      // Catéchisme : appréciation seule, hors des moyennes.
-      const cat = estCatechisme(m.nom) ? appreciationsCatechisme(ctx.appreciations.find((a) => a.bulletin_id === doc?.id && a.matiere_id === m.id)) : undefined;
+      // Catéchisme : appréciation seule, hors des moyennes ; sur bulletin : nom + matière.
+      const aCat = estCatechisme(m.nom) ? ctx.appreciations.find((a) => a.bulletin_id === doc?.id && a.matiere_id === m.id) : undefined;
+      const cat = estCatechisme(m.nom)
+        ? appreciationsCatechisme(aCat, {
+            bulletin: true,
+            nomProfesseur: profs(m, o) || undefined,
+            nomDirecteur: directeur,
+            matiere: m.nom,
+          })
+        : undefined;
+      // Intervenants (hors titulaire) : sur le bulletin, l'appréciation porte nom + matière.
+      const intervenants = m.enseignants
+        .filter((id) => id !== ctx.classe.titulaire_id)
+        .map((id) => o.enseignants.get(id))
+        .filter((e): e is Enseignant => !!e);
+      const nomIntervenant = intervenants.map(nomEnseignant).join(", ");
       if (estAppreciationSeule(m.nom, ctx.classe.niveaux))
         return { nom: m.nom, enseignants: profs(m, o), chiffre: vide, commentaire: null, brut: null, appreciationSeule: true as const, appreciations: cat };
       const valeurs = ctx.periodes.flatMap((p) => notesPeriode(ctx, eleve.id, m, p).valeurs);
       const moy = moyenne(valeurs);
-      return { nom: intituleComplet(m.nom), enseignants: profs(m, o), chiffre: { ...vide, moy: arrondi(moy) }, commentaire: cat ? null : avecAppreciation.has(m.id) ? (app.get(m.id) ?? null) : null, brut: moy, appreciationSeule: undefined, appreciations: cat };
+      const texteApp = !cat && avecAppreciation.has(m.id) ? (app.get(m.id) ?? null) : null;
+      // Bulletin : appréciation d'intervenant étiquetée nom + matière (police plus petite pour la matière).
+      if (!cat && texteApp && nomIntervenant) {
+        return {
+          nom: intituleComplet(m.nom),
+          enseignants: profs(m, o),
+          chiffre: { ...vide, moy: arrondi(moy) },
+          commentaire: null,
+          brut: moy,
+          appreciationSeule: undefined,
+          appreciations: [{ titre: nomIntervenant, sousTitre: intituleComplet(m.nom), texte: texteApp }],
+        };
+      }
+      return { nom: intituleComplet(m.nom), enseignants: profs(m, o), chiffre: { ...vide, moy: arrondi(moy) }, commentaire: cat ? null : texteApp, brut: moy, appreciationSeule: undefined, appreciations: cat };
     });
     const moy = moyenne(matieres.map((m) => m.brut).filter((x): x is number => x !== null));
     return { nom: g.groupe.nom, chiffre: { ...vide, moy: arrondi(moy) }, matieres: matieres.map((x) => ({ nom: x.nom, enseignants: x.enseignants, chiffre: x.chiffre, commentaire: x.commentaire, ...(x.appreciationSeule ? { appreciationSeule: true } : {}), ...(x.appreciations ? { appreciations: x.appreciations } : {}) })), brut: moy };

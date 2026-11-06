@@ -115,8 +115,8 @@ export type Synthese = {
       chiffre: Chiffre;
       commentaire: string | null;
       appreciationSeule?: boolean;
-      /** Catéchisme (04/11/2026) : l'appréciation du professeur et celle du Directeur spirituel, étiquetées. */
-      appreciations?: { titre: string; texte: string }[];
+      /** Catéchisme / intervenants (bulletins) : appréciations étiquetées (titre = nom, sousTitre = matière en plus petit). */
+      appreciations?: { titre: string; sousTitre?: string; texte: string }[];
     }[];
   }[];
   mention: Mention | null;
@@ -141,12 +141,34 @@ const dateCourte = (iso: string) => {
   return `${Number(j)}.${m}.${a}`;
 };
 export const libellePeriode = (p: Pick<Periode, "libelle" | "debut" | "fin">) => p.libelle?.trim() || `Du ${dateCourte(p.debut)} au ${dateCourte(p.fin)}`;
-/** Nom d'un professeur à l'écran : prénom et nom, sans civilité (les documents gardent « Mme », « Mlle »). */
+/** Nom d'un professeur à l'écran : prénom et nom, sans civilité. */
 export const nomProfesseur = (e: Pick<Enseignant, "prenom" | "nom">) => [e.prenom, e.nom].filter(Boolean).join(" ");
-/** Nom sur les documents PDF : civilité + nom, sans prénom (« Mlle de Fonclare », « Mme Bernard »). */
-export const nomEnseignant = (e: Pick<Enseignant, "civilite" | "prenom" | "nom">) => [e.civilite, e.nom].filter(Boolean).join(" ");
 
-/** Intitulé du titulaire sur les documents PDF, d'après la civilité (Mme/Mlle → Enseignante, M. → Enseignant). */
+/** Civilité / titre en toutes lettres pour les documents (Mlle → Mademoiselle, Mme → Madame, M. → Monsieur ; Chanoine inchangé). */
+export function civiliteEnLettres(civilite: string | null | undefined): string {
+  const t = (civilite ?? "").trim();
+  if (!t) return "";
+  const k = t.toLowerCase().replace(/\./g, "").replace(/\s+/g, "");
+  if (/^(m|mr|monsieur)$/.test(k)) return "Monsieur";
+  if (/^(mme|madame)$/.test(k)) return "Madame";
+  if (/^(mlle|mademoiselle)$/.test(k)) return "Mademoiselle";
+  return t;
+}
+
+/** Nom sur les documents PDF : titre en toutes lettres + nom, sans prénom (« Mademoiselle de Fonclare », « Madame Bernard », « Chanoine Journé »). */
+export const nomEnseignant = (e: Pick<Enseignant, "civilite" | "prenom" | "nom">) =>
+  [civiliteEnLettres(e.civilite), e.nom].filter(Boolean).join(" ");
+
+/** Développe une civilité abrégée en tête d'un libellé déjà figé (« Mlle de Fonclare » → « Mademoiselle de Fonclare »). */
+export function developperCiviliteNom(libelle: string | null | undefined): string {
+  const s = (libelle ?? "").trim();
+  if (!s) return "";
+  const m = s.match(/^(M\.|Mme|Mlle|Mr\.?)\s+(.+)$/i);
+  if (!m) return s;
+  return [civiliteEnLettres(m[1]), m[2]].filter(Boolean).join(" ");
+}
+
+/** Intitulé du titulaire sur les documents PDF, d'après la civilité (Madame/Mademoiselle → Enseignante, Monsieur → Enseignant). */
 export function roleTitulaire(civilite: string | null | undefined): "Enseignante" | "Enseignant" {
   const c = (civilite ?? "").trim().toLowerCase().replace(/\./g, "");
   if (/^(m|mr|monsieur)$/.test(c)) return "Enseignant";
@@ -155,7 +177,7 @@ export function roleTitulaire(civilite: string | null | undefined): "Enseignante
   return "Enseignante";
 }
 
-/** Même intitulé à partir du nom déjà formaté (« Mme X », « M. Y ») — utile pour une synthèse déjà publiée. */
+/** Même intitulé à partir du nom déjà formaté (« Madame X », « Monsieur Y ») — utile pour une synthèse déjà publiée. */
 export function roleTitulaireDepuisNom(titulaire: string | null | undefined): "Enseignante" | "Enseignant" {
   if (!titulaire?.trim()) return "Enseignante";
   const debut = titulaire.trim().split(/\s+/)[0] ?? "";

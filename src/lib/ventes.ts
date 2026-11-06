@@ -111,16 +111,21 @@ const sansAccents = (t: string) => t.normalize("NFD").replace(/[̀-ͯ]/g, "").to
 
 /**
  * Objet de vente reconnu dans le titre d'une opération bancaire : tous les mots (4 lettres et plus) du nom
- * de l'objet figurent dans le titre. En cas de plusieurs objets, le plus précis (nom le plus long) l'emporte.
+ * de l'objet figurent dans le titre ; à défaut, le mot-clé principal (1er mot significatif non numérique,
+ * ou un alias). En cas de plusieurs objets, le plus précis (nom le plus long) l'emporte.
  */
 export function objetVenteDansTitre(titre: string, objets: SousCategorie[]): SousCategorie | null {
   const t = ` ${sansAccents(titre).replace(/[^a-z0-9]+/g, " ")} `;
   let meilleur: { o: SousCategorie; score: number } | null = null;
   for (const o of objets) {
     const mots = sansAccents(o.nom).replace(/[^a-z0-9]+/g, " ").split(" ").filter((m) => m.length >= 4);
-    if (!mots.length || !mots.every((m) => t.includes(m))) continue;
-    const score = mots.reduce((s, m) => s + m.length, 0);
-    if (!meilleur || score > meilleur.score) meilleur = { o, score };
+    const plein = mots.length > 0 && mots.every((m) => t.includes(m));
+    const cle = !plein && motsClesObjet(o).some((a) => t.includes(` ${a} `));
+    if (!plein && !cle) continue;
+    const score = plein ? mots.reduce((s, m) => s + m.length, 0) : 1;
+    if (!meilleur || score > meilleur.score || (score === meilleur.score && o.nom.length > meilleur.o.nom.length)) {
+      meilleur = { o, score };
+    }
   }
   return meilleur?.o ?? null;
 }
@@ -147,9 +152,30 @@ const contient = (mots: string[], cibles: string[]) => {
 };
 
 /**
+ * Mots-clés reconnus dans un libellé : alias explicites + mot principal du nom
+ * (1er significatif non numérique, ≥ 4 lettres) — « Sapins de Noel 2026 » → sapin,
+ * « Photos de classe » → photo.
+ */
+function motsClesObjet(o: { nom: string; alias?: string[] | null }): string[] {
+  const vus = new Set<string>();
+  const out: string[] = [];
+  const ajouter = (s: string) => {
+    for (const m of motsVente(s)) {
+      if (m.length < 4 || /^\d+$/.test(m) || vus.has(m)) continue;
+      vus.add(m);
+      out.push(m);
+    }
+  };
+  for (const a of o.alias ?? []) ajouter(a);
+  const principal = motsVente(o.nom).find((m) => m.length >= 4 && !/^\d+$/.test(m));
+  if (principal) ajouter(principal);
+  return out;
+}
+
+/**
  * Objet de Ventes diverses cité dans le libellé d'une recette : tous les mots significatifs de son nom présents, dans
- * l'ordre (« VIR … PHOTOS CLASSE ARMAND » → « Photos de classe »). À défaut, l'un de ses mots-clés (alias,
- * « photo »). Le nom complet l'emporte sur un alias ; entre plusieurs, le plus long.
+ * l'ordre (« VIR … PHOTOS CLASSE ARMAND » → « Photos de classe »). À défaut, l'un de ses mots-clés (alias ou mot
+ * principal du nom, « photo », « sapin »). Le nom complet l'emporte sur un mot-clé ; entre plusieurs, le plus long.
  */
 export function objetVenteDansLibelle<T extends { nom: string; alias?: string[] | null }>(libelle: string, objets: T[]): T | null {
   const mots = motsVente(libelle);
@@ -158,8 +184,8 @@ export function objetVenteDansLibelle<T extends { nom: string; alias?: string[] 
   if (meilleur) return meilleur;
   let long = 0;
   for (const o of objets)
-    for (const a of o.alias ?? [])
-      if (contient(mots, motsVente(a)) && a.length > long) {
+    for (const a of motsClesObjet(o))
+      if (contient(mots, [a]) && a.length > long) {
         meilleur = o;
         long = a.length;
       }

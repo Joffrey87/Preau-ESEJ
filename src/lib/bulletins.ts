@@ -143,7 +143,8 @@ const dateCourte = (iso: string) => {
 export const libellePeriode = (p: Pick<Periode, "libelle" | "debut" | "fin">) => p.libelle?.trim() || `Du ${dateCourte(p.debut)} au ${dateCourte(p.fin)}`;
 /** Nom d'un professeur à l'écran : prénom et nom, sans civilité (les documents gardent « Mme », « Mlle »). */
 export const nomProfesseur = (e: Pick<Enseignant, "prenom" | "nom">) => [e.prenom, e.nom].filter(Boolean).join(" ");
-export const nomEnseignant = (e: Pick<Enseignant, "civilite" | "prenom" | "nom">) => [e.civilite, e.prenom, e.nom].filter(Boolean).join(" ");
+/** Nom sur les documents PDF : civilité + nom, sans prénom (« Mlle de Fonclare », « Mme Bernard »). */
+export const nomEnseignant = (e: Pick<Enseignant, "civilite" | "prenom" | "nom">) => [e.civilite, e.nom].filter(Boolean).join(" ");
 
 /** Intitulé du titulaire sur les documents PDF, d'après la civilité (Mme/Mlle → Enseignante, M. → Enseignant). */
 export function roleTitulaire(civilite: string | null | undefined): "Enseignante" | "Enseignant" {

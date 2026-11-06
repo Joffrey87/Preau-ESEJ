@@ -47,10 +47,10 @@ const moisCourt = (iso: string) => {
   const [a, m] = iso.split("-");
   return m && a ? `${MOIS_COURTS[Number(m) - 1] ?? m}-${a.slice(2)}` : "";
 };
-/** « 2026-11-14 » → « 14/11/2026 » (compact, sans décalage TZ). */
-const dateJjMmAaaa = (iso: string) => {
+/** « 2026-11-14 » → « 14/11 » (compact, sans année ni décalage TZ). */
+const dateJjMm = (iso: string) => {
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(iso);
-  return m ? `${m[3]}/${m[2]}/${m[1]}` : formatDate(iso);
+  return m ? `${m[3]}/${m[2]}` : formatDate(iso);
 };
 
 export default function GestionVentesDiverses({
@@ -578,8 +578,8 @@ export default function GestionVentesDiverses({
                                   </button>
                                 )}
                                 {g.paye >= g.attendu - 0.005 && (
-                                  <span className="ml-1.5 inline-flex items-center gap-1 whitespace-nowrap text-emerald-600" title={g.datePaye ? `Soldé le ${dateJjMmAaaa(g.datePaye)}` : "Soldé"}>
-                                    {g.datePaye && <span className="text-[11px] tabular-nums text-muted">{dateJjMmAaaa(g.datePaye)}</span>}
+                                  <span className="ml-1.5 inline-flex items-center gap-1 whitespace-nowrap text-emerald-600" title={g.datePaye ? `Soldé le ${dateJjMm(g.datePaye)}` : "Soldé"}>
+                                    {g.datePaye && <span className="text-[11px] tabular-nums text-muted">{dateJjMm(g.datePaye)}</span>}
                                     ✓
                                   </span>
                                 )}
@@ -764,8 +764,8 @@ export default function GestionVentesDiverses({
                               {formatEuros(g.paye)} / {formatEuros(g.attendu)}
                             </span>
                             {g.paye >= g.attendu - 0.005 ? (
-                              <span className="inline-flex items-center gap-1 whitespace-nowrap text-emerald-600" title={g.datePaye ? `Soldé le ${dateJjMmAaaa(g.datePaye)}` : "Soldé"}>
-                                {g.datePaye && <span className="text-[11px] tabular-nums text-muted">{dateJjMmAaaa(g.datePaye)}</span>}
+                              <span className="inline-flex items-center gap-1 whitespace-nowrap text-emerald-600" title={g.datePaye ? `Soldé le ${dateJjMm(g.datePaye)}` : "Soldé"}>
+                                {g.datePaye && <span className="text-[11px] tabular-nums text-muted">{dateJjMm(g.datePaye)}</span>}
                                 ✓
                               </span>
                             ) : (

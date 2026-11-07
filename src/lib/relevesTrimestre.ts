@@ -163,8 +163,20 @@ function groupesDe(ctx: ContexteDocs, eleve: EleveBulletin) {
   };
 }
 
-const profs = (m: Matiere, o: Outils) =>
-  m.enseignants.map((id) => o.enseignants.get(id)).filter((e): e is Enseignant => !!e).map(nomEnseignant).join(", ");
+/** Intervenants sous la matière : titre + nom, hors titulaire ; Catéchisme : Directeur spirituel en tête. */
+const profs = (m: Matiere, o: Outils, titulaireId?: string | null) => {
+  const noms = m.enseignants
+    .filter((id) => id !== titulaireId)
+    .map((id) => o.enseignants.get(id))
+    .filter((e): e is Enseignant => !!e)
+    .map(nomEnseignant)
+    .filter(Boolean);
+  if (estCatechisme(m.nom)) {
+    const dir = nomDirecteurSpirituel(o.enseignants);
+    if (dir && !noms.some((n) => n === dir || /chanoine/i.test(n))) noms.unshift(dir);
+  }
+  return noms.join(", ");
+};
 
 /** Notes d'un élève dans une matière pour une période (textes affichables) et valeurs sur 20. */
 function notesPeriode(ctx: ContexteDocs, eleveId: string, m: Matiere, p: Periode) {
@@ -223,10 +235,10 @@ export function syntheseReleve(ctx: ContexteDocs, periode: Periode, eleve: Eleve
         const a = estCatechisme(m.nom) ? ctx.appreciations.find((x) => x.bulletin_id === doc?.id && x.matiere_id === m.id) : undefined;
         const apps = estCatechisme(m.nom) ? { appreciations: appreciationsCatechisme(a, { nomProfesseur: o.titulaire ?? undefined }) } : {};
         if (estAppreciationSeule(m.nom, ctx.classe.niveaux))
-          return { nom: m.nom, enseignants: profs(m, o), chiffre: vide, commentaire: null, appreciationSeule: true, ...apps };
+          return { nom: m.nom, enseignants: profs(m, o, ctx.classe.titulaire_id), chiffre: vide, commentaire: null, appreciationSeule: true, ...apps };
         // Les notes de la période, séparées par « | » (04/11/2026) ; Catéchisme : ses deux appréciations en plus.
         const { textes } = notesPeriode(ctx, eleve.id, m, periode);
-        return { nom: intituleComplet(m.nom), enseignants: profs(m, o), chiffre: vide, commentaire: textes.join(" | ") || null, ...apps };
+        return { nom: intituleComplet(m.nom), enseignants: profs(m, o, ctx.classe.titulaire_id), chiffre: vide, commentaire: textes.join(" | ") || null, ...apps };
       }),
     })),
     mention: null,
@@ -266,7 +278,7 @@ export function syntheseTrimestre(ctx: ContexteDocs, eleve: EleveBulletin, doc: 
         .filter((e): e is Enseignant => !!e);
       const nomIntervenant = intervenants.map(nomEnseignant).join(", ");
       if (estAppreciationSeule(m.nom, ctx.classe.niveaux))
-        return { nom: m.nom, enseignants: profs(m, o), chiffre: vide, commentaire: null, brut: null, appreciationSeule: true as const, appreciations: cat };
+        return { nom: m.nom, enseignants: profs(m, o, ctx.classe.titulaire_id), chiffre: vide, commentaire: null, brut: null, appreciationSeule: true as const, appreciations: cat };
       const valeurs = ctx.periodes.flatMap((p) => notesPeriode(ctx, eleve.id, m, p).valeurs);
       const moy = moyenne(valeurs);
       const texteApp = !cat && avecAppreciation.has(m.id) ? (app.get(m.id) ?? null) : null;
@@ -274,14 +286,14 @@ export function syntheseTrimestre(ctx: ContexteDocs, eleve: EleveBulletin, doc: 
       if (!cat && texteApp && nomIntervenant) {
         return {
           nom: intituleComplet(m.nom),
-          enseignants: profs(m, o),
+          enseignants: profs(m, o, ctx.classe.titulaire_id),
           chiffre: { ...vide, moy: arrondi(moy) },
           commentaire: texteApp,
           brut: moy,
           appreciationSeule: undefined,
         };
       }
-      return { nom: intituleComplet(m.nom), enseignants: profs(m, o), chiffre: { ...vide, moy: arrondi(moy) }, commentaire: cat ? null : texteApp, brut: moy, appreciationSeule: undefined, appreciations: cat };
+      return { nom: intituleComplet(m.nom), enseignants: profs(m, o, ctx.classe.titulaire_id), chiffre: { ...vide, moy: arrondi(moy) }, commentaire: cat ? null : texteApp, brut: moy, appreciationSeule: undefined, appreciations: cat };
     });
     const moy = moyenne(matieres.map((m) => m.brut).filter((x): x is number => x !== null));
     return { nom: g.groupe.nom, chiffre: { ...vide, moy: arrondi(moy) }, matieres: matieres.map((x) => ({ nom: x.nom, enseignants: x.enseignants, chiffre: x.chiffre, commentaire: x.commentaire, ...(x.appreciationSeule ? { appreciationSeule: true } : {}), ...(x.appreciations ? { appreciations: x.appreciations } : {}) })), brut: moy };

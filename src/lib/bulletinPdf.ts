@@ -199,11 +199,12 @@ export async function construireBulletinsPdf(syntheses: Synthese[], infos?: { ec
         // Intitulé long (« Systèmes de poids et mesures ») : coupé sur deux lignes dans sa colonne, jamais tronqué.
         const wNom = (releve ? cols.com : cols.moy) - cols.matiere - 18;
         const noms = coupe(m.nom, regular, 8.5, wNom);
-        // Intervenants sous la matière (style discret) ; le titulaire du cartouche n'est pas répété.
+        // Intervenants sous la matière (style discret) : titre + nom, sans prénom ; le titulaire du cartouche n'est pas répété.
+        const titulaireLib = developperCiviliteNom(s.classe.titulaire) || (s.classe.titulaire ?? "").trim();
         const ensLib = (m.enseignants ?? "")
           .split(",")
-          .map((x) => x.trim())
-          .filter((x) => x && x !== (s.classe.titulaire ?? "").trim())
+          .map((x) => developperCiviliteNom(x.trim()) || x.trim())
+          .filter((x) => x && x !== titulaireLib && x !== (s.classe.titulaire ?? "").trim())
           .join(", ");
         const ens = ensLib ? coupe(ensLib, regular, 7, wNom) : [];
         // Catéchisme : Directeur (texte seul) puis enseignante (nom + commentaire si présent).

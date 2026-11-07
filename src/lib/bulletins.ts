@@ -155,9 +155,20 @@ export function civiliteEnLettres(civilite: string | null | undefined): string {
   return t;
 }
 
-/** Nom sur les documents PDF : titre en toutes lettres + nom, sans prénom (« Mademoiselle de Fonclare », « Madame Bernard », « Chanoine Journé »). */
-export const nomEnseignant = (e: Pick<Enseignant, "civilite" | "prenom" | "nom">) =>
-  [civiliteEnLettres(e.civilite), e.nom].filter(Boolean).join(" ");
+/**
+ * Nom sur les documents PDF : titre en toutes lettres + nom, sans prénom
+ * (« Mademoiselle de Fonclare », « Madame Bernard », « Monsieur Lenoble », « Chanoine Journé »).
+ * Si le titre a été saisi dans le prénom (« Chanoine François »), on le récupère.
+ */
+export const nomEnseignant = (e: Pick<Enseignant, "civilite" | "prenom" | "nom">) => {
+  let civilite = (e.civilite ?? "").trim();
+  const prenom = (e.prenom ?? "").trim();
+  if (!civilite && prenom) {
+    const m = prenom.match(/^(Chanoine|Abbé|Père|Frère|Monsieur|Madame|Mademoiselle|M\.|Mme|Mlle|Mr\.?)\s+/i);
+    if (m) civilite = m[1]!;
+  }
+  return [civiliteEnLettres(civilite) || civilite, (e.nom ?? "").trim()].filter(Boolean).join(" ");
+};
 
 /** Particule de nom (ne pas confondre avec un prénom). */
 const PARTICULE_NOM = /^(d'|de|du|des|la|le|les|van|von|di|da|del|della)$/i;
